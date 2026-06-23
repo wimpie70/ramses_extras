@@ -588,3 +588,76 @@ Implementation note:
 
 - Any manual bypass action (or manual fan-speed button press) toggles temp_control **off** for that FAN.
 - The user can re-enable it using the Temp control button.
+
+## 14) Future: areas/zones temperature targets (multi-zone comfort)
+
+When using **areas/zones** (sensor_control area sensors), we may have scenarios like:
+
+- One area too warm, another area OK/cool
+- The global FAN comfort temperature is not a good proxy for all areas
+
+In those cases, temp_control “cooling/heating_retention” decisions need a **per-area target** (desired/comfort temperature) in addition to per-area current temperature.
+
+### 14.1 Proposed approach
+
+1) Add optional per-area “comfort temperature” sources:
+
+- Option A (simple): `number.temp_control_area_comfort_temp_<device_id>_<area_id>` entities (one per enabled area)
+- Option B (integrated): reuse existing HA `climate`/`input_number`/`number` entities as configured per area (similar to how sensor_control lets users choose sensor sources)
+
+2) Compute an aggregated “cooling demand” / “heating retention demand” across areas:
+
+- For cooling: any(area_temp >= area_comfort + delta_activate) AND supply_temp can cool
+- For heating retention: any(area_temp <= area_comfort - delta_activate)
+
+3) Decide bypass mode using a simple priority:
+
+- If any cooling-demand area exists → prefer `cooling`
+- Else if any heating-demand area exists → prefer `heating_retention`
+- Else → `idle`
+
+(We can later refine this by weighting/majority or by selecting the “worst” area.)
+
+4) Keep the current single-target logic as the default when no per-area comfort targets are configured.
+
+### 14.2 Notes / risks
+
+- Avoid fighting CO2/humidity strategies: per-area temperature demand must still be gated by the existing humidity/CO2 “boss” rules.
+- UI: if per-area comfort targets exist, expose them in the HVAC Fan Card settings section similarly to humidity controls.
+- Start minimal: implement per-area targets only for *cooling* first if needed; add heating retention later.
+
+### 14.3 Centralized decision helper / zone coordinator integration (future)
+
+When zones were introduced, we moved “what should the system do?” into one place so that:
+
+- multiple signals (features + zone valves) are resolved consistently, and
+- actuators are driven from a single computed plan.
+
+In the current temp_control implementation **we are not using the zone coordinator decision path**:
+
+- temp_control computes its own bypass decision (idle/cooling/heating_retention) and sends bypass commands.
+- temp_control fan-speed requests are coordinated via the **FanSpeedArbiter** (this part *is* centralized).
+
+For future multi-zone temperature targeting, we should align with the existing centralized decision flow by **combining** configuration + demand publishing:
+
+- **Option A (inputs/config):** introduce per-area configuration:
+  - a per-area comfort/target temperature entity (selected by the user, or user-created helper)
+  - a per-area policy control like `select.temp_control_area_bypass_policy_*` (e.g. `off` / `cooling_only` / `heating_only` / `cooling_and_heating`)
+
+- **Option B (coordination):** temp_control publishes a “temperature demand” into the existing demand registry using `DemandSource.OTHER` + `metadata`.
+  - This pattern is already used to carry non-core demand types by attaching details in `metadata` (e.g. additional sensors such as air-quality-like signals).
+  - Suggested metadata shape:
+    - `kind: "temperature"`
+    - `area_id`, `area_temp`, `area_target`, `delta`
+    - `desired_bypass_mode: "open"|"close"`
+    - `decision: "cooling"|"heating_retention"`
+    - `reason: <short string>`
+
+Resolution of potentially conflicting demands (multiple areas/zones) should be handled centrally:
+
+- Introduce a **BypassModeArbiter** (parallel to FanSpeedArbiter).
+- The zone coordinator (or a higher-level coordinator) should resolve **both**:
+  - final fan speed (via FanSpeedArbiter), and
+  - final bypass mode (via BypassModeArbiter)
+
+Goal: **one place computes the final actuation plan** (fan speed + bypass mode), and features only contribute demand signals + reasons.
