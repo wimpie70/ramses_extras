@@ -445,6 +445,21 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   /**
+   * Called by the base card when integration options are updated.
+   * Invalidates cached entity mappings so that sensor_control changes
+   * (e.g. switching from external back to internal sensors) are picked
+   * up on the next render cycle.
+   */
+  _onOptionsUpdated() {
+    this._entityMappings = null;
+    this._entityMappingsLoading = false;
+    this._sensorSources = null;
+    this._rawInternalMappings = null;
+    this._areaSensors = [];
+    this._cachedEntities = null;
+  }
+
+  /**
    * Load entity mappings and sensor sources for this device via WebSocket.
    *
    * Populates `_cachedEntities` for the base class required-entities logic and
@@ -510,10 +525,15 @@ class HvacFanCard extends RamsesBaseCard {
           this._areaSensors = result.area_sensors;
         }
 
-        // Merge entity mappings into config, but keep any explicit overrides
+        // Merge entity mappings into config.
+        // The resolver result is the source of truth for sensor entities —
+        // always overwrite so that switching from external back to internal
+        // updates the config (otherwise stale external entity IDs persist).
         const updatedConfig = { ...this._config };
         Object.entries(result.mappings).forEach(([key, value]) => {
-          if (
+          if (value !== null && value !== undefined && value !== '') {
+            updatedConfig[key] = value;
+          } else if (
             updatedConfig[key] === undefined ||
             updatedConfig[key] === null ||
             updatedConfig[key] === ''

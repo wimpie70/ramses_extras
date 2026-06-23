@@ -498,6 +498,15 @@ export class RamsesBaseCard extends HTMLElement {
         // Force re-check of cards enabled status
         this._ensureCardsEnabledLoaded();
 
+        // Allow subclasses to react to options changes (e.g. invalidate caches)
+        if (typeof this._onOptionsUpdated === 'function') {
+          try {
+            this._onOptionsUpdated();
+          } catch (err) {
+            logger.warn(`⚠️ ${this.constructor.name}: Error in _onOptionsUpdated():`, err);
+          }
+        }
+
         this.clearUpdateThrottle();
         this._scheduleRender(true);
       } catch (error) {

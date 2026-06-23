@@ -240,6 +240,10 @@ def build_group_schema(
 
     This mirrors the "per-group schemas" section from the original config flow.
     """
+    # Allow None for optional entity fields — the HA frontend always sends
+    # the entity selector value, even when empty, which would otherwise fail
+    # validation with "Entity None is neither a valid entity ID nor a valid UUID".
+    sensor_selector_or_none = vol.Any(None, sensor_selector)
     if group_stage == "indoor_basic":
         indoor_temp_default = _get_entity(device_sources, "indoor_temperature")
         indoor_hum_default = _get_entity(device_sources, "indoor_humidity")
@@ -267,7 +271,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                indoor_temp_key: sensor_selector,
+                indoor_temp_key: sensor_selector_or_none,
                 vol.Required(
                     "indoor_humidity_kind",
                     default=_get_kind(device_sources, "indoor_humidity"),
@@ -278,7 +282,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                indoor_hum_key: sensor_selector,
+                indoor_hum_key: sensor_selector_or_none,
             }
         )
         info_suffix = (
@@ -315,7 +319,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                outdoor_temp_key: sensor_selector,
+                outdoor_temp_key: sensor_selector_or_none,
                 vol.Required(
                     "outdoor_humidity_kind",
                     default=_get_kind(device_sources, "outdoor_humidity"),
@@ -326,7 +330,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                outdoor_hum_key: sensor_selector,
+                outdoor_hum_key: sensor_selector_or_none,
             }
         )
         info_suffix = (
@@ -354,7 +358,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                co2_entity_key: sensor_selector,
+                co2_entity_key: sensor_selector_or_none,
             }
         )
         info_suffix = (
@@ -425,7 +429,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                indoor_abs_temp_key: sensor_selector,
+                indoor_abs_temp_key: sensor_selector_or_none,
                 vol.Required(
                     "indoor_abs_humidity_humidity_kind",
                     default=_get_abs_kind(
@@ -438,7 +442,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                indoor_abs_hum_key: sensor_selector,
+                indoor_abs_hum_key: sensor_selector_or_none,
             }
         )
         info_suffix = (
@@ -510,7 +514,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                outdoor_abs_temp_key: sensor_selector,
+                outdoor_abs_temp_key: sensor_selector_or_none,
                 vol.Required(
                     "outdoor_abs_humidity_humidity_kind",
                     default=_get_abs_kind(
@@ -523,7 +527,7 @@ def build_group_schema(
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                outdoor_abs_hum_key: sensor_selector,
+                outdoor_abs_hum_key: sensor_selector_or_none,
             }
         )
         info_suffix = (
@@ -664,6 +668,10 @@ async def handle_internal_fan_sensors(
     sensor_selector = selector.EntitySelector(
         selector.EntitySelectorConfig(domain=["sensor", "number", "input_number"])
     )
+    # Allow None for optional entity fields — the HA frontend always sends
+    # the entity selector value, even when empty, which would otherwise fail
+    # validation with "Entity None is neither a valid entity ID nor a valid UUID".
+    sensor_selector_or_none = vol.Any(None, sensor_selector)
 
     # Get default values
     indoor_temp_cfg = device_sources.get("indoor_temperature", {})
@@ -731,7 +739,7 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "indoor_temperature_entity",
                 default=indoor_temp_cfg.get("entity_id"),
-            ): sensor_selector,
+            ): sensor_selector_or_none,
             vol.Required(
                 "indoor_humidity_kind", default=indoor_hum_cfg.get("kind", "internal")
             ): selector.SelectSelector(
@@ -740,7 +748,7 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "indoor_humidity_entity",
                 default=indoor_hum_cfg.get("entity_id"),
-            ): sensor_selector,
+            ): sensor_selector_or_none,
             # Indoor humidity spike detection
             vol.Required(
                 "indoor_humidity_spike_enabled", default=indoor_hum_spike_enabled
@@ -765,7 +773,7 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "outdoor_temperature_entity",
                 default=outdoor_temp_cfg.get("entity_id"),
-            ): sensor_selector,
+            ): sensor_selector_or_none,
             vol.Required(
                 "outdoor_humidity_kind", default=outdoor_hum_cfg.get("kind", "internal")
             ): selector.SelectSelector(
@@ -774,7 +782,7 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "outdoor_humidity_entity",
                 default=outdoor_hum_cfg.get("entity_id"),
-            ): sensor_selector,
+            ): sensor_selector_or_none,
             # CO2
             vol.Required(
                 "co2_kind", default=co2_cfg.get("kind", "internal")
@@ -783,7 +791,7 @@ async def handle_internal_fan_sensors(
             ),
             vol.Optional(
                 "co2_entity", default=co2_cfg.get("entity_id")
-            ): sensor_selector,
+            ): sensor_selector_or_none,
             # Indoor absolute humidity
             vol.Required(
                 "indoor_abs_humidity_temperature_kind",
@@ -796,7 +804,7 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "indoor_abs_humidity_temperature_entity",
                 default=indoor_abs_cfg.get("temperature", {}).get("entity_id"),
-            ): sensor_selector,
+            ): sensor_selector_or_none,
             vol.Required(
                 "indoor_abs_humidity_humidity_kind",
                 default=indoor_abs_cfg.get("humidity", {}).get("kind", "internal"),
@@ -808,7 +816,7 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "indoor_abs_humidity_humidity_entity",
                 default=indoor_abs_cfg.get("humidity", {}).get("entity_id"),
-            ): sensor_selector,
+            ): sensor_selector_or_none,
             # Outdoor absolute humidity
             vol.Required(
                 "outdoor_abs_humidity_temperature_kind",
@@ -821,7 +829,7 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "outdoor_abs_humidity_temperature_entity",
                 default=outdoor_abs_cfg.get("temperature", {}).get("entity_id"),
-            ): sensor_selector,
+            ): sensor_selector_or_none,
             vol.Required(
                 "outdoor_abs_humidity_humidity_kind",
                 default=outdoor_abs_cfg.get("humidity", {}).get("kind", "internal"),
@@ -833,7 +841,7 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "outdoor_abs_humidity_humidity_entity",
                 default=outdoor_abs_cfg.get("humidity", {}).get("entity_id"),
-            ): sensor_selector,
+            ): sensor_selector_or_none,
         }
     )
 
