@@ -19,7 +19,7 @@
 > | §9.2 Validation helper (`validateTempControlEntities`) | ✅ Done |
 > | §9.2 Translations (en/nl) | ✅ Done |
 > | §10 Framework touchpoints (select platform support) | ✅ Done |
-> | §11 Backend tests | ⏳ Pending (skeleton compiles; decision tests TBD) |
+> | §11 Backend tests | ✅ Done (43 tests: const, config, decision logic, hysteresis, interval, speed gating) |
 > | §11 Frontend tests | ✅ Existing tests pass; new assertions TBD |
 > | Phase 1 — Skeleton feature + config | ✅ Done |
 > | Phase 2 — Automation MVP | ✅ Done (logic in place; needs runtime validation) |
