@@ -919,6 +919,12 @@ async def async_step_sensor_control_config(
             if selected_area_sensor and selected_area_sensor.get("co2_threshold_entity")
             else None
         )
+        comfort_temp_entity_default = (
+            str(selected_area_sensor.get("comfort_temperature_entity"))
+            if selected_area_sensor
+            and selected_area_sensor.get("comfort_temperature_entity")
+            else None
+        )
 
         errors: dict[str, str] = {}
 
@@ -961,6 +967,9 @@ async def async_step_sensor_control_config(
                     user_input.get("co2_threshold_entity") or ""
                 ).strip(),
                 "co2_threshold": int(user_input.get("co2_threshold") or 1000),
+                "comfort_temperature_entity": str(
+                    user_input.get("comfort_temperature_entity") or ""
+                ).strip(),
             }
             zone_id = str(user_input.get("zone_id") or "").strip()
             if zone_id:
@@ -1076,6 +1085,14 @@ async def async_step_sensor_control_config(
                 default=co2_threshold_entity_default,
             )
         )
+        comfort_temp_entity_key = (
+            vol.Optional("comfort_temperature_entity")
+            if comfort_temp_entity_default is None
+            else vol.Optional(
+                "comfort_temperature_entity",
+                default=comfort_temp_entity_default,
+            )
+        )
         # Get zones for this FAN to populate zone dropdown
         zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
         fan_zones = get_zones_for_fan(zones_section, selected_device_id)
@@ -1154,6 +1171,11 @@ async def async_step_sensor_control_config(
                 ): bool,
                 co2_key: area_sensor_selector,
                 co2_threshold_entity_key: area_sensor_selector,
+                comfort_temp_entity_key: selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain=["sensor", "number", "input_number", "climate"]
+                    )
+                ),
                 vol.Required(
                     "co2_threshold",
                     default=int(

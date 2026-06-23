@@ -186,6 +186,54 @@ export function validateCO2ControlEntities(hass, config) {
 }
 
 /**
+ * Validate Temp control entities
+ * @param {Object} hass - Home Assistant instance
+ * @param {Object} config - Card configuration
+ * @returns {Object} Validation results for Temp control entities
+ */
+export function validateTempControlEntities(hass, config) {
+  if (!hass || !config) {
+    return {
+      available: false,
+      entities: [],
+      error: 'Missing hass or config'
+    };
+  }
+
+  const tempControlEntities = {
+    'Temp Control': config.temp_control_entity,
+    'Temp Control Active': config.temp_control_active_entity,
+    'Temp Control Status': config.temp_control_status_entity,
+    'Temp Control Desired Speed': config.temp_control_desired_speed_entity,
+  };
+
+  const missingEntities = [];
+  const availableEntities = [];
+
+  Object.entries(tempControlEntities).forEach(([name, entityId]) => {
+    if (entityId) {
+      if (entityExists(hass, entityId)) {
+        availableEntities.push(name);
+      } else {
+        missingEntities.push(name);
+      }
+    }
+  });
+
+  const entitiesAvailable = availableEntities.length === Object.keys(tempControlEntities).length;
+
+  return {
+    available: entitiesAvailable,
+    entities: availableEntities,
+    missing: missingEntities,
+    controlEntity: config.temp_control_entity,
+    activeEntity: config.temp_control_active_entity,
+    statusEntity: config.temp_control_status_entity,
+    desiredSpeedEntity: config.temp_control_desired_speed_entity
+  };
+}
+
+/**
  * Check if entity exists and is available
  * @param {Object} hass - Home Assistant instance
  * @param {string} entityId - Entity ID to check
@@ -208,29 +256,33 @@ export function getEntityValidationReport(hass, config) {
   const dehumidify = validateDehumidifyEntities(hass, config);
   const absoluteHumidity = validateAbsoluteHumidityEntities(hass, config);
   const co2Control = validateCO2ControlEntities(hass, config);
+  const tempControl = validateTempControlEntities(hass, config);
 
   return {
     overall: {
       valid: core.valid,
-      totalEntities: core.total + 2 + 2 + 2, // core + dehumidify + abs humidity + co2
-      availableEntities: core.availableCount + dehumidify.entities.length + absoluteHumidity.available.length + co2Control.entities.length
+      totalEntities: core.total + 2 + 2 + 2 + 4, // core + dehumidify + abs humidity + co2 + temp
+      availableEntities: core.availableCount + dehumidify.entities.length + absoluteHumidity.available.length + co2Control.entities.length + tempControl.entities.length
     },
     core,
     dehumidify,
     absoluteHumidity,
     co2Control,
+    tempControl,
     summary: {
       available: [
         ...core.available,
         ...dehumidify.entities,
         ...absoluteHumidity.available,
-        ...co2Control.entities
+        ...co2Control.entities,
+        ...tempControl.entities
       ],
       missing: [
         ...core.missing,
         ...dehumidify.missing,
         ...absoluteHumidity.missing,
-        ...co2Control.missing
+        ...co2Control.missing,
+        ...tempControl.missing
       ]
     }
   };

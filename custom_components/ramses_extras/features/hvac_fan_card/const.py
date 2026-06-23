@@ -115,6 +115,13 @@ FEATURE_DEFINITION = {
         "co2_zone_status_entity": "sensor.co2_zone_status_{device_id}",
         # Comfort temperature parameter
         "comfort_temp_entity": "number.{device_id}_param_75",
+        # Temp control entities
+        "temp_control_entity": "switch.temp_control_{device_id}",
+        "temp_control_desired_speed_entity": (
+            "select.temp_control_desired_speed_{device_id}"
+        ),
+        "temp_control_active_entity": "binary_sensor.temp_control_active_{device_id}",
+        "temp_control_status_entity": "sensor.temp_control_status_{device_id}",
     },
 }
 

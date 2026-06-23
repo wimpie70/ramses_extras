@@ -17,6 +17,7 @@ from typing import Any, Awaitable, Callable
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.number import NumberEntity
+from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -270,6 +271,40 @@ class ExtrasNumberEntity(ExtrasPlatformEntity, NumberEntity):
             "max_value": self._attr_native_max_value,
             "step": self._attr_native_step,
         }
+
+
+class ExtrasSelectEntity(ExtrasPlatformEntity, SelectEntity):
+    """Generic select entity for all features."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device_id: str,
+        select_type: str,
+        config: dict[str, Any],
+        *,
+        options: list[str] | None = None,
+    ) -> None:
+        super().__init__(hass, device_id, select_type, config, "select")
+
+        self._attr_options = list(options or config.get("options") or [])
+        default_option = config.get("default_option")
+        if default_option in self._attr_options:
+            self._attr_current_option = default_option
+        else:
+            self._attr_current_option = (
+                self._attr_options[0] if self._attr_options else None
+            )
+
+    @property
+    def current_option(self) -> str | None:
+        return self._attr_current_option
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in (self._attr_options or []):
+            return
+        self._attr_current_option = option
+        self.async_write_ha_state()
 
 
 class ExtrasBinarySensorEntity(ExtrasPlatformEntity, BinarySensorEntity):

@@ -13,7 +13,11 @@
     "active": "Actief",
     "auto2": "Auto",
     "boost": "Boost",
-    "disable": "Uitgeschakeld"
+    "disable": "Uitgeschakeld",
+    "temp_control_idle": "Inactief",
+    "temp_control_disabled": "Uitgeschakeld",
+    "temp_control_cooling": "Koelen",
+    "temp_control_heating_retention": "Warmte behoud"
   },
   "controls": {
     "fan_modes": "Ventilatie Modi",
@@ -28,6 +32,8 @@
     "bypass_close": "Bypass Dicht",
     "filter_reset": "Filter Reset",
     "dehumidify": "Balans",
+    "co2_control": "CO2",
+    "temp_control": "Temp regeling",
     "activated": "Geactiveerd",
     "triggers": "Triggers",
     "tracking_by": "Volgt op",

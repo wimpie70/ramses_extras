@@ -211,6 +211,9 @@ class SensorControlResolver:
             humidity_entity = str(item.get("humidity_entity") or "").strip()
             co2_entity = str(item.get("co2_entity") or "").strip()
             co2_threshold_entity = str(item.get("co2_threshold_entity") or "").strip()
+            comfort_temperature_entity = str(
+                item.get("comfort_temperature_entity") or ""
+            ).strip()
             zone_id = str(item.get("zone_id") or "").strip()
             area_enabled = bool(item.get("enabled", True))
             area_co2_enabled = bool(item.get("area_co2_enabled", False))
@@ -236,6 +239,7 @@ class SensorControlResolver:
                 "co2_entity": co2_entity or None,
                 "co2_threshold_entity": co2_threshold_entity or None,
                 "co2_threshold": item.get("co2_threshold"),
+                "comfort_temperature_entity": comfort_temperature_entity or None,
                 "spike_rise_percent": item.get("spike_rise_percent"),
                 "spike_window_minutes": item.get("spike_window_minutes"),
                 "check_interval_minutes": item.get("check_interval_minutes"),

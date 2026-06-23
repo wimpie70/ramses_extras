@@ -220,7 +220,7 @@ class TestImportFeaturePlatformModules:
 
         with patch("asyncio.to_thread") as mock_to_thread:
             await import_feature_platform_modules(["feat1"])
-            assert mock_to_thread.call_count == 4
+            assert mock_to_thread.call_count == 5
 
     @pytest.mark.asyncio
     async def test_import_feature_platform_modules_missing(self):

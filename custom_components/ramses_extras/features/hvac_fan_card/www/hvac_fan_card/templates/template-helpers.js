@@ -157,6 +157,8 @@ export function createTemplateData(rawData) {
     transportAvailable: transportState,
 
     // Calibration status for UI indicator
-    isCalibrating
+    isCalibrating,
+
+    tempControlStatus: rawData.tempControlStatus
   };
 }

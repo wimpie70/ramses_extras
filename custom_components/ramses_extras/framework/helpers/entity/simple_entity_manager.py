@@ -119,16 +119,31 @@ class SimpleEntityManager:
         :param new_matrix_state: New matrix state
         :return: Tuple of (entities_to_create, entities_to_remove)
         """
-        # Create temporary entity managers for old and new states
-        old_entity_manager = SimpleEntityManager(self.hass)
-        new_entity_manager = SimpleEntityManager(self.hass)
+        # Create temporary entity managers for old and new states.
+        # Propagate the enabled-features snapshot so the inner managers don't
+        # fall back to hass.data (which may not be set during config flow).
+        old_entity_manager = SimpleEntityManager(
+            self.hass, enabled_features=self._enabled_features
+        )
+        new_entity_manager = SimpleEntityManager(
+            self.hass, enabled_features=self._enabled_features
+        )
 
         # Restore old and new matrix states
         old_entity_manager.restore_device_feature_matrix_state(old_matrix_state)
         new_entity_manager.restore_device_feature_matrix_state(new_matrix_state)
 
-        # Calculate required entities for old and new states
-        old_required_entities = await old_entity_manager._calculate_required_entities()
+        # Calculate required entities for old and new states.
+        # The OLD state must NOT use the global fallback: the fallback generates
+        # entities for all globally-enabled features × all devices, which is
+        # correct for startup validation but wrong for diff calculation.  Without
+        # this, going from an empty matrix (fallback: all devices) to a matrix
+        # that explicitly tracks a feature for one device would flag every other
+        # device's entities as "to remove" even though the user only meant to
+        # add the feature for the selected device.
+        old_required_entities = await old_entity_manager._calculate_required_entities(
+            use_global_fallback=False
+        )
         new_required_entities = await new_entity_manager._calculate_required_entities()
 
         # Calculate entity changes purely from the matrix-defined entities.
@@ -217,9 +232,18 @@ class SimpleEntityManager:
             _LOGGER.warning(f"Could not get entity registry: {e}")
             return []
 
-    async def _calculate_required_entities(self) -> list[str]:
+    async def _calculate_required_entities(
+        self, use_global_fallback: bool = True
+    ) -> list[str]:
         """Calculate which entities should exist based on current matrix state.
 
+        :param use_global_fallback: When True (default, used for startup
+            validation), globally enabled features that are NOT explicitly
+            tracked in the matrix generate entities for all devices.  When
+            False (used for diff calculation in ``calculate_entity_changes``),
+            only explicitly matrix-defined combinations produce entities —
+            this prevents the fallback from flagging entities as "to remove"
+            when a user merely narrows an previously-unconfigured feature.
         :return: List of entity IDs that should exist
         """
         required_entities = []
@@ -237,8 +261,11 @@ class SimpleEntityManager:
 
         all_features = extras_registry.get_loaded_features()
 
-        # If matrix is empty, use global enablement for all devices
+        # If matrix is empty, use global enablement for all devices (unless
+        # the caller explicitly disabled the fallback for diff calculation).
         if matrix_is_empty:
+            if not use_global_fallback:
+                return []
             for feature_id in all_features:
                 # Check if feature is globally enabled
                 if feature_id == "default" or enabled_features.get(feature_id) is True:
@@ -249,15 +276,41 @@ class SimpleEntityManager:
                         required_entities.extend(entity_ids)
             return required_entities
 
-        # If matrix is NOT empty, always preserve default feature entities for all
-        # devices, then add any explicit matrix-defined feature/device combinations.
+        # Collect feature IDs that are explicitly tracked in the matrix.
+        # Features NOT in the matrix but globally enabled should still generate
+        # entities for all devices (same as the empty-matrix fallback above).
+        # Without this, enabling one feature in the matrix would silently wipe
+        # out entities for every other globally enabled feature.
+        matrix_feature_ids: set[str] = set()
+        for device_features in matrix_state.values():
+            matrix_feature_ids.update(device_features.keys())
+
+        # Always preserve default feature entities for all devices
         for device_id in device_ids:
             entity_ids = await self._generate_entity_ids_for_combination(
                 "default", device_id
             )
             required_entities.extend(entity_ids)
 
-        # For non-default features, use the matrix-defined combinations
+        # For globally enabled features NOT explicitly tracked in the matrix,
+        # generate entities for all devices (same as the empty-matrix fallback).
+        # Skipped when use_global_fallback is False (diff calculation).
+        if use_global_fallback:
+            for feature_id in all_features:
+                if feature_id == "default":
+                    continue
+                if feature_id in matrix_feature_ids:
+                    continue
+                if enabled_features.get(feature_id) is not True:
+                    continue
+                for device_id in device_ids:
+                    entity_ids = await self._generate_entity_ids_for_combination(
+                        feature_id, device_id
+                    )
+                    required_entities.extend(entity_ids)
+
+        # For features explicitly tracked in the matrix, use the matrix-defined
+        # combinations (per-device enablement).
         combinations = self.device_feature_matrix.get_all_enabled_combinations()
 
         for device_id, feature_id in combinations:

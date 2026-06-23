@@ -245,9 +245,13 @@ class TestTransportMonitor:
         monitor.register_callback("test", callback, "32:153289")
         monitor.notify_command_sent("32:153289")
 
+        # ramses_rf passes PacketDTO objects (addr1/addr2/addr3 strings)
         msg = MagicMock()
-        msg.src.id = "32:153289"
-        msg.dst.id = "37:168270"
+        msg.addr1 = "32:153289"
+        msg.addr2 = "37:168270"
+        # Ensure src/dst attrs return None (not MagicMock) so PacketDTO path is used
+        del msg.src
+        del msg.dst
 
         monitor._handle_msg(msg)
 

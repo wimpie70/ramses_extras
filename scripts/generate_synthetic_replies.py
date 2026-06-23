@@ -104,8 +104,6 @@ def main() -> None:
     print("DHW missing: 1F41")
     print("THM missing: 0004, 000A, 12B0, 2309, 30C9")
 
-    return entries
-
 
 if __name__ == "__main__":
     main()

@@ -70,6 +70,7 @@ async def import_feature_platform_modules(feature_names: list[str]) -> None:
         Platform.SWITCH: "switch",
         Platform.BINARY_SENSOR: "binary_sensor",
         Platform.NUMBER: "number",
+        Platform.SELECT: "select",
     }
 
     for feature_name in feature_names:
@@ -157,18 +158,27 @@ async def load_feature_definitions_and_platforms(
 
     await hass.config_entries.async_forward_entry_setups(
         entry,
-        [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.NUMBER],
+        [
+            Platform.SENSOR,
+            Platform.SWITCH,
+            Platform.BINARY_SENSOR,
+            Platform.NUMBER,
+            Platform.SELECT,
+        ],
     )
 
     sensor_count = len(extras_registry.get_all_sensor_configs())
     switch_count = len(extras_registry.get_all_switch_configs())
     number_count = len(extras_registry.get_all_number_configs())
+    select_count = len(extras_registry.get_all_select_configs())
     boolean_count = len(extras_registry.get_all_boolean_configs())
     _LOGGER.info(
-        "Entity registry loaded: %d sensor, %d switch, %d number, %d binary sensor",
+        "Entity registry loaded: %d sensor, %d switch, %d number, "
+        "%d select, %d binary sensor",
         sensor_count,
         switch_count,
         number_count,
+        select_count,
         boolean_count,
     )
 

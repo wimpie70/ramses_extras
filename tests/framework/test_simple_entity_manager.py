@@ -106,6 +106,200 @@ async def test_calculate_required_entities_respects_matrix_and_disabled(hass) ->
 
 
 @pytest.mark.asyncio
+async def test_calculate_required_entities_preserves_untracked_global_features(
+    hass,
+) -> None:
+    """Globally enabled features NOT in the matrix must still get entities.
+
+    When the matrix is non-empty (e.g. only temp_control is tracked), other
+    globally enabled features that aren't in the matrix should still generate
+    entities for all devices — same as the empty-matrix fallback.
+    """
+    hass.data.setdefault(DOMAIN, {})["devices"] = [MagicMock(id="01:123456")]
+    manager = SimpleEntityManager(
+        hass,
+        enabled_features={"hello": True, "co2_control": True, "temp_control": True},
+    )
+
+    # Matrix only tracks temp_control — hello and co2_control are NOT in it
+    manager.device_feature_matrix.restore_device_feature_matrix_state(
+        {"01:123456": {"temp_control": True}}
+    )
+
+    async def fake_generate(feature_id: str, device_id: str) -> list[str]:
+        return [f"{feature_id}.{device_id}"]
+
+    manager._generate_entity_ids_for_combination = fake_generate  # type: ignore[assignment]
+
+    with patch(
+        "custom_components.ramses_extras.extras_registry.extras_registry.get_loaded_features",
+        return_value=["default", "hello", "co2_control", "temp_control"],
+    ):
+        result = await manager._calculate_required_entities()
+
+    expected = {
+        "default.01:123456",
+        "hello.01:123456",
+        "co2_control.01:123456",
+        "temp_control.01:123456",
+    }
+    assert set(result) == expected
+
+
+@pytest.mark.asyncio
+async def test_calculate_entity_changes_no_spurious_removals(hass) -> None:
+    """Enabling a feature in the matrix must not flag others for removal.
+
+    Old state: empty matrix, hello globally enabled -> entities for all devices.
+    New state: matrix has temp_control, hello still globally enabled but not
+    in the matrix. The diff should only show temp_control entities to create,
+    NOT hello entities to remove.
+    """
+    hass.data.setdefault(DOMAIN, {})["devices"] = [MagicMock(id="01:123456")]
+
+    async def fake_generate(feature_id: str, device_id: str) -> list[str]:
+        return [f"{feature_id}.{device_id}"]
+
+    features = ["default", "hello", "temp_control"]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.extras_registry.extras_registry.get_loaded_features",
+            return_value=features,
+        ),
+        patch.object(
+            SimpleEntityManager,
+            "_generate_entity_ids_for_combination",
+            side_effect=fake_generate,
+        ),
+    ):
+        manager = SimpleEntityManager(
+            hass, enabled_features={"hello": True, "temp_control": True}
+        )
+
+        old_state: dict[str, dict[str, bool]] = {}
+        new_state = {"01:123456": {"temp_control": True}}
+
+        to_create, to_remove = await manager.calculate_entity_changes(
+            old_state, new_state
+        )
+
+    assert set(to_create) == {
+        "default.01:123456",
+        "hello.01:123456",
+        "temp_control.01:123456",
+    }
+    assert to_remove == []
+
+
+@pytest.mark.asyncio
+async def test_calculate_entity_changes_multi_device_no_spurious_removals(
+    hass,
+) -> None:
+    """Enabling a feature for one device must not remove it from others.
+
+    Simulates the user's scenario: temp_control was globally enabled with an
+    empty matrix (entities existed for all devices via fallback).  The user
+    then explicitly selects only one device in the config flow.  The diff
+    should show entities to CREATE for the selected device, but NOT entities
+    to REMOVE for the other devices — those were never explicitly configured,
+    they only existed due to the fallback.
+    """
+    devices = [
+        MagicMock(id="32:153289"),
+        MagicMock(id="37:169161"),
+        MagicMock(id="01:216136"),
+        MagicMock(id="18:130236"),
+    ]
+    hass.data.setdefault(DOMAIN, {})["devices"] = devices
+
+    async def fake_generate(feature_id: str, device_id: str) -> list[str]:
+        return [f"{feature_id}.{device_id}"]
+
+    features = ["default", "temp_control"]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.extras_registry.extras_registry.get_loaded_features",
+            return_value=features,
+        ),
+        patch.object(
+            SimpleEntityManager,
+            "_generate_entity_ids_for_combination",
+            side_effect=fake_generate,
+        ),
+    ):
+        manager = SimpleEntityManager(hass, enabled_features={"temp_control": True})
+
+        old_state: dict[str, dict[str, bool]] = {}
+        new_state = {"32:153289": {"temp_control": True}}
+
+        to_create, to_remove = await manager.calculate_entity_changes(
+            old_state, new_state
+        )
+
+    # temp_control for the selected device + default for all devices are
+    # flagged as "to create" (the old state was empty, so everything in the
+    # new state is new from the diff perspective).
+    assert set(to_create) == {
+        "default.32:153289",
+        "default.37:169161",
+        "default.01:216136",
+        "default.18:130236",
+        "temp_control.32:153289",
+    }
+    # No entities should be removed — the old state was empty (nothing
+    # explicitly configured), so there's nothing to remove.
+    assert to_remove == []
+
+
+@pytest.mark.asyncio
+async def test_calculate_entity_changes_explicit_removal(hass) -> None:
+    """De-selecting a device for a tracked feature should flag removals.
+
+    Old state: temp_control explicitly enabled for devices A and B.
+    New state: temp_control explicitly enabled for device A only.
+    The diff should show temp_control entities for B as "to remove".
+    """
+    hass.data.setdefault(DOMAIN, {})["devices"] = [
+        MagicMock(id="01:111111"),
+        MagicMock(id="02:222222"),
+    ]
+
+    async def fake_generate(feature_id: str, device_id: str) -> list[str]:
+        return [f"{feature_id}.{device_id}"]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.extras_registry.extras_registry.get_loaded_features",
+            return_value=["default", "temp_control"],
+        ),
+        patch.object(
+            SimpleEntityManager,
+            "_generate_entity_ids_for_combination",
+            side_effect=fake_generate,
+        ),
+    ):
+        manager = SimpleEntityManager(hass, enabled_features={"temp_control": True})
+
+        old_state = {
+            "01:111111": {"temp_control": True},
+            "02:222222": {"temp_control": True},
+        }
+        new_state = {"01:111111": {"temp_control": True}}
+
+        to_create, to_remove = await manager.calculate_entity_changes(
+            old_state, new_state
+        )
+
+    # Old state has temp_control for both devices; new state only for A.
+    # Default entities are generated for all devices in both states, so
+    # they cancel out in the diff.  Only temp_control for B is removed.
+    assert to_create == []
+    assert set(to_remove) == {"temp_control.02:222222"}
+
+
+@pytest.mark.asyncio
 async def test_get_current_entities_handles_exception(hass, caplog) -> None:
     manager = SimpleEntityManager(hass)
 

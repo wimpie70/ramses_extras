@@ -26,6 +26,7 @@ import {
   // validateCoreEntities,
   validateDehumidifyEntities,
   validateCO2ControlEntities,
+  validateTempControlEntities,
   getEntityValidationReport,
 } from '../../helpers/card-validation.js';
 
@@ -173,11 +174,13 @@ class HvacFanCard extends RamsesBaseCard {
     this.availableParams = this.getAvailableParameters();
 
     const humidityControlEntities = this._getHumidityControlEntities();
+    const tempControlEntities = this._getTempControlEntities();
     const parameterItems = this._createParameterItems(this.availableParams);
 
     const templateData = {
       device_id: this.config.device_id,
       humidityControlEntities,
+      tempControlEntities,
       parameterItems,
       t: this.t?.bind(this),
     };
@@ -217,6 +220,7 @@ class HvacFanCard extends RamsesBaseCard {
     const { da31Data, da10D0Data } = this._collectLiveData();
     const dehumEntitiesAvailable = validateDehumidifyEntities(hass, config)?.available === true;
     const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
+    const tempControlEntitiesAvailable = validateTempControlEntities(hass, config)?.available === true;
 
     // Get transport state from entity
     const transportStateEntity = config.transport_state_entity
@@ -304,6 +308,7 @@ class HvacFanCard extends RamsesBaseCard {
       co2ZoneStatus: co2ControlEntitiesAvailable
         ? this.getEntityState(config.co2_zone_status_entity)?.state || null
         : null,
+      tempControlStatus: this._getTempControlStatus(),
       dataSource31DA: da31Data.source === '31DA_message',
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
       filterDaysRemaining:
@@ -1449,6 +1454,51 @@ class HvacFanCard extends RamsesBaseCard {
     return humidityControlEntities;
   }
 
+  _getTempControlEntities() {
+    const deviceId = this.config?.device_id;
+    if (!deviceId) return [];
+
+    const hass = this._hass;
+    if (!hass) return [];
+
+    const deviceIdUnderscore = deviceId.replace(/:/g, '_');
+    const entities = [
+      `switch.temp_control_${deviceIdUnderscore}`,
+      `select.temp_control_desired_speed_${deviceIdUnderscore}`,
+      `sensor.temp_control_status_${deviceIdUnderscore}`,
+    ];
+
+    const items = [];
+    entities.forEach((entityId) => {
+      const stateObj = hass.states?.[entityId];
+      if (!stateObj) return;
+
+      let nameKey = null;
+      let nameFallback = null;
+
+      if (entityId.includes('switch.')) {
+        nameKey = 'controls.temp_control';
+        nameFallback = 'Temp Control (Bypass)';
+      } else if (entityId.includes('desired_speed')) {
+        nameKey = 'parameters.temp_control_desired_speed';
+        nameFallback = 'Desired Speed (Cooling)';
+      } else if (entityId.includes('status')) {
+        nameKey = 'parameters.temp_control_status';
+        nameFallback = 'Status';
+      }
+
+      items.push({
+        entity_id: entityId,
+        state: stateObj.state,
+        attributes: stateObj.attributes || {},
+        name_key: nameKey,
+        name_fallback: nameFallback,
+      });
+    });
+
+    return items;
+  }
+
   /**
    * Build view-model items for 2411 `param_*` entities.
    * @param {Object} availableParams Map from `getAvailableParameters()`.
@@ -1767,6 +1817,32 @@ class HvacFanCard extends RamsesBaseCard {
     return 'auto';
   }
 
+  /**
+   * Get Temperature Control status
+   * @returns {Object|null} Temp control status
+   */
+  _getTempControlStatus() {
+    const config = this.config;
+    if (!config.temp_control_entity) {
+      return null;
+    }
+    const switchState = this.getEntityState(config.temp_control_entity);
+    if (!switchState) {
+      return null;
+    }
+
+    const statusEntity = this.getEntityState(config.temp_control_status_entity);
+    const activeEntity = this.getEntityState(config.temp_control_active_entity);
+
+    const isCoolingOrHeating = activeEntity?.state === 'on' ||
+      ['cooling', 'heating_retention'].includes(statusEntity?.state);
+
+    return {
+      state: statusEntity?.state || (switchState.state === 'on' ? 'idle' : 'disabled'),
+      isCoolingOrHeating
+    };
+  }
+
   // Format speed value consistently (31DA raw values are 0-1)
   _formatSpeed(speed) {
     if (speed === undefined || speed === null) {
@@ -1814,6 +1890,22 @@ class HvacFanCard extends RamsesBaseCard {
           const entityId = button.getAttribute('data-entity-id');
 
           if (command && deviceId) {
+            // Check if this is a manual fan command (mode or speed) that should disable temp_control
+            if (['fan_low', 'fan_medium', 'fan_high', 'fan_auto', 'fan_away', 'fan_boost',
+                 'fan_timer_15min', 'fan_timer_30min', 'fan_timer_60min',
+                 'fan_bypass_auto', 'fan_bypass_close', 'fan_bypass_open'].includes(command)) {
+              if (this.config.temp_control_entity) {
+                const tempControlState = this.getEntityState(this.config.temp_control_entity);
+                if (tempControlState && tempControlState.state === 'on') {
+                  try {
+                    await this._hass.callService('switch', 'turn_off', { entity_id: this.config.temp_control_entity });
+                  } catch (e) {
+                    logger.error('Failed to disable temp_control before sending command:', e);
+                  }
+                }
+              }
+            }
+
             // Fan command button
             try {
               await sendFanCommand(this._hass, deviceId, command);
@@ -1845,6 +1937,28 @@ class HvacFanCard extends RamsesBaseCard {
               }, 100);
             } catch (error) {
               logger.error(`Failed to toggle CO2 control ${entityId}:`, error);
+            }
+          } else if (action === 'toggle-temp-control' && entityId) {
+            // Temp control toggle button
+            try {
+              const tempControlState = this.getEntityState(entityId);
+              const isTurningOn = tempControlState?.state !== 'on';
+
+              if (isTurningOn) {
+                // When turning on, first set bypass to auto
+                await sendFanCommand(this._hass, this.config.device_id, 'fan_bypass_auto');
+                await this._hass.callService('switch', 'turn_on', { entity_id: entityId });
+              } else {
+                await this._hass.callService('switch', 'turn_off', { entity_id: entityId });
+              }
+              this._prevStates = null;
+              setTimeout(() => {
+                if (this._hass && this.config) {
+                  this.render();
+                }
+              }, 100);
+            } catch (error) {
+              logger.error(`Failed to toggle temp control ${entityId}:`, error);
             }
           }
         });
@@ -1904,6 +2018,27 @@ class HvacFanCard extends RamsesBaseCard {
               this.render();
             } catch (error) {
               logger.error(`Failed to update humidity control ${entityId}:`, error);
+            }
+          } else if (action === 'update-select' && entityId && newValue !== undefined) {
+            try {
+              await this._hass.callService('select', 'select_option', {
+                entity_id: entityId,
+                option: newValue,
+              });
+              this._prevStates = null;
+              this.render();
+            } catch (error) {
+              logger.error(`Failed to update select ${entityId}:`, error);
+            }
+          } else if (action === 'update-switch' && entityId && newValue !== undefined) {
+            try {
+              await this._hass.callService('switch', newValue === 'on' ? 'turn_on' : 'turn_off', {
+                entity_id: entityId,
+              });
+              this._prevStates = null;
+              this.render();
+            } catch (error) {
+              logger.error(`Failed to update switch ${entityId}:`, error);
             }
           }
         });

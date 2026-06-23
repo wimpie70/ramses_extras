@@ -1548,6 +1548,13 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         self._selected_feature = "sensor_control"
         return await self.async_step_feature_config(user_input)
 
+    async def async_step_feature_temp_control(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle temperature control feature configuration."""
+        self._selected_feature = "temp_control"
+        return await self.async_step_feature_config(user_input)
+
     # Matrix State Persistence Methods
     def _get_persisted_matrix_state(self) -> dict[str, dict[str, bool]]:
         self._refresh_config_entry(self.hass)

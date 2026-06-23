@@ -404,11 +404,22 @@ class TransportMonitor:
             _LOGGER.error("Error handling ramses_cc_message event: %s", e)
 
     def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        """Handle live ramses_cc client messages to track device replies."""
+        """Handle live ramses_cc client messages to track device replies.
+
+        The ramses_rf gateway passes a PacketDTO (or, in older versions,
+        a Message object).  PacketDTO has addr1/addr2/addr3 string fields;
+        Message has src/dst Address objects with .id.  We support both.
+        """
         try:
             self._refresh_coordinator()
-            src = getattr(getattr(msg, "src", None), "id", None)
-            dst = getattr(getattr(msg, "dst", None), "id", None)
+
+            # PacketDTO uses addr1 (str); Message uses src (Address with .id)
+            src = getattr(msg, "addr1", None)
+            if src is None:
+                src = getattr(getattr(msg, "src", None), "id", None)
+            dst = getattr(msg, "addr2", None)
+            if dst is None:
+                dst = getattr(getattr(msg, "dst", None), "id", None)
             code = getattr(msg, "code", None)
 
             _LOGGER.debug(
