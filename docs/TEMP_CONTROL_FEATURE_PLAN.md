@@ -7,10 +7,10 @@
 > | §3 Feature identity (`temp_control`) | ✅ Done |
 > | §5 Entities & data model (switch/select/binary_sensor/sensor) | ✅ Done |
 > | §6 Configuration keys (config.py) | ✅ Done |
-> | §7 Automation logic (state machine, manual override, speed gating) | ✅ Done (skeleton + logic; needs runtime validation) |
+> | §7 Automation logic (state machine, manual override, speed gating) | ✅ Done (runtime validated) |
 > | §8.1 Register in `AVAILABLE_FEATURES` | ✅ Done |
 > | §8.2 Main options-menu entry + translations | ✅ Done |
-> | §8.3 Feature-specific config flow | ✅ Done |
+> | §8.3 Feature-specific config flow | ✅ Done (includes default_desired_speed selector) |
 > | §9.1 Entity mappings in hvac_fan_card const | ✅ Done |
 > | §9.2 UI: Temp control button (row 4) | ✅ Done |
 > | §9.2 UI: Top-right indicator + highlight | ✅ Done |
@@ -19,12 +19,12 @@
 > | §9.2 Validation helper (`validateTempControlEntities`) | ✅ Done |
 > | §9.2 Translations (en/nl) | ✅ Done |
 > | §10 Framework touchpoints (select platform support) | ✅ Done |
-> | §11 Backend tests | ✅ Done (43 tests: const, config, decision logic, hysteresis, interval, speed gating) |
+> | §11 Backend tests | ✅ Done (39 tests: const, config, decision logic, hysteresis, interval, speed demand) |
 > | §11 Frontend tests | ✅ Existing tests pass; new assertions TBD |
 > | Phase 1 — Skeleton feature + config | ✅ Done |
-> | Phase 2 — Automation MVP | ✅ Done (logic in place; needs runtime validation) |
+> | Phase 2 — Automation MVP | ✅ Done (runtime validated) |
 > | Phase 3 — HVAC Fan Card integration | ✅ Done |
-> | Phase 4 — Conflict handling / polish | 🟡 Partial (humidity/CO2 gates implemented in arbiter; state-based override net pending) |
+> | Phase 4 — Conflict handling / polish | ✅ Done (arbiter resolves speed conflicts; no per-feature gating) |
 > | Phase 5 — Documentation & release | ⏳ Pending |
 >
 > Legend: ✅ Done · 🟡 Partial · ⏳ Pending
@@ -138,7 +138,7 @@ Recommended set:
 - Attributes should include:
   - `desired_bypass_mode`: `auto` | `open` | `close`
   - `desired_speed`: `low` | `medium` | `high`
-  - `effective_speed_note`: e.g. `"capped_due_to_humidity"`, `"co2_demand_higher"`, `"no_speed_change"`
+  - `effective_speed_note`: e.g. `"requested"`, `"no_speed_change"`
   - `last_command`: `fan_bypass_open` | `fan_bypass_close` | `fan_bypass_auto`
   - `reason`: short summary for debugging (“supply cooler than indoor by X”, etc.)
   - `temperatures`: snapshot (indoor/outdoor/supply/comfort)
@@ -210,13 +210,17 @@ Stability (required because bypass actuation is slow):
 
 - `min_bypass_mode_interval_seconds`: int — minimum time between `open/close/auto` changes
 
+Fan speed:
+
+- `default_desired_speed`: str (`low` | `medium` | `high`) — default speed used when the per-device `select.temp_control_desired_speed_*` entity has no state yet. Default: `high`.
+
 Manual override interaction:
 
 - `manual_override_hold_minutes`: int — deprecated with current UX decision (manual action toggles temp_control off). Keep only if we later want a “pause then resume” mode.
 
 Interaction with other features (keep as policy, not lots of knobs):
 
-- If humidity control is actively dehumidifying/balancing, temp_control must **not** increase ventilation speed (avoid importing moist air). It may still manage bypass if it doesn’t worsen the humidity strategy.
+- Temp control always sets its fan speed demand during cooling. The **FanSpeedArbiter** resolves conflicts with humidity_control and co2_control — if those features demand a higher speed, the arbiter picks the highest. Temp control does not need to second-guess humidity/CO2 thresholds.
 
 Notes:
 
@@ -502,17 +506,42 @@ Suggested contents (start by copying `hello_world` or `humidity_control` and pru
 - Add top-right indicator
 - Add validation + translations
 
-### Phase 4 — Conflict handling / polish  🟡 Partial
+### Phase 4 — Conflict handling / polish  ✅ Done
 
-- Interaction rules with humidity_control and co2_control  ✅ (arbiter gates implemented)
+- Interaction rules with humidity_control and co2_control  ✅ (FanSpeedArbiter resolves all speed conflicts)
 - Improved status reporting (reason strings, attributes)  ✅
 - Add optional "force close" behavior if required  ✅ (heating_retention)
-- State-based manual override safety net  ⏳ Pending
+- State-based manual override safety net  ⏳ Pending (low priority; action-based works in practice)
 
 ### Phase 5 — Documentation & release  ⏳ Pending
 
 - Update wiki page(s) for the new feature
 - Add release notes entry
+
+
+## 15) Runtime issues found & fixed during validation
+
+15.1 sensor_control overlay not applied to backend automation
+
+- The automation read internal ramses_cc sensors (e.g. `outdoor_temp=25°C`) instead of the user-configured external helper entities (e.g. `outdoor_temp=18°C`).
+- Fix: added `_get_sensor_control_context()` to the automation, calling `SensorControlResolver` directly to get external entity mappings for `indoor_temp`, `outdoor_temp`, and `indoor_rh`.
+
+15.2 Transport monitor could not parse PacketDTO messages
+
+- The `_handle_msg` callback expected `Message` objects (with `src.id` / `dst.id`), but ramses_rf now passes `PacketDTO` objects (with `addr1` / `addr2` / `addr3` string fields).
+- Result: `src=None dst=None` for every message → devices never marked online → all commands skipped with "transport unavailable".
+- Fix: updated `_handle_msg` to read `addr1` from `PacketDTO`, with fallback to `src.id` for backward compatibility.
+
+15.3 Python 2 syntax errors in automation.py
+
+- `except TypeError, ValueError:` (Python 2 syntax) appeared in two places, preventing the module from importing and crashing `_allow_speed_increase` at runtime.
+- Fix: corrected to `except (TypeError, ValueError):`.
+
+15.4 Per-feature speed gating removed in favor of arbiter
+
+- The original `_allow_speed_increase` method checked indoor RH against min/max thresholds and blocked speed increases when humidity was out of range.
+- Problem: if humidity_control is not enabled, the min/max RH values have no meaning, and the gate blocked cooling speed increases unnecessarily.
+- Fix: removed per-feature gating entirely. Temp control now always sets its demand during cooling, and the FanSpeedArbiter resolves conflicts with humidity_control and co2_control.
 
 
 ## 13) Decisions captured from review (so implementation matches intent)
@@ -521,65 +550,15 @@ Suggested contents (start by copying `hello_world` or `humidity_control` and pru
 
 - The comfort temperature (FAN parameter) is the target band.
 - Temp control should manage bypass to support:
-  - **cooling** (force bypass open when indoor above comfort and supply can cool)
+  - **cooling** (force bypass open when indoor above comfort and outdoor can cool)
   - **heating retention** (force bypass closed when indoor below comfort)
 
-13.2 Humidity control and CO2 control are boss
+13.2 FanSpeedArbiter resolves conflicts
 
-- Temp control may request a fan speed while cooling, but only when it does not conflict.
-- CO2 considerations are at least as important as humidity: temp_control must never fight CO2 control when air quality is bad.
-
-Speed-increase gate (when temp_control is trying to *increase* ventilation during cooling):
-
-- Only allow temp_control to request an increased speed up to `select.temp_control_desired_speed_*` when **both**:
-  - humidity is OK (zones-aware), and
-  - CO2 is OK (zones-aware)
-
-Otherwise, temp_control must not request a higher speed (CO2/humidity control will win via the arbiter when they need to).
-
-Definition: “humidity is OK” (zones-aware)
-
-Baseline thresholds (from humidity_control):
-
-- `min_rh` = `number.relative_humidity_minimum_<device_id>`
-- `max_rh` = `number.relative_humidity_maximum_<device_id>`
-
-Humidity signals (zones-aware):
-
-- Always include the main indoor RH reading (`sensor.{device_id}_indoor_humidity` with fallbacks).
-- If zones/areas are configured (sensor_control area sensors): also include each **enabled** area humidity entity as additional humidity inputs.
-
-Rule:
-
-- Humidity is OK when **all** considered RH readings are within `[min_rh, max_rh]`.
-- Additionally, if humidity_control is currently active (e.g. `binary_sensor.dehumidifying_active_<device_id>` is `on`, or the zone-demand registry reports active `DemandSource.HUMIDITY` demands), treat humidity as **not OK** for the purposes of *increasing fan speed*.
-
-Definition: “CO2 is OK” (zones-aware)
-
-Primary signals (from co2_control when enabled):
-
-- `binary_sensor.co2_active_<device_id>`
-- `sensor.co2_zone_status_<device_id>` attributes (notably `internal_triggered`, and any per-zone trigger list)
-
-Rule:
-
-- CO2 is OK when co2_control is either disabled *or* it reports no active trigger:
-  - `binary_sensor.co2_active_*` is `off`, and
-  - `sensor.co2_zone_status_*`.attributes.`internal_triggered` is not `true`.
-
-Zones/areas note:
-
-- If sensor_control area sensors provide CO2 entities and thresholds, we should treat “CO2 OK” as: all enabled area CO2 readings are below their thresholds. Until that’s implemented, prefer the co2_control active/trigger status as the authoritative gate.
-
-Policy:
-
-- If humidity is OK **and** CO2 is OK, temp_control may increase fan speed up to `select.temp_control_desired_speed_*` (subject to arbiter resolution).
-- If either is not OK, temp_control must not increase speed.
-
-Implementation note:
-
-- For v1, implement this with direct entity reads + area sensor list already returned by `ramses_extras/get_entity_mappings` (sensor_control overlay includes `area_sensors`).
-- If this becomes too coupled, introduce explicit diagnostic entities later (e.g. `binary_sensor.humidity_ok_*`, `binary_sensor.co2_ok_*`, and/or `binary_sensor.all_zones_ok_*`) and consume those instead.
+- Temp control always sets a fan speed demand during cooling.
+- The FanSpeedArbiter resolves competing demands from humidity_control, co2_control, and temp_control by picking the highest speed.
+- Temp control does not implement its own humidity/CO2 gating — that would duplicate logic owned by those features.
+- If humidity_control is dehumidifying, it sets its own demand; the arbiter resolves.
 
 13.3 Comfort temperature source
 
@@ -624,7 +603,7 @@ In those cases, temp_control “cooling/heating_retention” decisions need a **
 
 ### 14.2 Notes / risks
 
-- Avoid fighting CO2/humidity strategies: per-area temperature demand must still be gated by the existing humidity/CO2 “boss” rules.
+- Avoid fighting CO2/humidity strategies: per-area temperature demand is still coordinated via the FanSpeedArbiter.
 - UI: if per-area comfort targets exist, expose them in the HVAC Fan Card settings section similarly to humidity controls.
 - Start minimal: implement per-area targets only for *cooling* first if needed; add heating retention later.
 
