@@ -343,14 +343,17 @@ class TestTempControlMinInterval:
         assert automation_manager._mode["32:153289"] == "heating_retention"
 
 
-class TestTempControlSpeedGating:
-    """Test fan speed demand gating by humidity and CO2."""
+class TestTempControlSpeedDemand:
+    """Test fan speed demand during cooling/idle/heating_retention.
+
+    The arbiter resolves conflicts with humidity_control / co2_control,
+    so temp_control always sets its demand during cooling and lets the
+    arbiter pick the winning speed.
+    """
 
     @pytest.mark.asyncio
     async def test_speed_demand_set_during_cooling(self, automation_manager):
-        """When cooling and speed allowed, fan speed demand is set."""
-        automation_manager._allow_speed_increase = AsyncMock(return_value=True)
-
+        """When cooling, fan speed demand is set (arbiter resolves conflicts)."""
         states = make_entity_states(
             indoor_temp=24.0,
             outdoor_temp=18.0,
@@ -362,19 +365,20 @@ class TestTempControlSpeedGating:
         automation_manager.fan_speed_arbiter.async_commit_state.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_speed_demand_cleared_when_gated(self, automation_manager):
-        """When cooling but speed not allowed, demand is cleared."""
-        automation_manager._allow_speed_increase = AsyncMock(return_value=False)
-
+    async def test_speed_demand_set_during_cooling_even_if_dehumidifying(
+        self, automation_manager
+    ):
+        """Temp_control sets its demand even when dehumidifying is active;
+        the arbiter resolves the conflict."""
         states = make_entity_states(
             indoor_temp=24.0,
             outdoor_temp=18.0,
             comfort_temp=21.0,
+            dehumidifying_active=True,
         )
         await automation_manager._process_automation_logic("32:153289", states)
 
-        automation_manager.fan_speed_arbiter.async_set_demand.assert_not_called()
-        automation_manager.fan_speed_arbiter.async_clear_demand.assert_called_once()
+        automation_manager.fan_speed_arbiter.async_set_demand.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_speed_demand_cleared_in_idle(self, automation_manager):
@@ -390,7 +394,7 @@ class TestTempControlSpeedGating:
 
     @pytest.mark.asyncio
     async def test_speed_demand_cleared_in_heating_retention(self, automation_manager):
-        """When heating_retention, fan speed demand is cleared (no speed increase)."""
+        """When heating_retention, fan speed demand is cleared."""
         states = make_entity_states(
             indoor_temp=18.0,
             comfort_temp=21.0,
@@ -399,58 +403,6 @@ class TestTempControlSpeedGating:
 
         automation_manager.fan_speed_arbiter.async_set_demand.assert_not_called()
         automation_manager.fan_speed_arbiter.async_clear_demand.assert_called_once()
-
-
-class TestTempControlAllowSpeedIncrease:
-    """Test the _allow_speed_increase humidity/CO2 gate logic."""
-
-    @pytest.mark.asyncio
-    async def test_blocked_by_dehumidifying_active(self, automation_manager):
-        """Speed increase blocked when dehumidifying is active."""
-        states = make_entity_states(dehumidifying_active=True)
-        result = await automation_manager._allow_speed_increase("32:153289", states)
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_blocked_by_humidity_out_of_range(self, automation_manager):
-        """Speed increase blocked when indoor RH is above max."""
-        states = make_entity_states(indoor_rh=65.0, min_rh=40.0, max_rh=60.0)
-        result = await automation_manager._allow_speed_increase("32:153289", states)
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_blocked_by_humidity_below_min(self, automation_manager):
-        """Speed increase blocked when indoor RH is below min."""
-        states = make_entity_states(indoor_rh=35.0, min_rh=40.0, max_rh=60.0)
-        result = await automation_manager._allow_speed_increase("32:153289", states)
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_allowed_when_humidity_ok(self, automation_manager):
-        """Speed increase allowed when humidity is within range."""
-        states = make_entity_states(indoor_rh=50.0, min_rh=40.0, max_rh=60.0)
-        result = await automation_manager._allow_speed_increase("32:153289", states)
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_blocked_by_co2_active(self, automation_manager):
-        """Speed increase blocked when CO2 control is active."""
-        states = make_entity_states(co2_active=True)
-        result = await automation_manager._allow_speed_increase("32:153289", states)
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_allowed_when_all_ok(self, automation_manager):
-        """Speed increase allowed when humidity and CO2 are both OK."""
-        states = make_entity_states(
-            indoor_rh=50.0,
-            min_rh=40.0,
-            max_rh=60.0,
-            dehumidifying_active=False,
-            co2_active=False,
-        )
-        result = await automation_manager._allow_speed_increase("32:153289", states)
-        assert result is True
 
 
 class TestTempControlDisabled:

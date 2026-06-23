@@ -16,20 +16,13 @@ import logging
 import time
 from collections.abc import Mapping
 from dataclasses import asdict
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.core import Event, HomeAssistant
 
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
-)
-from custom_components.ramses_extras.framework.helpers.config.migration import (
-    get_migrated_feature_section,
-)
-from custom_components.ramses_extras.framework.helpers.config.model import (
-    SENSOR_CONTROL_AREA_SENSORS_KEY,
-    get_sensor_control_device_section,
 )
 from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import (
     get_fan_speed_arbiter,
@@ -154,6 +147,8 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         """Return numeric/bool inputs used by the automation.
 
         Uses FEATURE_DEFINITION.entity_mappings to resolve entity IDs.
+        Applies sensor_control overlays so external sensors are used when
+        configured.
         """
 
         from custom_components.ramses_extras.framework.helpers.entity.core import (
@@ -163,6 +158,22 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         mappings = await get_feature_entity_mappings(
             self.feature_id, device_id, self.hass
         )
+
+        # Apply sensor_control overlays for indoor/outdoor temp + humidity
+        sensor_ctx = await self._get_sensor_control_context(device_id)
+        if sensor_ctx:
+            metric_mappings = cast(dict[str, str], sensor_ctx.get("mappings") or {})
+            # sensor_control uses metric names like "indoor_temperature";
+            # our feature uses "indoor_temp" — translate.
+            temp_entity = metric_mappings.get("indoor_temperature")
+            if temp_entity:
+                mappings["indoor_temp"] = temp_entity
+            outdoor_entity = metric_mappings.get("outdoor_temperature")
+            if outdoor_entity:
+                mappings["outdoor_temp"] = outdoor_entity
+            humidity_entity = metric_mappings.get("indoor_humidity")
+            if humidity_entity:
+                mappings["indoor_rh"] = humidity_entity
 
         def _get_state(entity_id: str) -> Any:
             state = self.hass.states.get(entity_id)
@@ -283,25 +294,21 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
         self._mode[device_id] = desired_mode
 
-        # Fan speed demand only during cooling
+        # Fan speed demand only during cooling — the arbiter resolves
+        # conflicts with humidity_control / co2_control demands.
         effective_speed_note = "no_speed_change"
         if desired_mode == "cooling":
-            allow_speed = await self._allow_speed_increase(device_id, entity_states)
-            if allow_speed:
-                desired_speed = self._get_desired_speed_option(device_id)
-                await self.fan_speed_arbiter.async_set_demand(
-                    device_id,
-                    feature_id=self.feature_id,
-                    source_id="temp_control",
-                    requested_speed=desired_speed,
-                    priority=20,
-                    reason="temp_control_cooling",
-                )
-                await self.fan_speed_arbiter.async_commit_state(device_id, apply=True)
-                effective_speed_note = "requested"
-            else:
-                await self._clear_speed_demand(device_id)
-                effective_speed_note = "gated_by_humidity_or_co2"
+            desired_speed = self._get_desired_speed_option(device_id)
+            await self.fan_speed_arbiter.async_set_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="temp_control",
+                requested_speed=desired_speed,
+                priority=20,
+                reason="temp_control_cooling",
+            )
+            await self.fan_speed_arbiter.async_commit_state(device_id, apply=True)
+            effective_speed_note = "requested"
         else:
             await self._clear_speed_demand(device_id)
 
@@ -362,61 +369,6 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         default_speed = getattr(settings, "default_desired_speed", "high")
         return default_speed if default_speed in {"low", "medium", "high"} else "high"
 
-    async def _allow_speed_increase(
-        self, device_id: str, entity_states: Mapping[str, float | bool]
-    ) -> bool:
-        # Humidity gate: within min/max AND humidity_control not active
-        if bool(entity_states.get("dehumidifying_active")):
-            return False
-
-        indoor_rh = float(entity_states["indoor_rh"])
-        min_rh = float(entity_states["min_rh"])
-        max_rh = float(entity_states["max_rh"])
-
-        humidity_ok = min_rh <= indoor_rh <= max_rh
-
-        # Zones/areas: include enabled area sensors from sensor_control
-        merged: dict[str, Any] = dict(self.config_entry.data or {})
-        merged.update(self.config_entry.options or {})
-        sensor_control_section = get_migrated_feature_section(merged, "sensor_control")
-        if isinstance(sensor_control_section, dict):
-            device_section = get_sensor_control_device_section(
-                sensor_control_section, device_id
-            )
-            area_sensors = device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY)
-            if isinstance(area_sensors, list):
-                for area in area_sensors:
-                    if not isinstance(area, dict) or area.get("enabled") is False:
-                        continue
-                    entity_id = str(area.get("humidity_entity") or "").strip()
-                    if not entity_id:
-                        continue
-                    st = self.hass.states.get(entity_id)
-                    if not st or st.state in {"unavailable", "unknown"}:
-                        continue
-                    try:
-                        value = float(st.state)
-                    except TypeError, ValueError:
-                        continue
-                    if not (min_rh <= value <= max_rh):
-                        humidity_ok = False
-                        break
-
-        if not humidity_ok:
-            return False
-
-        # CO2 gate: if co2_control is active/triggered, do not request speed.
-        if bool(entity_states.get("co2_active")):
-            return False
-
-        # Extra check: internal_triggered attribute, if present
-        device_key = device_id.replace(":", "_")
-        zone_status = self.hass.states.get(f"sensor.co2_zone_status_{device_key}")
-        if zone_status and zone_status.attributes.get("internal_triggered") is True:
-            return False
-
-        return True
-
     def _set_active_indicator(
         self, device_id: str, active: bool, attrs: dict[str, Any]
     ) -> None:
@@ -446,6 +398,100 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 entity.set_status(status, attrs)
             except Exception:
                 entity.set_native_value(status)
+
+    # ---- sensor_control integration ----
+
+    def _is_sensor_control_enabled(self) -> bool:
+        """Check if sensor_control feature is enabled."""
+        try:
+            config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
+            if not config_entry:
+                return False
+            enabled_features = (
+                config_entry.data.get("enabled_features")
+                or config_entry.options.get("enabled_features")
+                or {}
+            )
+            if isinstance(enabled_features, dict):
+                return enabled_features.get("sensor_control") is True
+            if isinstance(enabled_features, list):
+                return "sensor_control" in enabled_features
+            return False
+        except Exception:
+            return False
+
+    def _get_device_type_for_sensor_control(self, device_id: str) -> str | None:
+        """Get device type for sensor_control resolver."""
+        devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
+        target_colon = str(device_id).replace("_", ":")
+
+        for device in devices:
+            if isinstance(device, dict):
+                raw_id = device.get("device_id")
+                device_type = device.get("type")
+            else:
+                raw_id = device
+                device_type = getattr(device, "type", None)
+
+            if raw_id is None:
+                continue
+
+            if isinstance(raw_id, str):
+                resolved_id = raw_id
+            else:
+                resolved_id = None
+                for attr in ("id", "device_id", "_id", "name"):
+                    if hasattr(raw_id, attr):
+                        value = getattr(raw_id, attr)
+                        if value is not None:
+                            resolved_id = str(value)
+                            break
+                if resolved_id is None:
+                    resolved_id = str(raw_id)
+
+            if resolved_id and resolved_id.replace("_", ":") == target_colon:
+                return str(device_type) if device_type else None
+
+        return None
+
+    async def _get_sensor_control_context(
+        self, device_id: str
+    ) -> dict[str, Any] | None:
+        """Get sensor_control overrides for a device.
+
+        Calls the SensorControlResolver directly to get external entity
+        mappings for indoor/outdoor temperature and humidity.
+        """
+        try:
+            if not self._is_sensor_control_enabled():
+                return None
+
+            from custom_components.ramses_extras.features.sensor_control import (
+                resolver as sensor_control_resolver,
+            )
+
+            device_type = self._get_device_type_for_sensor_control(device_id)
+            # Default to "FAN" if device type can't be determined — the
+            # resolver still processes overrides regardless of device type.
+            if not device_type:
+                device_type = "FAN"
+
+            resolver = sensor_control_resolver.SensorControlResolver(self.hass)
+            sensor_result = await resolver.resolve_entity_mappings(
+                device_id, device_type
+            )
+
+            return {
+                "mappings": sensor_result.get("mappings", {}),
+                "sources": sensor_result.get("sources", {}),
+            }
+        except Exception as err:
+            _LOGGER.error(
+                "Error getting sensor_control context for %s: %s",
+                device_id,
+                err,
+            )
+            return None
 
 
 __all__ = ["TempControlAutomationManager"]

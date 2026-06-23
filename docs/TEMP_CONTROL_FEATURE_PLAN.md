@@ -279,11 +279,11 @@ Command behavior:
 
 Fan speed behavior (new):
 
-- Temp control may *request* a fan speed during **cooling** via the **FanSpeedArbiter** using `select.temp_control_desired_speed_*`.
-- Humidity control and CO2 control are boss:
-  - if humidity control is active *or* indicates humidity is not OK, temp_control must not increase speed
-  - if humidity/CO2 demand a higher speed, the arbiter will resolve higher (fine)
-- In heating_retention, temp_control should not raise speed (default: no speed demand).
+- Temp control *always sets* a fan speed demand during **cooling** via the **FanSpeedArbiter** using `select.temp_control_desired_speed_*`.
+- The **FanSpeedArbiter** resolves conflicts between features:
+  - if humidity_control or co2_control demand a higher speed, the arbiter picks the highest (fine)
+  - if humidity_control is dehumidifying, it sets its own demand; the arbiter resolves — temp_control does not need to second-guess it
+- In heating_retention, temp_control does not set a speed demand (cleared).
 
 ### 7.3 Triggering
 

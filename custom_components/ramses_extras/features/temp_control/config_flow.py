@@ -186,11 +186,7 @@ async def async_step_temp_control_config(
     )
 
     info_text = f"🌡️ **{feature_name}**\n\n"
-    info_text += "Controls bypass to keep indoor temperature near comfort temp.\n\n"
-    info_text += (
-        "The desired speed is also adjustable per-device via the "
-        "`select.temp_control_desired_speed_*` entity.\n"
-    )
+    info_text += "Controls bypass to keep indoor temperature near comfort temp.\n"
 
     return flow.async_show_form(
         step_id="feature_config",
