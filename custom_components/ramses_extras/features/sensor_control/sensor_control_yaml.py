@@ -40,6 +40,7 @@ _AREA_SENSOR_SCHEMA_V2 = vol.Schema(
         vol.Optional("spike_window_minutes"): vol.All(int, vol.Range(min=1)),
         vol.Optional("trigger_on_high_humidity", default=False): bool,
         vol.Optional("co2_threshold_entity"): str,
+        vol.Optional("comfort_temperature_entity"): str,
     }
 )
 
@@ -57,6 +58,7 @@ _AREA_SENSOR_SCHEMA_LEGACY = vol.Schema(
         vol.Optional("spike_window_minutes"): vol.All(int, vol.Range(min=1)),
         vol.Optional("trigger_on_high_humidity", default=False): bool,
         vol.Optional("co2_threshold_entity"): str,
+        vol.Optional("comfort_temperature_entity"): str,
     }
 )
 

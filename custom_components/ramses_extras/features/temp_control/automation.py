@@ -30,6 +30,10 @@ from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import 
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
     RamsesCommands,
 )
+from custom_components.ramses_extras.framework.helpers.zone_demand import (
+    DemandSource,
+    get_zone_demand_registry,
+)
 
 from .config import TempControlConfig
 from .const import FEATURE_ID, TEMP_CONTROL_DEFAULTS
@@ -50,12 +54,15 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         self.config = TempControlConfig(hass, config_entry)
         self.ramses_commands = RamsesCommands(hass)
         self.fan_speed_arbiter = get_fan_speed_arbiter(hass)
+        self._zone_demand_registry = get_zone_demand_registry(hass)
 
         self._automation_active = False
         self._last_bypass_change: dict[str, float] = {}
         self._last_bypass_command: dict[str, str] = {}
         self._last_bypass_command_time: dict[str, float] = {}
         self._mode: dict[str, str] = {}  # device_id -> idle/cooling/heating_retention
+        # Track which zones currently have a temp_control demand
+        self._temp_demand_zones: dict[str, set[str]] = {}
 
     def is_automation_active(self) -> bool:
         return self._automation_active
@@ -110,6 +117,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
         for device_id in list(self._mode):
             await self._clear_speed_demand(device_id)
+            await self._clear_all_zone_demands(device_id)
 
         await super().stop()
 
@@ -319,6 +327,10 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         supply_temp = float(entity_states["supply_temp"])
         comfort_temp = float(entity_states["comfort_temp"])
 
+        # Per-area evaluation: if sensor_control areas are configured with
+        # temperature entities, evaluate each area separately and aggregate.
+        area_results = await self._evaluate_areas(device_id, settings, outdoor_temp)
+
         # Determine desired mode
         # Treat "disabled" as "idle" — when the switch was off, there is no
         # hysteresis state to maintain and no min-interval to enforce.
@@ -327,33 +339,48 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             prev_mode = "idle"
         desired_mode = "idle"
 
-        # Heating retention has priority when too cold
-        if indoor_temp <= comfort_temp - settings.comfort_delta_activate:
-            desired_mode = "heating_retention"
-        else:
-            # Cooling: outdoor air must be cooler than indoor by the
-            # configured delta AND above the safety floor (min_outdoor_temp).
-            # We use outdoor_temp (not supply_temp) because when bypass is
-            # closed, supply_temp ≈ indoor_temp due to heat recovery, making
-            # the condition circular.  Opening the bypass is what brings
-            # supply air closer to outdoor temp.
-            if (
-                indoor_temp >= comfort_temp + settings.comfort_delta_activate
-                and outdoor_temp >= settings.min_outdoor_temp
-                and outdoor_temp <= indoor_temp - settings.cooling_delta_activate
-            ):
+        if area_results:
+            # Aggregate per-area decisions: cooling has priority over
+            # heating_retention (if any area needs cooling, cool the house).
+            any_cooling = any(r["decision"] == "cooling" for r in area_results)
+            any_heating = any(
+                r["decision"] == "heating_retention" for r in area_results
+            )
+            if any_cooling:
                 desired_mode = "cooling"
-
-        # Apply hysteresis based on previous mode
-        if prev_mode == "cooling" and desired_mode != "cooling":
-            if indoor_temp > comfort_temp + settings.comfort_delta_deactivate and (
-                outdoor_temp <= indoor_temp - settings.cooling_delta_deactivate
-            ):
-                desired_mode = "cooling"
-
-        if prev_mode == "heating_retention" and desired_mode != "heating_retention":
-            if indoor_temp < comfort_temp - settings.comfort_delta_deactivate:
+            elif any_heating:
                 desired_mode = "heating_retention"
+
+            # Publish/clear zone demands for areas that need actuation
+            await self._publish_zone_demands(device_id, area_results, desired_mode)
+        else:
+            # Single-target logic (no areas configured)
+            # Heating retention has priority when too cold
+            if indoor_temp <= comfort_temp - settings.comfort_delta_activate:
+                desired_mode = "heating_retention"
+            else:
+                # Cooling: outdoor air must be cooler than indoor by the
+                # configured delta AND above the safety floor (min_outdoor_temp).
+                if (
+                    indoor_temp >= comfort_temp + settings.comfort_delta_activate
+                    and outdoor_temp >= settings.min_outdoor_temp
+                    and outdoor_temp <= indoor_temp - settings.cooling_delta_activate
+                ):
+                    desired_mode = "cooling"
+
+            # Apply hysteresis based on previous mode
+            if prev_mode == "cooling" and desired_mode != "cooling":
+                if indoor_temp > comfort_temp + settings.comfort_delta_deactivate and (
+                    outdoor_temp <= indoor_temp - settings.cooling_delta_deactivate
+                ):
+                    desired_mode = "cooling"
+
+            if prev_mode == "heating_retention" and desired_mode != "heating_retention":
+                if indoor_temp < comfort_temp - settings.comfort_delta_deactivate:
+                    desired_mode = "heating_retention"
+
+            # Clear any stale zone demands when running in single-target mode
+            await self._clear_all_zone_demands(device_id)
 
         # Enforce minimum interval between bypass mode changes
         last_change = self._last_bypass_change.get(device_id, 0.0)
@@ -426,6 +453,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
     async def _handle_disabled(self, device_id: str, reason: str) -> None:
         await self._clear_speed_demand(device_id)
+        await self._clear_all_zone_demands(device_id)
         self._mode[device_id] = "disabled"
         # Reset bypass change timestamp so the first mode change after
         # re-enabling is not blocked by the min-interval guard.
@@ -571,6 +599,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             return {
                 "mappings": sensor_result.get("mappings", {}),
                 "sources": sensor_result.get("sources", {}),
+                "area_sensors": sensor_result.get("area_sensors", []),
             }
         except Exception as err:
             _LOGGER.error(
@@ -579,6 +608,175 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 err,
             )
             return None
+
+    async def _evaluate_areas(
+        self,
+        device_id: str,
+        settings: Any,
+        outdoor_temp: float,
+    ) -> list[dict[str, Any]]:
+        """Evaluate per-area temperature conditions.
+
+        Returns a list of dicts with keys:
+        - area_id, zone_id, area_temp, area_comfort, decision, reason
+        Returns an empty list if no areas are configured or no area has
+        a temperature entity.
+        """
+        sensor_ctx = await self._get_sensor_control_context(device_id)
+        if not sensor_ctx:
+            return []
+
+        area_sensors = sensor_ctx.get("area_sensors") or []
+        if not isinstance(area_sensors, list):
+            return []
+
+        # Get the FAN global comfort temp as fallback for areas without
+        # their own comfort_temperature_entity.
+        global_comfort_entity = f"number.{device_id.replace(':', '_')}_param_75"
+        global_comfort_state = self.hass.states.get(global_comfort_entity)
+        global_comfort = (
+            float(global_comfort_state.state)
+            if global_comfort_state
+            and global_comfort_state.state not in (None, "unavailable", "unknown")
+            else None
+        )
+
+        results: list[dict[str, Any]] = []
+
+        for area in area_sensors:
+            if not isinstance(area, dict):
+                continue
+            if not area.get("enabled", True):
+                continue
+
+            temp_entity = area.get("temperature_entity")
+            if not temp_entity:
+                continue
+
+            temp_state = self.hass.states.get(temp_entity)
+            if not temp_state or temp_state.state in (None, "unavailable", "unknown"):
+                continue
+
+            try:
+                area_temp = float(temp_state.state)
+            except ValueError, TypeError:
+                continue
+
+            # Resolve comfort temp: area's comfort_temperature_entity → global
+            comfort_entity = area.get("comfort_temperature_entity")
+            area_comfort: float | None = None
+            if comfort_entity:
+                comfort_state = self.hass.states.get(comfort_entity)
+                if comfort_state and comfort_state.state not in (
+                    None,
+                    "unavailable",
+                    "unknown",
+                ):
+                    try:
+                        area_comfort = float(comfort_state.state)
+                    except ValueError, TypeError:
+                        pass
+
+            if area_comfort is None:
+                if global_comfort is not None:
+                    area_comfort = global_comfort
+                else:
+                    continue  # No comfort temp available for this area
+
+            # Evaluate this area
+            decision = "idle"
+            reason = ""
+
+            if area_temp <= area_comfort - settings.comfort_delta_activate:
+                decision = "heating_retention"
+                reason = (
+                    f"area {area.get('area_id')} too cold "
+                    f"({area_temp} < {area_comfort})"
+                )
+            elif (
+                area_temp >= area_comfort + settings.comfort_delta_activate
+                and outdoor_temp >= settings.min_outdoor_temp
+                and outdoor_temp <= area_temp - settings.cooling_delta_activate
+            ):
+                decision = "cooling"
+                reason = (
+                    f"area {area.get('area_id')} too warm "
+                    f"({area_temp} > {area_comfort})"
+                )
+
+            if decision == "idle":
+                continue  # Skip areas that don't need action
+
+            results.append(
+                {
+                    "area_id": area.get("area_id"),
+                    "zone_id": area.get("zone_id"),
+                    "area_temp": area_temp,
+                    "area_comfort": area_comfort,
+                    "decision": decision,
+                    "reason": reason,
+                }
+            )
+
+        return results
+
+    async def _publish_zone_demands(
+        self,
+        device_id: str,
+        area_results: list[dict[str, Any]],
+        desired_mode: str,
+    ) -> None:
+        """Publish/clear zone demands based on per-area evaluation.
+
+        Only areas with a zone_id get zone demands.  Areas without a
+        zone_id influence the bypass decision but don't open zone valves.
+        """
+        if not self._zone_demand_registry:
+            return
+
+        new_demand_zones: set[str] = set()
+
+        for result in area_results:
+            zone_id = result.get("zone_id")
+            if not zone_id:
+                continue
+
+            if desired_mode in ("cooling", "heating_retention"):
+                new_demand_zones.add(zone_id)
+                self._zone_demand_registry.set_demand(
+                    device_id,
+                    zone_id,
+                    DemandSource.OTHER,
+                    True,
+                    metadata={
+                        "kind": "temperature",
+                        "area_id": result.get("area_id"),
+                        "area_temp": result.get("area_temp"),
+                        "area_target": result.get("area_comfort"),
+                        "decision": result.get("decision"),
+                        "reason": result.get("reason"),
+                    },
+                )
+
+        # Clear demands for zones that no longer need action
+        prev_zones = self._temp_demand_zones.get(device_id, set())
+        for zone_id in prev_zones - new_demand_zones:
+            self._zone_demand_registry.clear_demand(
+                device_id, zone_id, DemandSource.OTHER
+            )
+
+        self._temp_demand_zones[device_id] = new_demand_zones
+
+    async def _clear_all_zone_demands(self, device_id: str) -> None:
+        """Clear all temp_control zone demands for a device."""
+        if not self._zone_demand_registry:
+            return
+
+        prev_zones = self._temp_demand_zones.pop(device_id, set())
+        for zone_id in prev_zones:
+            self._zone_demand_registry.clear_demand(
+                device_id, zone_id, DemandSource.OTHER
+            )
 
 
 __all__ = ["TempControlAutomationManager"]

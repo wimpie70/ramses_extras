@@ -18,6 +18,7 @@ import pytest
 from custom_components.ramses_extras.features.temp_control.config import (
     TempControlSettings,
 )
+from custom_components.ramses_extras.framework.helpers.zone_demand import DemandSource
 
 
 def make_settings(**overrides) -> TempControlSettings:
@@ -81,6 +82,9 @@ def automation_manager():
         ),
         patch(
             "custom_components.ramses_extras.features.temp_control.automation.RamsesCommands"
+        ),
+        patch(
+            "custom_components.ramses_extras.features.temp_control.automation.get_zone_demand_registry"
         ),
         patch(
             "custom_components.ramses_extras.features.temp_control.automation.TempControlConfig"
@@ -595,3 +599,344 @@ class TestTempControlBypassSafetyNet:
             )
 
         mock_super.assert_called_once()
+
+
+class TestTempControlPerAreaEvaluation:
+    """Test per-area temperature evaluation and zone demand publishing."""
+
+    @pytest.mark.asyncio
+    async def test_evaluate_areas_returns_empty_when_no_sensor_control(
+        self, automation_manager
+    ):
+        """When sensor_control is not enabled, _evaluate_areas returns []."""
+        automation_manager._get_sensor_control_context = AsyncMock(return_value=None)
+        settings = make_settings()
+        result = await automation_manager._evaluate_areas(
+            "32:153289", settings, outdoor_temp=18.0
+        )
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_evaluate_areas_returns_empty_when_no_areas(self, automation_manager):
+        """When sensor_control has no area_sensors, returns []."""
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={"mappings": {}, "area_sensors": []}
+        )
+        settings = make_settings()
+        result = await automation_manager._evaluate_areas(
+            "32:153289", settings, outdoor_temp=18.0
+        )
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_evaluate_areas_cooling_demand(self, automation_manager):
+        """An area above comfort + delta with cool outdoor air → cooling."""
+        area = {
+            "area_id": "living_room",
+            "zone_id": "zone_1",
+            "enabled": True,
+            "temperature_entity": "sensor.living_room_temp",
+            "comfort_temperature_entity": "input_number.lr_comfort",
+        }
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={"mappings": {}, "area_sensors": [area]}
+        )
+
+        def mock_get(entity_id):
+            if entity_id == "sensor.living_room_temp":
+                return MagicMock(state="24.0")
+            if entity_id == "input_number.lr_comfort":
+                return MagicMock(state="21.0")
+            return None
+
+        automation_manager.hass.states.get = mock_get
+
+        settings = make_settings()
+        result = await automation_manager._evaluate_areas(
+            "32:153289", settings, outdoor_temp=18.0
+        )
+
+        assert len(result) == 1
+        assert result[0]["decision"] == "cooling"
+        assert result[0]["area_id"] == "living_room"
+        assert result[0]["zone_id"] == "zone_1"
+        assert result[0]["area_temp"] == 24.0
+        assert result[0]["area_comfort"] == 21.0
+
+    @pytest.mark.asyncio
+    async def test_evaluate_areas_heating_retention_demand(self, automation_manager):
+        """An area below comfort - delta → heating_retention."""
+        area = {
+            "area_id": "bedroom",
+            "zone_id": "zone_2",
+            "enabled": True,
+            "temperature_entity": "sensor.bedroom_temp",
+            "comfort_temperature_entity": "input_number.br_comfort",
+        }
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={"mappings": {}, "area_sensors": [area]}
+        )
+
+        def mock_get(entity_id):
+            if entity_id == "sensor.bedroom_temp":
+                return MagicMock(state="18.0")
+            if entity_id == "input_number.br_comfort":
+                return MagicMock(state="21.0")
+            return None
+
+        automation_manager.hass.states.get = mock_get
+
+        settings = make_settings()
+        result = await automation_manager._evaluate_areas(
+            "32:153289", settings, outdoor_temp=18.0
+        )
+
+        assert len(result) == 1
+        assert result[0]["decision"] == "heating_retention"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_areas_idle_area_skipped(self, automation_manager):
+        """An area within comfort band → idle, not included in results."""
+        area = {
+            "area_id": "office",
+            "enabled": True,
+            "temperature_entity": "sensor.office_temp",
+            "comfort_temperature_entity": "input_number.office_comfort",
+        }
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={"mappings": {}, "area_sensors": [area]}
+        )
+
+        def mock_get(entity_id):
+            if entity_id == "sensor.office_temp":
+                return MagicMock(state="21.5")
+            if entity_id == "input_number.office_comfort":
+                return MagicMock(state="21.0")
+            return None
+
+        automation_manager.hass.states.get = mock_get
+
+        settings = make_settings()
+        result = await automation_manager._evaluate_areas(
+            "32:153289", settings, outdoor_temp=18.0
+        )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_evaluate_areas_falls_back_to_global_comfort(
+        self, automation_manager
+    ):
+        """When area has no comfort_temperature_entity, use FAN global comfort."""
+        area = {
+            "area_id": "kitchen",
+            "enabled": True,
+            "temperature_entity": "sensor.kitchen_temp",
+            # No comfort_temperature_entity
+        }
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={"mappings": {}, "area_sensors": [area]}
+        )
+
+        def mock_get(entity_id):
+            if entity_id == "sensor.kitchen_temp":
+                return MagicMock(state="24.0")
+            if entity_id == "number.32_153289_param_75":
+                return MagicMock(state="21.0")
+            return None
+
+        automation_manager.hass.states.get = mock_get
+
+        settings = make_settings()
+        result = await automation_manager._evaluate_areas(
+            "32:153289", settings, outdoor_temp=18.0
+        )
+
+        assert len(result) == 1
+        assert result[0]["decision"] == "cooling"
+        assert result[0]["area_comfort"] == 21.0
+
+    @pytest.mark.asyncio
+    async def test_evaluate_areas_skips_disabled_areas(self, automation_manager):
+        """Disabled areas are skipped."""
+        area = {
+            "area_id": "garage",
+            "enabled": False,
+            "temperature_entity": "sensor.garage_temp",
+            "comfort_temperature_entity": "input_number.garage_comfort",
+        }
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={"mappings": {}, "area_sensors": [area]}
+        )
+        automation_manager.hass.states.get = MagicMock(return_value=None)
+
+        settings = make_settings()
+        result = await automation_manager._evaluate_areas(
+            "32:153289", settings, outdoor_temp=18.0
+        )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_evaluate_areas_cooling_blocked_by_min_outdoor_temp(
+        self, automation_manager
+    ):
+        """Cooling is blocked when outdoor_temp < min_outdoor_temp."""
+        area = {
+            "area_id": "living_room",
+            "enabled": True,
+            "temperature_entity": "sensor.lr_temp",
+            "comfort_temperature_entity": "input_number.lr_comfort",
+        }
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={"mappings": {}, "area_sensors": [area]}
+        )
+
+        def mock_get(entity_id):
+            if entity_id == "sensor.lr_temp":
+                return MagicMock(state="24.0")
+            if entity_id == "input_number.lr_comfort":
+                return MagicMock(state="21.0")
+            return None
+
+        automation_manager.hass.states.get = mock_get
+
+        settings = make_settings(min_outdoor_temp=15.0)
+        result = await automation_manager._evaluate_areas(
+            "32:153289",
+            settings,
+            outdoor_temp=10.0,  # Below min_outdoor_temp
+        )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_publish_zone_demands_sets_demand_for_cooling(
+        self, automation_manager
+    ):
+        """Zone demands are set for areas with zone_id during cooling."""
+        automation_manager._zone_demand_registry = MagicMock()
+        automation_manager._zone_demand_registry.set_demand = MagicMock()
+        automation_manager._zone_demand_registry.clear_demand = MagicMock()
+
+        area_results = [
+            {
+                "area_id": "living_room",
+                "zone_id": "zone_1",
+                "area_temp": 24.0,
+                "area_comfort": 21.0,
+                "decision": "cooling",
+                "reason": "too warm",
+            }
+        ]
+
+        await automation_manager._publish_zone_demands(
+            "32:153289", area_results, "cooling"
+        )
+
+        automation_manager._zone_demand_registry.set_demand.assert_called_once()
+        call_args = automation_manager._zone_demand_registry.set_demand.call_args
+        assert call_args.args[0] == "32:153289"
+        assert call_args.args[1] == "zone_1"
+        assert call_args.args[2] == DemandSource.OTHER
+        assert call_args.args[3] is True
+
+    @pytest.mark.asyncio
+    async def test_publish_zone_demands_clears_stale_demands(self, automation_manager):
+        """Zones that no longer need action have their demands cleared."""
+        automation_manager._zone_demand_registry = MagicMock()
+        automation_manager._zone_demand_registry.set_demand = MagicMock()
+        automation_manager._zone_demand_registry.clear_demand = MagicMock()
+
+        # Simulate that zone_1 previously had a demand
+        automation_manager._temp_demand_zones["32:153289"] = {"zone_1"}
+
+        # Now no areas need action
+        await automation_manager._publish_zone_demands("32:153289", [], "idle")
+
+        automation_manager._zone_demand_registry.clear_demand.assert_called_once_with(
+            "32:153289", "zone_1", DemandSource.OTHER
+        )
+
+    @pytest.mark.asyncio
+    async def test_publish_zone_demands_skips_areas_without_zone_id(
+        self, automation_manager
+    ):
+        """Areas without a zone_id don't get zone demands."""
+        automation_manager._zone_demand_registry = MagicMock()
+        automation_manager._zone_demand_registry.set_demand = MagicMock()
+
+        area_results = [
+            {
+                "area_id": "loft",
+                "zone_id": None,
+                "area_temp": 24.0,
+                "area_comfort": 21.0,
+                "decision": "cooling",
+                "reason": "too warm",
+            }
+        ]
+
+        await automation_manager._publish_zone_demands(
+            "32:153289", area_results, "cooling"
+        )
+
+        automation_manager._zone_demand_registry.set_demand.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_clear_all_zone_demands(self, automation_manager):
+        """_clear_all_zone_demands clears all tracked zone demands."""
+        automation_manager._zone_demand_registry = MagicMock()
+        automation_manager._zone_demand_registry.clear_demand = MagicMock()
+
+        automation_manager._temp_demand_zones["32:153289"] = {"zone_1", "zone_2"}
+
+        await automation_manager._clear_all_zone_demands("32:153289")
+
+        assert automation_manager._zone_demand_registry.clear_demand.call_count == 2
+        assert "32:153289" not in automation_manager._temp_demand_zones
+
+    @pytest.mark.asyncio
+    async def test_aggregate_cooling_has_priority_over_heating(
+        self, automation_manager
+    ):
+        """When one area needs cooling and another needs heating, cooling wins."""
+        automation_manager._zone_demand_registry = MagicMock()
+        automation_manager._zone_demand_registry.set_demand = MagicMock()
+        automation_manager._zone_demand_registry.clear_demand = MagicMock()
+
+        area_results = [
+            {
+                "area_id": "living_room",
+                "zone_id": "zone_1",
+                "area_temp": 24.0,
+                "area_comfort": 21.0,
+                "decision": "cooling",
+                "reason": "too warm",
+            },
+            {
+                "area_id": "bedroom",
+                "zone_id": "zone_2",
+                "area_temp": 18.0,
+                "area_comfort": 21.0,
+                "decision": "heating_retention",
+                "reason": "too cold",
+            },
+        ]
+
+        # Mock _evaluate_areas to return our mixed results
+        automation_manager._evaluate_areas = AsyncMock(return_value=area_results)
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={"mappings": {}, "area_sensors": []}
+        )
+        automation_manager._publish_zone_demands = AsyncMock()
+
+        states = make_entity_states(
+            indoor_temp=22.0,
+            outdoor_temp=18.0,
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        # Cooling should win
+        assert automation_manager._mode["32:153289"] == "cooling"

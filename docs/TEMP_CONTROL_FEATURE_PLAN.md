@@ -19,7 +19,7 @@
 > | §9.2 Validation helper (`validateTempControlEntities`) | ✅ Done |
 > | §9.2 Translations (en/nl) | ✅ Done |
 > | §10 Framework touchpoints (select platform support) | ✅ Done |
-> | §11 Backend tests | ✅ Done (45 tests: const, config, decision logic, hysteresis, interval, speed demand, manual override, bypass safety net) |
+> | §11 Backend tests | ✅ Done (58 tests: const, config, decision logic, hysteresis, interval, speed demand, manual override, bypass safety net, per-area evaluation, zone demands) |
 > | §11 Frontend tests | ✅ Existing tests pass; new assertions TBD |
 > | Phase 1 — Skeleton feature + config | ✅ Done |
 > | Phase 2 — Automation MVP | ✅ Done (runtime validated) |
@@ -570,75 +570,55 @@ Suggested contents (start by copying `hello_world` or `humidity_control` and pru
 - Any manual bypass action (or manual fan-speed button press) toggles temp_control **off** for that FAN.
 - The user can re-enable it using the Temp control button.
 
-## 14) Future: areas/zones temperature targets (multi-zone comfort)
+## 14) Multi-zone temperature targets (per-area comfort)
 
-When using **areas/zones** (sensor_control area sensors), we may have scenarios like:
+### 14.1 Implementation
 
-- One area too warm, another area OK/cool
-- The global FAN comfort temperature is not a good proxy for all areas
+Per-area comfort temperature is resolved with this priority:
 
-In those cases, temp_control “cooling/heating_retention” decisions need a **per-area target** (desired/comfort temperature) in addition to per-area current temperature.
+1. **Area sensor `comfort_temperature_entity`** — if set in sensor_control config, use that entity's value (e.g. an `input_number` helper the user created in HA).
+2. **FAN global comfort temperature** (param 75) — fallback when no per-area comfort entity is configured.
 
-### 14.1 Proposed approach
+This means users can:
+- Point `comfort_temperature_entity` to any HA entity (`input_number`, `number`, `sensor`, `climate`) for per-area targets.
+- Leave it unset to use the FAN's global comfort temperature for all areas.
 
-1) Add optional per-area “comfort temperature” sources:
+### 14.2 Per-area evaluation
 
-- Option A (simple): `number.temp_control_area_comfort_temp_<device_id>_<area_id>` entities (one per enabled area)
-- Option B (integrated): reuse existing HA `climate`/`input_number`/`number` entities as configured per area (similar to how sensor_control lets users choose sensor sources)
+For each enabled area with a `temperature_entity`:
 
-2) Compute an aggregated “cooling demand” / “heating retention demand” across areas:
+- **Cooling demand** when: `area_temp >= area_comfort + comfort_delta_activate` AND `outdoor_temp >= min_outdoor_temp` AND `outdoor_temp <= area_temp - cooling_delta_activate`
+- **Heating retention demand** when: `area_temp <= area_comfort - comfort_delta_activate`
+- **Idle** when neither condition is met (area is within comfort band)
 
-- For cooling: any(area_temp >= area_comfort + delta_activate) AND outdoor_temp can cool
-- For heating retention: any(area_temp <= area_comfort - delta_activate)
+### 14.3 Aggregate bypass decision
 
-3) Decide bypass mode using a simple priority:
+- If **any** area has a cooling demand → bypass mode = `cooling` (cooling has priority)
+- Else if **any** area has a heating retention demand → bypass mode = `heating_retention`
+- Else → bypass mode = `idle`
 
-- If any cooling-demand area exists → prefer `cooling`
-- Else if any heating-demand area exists → prefer `heating_retention`
-- Else → `idle`
+When no areas are configured (or no area has a temperature entity), the original single-target logic is used (indoor_temp vs global comfort_temp).
 
-(We can later refine this by weighting/majority or by selecting the “worst” area.)
+### 14.4 Zone demand publishing
 
-4) Keep the current single-target logic as the default when no per-area comfort targets are configured.
+When per-area evaluation produces a non-idle decision, temp_control publishes demands into the `ZoneDemandRegistry`:
 
-### 14.2 Notes / risks
+- `DemandSource.OTHER` with metadata:
+  - `kind: "temperature"`
+  - `area_id`, `area_temp`, `area_target`
+  - `decision: "cooling"|"heating_retention"`
+  - `reason: <short string>`
 
-- Avoid fighting CO2/humidity strategies: per-area temperature demand is still coordinated via the FanSpeedArbiter.
-- UI: if per-area comfort targets exist, expose them in the HVAC Fan Card settings section similarly to humidity controls.
-- Start minimal: implement per-area targets only for *cooling* first if needed; add heating retention later.
+Only areas with a `zone_id` get zone demands (so zone valves open for the area that needs cooling/heating). Areas without a `zone_id` still influence the bypass decision but don't trigger zone valve actuation.
 
-### 14.3 Centralized decision helper / zone coordinator integration (future)
+When the bypass mode returns to idle, or temp_control is disabled, all temp_control zone demands are cleared.
 
-When zones were introduced, we moved “what should the system do?” into one place so that:
+### 14.5 Future: BypassModeArbiter
 
-- multiple signals (features + zone valves) are resolved consistently, and
-- actuators are driven from a single computed plan.
+The current implementation has temp_control directly sending bypass commands. For future multi-feature bypass coordination (e.g. if humidity_control also wants to manage bypass), a **BypassModeArbiter** (parallel to FanSpeedArbiter) should be introduced so that:
 
-In the current temp_control implementation **we are not using the zone coordinator decision path**:
-
-- temp_control computes its own bypass decision (idle/cooling/heating_retention) and sends bypass commands.
-- temp_control fan-speed requests are coordinated via the **FanSpeedArbiter** (this part *is* centralized).
-
-For future multi-zone temperature targeting, we should align with the existing centralized decision flow by **combining** configuration + demand publishing:
-
-- **Option A (inputs/config):** introduce per-area configuration:
-  - a per-area comfort/target temperature entity (selected by the user, or user-created helper)
-  - a per-area policy control like `select.temp_control_area_bypass_policy_*` (e.g. `off` / `cooling_only` / `heating_only` / `cooling_and_heating`)
-
-- **Option B (coordination):** temp_control publishes a “temperature demand” into the existing demand registry using `DemandSource.OTHER` + `metadata`.
-  - This pattern is already used to carry non-core demand types by attaching details in `metadata` (e.g. additional sensors such as air-quality-like signals).
-  - Suggested metadata shape:
-    - `kind: "temperature"`
-    - `area_id`, `area_temp`, `area_target`, `delta`
-    - `desired_bypass_mode: "open"|"close"`
-    - `decision: "cooling"|"heating_retention"`
-    - `reason: <short string>`
-
-Resolution of potentially conflicting demands (multiple areas/zones) should be handled centrally:
-
-- Introduce a **BypassModeArbiter** (parallel to FanSpeedArbiter).
-- The zone coordinator (or a higher-level coordinator) should resolve **both**:
-  - final fan speed (via FanSpeedArbiter), and
-  - final bypass mode (via BypassModeArbiter)
+- Features publish bypass mode demands (open/close/auto + reason)
+- The arbiter resolves conflicts and sends the final bypass command
+- The zone coordinator (or a higher-level coordinator) resolves **both** fan speed (via FanSpeedArbiter) and bypass mode (via BypassModeArbiter)
 
 Goal: **one place computes the final actuation plan** (fan speed + bypass mode), and features only contribute demand signals + reasons.
