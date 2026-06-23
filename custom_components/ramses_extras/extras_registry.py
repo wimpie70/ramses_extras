@@ -16,6 +16,7 @@ class RamsesEntityRegistry:
         self._sensor_configs: dict[str, dict[str, Any]] = {}
         self._switch_configs: dict[str, dict[str, Any]] = {}
         self._number_configs: dict[str, dict[str, Any]] = {}
+        self._select_configs: dict[str, dict[str, Any]] = {}
         self._boolean_configs: dict[str, dict[str, Any]] = {}
         self._device_mappings: dict[str, dict[str, Any]] = {}
         self._card_configs: dict[str, dict[str, dict[str, Any]]] = {}
@@ -37,6 +38,11 @@ class RamsesEntityRegistry:
         """Register number configurations."""
         with self._lock:
             self._number_configs.update(configs)
+
+    def register_select_configs(self, configs: dict[str, dict[str, Any]]) -> None:
+        """Register select configurations."""
+        with self._lock:
+            self._select_configs.update(configs)
 
     def register_boolean_configs(self, configs: dict[str, dict[str, Any]]) -> None:
         """Register boolean configurations."""
@@ -142,6 +148,10 @@ class RamsesEntityRegistry:
                 number_configs = feature_definition.get("number_configs", {})
                 if isinstance(number_configs, dict):
                     self._number_configs.update(number_configs)
+
+                select_configs = feature_definition.get("select_configs", {})
+                if isinstance(select_configs, dict):
+                    self._select_configs.update(select_configs)
 
                 boolean_configs = feature_definition.get("boolean_configs", {})
                 if isinstance(boolean_configs, dict):
@@ -285,6 +295,7 @@ class RamsesEntityRegistry:
             self._sensor_configs.clear()
             self._switch_configs.clear()
             self._number_configs.clear()
+            self._select_configs.clear()
             self._boolean_configs.clear()
             self._device_mappings.clear()
             self._card_configs.clear()
@@ -306,6 +317,11 @@ class RamsesEntityRegistry:
         """Get all number configurations."""
         with self._lock:
             return self._number_configs.copy()
+
+    def get_all_select_configs(self) -> dict[str, dict[str, Any]]:
+        """Get all select configurations."""
+        with self._lock:
+            return self._select_configs.copy()
 
     def get_all_boolean_configs(self) -> dict[str, dict[str, Any]]:
         """Get all boolean configurations."""
@@ -386,6 +402,7 @@ class RamsesEntityRegistry:
             self._sensor_configs.clear()
             self._switch_configs.clear()
             self._number_configs.clear()
+            self._select_configs.clear()
             self._boolean_configs.clear()
             self._device_mappings.clear()
             self._card_configs.clear()

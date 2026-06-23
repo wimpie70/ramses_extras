@@ -164,6 +164,7 @@ def _get_required_entity_ids_for_feature_device_sync(
         "sensor": _as_config_dict(feature_def.get("sensor_configs")),
         "switch": _as_config_dict(feature_def.get("switch_configs")),
         "number": _as_config_dict(feature_def.get("number_configs")),
+        "select": _as_config_dict(feature_def.get("select_configs")),
         "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
     }
 
@@ -245,6 +246,7 @@ def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
         "sensor": _as_config_dict(feature_def.get("sensor_configs")),
         "switch": _as_config_dict(feature_def.get("switch_configs")),
         "number": _as_config_dict(feature_def.get("number_configs")),
+        "select": _as_config_dict(feature_def.get("select_configs")),
         "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
     }
 
@@ -750,6 +752,7 @@ class EntityHelpers:
                 "sensor": extras_registry.get_all_sensor_configs(),
                 "switch": extras_registry.get_all_switch_configs(),
                 "number": extras_registry.get_all_number_configs(),
+                "select": extras_registry.get_all_select_configs(),
                 "binary_sensor": extras_registry.get_all_boolean_configs(),
             }
             for entity_type, configs in all_configs.items():

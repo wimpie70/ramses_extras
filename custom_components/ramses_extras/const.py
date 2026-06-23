@@ -82,6 +82,17 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "allowed_device_slugs": ["FAN"],
         "has_device_config": True,
     },
+    "temp_control": {
+        "name": "Temperature Control",
+        "description": (
+            "Comfort temperature based bypass control (cooling + heat retention)"
+        ),
+        "feature_module": "features.temp_control",
+        "handler": "handle_hvac_ventilator",
+        "default_enabled": False,
+        "allowed_device_slugs": ["FAN"],
+        "has_device_config": True,
+    },
     "hvac_fan_card": {
         "name": "HVAC Fan Card",
         "description": "Advanced fan card for control and configuration",
