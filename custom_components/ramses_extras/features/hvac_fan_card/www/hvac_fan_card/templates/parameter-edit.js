@@ -64,6 +64,18 @@ export function createParameterEditSection(params) {
       </div>
       ` : ''}
 
+      ${params.tempControlEntities && params.tempControlEntities.length > 0 ? `
+      <!-- Temp Control Settings Section -->
+      <div class="r-xtrs-hvac-fan-param-section-header">
+        <h3>${tr('parameters.temp_control_settings', 'Temperature Control Settings')}</h3>
+      </div>
+      <div class="r-xtrs-hvac-fan-param-list" style="max-height: 200px; overflow-y: auto;">
+        ${params.tempControlEntities.map(entity =>
+          createTempControlItem(entity, tr)
+        ).join('')}
+      </div>
+      ` : ''}
+
       ${deviceParameters.length > 0 ? `
       <!-- Device Parameters Section -->
       <div class="r-xtrs-hvac-fan-param-section-header">
@@ -136,6 +148,66 @@ function createHumidityControlItem(entity, tr) {
                 data-entity="${entityId}">
         <button class="r-xtrs-hvac-fan-param-update-btn" data-action="update-humidity" data-entity-id="${entityId}">${tr('parameters.update', 'Update')}</button>
         <span class="r-xtrs-hvac-fan-param-status"></span>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render a Temp control entity row.
+ * @param {Object} entity View-model item.
+ * @param {Function} tr Translation helper.
+ * @returns {string}
+ */
+function createTempControlItem(entity, tr) {
+  const entityId = entity.entity_id;
+  const currentValue = entity.state;
+  const friendlyName = entity.attributes?.friendly_name || entityId.split('_').pop().replace(/([A-Z])/g, ' $1').toLowerCase();
+
+  let displayName = friendlyName;
+  if (entity.name_key) {
+    displayName = tr(entity.name_key, entity.name_fallback || friendlyName);
+  }
+
+  if (entityId.startsWith('select.')) {
+    const options = entity.attributes?.options || [];
+    return `
+      <div class="r-xtrs-hvac-fan-param-item" data-temp-control="${entityId}">
+        <div class="r-xtrs-hvac-fan-param-info">
+          <label class="r-xtrs-hvac-fan-param-label">${displayName}</label>
+        </div>
+        <div class="r-xtrs-hvac-fan-param-input-container">
+          <select class="r-xtrs-hvac-fan-param-input" data-entity="${entityId}">
+            ${options.map(opt => `<option value="${opt}" ${opt === currentValue ? 'selected' : ''}>${tr(`status.${opt}`, opt)}</option>`).join('')}
+          </select>
+          <button class="r-xtrs-hvac-fan-param-update-btn" data-action="update-select" data-entity-id="${entityId}">${tr('parameters.update', 'Update')}</button>
+          <span class="r-xtrs-hvac-fan-param-status"></span>
+        </div>
+      </div>
+    `;
+  } else if (entityId.startsWith('switch.')) {
+    return `
+      <div class="r-xtrs-hvac-fan-param-item" data-temp-control="${entityId}">
+        <div class="r-xtrs-hvac-fan-param-info">
+          <label class="r-xtrs-hvac-fan-param-label">${displayName}</label>
+        </div>
+        <div class="r-xtrs-hvac-fan-param-input-container">
+          <select class="r-xtrs-hvac-fan-param-input" data-entity="${entityId}">
+            <option value="on" ${currentValue === 'on' ? 'selected' : ''}>On</option>
+            <option value="off" ${currentValue === 'off' ? 'selected' : ''}>Off</option>
+          </select>
+          <button class="r-xtrs-hvac-fan-param-update-btn" data-action="update-switch" data-entity-id="${entityId}">${tr('parameters.update', 'Update')}</button>
+          <span class="r-xtrs-hvac-fan-param-status"></span>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="r-xtrs-hvac-fan-param-item">
+      <div class="r-xtrs-hvac-fan-param-info">
+        <label class="r-xtrs-hvac-fan-param-label">${displayName}</label>
+        <span class="r-xtrs-hvac-fan-param-unit">${currentValue}</span>
       </div>
     </div>
   `;

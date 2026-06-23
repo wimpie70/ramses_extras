@@ -34,7 +34,8 @@ export function createTopSection(data, t) {
     timerMinutes, airflowSvg, filterDaysRemaining,
     balanceTriggersHtml, co2ZonesHtml,
     indoorHumidityClass, co2LevelClass,
-    transportAvailable, isCalibrating
+    transportAvailable, isCalibrating,
+    tempControlStatus
   } = data;
 
   // Helper function to format humidity values
@@ -102,6 +103,9 @@ export function createTopSection(data, t) {
           </div>
           <div class="r-xtrs-hvac-fan-info-stack">
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
+            ${tempControlStatus ? `
+            <div class="${tempControlStatus.isCoolingOrHeating ? 'r-xtrs-temp-trigger' : ''}">🌡️ ${tr('controls.temp_control', 'Temp control')}: ${tr(`status.temp_control_${tempControlStatus.state}`, tempControlStatus.state)}${tempControlStatus.isCoolingOrHeating ? ' (controlling bypass)' : ''}</div>
+            ` : ''}
           </div>
 
           <!-- Balance Triggers & CO2 Zones Section (RIGHT panel) -->

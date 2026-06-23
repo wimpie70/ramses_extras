@@ -1,5 +1,34 @@
 # Temperature Control (Bypass) Feature — Implementation Plan
 
+> ## Progress tracker
+>
+> | Area | Status |
+> | --- | --- |
+> | §3 Feature identity (`temp_control`) | ✅ Done |
+> | §5 Entities & data model (switch/select/binary_sensor/sensor) | ✅ Done |
+> | §6 Configuration keys (config.py) | ✅ Done |
+> | §7 Automation logic (state machine, manual override, speed gating) | ✅ Done (skeleton + logic; needs runtime validation) |
+> | §8.1 Register in `AVAILABLE_FEATURES` | ✅ Done |
+> | §8.2 Main options-menu entry + translations | ✅ Done |
+> | §8.3 Feature-specific config flow | ✅ Done |
+> | §9.1 Entity mappings in hvac_fan_card const | ✅ Done |
+> | §9.2 UI: Temp control button (row 4) | ✅ Done |
+> | §9.2 UI: Top-right indicator + highlight | ✅ Done |
+> | §9.2 UI: Settings-mode entities | ✅ Done |
+> | §9.2 UI: Manual actions disable temp_control | ✅ Done (action-based; state-based safety net pending) |
+> | §9.2 Validation helper (`validateTempControlEntities`) | ✅ Done |
+> | §9.2 Translations (en/nl) | ✅ Done |
+> | §10 Framework touchpoints (select platform support) | ✅ Done |
+> | §11 Backend tests | ⏳ Pending (skeleton compiles; decision tests TBD) |
+> | §11 Frontend tests | ✅ Existing tests pass; new assertions TBD |
+> | Phase 1 — Skeleton feature + config | ✅ Done |
+> | Phase 2 — Automation MVP | ✅ Done (logic in place; needs runtime validation) |
+> | Phase 3 — HVAC Fan Card integration | ✅ Done |
+> | Phase 4 — Conflict handling / polish | 🟡 Partial (humidity/CO2 gates implemented in arbiter; state-based override net pending) |
+> | Phase 5 — Documentation & release | ⏳ Pending |
+>
+> Legend: ✅ Done · 🟡 Partial · ⏳ Pending
+
 ## 1) Problem statement
 
 Observed behavior:
@@ -452,32 +481,33 @@ Suggested contents (start by copying `hello_world` or `humidity_control` and pru
 
 ## 12) Implementation phases
 
-### Phase 1 — Skeleton feature + config
+### Phase 1 — Skeleton feature + config  ✅ Done
 
 - Create `features/temp_control` module
 - Register feature in `AVAILABLE_FEATURES`
 - Add options-flow entrypoint + translations
 - Create switch + status entities (even if logic is stubbed)
 
-### Phase 2 — Automation MVP
+### Phase 2 — Automation MVP  ✅ Done (needs runtime validation)
 
 - Implement temperature evaluation
 - Command: open bypass in cooling, auto otherwise
 - Manual actions toggle the automation off (no holdoff/resume in v1)
 
-### Phase 3 — HVAC Fan Card integration
+### Phase 3 — HVAC Fan Card integration  ✅ Done
 
-- Add “Temp control” button
+- Add "Temp control" button
 - Add top-right indicator
 - Add validation + translations
 
-### Phase 4 — Conflict handling / polish
+### Phase 4 — Conflict handling / polish  🟡 Partial
 
-- Interaction rules with humidity_control and co2_control
-- Improved status reporting (reason strings, attributes)
-- Add optional “force close” behavior if required
+- Interaction rules with humidity_control and co2_control  ✅ (arbiter gates implemented)
+- Improved status reporting (reason strings, attributes)  ✅
+- Add optional "force close" behavior if required  ✅ (heating_retention)
+- State-based manual override safety net  ⏳ Pending
 
-### Phase 5 — Documentation & release
+### Phase 5 — Documentation & release  ⏳ Pending
 
 - Update wiki page(s) for the new feature
 - Add release notes entry

@@ -27,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 def is_supported_temp_control_device(hass: object, device_id: str) -> bool:
     normalized_device_id = device_id.replace("_", ":")
     device = find_ramses_device(hass, normalized_device_id)
-    return get_device_type(device) == "HvacVentilator"
+    return bool(get_device_type(device) == "HvacVentilator")
 
 
 async def async_setup_entry(
