@@ -509,8 +509,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
 
     def _handle_remote_msg(msg: object, *args: object, **kwargs: object) -> None:
-        src = getattr(getattr(msg, "src", None), "id", None)
-        dst = getattr(getattr(msg, "dst", None), "id", None)
+        # PacketDTO uses addr1/addr2 (str); Message uses src/dst (Address.id)
+        src = getattr(msg, "addr1", None)
+        if src is None:
+            src = getattr(getattr(msg, "src", None), "id", None)
+        dst = getattr(msg, "addr2", None)
+        if dst is None:
+            dst = getattr(getattr(msg, "dst", None), "id", None)
         code = getattr(msg, "code", None)
         payload = getattr(msg, "payload", None)
         verb = getattr(msg, "verb", None)
