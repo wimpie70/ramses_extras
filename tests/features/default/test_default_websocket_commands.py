@@ -291,7 +291,7 @@ async def test_ws_get_available_devices_with_slugs(hass, connection):
     """Test ws_get_available_devices extracts device slugs correctly."""
     mock_device = MagicMock()
     mock_device.id = "32:123456"
-    mock_device.type = "FAN"
+    mock_device._SLUG = "FAN"
     hass.data[DOMAIN]["devices"] = [mock_device]
     msg = {"id": 1, "type": "ramses_extras/get_available_devices"}
     await ws_get_available_devices(hass, connection, msg)

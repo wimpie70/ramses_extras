@@ -1123,7 +1123,9 @@ async def ws_config_diagnostics(
             device_type = device.get("type", "").upper()
         else:
             device_id = getattr(device, "device_id", None)
-            device_type = getattr(device, "type", "").upper()
+            device_type = getattr(device, "_SLUG", None) or getattr(device, "type", "")
+            if device_type is not None:
+                device_type = str(device_type).upper()
 
         if device_id:
             normalized_id = str(device_id).replace("_", ":")

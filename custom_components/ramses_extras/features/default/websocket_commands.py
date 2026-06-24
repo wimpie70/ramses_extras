@@ -199,7 +199,12 @@ async def ws_get_entity_mappings(
                     dev_type = device.get("type")
                 else:
                     raw_id = device
-                    dev_type = getattr(device, "type", None)
+                    # ramses_rf's Address.type is the device ID prefix (e.g.
+                    # "32"), not the device class.  Use _SLUG for the actual
+                    # device type (FAN, CO2, HUM, etc.).
+                    dev_type = getattr(device, "_SLUG", None) or getattr(
+                        device, "type", None
+                    )
 
                 dev_id = _extract_device_id(raw_id)
                 if dev_id is None:

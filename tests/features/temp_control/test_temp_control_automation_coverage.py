@@ -1069,7 +1069,7 @@ class TestGetDeviceTypeForSensorControl:
 
     def test_object_device_with_type(self, automation_manager):
         device = MagicMock()
-        device.type = "FAN"
+        device._SLUG = "FAN"
         automation_manager.hass.data = {
             "ramses_extras": {
                 "enabled_features": {"temp_control": True},
@@ -1084,7 +1084,7 @@ class TestGetDeviceTypeForSensorControl:
 
     def test_object_device_string_id(self, automation_manager):
         device = MagicMock()
-        device.type = "FAN"
+        device._SLUG = "FAN"
         # Make device_id a plain string
         automation_manager.hass.data = {
             "ramses_extras": {
@@ -1126,7 +1126,7 @@ class TestGetDeviceTypeForSensorControl:
         del raw_obj._id
         del raw_obj.name
         raw_obj.__str__ = MagicMock(return_value="32:153289")
-        raw_obj.type = "FAN"
+        raw_obj._SLUG = "FAN"
 
         automation_manager.hass.data = {
             "ramses_extras": {
