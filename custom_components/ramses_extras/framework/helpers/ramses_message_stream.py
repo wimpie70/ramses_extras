@@ -1,14 +1,43 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
+from homeassistant.loader import async_get_integration
 
 from ...const import DOMAIN
 from .ramses_commands import RamsesCommands
+
+_LOGGER = logging.getLogger(__name__)
+
+# ramses_cc 0.55.6 removed ramses_cc_message HA bus events and replaced
+# them with HA Event Entities.  Before this version, ramses_cc itself
+# fired ramses_cc_message events on the HA bus (when MESSAGE_EVENTS was
+# enabled in advanced config).  After this version, the only way to
+# receive messages is via coordinator.client.add_msg_handler().
+_RAMSES_CC_MESSAGE_EVENTS_REMOVED = "0.55.6"
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    """Convert a dotted version string to a comparable tuple."""
+    parts: list[int] = []
+    for part in version.split("."):
+        try:
+            parts.append(int(part))
+        except ValueError:
+            # Strip non-numeric suffixes (e.g. "0.55.6-beta" → 0.55.6)
+            numeric = ""
+            for ch in part:
+                if ch.isdigit():
+                    numeric += ch
+                else:
+                    break
+            parts.append(int(numeric) if numeric else 0)
+    return tuple(parts)
 
 
 class RamsesMessageStream:
@@ -19,6 +48,9 @@ class RamsesMessageStream:
         self._subscribers: dict[int, Callable[[dict[str, Any]], None]] = {}
         self._next_subscription_id = 0
         self._attach_task = None
+        # None = not yet checked, True/False = ramses_cc fires its own
+        # ramses_cc_message HA bus events
+        self._ramses_cc_fires_events: bool | None = None
 
     def start(self) -> None:
         if self._event_unsub is not None or self._msg_handler_unsub is not None:
@@ -54,6 +86,39 @@ class RamsesMessageStream:
 
         return _unsub
 
+    async def _async_ramses_cc_fires_events(self) -> bool:
+        """Check whether ramses_cc fires ramses_cc_message HA bus events.
+
+        ramses_cc < 0.55.6 fired these events when MESSAGE_EVENTS was
+        enabled.  ramses_cc >= 0.55.6 removed them entirely.  We detect
+        the version at runtime via the integration manifest.
+        """
+        if self._ramses_cc_fires_events is not None:
+            return self._ramses_cc_fires_events
+
+        try:
+            integration = await async_get_integration(self._hass, "ramses_cc")
+            version = integration.manifest.get("version", "0.0.0")
+            if isinstance(version, str) and version:
+                fires = _version_tuple(version) < _version_tuple(
+                    _RAMSES_CC_MESSAGE_EVENTS_REMOVED
+                )
+                self._ramses_cc_fires_events = fires
+                _LOGGER.debug(
+                    "ramses_cc version %s fires_message_events=%s",
+                    version,
+                    fires,
+                )
+                return fires
+        except Exception as e:
+            _LOGGER.debug(
+                "Could not determine ramses_cc version, assuming no bus events: %s",
+                e,
+            )
+
+        self._ramses_cc_fires_events = False
+        return False
+
     def _resolve_add_msg_handler(self, coordinator: Any) -> Callable[..., Any] | None:
         if coordinator is None:
             return None
@@ -75,7 +140,7 @@ class RamsesMessageStream:
 
         for _ in range(max_attempts):
             if self._msg_handler_unsub is not None:
-                return
+                break
 
             coordinator = await commands._get_ramses_cc_coordinator()
             add_msg_handler = self._resolve_add_msg_handler(coordinator)
@@ -83,9 +148,14 @@ class RamsesMessageStream:
                 msg_handler_unsub = add_msg_handler(self._handle_msg)
                 if callable(msg_handler_unsub):
                     self._msg_handler_unsub = msg_handler_unsub
-                    return
+                    break
 
             await asyncio.sleep(1)
+
+        # Detect ramses_cc version to decide whether we need to fire
+        # ramses_cc_message HA bus events ourselves (newer versions) or
+        # rely on ramses_cc firing them (older versions).
+        await self._async_ramses_cc_fires_events()
 
     def inject(self, data: dict[str, Any]) -> None:
         """Inject a message directly to all subscribers.
@@ -169,6 +239,11 @@ class RamsesMessageStream:
     def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
         data = dict(event.data or {})
         data["time_fired"] = event.time_fired.isoformat(timespec="microseconds")
+        # Skip events that were fired by _handle_msg (via add_msg_handler)
+        # to avoid duplicate subscriber notifications.  Events from other
+        # sources (e.g. outbound RQ from ramses_cc) are still processed.
+        if data.get("_from_msg_handler"):
+            return
         verb = data.get("verb")
         verb_upper = verb.upper().strip() if isinstance(verb, str) else None
         if self._msg_handler_unsub is not None and verb_upper in {"RP", "I"}:
@@ -189,13 +264,13 @@ class RamsesMessageStream:
         payload = getattr(pkt, "payload", None)
         if payload is None:
             payload = getattr(msg, "payload", None)
-        data = parsed or {
-            "src": self._extract_msg_addr(msg, "src", "addr1"),  # type: ignore[dict-item]
-            "dst": self._extract_msg_addr(msg, "dst", "addr2"),  # type: ignore[dict-item]
-            "verb": str(getattr(msg, "verb", "")) or None,  # type: ignore[dict-item]
-            "code": str(getattr(msg, "code", "")) or None,  # type: ignore[dict-item]
+        data: dict[str, Any] = parsed or {
+            "src": self._extract_msg_addr(msg, "src", "addr1"),
+            "dst": self._extract_msg_addr(msg, "dst", "addr2"),
+            "verb": str(getattr(msg, "verb", "")) or None,
+            "code": str(getattr(msg, "code", "")) or None,
         }
-        data["payload"] = str(payload) if payload is not None else None  # type: ignore[assignment]
+        data["payload"] = str(payload) if payload is not None else None
 
         if "frame" not in data:
             frame = self._frame_from_dict(data)
@@ -215,6 +290,27 @@ class RamsesMessageStream:
             data["dtm"] = dtm
 
         self._notify_subscribers(data)
+
+        # Fire on HA event bus so frontend components (e.g. the HVAC Fan
+        # Card's message broker) can receive real-time message data via
+        # WebSocket subscription.
+        #
+        # Version-aware logic:
+        # - ramses_cc >= 0.55.6 (_ramses_cc_fires_events=False): ramses_cc
+        #   no longer fires ramses_cc_message events, so we must fire them
+        #   here for the frontend.  The _from_msg_handler marker lets
+        #   _handle_ramses_cc_message skip this event to avoid duplicates.
+        # - ramses_cc < 0.55.6 (_ramses_cc_fires_events=True): ramses_cc
+        #   fires these events itself (when MESSAGE_EVENTS is enabled), so
+        #   we skip firing to avoid duplicates.  If MESSAGE_EVENTS is not
+        #   enabled, the frontend falls back to entity states.
+        # - Unknown (None): fire for safety until version is determined.
+        if self._ramses_cc_fires_events is not True:
+            try:
+                data["_from_msg_handler"] = True
+                self._hass.bus.async_fire("ramses_cc_message", data)
+            except Exception:
+                pass
 
 
 def get_ramses_message_stream(hass: HomeAssistant) -> RamsesMessageStream:
