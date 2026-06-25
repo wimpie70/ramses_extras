@@ -73,6 +73,9 @@ export class HvacFanCardHandlers {
      */
     static extract31DAData(payload) {
         const toHumidityPercent = (value) => {
+            if (value === null || value === undefined || value === '') {
+                return null;
+            }
             const humidity = Number(value);
             if (!Number.isFinite(humidity)) {
                 return null;
@@ -132,15 +135,47 @@ export class HvacFanCardHandlers {
      * Extract relevant data from 10D0 message payload
      */
     static extract10D0Data(payload) {
+        const toNumberOrNull = (value) => {
+            if (value === null || value === undefined || value === '') {
+                return null;
+            }
+            const numberValue = Number(value);
+            return Number.isFinite(numberValue) ? numberValue : null;
+        };
+
+        const firstNumeric = (...values) => {
+            for (const value of values) {
+                const parsed = toNumberOrNull(value);
+                if (parsed !== null) {
+                    return parsed;
+                }
+            }
+            return null;
+        };
+
         return {
             hvac_id: payload.hvac_id,
 
             // Filter information (if available)
-            filter_change_required: payload.filter_change_required || false,
-            days_remaining: payload.days_remaining || null,
-            days_lifetime: payload.days_lifetime || null,
-            percent_remaining: payload.percent_remaining || null,
-            maintenance_required: payload.maintenance_required || false,
+            filter_change_required: Boolean(
+                payload.filter_change_required ?? payload.filter_replace_required
+            ),
+            // RF payload field naming varies by version.
+            days_remaining: firstNumeric(
+                payload.days_remaining,
+                payload.filter_remaining,
+                payload.filter_days_remaining
+            ),
+            days_lifetime: firstNumeric(
+                payload.days_lifetime,
+                payload.filter_days_lifetime,
+                payload.filter_lifetime_days
+            ),
+            percent_remaining: firstNumeric(
+                payload.percent_remaining,
+                payload.filter_percent_remaining
+            ),
+            maintenance_required: Boolean(payload.maintenance_required),
 
             timestamp: new Date().toISOString(),
             source: '10D0_message'

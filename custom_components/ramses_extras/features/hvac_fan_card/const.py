@@ -93,6 +93,8 @@ FEATURE_DEFINITION = {
         "fan_mode_entity": "sensor.{device_id}_fan_mode",
         "supply_flow_entity": "sensor.{device_id}_supply_flow",
         "exhaust_flow_entity": "sensor.{device_id}_exhaust_flow",
+        # Filter lifetime (days)
+        "filter_remaining_entity": "sensor.{device_id}_filter_remaining",
         # CO2 sensor (ramses_cc integration)
         "co2_entity": "sensor.{device_id}_co2_level",
         # Transport / connection state

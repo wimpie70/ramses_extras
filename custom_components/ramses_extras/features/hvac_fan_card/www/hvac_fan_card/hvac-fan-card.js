@@ -314,7 +314,9 @@ class HvacFanCard extends RamsesBaseCard {
       dataSource31DA: da31Data.source === '31DA_message',
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
       filterDaysRemaining:
-        da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
+        Number.isFinite(da10D0Data.days_remaining)
+          ? da10D0Data.days_remaining
+          : this.getEntityStateAsNumber(config.filter_remaining_entity, null),
 
       // Transport connection status
       transportAvailable,
@@ -1226,7 +1228,9 @@ class HvacFanCard extends RamsesBaseCard {
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
       // Filter days remaining from 10D0 data
       filterDaysRemaining:
-        da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
+        Number.isFinite(da10D0Data.days_remaining)
+          ? da10D0Data.days_remaining
+          : this.getEntityStateAsNumber(config.filter_remaining_entity, null),
       // efficiency: 75   // Remove hardcoded value - let template calculate it
 
       // Transport connection status
