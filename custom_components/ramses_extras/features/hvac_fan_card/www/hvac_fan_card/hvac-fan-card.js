@@ -230,13 +230,10 @@ class HvacFanCard extends RamsesBaseCard {
     const transportState = this.getEntityState(transportStateEntity)
       || this.getEntityState(legacyTransportStateEntity);
     const transportAvailable = transportState?.state === 'on';
-    const legacyFilterRemainingEntity = `sensor.${config.device_id.replace(/:/g, '_')}_filter_remaining`;
-    const filterDaysRemaining = Number.isFinite(da10D0Data.days_remaining)
-      ? da10D0Data.days_remaining
-      : this.getEntityStateAsNumber(
-        config.filter_remaining_entity || legacyFilterRemainingEntity,
-        null
-      );
+    const filterDaysRemaining = this._getFilterDaysRemaining(
+      da10D0Data.days_remaining,
+      config
+    );
 
     // Temperature data - prefer 31DA real-time, fall back to entity states
     const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp :
@@ -1188,13 +1185,10 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Get 10D0 data for filter information
     const da10D0Data = this.get10D0Data();
-    const legacyFilterRemainingEntity = `sensor.${config.device_id.replace(/:/g, '_')}_filter_remaining`;
-    const filterDaysRemaining = Number.isFinite(da10D0Data.days_remaining)
-      ? da10D0Data.days_remaining
-      : this.getEntityStateAsNumber(
-        config.filter_remaining_entity || legacyFilterRemainingEntity,
-        null
-      );
+    const filterDaysRemaining = this._getFilterDaysRemaining(
+      da10D0Data.days_remaining,
+      config
+    );
 
     // Fan data
     const rawData = {
@@ -1299,6 +1293,29 @@ class HvacFanCard extends RamsesBaseCard {
     // Use the shared validation helper
     // eslint-disable-next-line no-unused-vars
     const validationReport = getEntityValidationReport(hass, config);
+  }
+
+  _getFilterDaysRemaining(messageDaysRemaining, config) {
+    if (Number.isFinite(messageDaysRemaining)) {
+      return messageDaysRemaining;
+    }
+
+    const deviceIdUnderscore = config.device_id.replace(/:/g, '_');
+    const candidates = [
+      config.filter_remaining_entity,
+      this._entityMappings?.filter_remaining_entity,
+      `sensor.${deviceIdUnderscore}_filter_remaining`,
+      `sensor.fan_${deviceIdUnderscore}_filter_remaining`,
+    ];
+
+    for (const entityId of candidates) {
+      const value = this.getEntityStateAsNumber(entityId, null);
+      if (Number.isFinite(value)) {
+        return value;
+      }
+    }
+
+    return null;
   }
 
   // Check if dehumidify entities are available
