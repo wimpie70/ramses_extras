@@ -547,6 +547,25 @@ class HvacFanCard extends RamsesBaseCard {
           }
         });
 
+        // Keep filter remaining mapped so shouldUpdate() can react to state changes,
+        // even when resolver/backends do not provide this key.
+        const deviceIdUnderscore = this._config.device_id.replace(/:/g, '_');
+        const fallbackFilterRemainingEntities = [
+          updatedConfig.filter_remaining_entity,
+          `sensor.${deviceIdUnderscore}_filter_remaining`,
+          `sensor.fan_${deviceIdUnderscore}_filter_remaining`,
+        ].filter(Boolean);
+        const resolvedFilterRemainingEntity = fallbackFilterRemainingEntities.find(
+          (entityId) => this._hass?.states?.[entityId] !== undefined
+        ) || fallbackFilterRemainingEntities[0] || null;
+        if (resolvedFilterRemainingEntity) {
+          updatedConfig.filter_remaining_entity = resolvedFilterRemainingEntity;
+          this._cachedEntities = {
+            ...(this._cachedEntities || {}),
+            filter_remaining_entity: resolvedFilterRemainingEntity,
+          };
+        }
+
         this._config = updatedConfig;
         this._entityMappings = { ...(this._entityMappings || {}), ...result.mappings };
       }
