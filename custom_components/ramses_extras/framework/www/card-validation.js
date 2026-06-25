@@ -210,17 +210,24 @@ export function validateTempControlEntities(hass, config) {
   const missingEntities = [];
   const availableEntities = [];
 
-  Object.entries(tempControlEntities).forEach(([name, entityId]) => {
-    if (entityId) {
-      if (entityExists(hass, entityId)) {
-        availableEntities.push(name);
-      } else {
-        missingEntities.push(name);
-      }
+  // Only check entities that have a config value set
+  const configuredEntities = Object.entries(tempControlEntities).filter(
+    ([, entityId]) => entityId
+  );
+
+  configuredEntities.forEach(([name, entityId]) => {
+    if (entityExists(hass, entityId)) {
+      availableEntities.push(name);
+    } else {
+      missingEntities.push(name);
     }
   });
 
-  const entitiesAvailable = availableEntities.length === Object.keys(tempControlEntities).length;
+  // Available if the switch entity (primary control) exists,
+  // even if diagnostic entities aren't created yet.
+  const switchExists = config.temp_control_entity
+    && entityExists(hass, config.temp_control_entity);
+  const entitiesAvailable = configuredEntities.length > 0 && switchExists;
 
   return {
     available: entitiesAvailable,
