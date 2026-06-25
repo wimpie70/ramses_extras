@@ -254,15 +254,18 @@ export const CARD_STYLE = `
   z-index: 20;
   background: var(--ha-card-background, var(--card-background-color));
   border: 1px solid var(--divider-color);
-  padding: 6px 16px;
+  padding: 6px 10px;
   border-radius: 15px;
-  min-width: 180px;
+  width: min(220px, calc(100% - 140px));
+  min-width: 130px;
 }
 
 .r-xtrs-hvac-fan-stats-top {
   width: 100%;
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
   border-bottom: 1px solid var(--divider-color);
   padding-bottom: 2px;
 }
@@ -271,7 +274,7 @@ export const CARD_STYLE = `
   width: 100%;
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: 10px;
 }
 
 /* ====== CONNECTION STATUS ====== */
@@ -284,7 +287,7 @@ export const CARD_STYLE = `
   padding: 2px 6px;
   border-radius: 8px;
   transition: all 0.3s ease;
-  margin-left: 8px;
+  margin-left: 0;
 }
 
 .r-xtrs-hvac-fan-connection-status.connected {
@@ -875,6 +878,21 @@ export const CARD_STYLE = `
 
 /* ====== RESPONSIVE ====== */
 @media (max-width: 480px) {
+  .r-xtrs-hvac-fan-bottom-stats {
+    width: min(190px, calc(100% - 110px));
+    min-width: 110px;
+    padding: 4px 8px;
+  }
+  .r-xtrs-hvac-fan-fanmode {
+    font-size: 11px;
+  }
+  .r-xtrs-hvac-fan-connection-status {
+    padding: 2px 4px;
+    gap: 2px;
+  }
+  .r-xtrs-hvac-fan-connection-text {
+    font-size: 8px;
+  }
   .param-item {
     flex-direction: column;
     align-items: flex-start;
@@ -885,5 +903,35 @@ export const CARD_STYLE = `
     justify-content: space-between;
   }
   .param-input { flex: 1; }
+}
+
+@media (max-width: 420px) {
+  .r-xtrs-hvac-fan-bottom-stats {
+    width: min(160px, calc(100% - 90px));
+    min-width: 96px;
+    padding: 3px 6px;
+  }
+  .r-xtrs-hvac-fan-stats-top {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+  }
+  .r-xtrs-hvac-fan-stats-bottom {
+    gap: 6px;
+  }
+  .r-xtrs-hvac-fan-speed-display {
+    font-size: 11px;
+  }
+  .r-xtrs-hvac-fan-stat-item span {
+    font-size: 10px;
+  }
+  .r-xtrs-hvac-fan-connection-status {
+    max-width: 100%;
+    padding: 2px 3px;
+  }
+  .r-xtrs-hvac-fan-connection-text {
+    font-size: 7px;
+    letter-spacing: 0.2px;
+  }
 }
 `;
