@@ -242,10 +242,12 @@ class HvacFanCard extends RamsesBaseCard {
       this.getEntityStateAsNumber(config.exhaust_temp_entity, null);
 
     // Humidity data - prefer 31DA real-time, fall back to entity states
-    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity :
-      this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
-    const outdoorHumidity = da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity :
-      this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
+    const indoorHumidity = Number.isFinite(da31Data.indoor_humidity)
+      ? da31Data.indoor_humidity
+      : this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
+    const outdoorHumidity = Number.isFinite(da31Data.outdoor_humidity)
+      ? da31Data.outdoor_humidity
+      : this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
     const indoorAbsHumidity = this.getEntityStateAsNumber(
@@ -1147,10 +1149,12 @@ class HvacFanCard extends RamsesBaseCard {
       this.getEntityStateAsNumber(config.exhaust_temp_entity, null);
 
     // Humidity data - prefer 31DA real-time, fall back to entity states
-    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity :
-      this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
-    const outdoorHumidity = da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity :
-      this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
+    const indoorHumidity = Number.isFinite(da31Data.indoor_humidity)
+      ? da31Data.indoor_humidity
+      : this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
+    const outdoorHumidity = Number.isFinite(da31Data.outdoor_humidity)
+      ? da31Data.outdoor_humidity
+      : this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
     const indoorAbsHumidity = this.getEntityStateAsNumber(

@@ -72,6 +72,20 @@ export class HvacFanCardHandlers {
      * Extract relevant HVAC data from 31DA message payload
      */
     static extract31DAData(payload) {
+        const toHumidityPercent = (value) => {
+            const humidity = Number(value);
+            if (!Number.isFinite(humidity)) {
+                return null;
+            }
+            if (humidity >= 0 && humidity <= 1) {
+                return Math.round(humidity * 100);
+            }
+            if (humidity >= 0 && humidity <= 100) {
+                return Math.round(humidity);
+            }
+            return null;
+        };
+
         const result = {
             // Basic HVAC identification
             hvac_id: payload.hvac_id,
@@ -83,10 +97,8 @@ export class HvacFanCardHandlers {
             exhaust_temp: payload.exhaust_temp,
 
             // Humidity data (convert from 0-1 range to percentage)
-            indoor_humidity: payload.indoor_humidity !== null ?
-                Math.round(payload.indoor_humidity * 100) : null,
-            outdoor_humidity: payload.outdoor_humidity !== null ?
-                Math.round(payload.outdoor_humidity * 100) : null,
+            indoor_humidity: toHumidityPercent(payload.indoor_humidity),
+            outdoor_humidity: toHumidityPercent(payload.outdoor_humidity),
 
             // Fan data
             fan_info: payload.fan_info,
