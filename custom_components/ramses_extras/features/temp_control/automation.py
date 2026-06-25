@@ -13,6 +13,7 @@ conditions allow it.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections.abc import Mapping
 from dataclasses import asdict
@@ -42,6 +43,15 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class TempControlAutomationManager(ExtrasBaseAutomation):
+    @staticmethod
+    def _calc_dewpoint_c(temp_c: float, rh_percent: float) -> float | None:
+        if not (0.0 < rh_percent <= 100.0):
+            return None
+        a = 17.62
+        b = 243.12
+        gamma = (a * temp_c) / (b + temp_c) + math.log(rh_percent / 100.0)
+        return (b * gamma) / (a - gamma)
+
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
         super().__init__(
             hass=hass,
@@ -326,6 +336,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         outdoor_temp = float(entity_states["outdoor_temp"])
         supply_temp = float(entity_states["supply_temp"])
         comfort_temp = float(entity_states["comfort_temp"])
+        indoor_rh = float(entity_states["indoor_rh"])
 
         # Per-area evaluation: if sensor_control areas are configured with
         # temperature entities, evaluate each area separately and aggregate.
@@ -381,6 +392,15 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
             # Clear any stale zone demands when running in single-target mode
             await self._clear_all_zone_demands(device_id)
+
+        if desired_mode == "cooling" and getattr(
+            settings, "dewpoint_guard_enabled", False
+        ):
+            dewpoint = self._calc_dewpoint_c(indoor_temp, indoor_rh)
+            margin = float(getattr(settings, "dewpoint_margin_c", 1.0))
+            if dewpoint is not None and supply_temp < dewpoint + margin:
+                desired_mode = "idle"
+                await self._clear_all_zone_demands(device_id)
 
         # Enforce minimum interval between bypass mode changes
         last_change = self._last_bypass_change.get(device_id, 0.0)

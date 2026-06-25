@@ -31,6 +31,8 @@ def make_settings(**overrides) -> TempControlSettings:
         "min_outdoor_temp": 10.0,
         "min_bypass_mode_interval_seconds": 180,
         "default_desired_speed": "high",
+        "dewpoint_guard_enabled": False,
+        "dewpoint_margin_c": 1.0,
     }
     defaults.update(overrides)
     return TempControlSettings(**defaults)
