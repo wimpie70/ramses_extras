@@ -35,7 +35,7 @@ export function createTopSection(data, t) {
     balanceTriggersHtml, co2ZonesHtml,
     indoorHumidityClass, co2LevelClass,
     transportAvailable, isCalibrating,
-    tempControlStatus
+    tempControlHtml
   } = data;
   const safeTimerMinutesRemaining = Number.isFinite(timerMinutesRemaining)
     ? timerMinutesRemaining
@@ -107,12 +107,10 @@ export function createTopSection(data, t) {
           </div>
           <div class="r-xtrs-hvac-fan-info-stack">
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
-            ${tempControlStatus ? `
-            <div id="tempControlStatus" class="${tempControlStatus.isCoolingOrHeating ? 'r-xtrs-temp-trigger' : ''}">🌡️ ${tr('controls.temp_control', 'Temp control')}: ${tr(`status.temp_control_${tempControlStatus.state}`, tempControlStatus.state)}${tempControlStatus.isCoolingOrHeating ? ' (controlling bypass)' : ''}</div>
-            ` : ''}
           </div>
 
           <!-- Balance Triggers & CO2 Zones Section (RIGHT panel) -->
+          ${tempControlHtml || ''}
           ${balanceTriggersHtml || ''}
           ${co2ZonesHtml || ''}
         </div>

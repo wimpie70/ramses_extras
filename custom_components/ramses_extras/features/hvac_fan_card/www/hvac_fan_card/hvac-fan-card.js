@@ -343,8 +343,10 @@ class HvacFanCard extends RamsesBaseCard {
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
+    // Add temperature control status HTML to template data
+    templateData.tempControlHtml = this._createTempControlSection();
     // Add balance triggers HTML to template data
-    templateData.balanceTriggersHtml = this._createBalanceTriggersSection();
+    templateData.balanceTriggersHtml = this._createBalanceTriggersSection(!templateData.tempControlHtml);
     // Add CO2 zones HTML to template data
     templateData.co2ZonesHtml = co2ControlEntitiesAvailable ? this._createCO2ZonesSection() : '';
 
@@ -868,7 +870,51 @@ class HvacFanCard extends RamsesBaseCard {
    * Create balance status section for main card.
    * @returns {string} HTML string for balance status section.
    */
-  _createBalanceTriggersSection() {
+  _createTempControlSection() {
+    const config = this.config || {};
+    if (!config.temp_control_entity) {
+      return '';
+    }
+
+    const switchState = this.getEntityState(config.temp_control_entity);
+    if (!switchState) {
+      return '';
+    }
+
+    const statusEntity = this.getEntityState(config.temp_control_status_entity);
+    const activeEntity = this.getEntityState(config.temp_control_active_entity);
+
+    const statusState = statusEntity?.state || (switchState.state === 'on' ? 'idle' : 'disabled');
+    const normalizedStatus = typeof statusState === 'string' ? statusState.trim().toLowerCase() : '';
+
+    const isActive = activeEntity?.state === 'on' || ['cooling', 'heating_retention'].includes(normalizedStatus);
+
+    let tempStatus = '';
+    if (switchState.state !== 'on' || normalizedStatus === 'disabled') {
+      tempStatus = 'Temp → Off';
+    } else if (normalizedStatus === 'idle') {
+      tempStatus = 'Temp → On + Idle';
+    } else if (normalizedStatus === 'cooling') {
+      tempStatus = 'Temp → On + Cooling';
+    } else if (normalizedStatus === 'heating_retention') {
+      tempStatus = 'Temp → On + Retain Heat';
+    } else {
+      tempStatus = `Temp → On + ${statusState}`;
+    }
+
+    return `
+      <div class="r-xtrs-hvac-fan-balance-divider"></div>
+      <div class="r-xtrs-hvac-fan-balance-triggers">
+        <div class="r-xtrs-hvac-fan-balance-info">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${isActive ? 'active-temp' : ''}">
+            <span>🌡️ ${tempStatus}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _createBalanceTriggersSection(includeDivider = true) {
     const config = this.config || {};
     const dehumMode = this.getEntityState(config.dehum_mode_entity)?.state || 'off';
     const dehumActive = this.getEntityState(config.dehum_active_entity)?.state || 'off';
@@ -888,7 +934,7 @@ class HvacFanCard extends RamsesBaseCard {
     }
 
     return `
-      <div class="r-xtrs-hvac-fan-balance-divider"></div>
+      ${includeDivider ? '<div class="r-xtrs-hvac-fan-balance-divider"></div>' : ''}
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
           <div class="r-xtrs-hvac-fan-balance-info-row ${balanceTriggered ? 'active-humidity' : ''}">
@@ -1284,8 +1330,11 @@ class HvacFanCard extends RamsesBaseCard {
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
+    // Add temperature control status HTML to template data
+    templateData.tempControlHtml = this._createTempControlSection();
+
     // Add balance triggers HTML to template data
-    templateData.balanceTriggersHtml = this._createBalanceTriggersSection();
+    templateData.balanceTriggersHtml = this._createBalanceTriggersSection(!templateData.tempControlHtml);
 
     // Generate HTML using template functions
     const cardHtml = [

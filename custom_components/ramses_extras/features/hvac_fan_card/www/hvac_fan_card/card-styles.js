@@ -443,6 +443,12 @@ export const CARD_STYLE = `
   font-weight: 600;
 }
 
+.r-xtrs-hvac-fan-balance-info-row.active-temp {
+  color: var(--info-color, #2196F3);
+  text-shadow: 0 0 4px var(--info-color, #2196F3);
+  font-weight: 600;
+}
+
 .r-xtrs-hvac-fan-balance-divider {
   height: 1px;
   background: var(--divider-color);
