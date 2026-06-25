@@ -38,6 +38,8 @@ class RemoteBindingRegistry:
         self._last_seen: dict[str, datetime] = {}
         self._last_activity_by_fan: dict[str, dict[str, Any]] = {}
         self._unmatched_traffic: list[dict[str, Any]] = []
+        self._cached_config_manager: ExtrasConfigManager | None = None
+        self._cached_config_entry_id: str | None = None
 
     def record_remote_activity(
         self,
@@ -135,7 +137,7 @@ class RemoteBindingRegistry:
         }
 
     def _get_config_manager(self) -> ExtrasConfigManager | None:
-        """Get the default feature's config manager.
+        """Get the default feature's config manager, cached by entry identity.
 
         :return: Config manager or None if not available
         """
@@ -143,6 +145,13 @@ class RemoteBindingRegistry:
         config_entry = domain_data.get("config_entry")
         if config_entry is None:
             return None
+
+        entry_id = getattr(config_entry, "entry_id", None)
+        if (
+            self._cached_config_manager is not None
+            and entry_id == self._cached_config_entry_id
+        ):
+            return self._cached_config_manager
 
         # Import here to avoid circular imports
         from ...framework.helpers.config.core import ExtrasConfigManager
@@ -156,6 +165,9 @@ class RemoteBindingRegistry:
             manager._config.update(config_entry.data)
         if config_entry.options:
             manager._config.update(config_entry.options)
+
+        self._cached_config_manager = manager
+        self._cached_config_entry_id = entry_id
         return manager
 
     def get_binding_for_fan(self, device_id: str) -> dict[str, Any] | None:

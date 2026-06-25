@@ -76,14 +76,14 @@ class ExtrasConfigManager:
         self._default_config = default_config.copy()
         self._config: dict[str, Any] = {}
 
-        _LOGGER.info(f"Initialized {feature_id} configuration manager")
+        _LOGGER.debug(f"Initialized {feature_id} configuration manager")
 
     async def async_load(self) -> None:
         """Load configuration from config entry and defaults.
 
         Merges default configuration with user configuration from config entry.
         """
-        _LOGGER.info(f"Loading {self.feature_id} configuration")
+        _LOGGER.debug(f"Loading {self.feature_id} configuration")
 
         try:
             # Start with default config
