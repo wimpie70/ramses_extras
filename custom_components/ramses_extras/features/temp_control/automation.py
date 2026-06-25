@@ -57,7 +57,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             hass=hass,
             feature_id=FEATURE_ID,
             binary_sensor=None,
-            debounce_seconds=0,
+            debounce_seconds=30,
         )
 
         self.config_entry = config_entry
@@ -206,6 +206,19 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                             {"entity_id": switch_id},
                         )
                         return
+
+        # Bypass debounce for user-initiated switch toggles — these should
+        # be processed immediately, not delayed by sensor-fluctuation debounce.
+        if entity_id.startswith("switch.temp_control_"):
+            device_id = self._extract_device_id(entity_id)
+            if device_id:
+                device_id = device_id.replace("_", ":")
+                try:
+                    entity_states = await self._get_device_entity_states(device_id)
+                except ValueError:
+                    return
+                await self._process_automation_logic(device_id, entity_states)
+                return
 
         await super()._async_handle_state_change(entity_id, old_state, new_state)
 
