@@ -482,6 +482,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             Platform.SWITCH,
             Platform.BINARY_SENSOR,
             Platform.NUMBER,
+            Platform.SELECT,
         ],
     )
 

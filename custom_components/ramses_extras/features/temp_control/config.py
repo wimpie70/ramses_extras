@@ -23,6 +23,8 @@ class TempControlSettings:
     cooling_delta_deactivate: float
     min_outdoor_temp: float
     min_bypass_mode_interval_seconds: int
+    dewpoint_guard_enabled: bool
+    dewpoint_margin_c: float
     default_desired_speed: str = "high"
 
 
@@ -53,6 +55,14 @@ class TempControlConfig:
             except TypeError, ValueError:
                 return int(default)
 
+        def _get_bool(key: str, default: bool) -> bool:
+            raw = section.get(key, TEMP_CONTROL_DEFAULTS.get(key, default))
+            if isinstance(raw, bool):
+                return raw
+            if raw is None:
+                return bool(default)
+            return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
         return TempControlSettings(
             comfort_delta_activate=_get_float("comfort_delta_activate", 1.0),
             comfort_delta_deactivate=_get_float("comfort_delta_deactivate", 0.5),
@@ -62,6 +72,8 @@ class TempControlConfig:
             min_bypass_mode_interval_seconds=_get_int(
                 "min_bypass_mode_interval_seconds", 180
             ),
+            dewpoint_guard_enabled=_get_bool("dewpoint_guard_enabled", False),
+            dewpoint_margin_c=_get_float("dewpoint_margin_c", 1.0),
             default_desired_speed=str(section.get("default_desired_speed", "high")),
         )
 

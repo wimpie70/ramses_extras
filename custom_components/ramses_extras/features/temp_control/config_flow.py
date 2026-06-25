@@ -41,6 +41,8 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
             section.get("min_bypass_mode_interval_seconds", 180)
         ),
         "default_desired_speed": str(section.get("default_desired_speed", "high")),
+        "dewpoint_guard_enabled": bool(section.get("dewpoint_guard_enabled", False)),
+        "dewpoint_margin_c": float(section.get("dewpoint_margin_c", 1.0)),
     }
 
 
@@ -129,6 +131,14 @@ async def async_step_temp_control_config(
                 user_input["min_bypass_mode_interval_seconds"]
             ),
             "default_desired_speed": str(user_input["default_desired_speed"]),
+            "dewpoint_guard_enabled": bool(
+                user_input.get(
+                    "dewpoint_guard_enabled", defaults["dewpoint_guard_enabled"]
+                )
+            ),
+            "dewpoint_margin_c": float(
+                user_input.get("dewpoint_margin_c", defaults["dewpoint_margin_c"])
+            ),
         }
         _persist_temp_control_settings(flow, settings)
 
@@ -182,6 +192,12 @@ async def async_step_temp_control_config(
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Required(
+                "dewpoint_guard_enabled", default=defaults["dewpoint_guard_enabled"]
+            ): bool,
+            vol.Required(
+                "dewpoint_margin_c", default=defaults["dewpoint_margin_c"]
+            ): vol.Coerce(float),
         }
     )
 

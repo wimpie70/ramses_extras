@@ -8,6 +8,7 @@
 > | §5 Entities & data model (switch/select/binary_sensor/sensor) | ✅ Done |
 > | §6 Configuration keys (config.py) | ✅ Done |
 > | §7 Automation logic (state machine, manual override, speed gating) | ✅ Done (runtime validated) |
+> | §7.7 Dewpoint guard (condensation protection) | ✅ Done (optional, opt-in) |
 > | §8.1 Register in `AVAILABLE_FEATURES` | ✅ Done |
 > | §8.2 Main options-menu entry + translations | ✅ Done |
 > | §8.3 Feature-specific config flow | ✅ Done (includes default_desired_speed selector) |
@@ -150,6 +151,8 @@ Thermal logic (hysteresis):
 Safety:
 
 - `min_outdoor_temp`: float (°C) — default `10.0` — do not force bypass open if outdoor air is too cold
+- `dewpoint_guard_enabled`: bool — default `False` — when enabled, blocks cooling if condensation risk is high (see §7.7)
+- `dewpoint_margin_c`: float (°C) — default `1.0` — safety margin added to the indoor dew point for the condensation guard
 
 Stability:
 
@@ -230,6 +233,46 @@ Backend behavior when temp_control is disabled:
 - Clear all zone demands (DemandSource.OTHER).
 - Return bypass to `auto`.
 
+### 7.7 Dewpoint guard (condensation protection)
+
+When `dewpoint_guard_enabled` is `True`, temp_control adds a condensation safety check before forcing bypass open for cooling.
+
+**Physical rationale:**
+
+- Bypass open → cold outdoor air flows through the supply ducts.
+- Ducts and internal surfaces cool down towards the supply air temperature.
+- Warm, humid indoor air contacts those cold surfaces.
+- If `supply_temp < indoor_dewpoint + margin`, condensation forms on cold ducts/surfaces.
+
+**Computation:**
+
+- Indoor dew point is calculated from `indoor_temp` + `indoor_rh` using the Magnus formula:
+
+  ```
+  a = 17.62, b = 243.12
+  gamma = (a * T) / (b + T) + ln(RH / 100)
+  dewpoint = (b * gamma) / (a - gamma)
+  ```
+
+- If `supply_temp < indoor_dewpoint + dewpoint_margin_c`, the desired mode is forced back to `idle` (bypass auto) and zone demands are cleared.
+
+**Why indoor (not outdoor) dewpoint:**
+
+- The condensation risk is indoor moisture condensing on cold supply surfaces.
+- Outdoor air at 6°C/100% RH has dewpoint 6°C, but when it enters a 22°C house it warms up and RH drops to ~30% — that air itself won't cause condensation.
+- The relevant comparison is: how cold do surfaces get (`supply_temp`) vs. how much moisture is already in the house (`indoor_dewpoint`).
+
+**Important note on `supply_temp`:**
+
+- The guard relies on `supply_temp` reflecting the actual supply air temperature after bypass open.
+- When bypass is open (no heat recovery), supply_temp should approach outdoor_temp.
+- If `supply_temp` is not available or not updating (e.g. sensor unavailable), the guard may not trigger as expected. Ensure `sensor.<device>_supply_temp` is populated.
+
+**Configuration:**
+
+- `dewpoint_guard_enabled`: bool (default `False`) — opt-in.
+- `dewpoint_margin_c`: float °C (default `1.0`) — conservative starting point. Increase if the guard blocks cooling too often; decrease if condensation still occurs.
+
 
 ## 8) Options flow / config flow
 
@@ -300,7 +343,7 @@ Added to `features/hvac_fan_card/const.py` → `FEATURE_DEFINITION["entity_mappi
 ### Backend tests (58 tests)
 
 - **Decision logic:** entering/exiting cooling, heating_retention, hysteresis
-- **Safety:** min_outdoor_temp blocks cooling
+- **Safety:** min_outdoor_temp blocks cooling, dewpoint guard blocks cooling on condensation risk
 - **Stability:** min bypass mode interval prevents command spam
 - **Speed demand:** set during cooling, cleared in idle/heating_retention/disabled
 - **Manual override:** skipped when `is_manual_override_active`, skipped when extras control disabled
@@ -440,3 +483,17 @@ Goal: **one place computes the final actuation plan** (fan speed + bypass mode),
 - The original `_allow_speed_increase` method checked indoor RH against min/max thresholds and blocked speed increases when humidity was out of range.
 - Problem: if humidity_control is not enabled, the min/max RH values have no meaning, and the gate blocked cooling speed increases unnecessarily.
 - Fix: removed per-feature gating entirely. Temp control now always sets its demand during cooling, and the FanSpeedArbiter resolves conflicts.
+
+### 15.5 Dewpoint guard added (condensation protection)
+
+- Added optional `dewpoint_guard_enabled` + `dewpoint_margin_c` settings.
+- When enabled, cooling (bypass open) is blocked if `supply_temp < indoor_dewpoint + margin`.
+- Indoor dewpoint is computed from `indoor_temp` + `indoor_rh` via the Magnus formula.
+- Defaults to off (opt-in) to preserve existing behavior for users who don't need it.
+- Note: the guard depends on `supply_temp` being accurate. If the supply temp sensor is unavailable or not updating, the guard may not trigger correctly.
+
+### 15.6 Select platform not unloaded on integration reload
+
+- `async_unload_entry` was unloading only 4 of 5 platforms (sensor, switch, binary_sensor, number) — `Platform.SELECT` was missing.
+- On reload (options change, manual reload), the select platform was never torn down, causing `ValueError: Config entry ... for ramses_extras.select has already been setup!`.
+- Fix: added `Platform.SELECT` to the `async_unload_platforms` call so unload and setup are symmetric.

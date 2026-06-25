@@ -79,6 +79,8 @@ TEMP_CONTROL_DEFAULTS: dict[str, Any] = {
     "min_outdoor_temp": 10.0,
     "min_bypass_mode_interval_seconds": 180,
     "default_desired_speed": "high",
+    "dewpoint_guard_enabled": False,
+    "dewpoint_margin_c": 1.0,
 }
 
 FEATURE_DEFINITION: dict[str, Any] = {

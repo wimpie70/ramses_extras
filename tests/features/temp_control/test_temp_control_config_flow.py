@@ -58,12 +58,15 @@ class TestGetSectionDefaults:
         assert defaults["min_outdoor_temp"] == 10.0
         assert defaults["min_bypass_mode_interval_seconds"] == 180
         assert defaults["default_desired_speed"] == "high"
+        assert defaults["dewpoint_guard_enabled"] is False
+        assert defaults["dewpoint_margin_c"] == 1.0
 
     def test_defaults_from_legacy_store(self, mock_flow):
         mock_flow._config_entry.options = {
             "temp_control": {
                 "comfort_delta_activate": 2.0,
                 "default_desired_speed": "low",
+                "dewpoint_guard_enabled": True,
             }
         }
 
@@ -71,6 +74,7 @@ class TestGetSectionDefaults:
 
         assert defaults["comfort_delta_activate"] == 2.0
         assert defaults["default_desired_speed"] == "low"
+        assert defaults["dewpoint_guard_enabled"] is True
 
     def test_defaults_from_canonical_store(self, mock_flow):
         mock_flow._config_entry.options = {
@@ -79,6 +83,7 @@ class TestGetSectionDefaults:
                     "temp_control": {
                         "min_outdoor_temp": 5.0,
                         "min_bypass_mode_interval_seconds": 300,
+                        "dewpoint_margin_c": 2.5,
                     }
                 }
             }
@@ -88,6 +93,7 @@ class TestGetSectionDefaults:
 
         assert defaults["min_outdoor_temp"] == 5.0
         assert defaults["min_bypass_mode_interval_seconds"] == 300
+        assert defaults["dewpoint_margin_c"] == 2.5
 
 
 class TestPersistTempControlSettings:
