@@ -152,6 +152,8 @@ class TransportStateBinarySensor(ExtrasBinarySensorEntity):
 
     def _on_transport_state_changed(self, available: bool) -> None:
         """Handle transport state changes."""
+        if self._is_on == available:
+            return
         self._is_on = available
         if available:
             _LOGGER.debug("Transport state for %s: Online", self._device_id)

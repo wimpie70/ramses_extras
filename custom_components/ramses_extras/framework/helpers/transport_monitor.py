@@ -141,7 +141,6 @@ class TransportMonitor:
 
     def _ensure_msg_handler(self, client: Any | None) -> None:
         if client is self._client:
-            _LOGGER.debug("_ensure_msg_handler: client unchanged, skipping")
             return
 
         if self._msg_handler_unsub:
@@ -222,9 +221,7 @@ class TransportMonitor:
                 "Device %s marked online - received reply",
                 device_id,
             )
-
-        # Always notify callbacks when device replies
-        await self._notify_device_state_changed(device_id, True)
+            await self._notify_device_state_changed(device_id, True)
 
     async def _notify_device_state_changed(self, device_id: str, online: bool) -> None:
         """Notify all callbacks for this device of state change."""
@@ -262,11 +259,6 @@ class TransportMonitor:
                 self._hass.async_create_task,
                 self._mark_device_online(normalized_device_id),
             )
-
-        _LOGGER.debug(
-            "Device reply received from %s, cancelled timeout and marked online",
-            normalized_device_id,
-        )
 
     async def start_monitoring(
         self, coordinator: RamsesCoordinator, hass: HomeAssistant
@@ -386,7 +378,6 @@ class TransportMonitor:
                 return
 
             src = data.get("src")
-            dst = data.get("dst")
 
             # Only process messages FROM devices we're monitoring, not TO them
             if isinstance(src, str) and ":" in src:
@@ -398,7 +389,6 @@ class TransportMonitor:
                 }
 
                 if normalized_src in tracked_device_ids:
-                    _LOGGER.debug("Message FROM %s (TO %s) - processing", src, dst)
                     self.update_device_message_received(src)
         except Exception as e:
             _LOGGER.error("Error handling ramses_cc_message event: %s", e)
@@ -417,17 +407,6 @@ class TransportMonitor:
             src = getattr(msg, "addr1", None)
             if src is None:
                 src = getattr(getattr(msg, "src", None), "id", None)
-            dst = getattr(msg, "addr2", None)
-            if dst is None:
-                dst = getattr(getattr(msg, "dst", None), "id", None)
-            code = getattr(msg, "code", None)
-
-            _LOGGER.debug(
-                "Transport monitor received message: src=%s dst=%s code=%s",
-                src,
-                dst,
-                code,
-            )
 
             if isinstance(src, str) and ":" in src:
                 normalized_src = src.replace("_", ":")
@@ -438,14 +417,7 @@ class TransportMonitor:
                 }
 
                 if normalized_src in tracked_device_ids:
-                    _LOGGER.debug("Message FROM %s (TO %s) - processing", src, dst)
                     self.update_device_message_received(src)
-                else:
-                    _LOGGER.debug(
-                        "Message FROM %s not in tracked devices: %s",
-                        normalized_src,
-                        tracked_device_ids,
-                    )
         except Exception as e:
             _LOGGER.error("Error handling ramses_cc client message: %s", e)
 

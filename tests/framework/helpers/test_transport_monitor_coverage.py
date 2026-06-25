@@ -233,13 +233,13 @@ class TestTransportMonitorCoverage:
 
     @pytest.mark.asyncio
     async def test__mark_device_online_already_online(self, monitor):
-        """Test _mark_device_online when already online."""
+        """Test _mark_device_online when already online does not re-notify."""
         monitor._device_states["32:123456"] = True
 
-        # Should still notify
+        # Should NOT notify when state hasn't changed (avoids per-packet spam)
         with patch.object(monitor, "_notify_device_state_changed") as mock_notify:
             await monitor._mark_device_online("32:123456")
-            mock_notify.assert_called_once_with("32:123456", True)
+            mock_notify.assert_not_called()
 
     @pytest.mark.asyncio
     async def test__notify_device_state_changed_callback_error(self, monitor):

@@ -321,12 +321,6 @@ class RamsesMessageStream:
             try:
                 data["_from_msg_handler"] = True
                 self._hass.bus.async_fire("ramses_cc_message", data)
-                _LOGGER.debug(
-                    "Fired ramses_cc_message event: code=%s src=%s verb=%s",
-                    data.get("code"),
-                    data.get("src"),
-                    data.get("verb"),
-                )
             except Exception as e:
                 _LOGGER.debug("Failed to fire ramses_cc_message event: %s", e)
 

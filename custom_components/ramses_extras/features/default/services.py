@@ -51,23 +51,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         Handles both raw hex payload strings and pre-parsed dict payloads.
         """
-        _LOGGER.info(
-            "Packet parser: code=%s (type=%s), payload=%s (type=%s)",
-            code,
-            type(code).__name__,
-            payload,
-            type(payload).__name__,
-        )
-
         if not isinstance(code, str):
-            _LOGGER.info("Parser rejected: code is not string")
             return None
 
         normalized_code = code.strip().upper()
 
         # Handle dict payloads (from ramses_cc parsed messages)
         if isinstance(payload, dict):
-            _LOGGER.info("Parser handling dict payload: %s", payload)
             # For 22F1/22F3, look for fan_mode or similar keys
             if normalized_code == "22F1":
                 fan_mode = (
@@ -89,7 +79,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     }
                     result = mode_by_name.get(fan_mode_s)
                     if result:
-                        _LOGGER.info("Parser found command from fan_mode: %s", result)
                         return result
 
                     mode_by_idx = {
@@ -101,7 +90,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     }
                     result = mode_by_idx.get(str(fan_mode).strip())
                     if result:
-                        _LOGGER.info("Parser found command from fan_mode: %s", result)
                         return result
 
                 if mode_idx is not None:
@@ -114,7 +102,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     }
                     result = mode_by_idx.get(str(mode_idx).strip())
                     if result:
-                        _LOGGER.info("Parser found command from _mode_idx: %s", result)
                         return result
                 # Also check for speed-related keys
                 speed = (
@@ -133,27 +120,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     }
                     result = speed_map.get(str(speed).lower())
                     if result:
-                        _LOGGER.info("Parser found command from speed: %s", result)
                         return result
-            _LOGGER.info("Parser: no command found in dict payload")
             return None
 
         # Handle list payloads (for fan codes like 12A0, 31DA)
         if isinstance(payload, list):
-            _LOGGER.info("Parser handling list payload: %s", payload)
-            # Try to find command in first dict of the list
             if payload and isinstance(payload[0], dict):
                 return _observed_command_from_packet(code, payload[0])
-            _LOGGER.info("Parser: no valid dict in list payload")
             return None
 
         # Handle string payloads (raw hex)
         if not isinstance(payload, str):
-            _LOGGER.info("Parser rejected: payload is not string or dict or list")
             return None
 
         normalized_payload = payload.strip().upper()
-        _LOGGER.info("Parser string payload: '%s'", normalized_payload)
 
         if normalized_payload.startswith("{") and normalized_payload.endswith("}"):
             try:
@@ -167,7 +147,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             # Payload format: 00 0X YY where X=speed (1-4), YY varies (04 or 07 seen)
             if len(normalized_payload) >= 6:
                 speed_byte = normalized_payload[3:5]
-                _LOGGER.info("Parser extracted speed_byte: '%s'", speed_byte)
                 result = {
                     "01": "fan_low",
                     "02": "fan_medium",
@@ -176,13 +155,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     "00": "fan_away",
                 }.get(speed_byte)
                 if result:
-                    _LOGGER.info("Parser found command from speed_byte: %s", result)
                     return result
-                _LOGGER.info("Parser: speed_byte '%s' not in map", speed_byte)
-            else:
-                _LOGGER.info(
-                    "Parser: payload too short (%s < 6)", len(normalized_payload)
-                )
             # Fallback to full payload match for backward compatibility
             result = {
                 "000107": "fan_low",
@@ -197,9 +170,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "000004": "fan_away",
             }.get(normalized_payload)
             if result:
-                _LOGGER.info("Parser found command from full match: %s", result)
                 return result
-            _LOGGER.info("Parser: no full payload match for '%s'", normalized_payload)
             return None
 
         if normalized_code == "22F3":
@@ -211,7 +182,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             if result:
                 return result
 
-        _LOGGER.info("Parser: unhandled code %s", normalized_code)
         return None
 
     async def _async_apply_observed_remote_command(
@@ -422,27 +392,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         payload: object,
         verb: object = None,
     ) -> None:
-        _LOGGER.info(
-            "REM packet received: src=%s dst=%s code=%s payload=%s verb=%s",
-            src,
-            dst,
-            code,
-            payload,
-            verb,
-        )
         if isinstance(verb, str) and verb.strip().upper() == "RQ":
-            _LOGGER.debug("Ignoring RQ (request) packet")
             return
 
         normalized_src = _normalize_id(src)
         normalized_dst = _normalize_id(dst)
         command = _observed_command_from_packet(code, payload)
-        _LOGGER.info(
-            "REM packet parsed: src=%s dst=%s command=%s",
-            normalized_src,
-            normalized_dst,
-            command,
-        )
         if not normalized_src or not normalized_dst or not command:
             return
 
