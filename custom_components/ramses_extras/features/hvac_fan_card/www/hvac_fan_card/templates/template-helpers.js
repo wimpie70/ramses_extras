@@ -88,7 +88,8 @@ export function createTemplateData(rawData) {
     indoorAbsHumidity, outdoorAbsHumidity,  // Integration-provided values (preferred)
     supplyTemp, exhaustTemp, exhaustFanSpeed, supplyFanSpeed, fanMode, fanControlMode,
     co2Level, supplyFlowRate, exhaustFlowRate,
-    dehumMode, dehumActive, dehumEntitiesAvailable, balanceTrackingLabel, comfortTemp, timerMinutes = 0, efficiency = 75,
+    dehumMode, dehumActive, dehumEntitiesAvailable, balanceTrackingLabel, comfortTemp,
+    timerMinutesRemaining = 0, efficiency = 75,
     filterDaysRemaining = null, transportAvailable = true, extrasControlEnabled = true,
     isCalibrating = false
   } = rawData;
@@ -147,7 +148,7 @@ export function createTemplateData(rawData) {
     comfortTemp: comfortTemp || '?',
 
     // Timer and bypass state
-    timerMinutes: timerMinutes,
+    timerMinutesRemaining: timerMinutesRemaining,
     bypassState: 'auto', // This would come from actual bypass sensor
 
     // Filter days remaining from 10D0 message

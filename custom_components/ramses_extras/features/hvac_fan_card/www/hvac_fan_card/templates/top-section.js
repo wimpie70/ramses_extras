@@ -31,13 +31,15 @@ export function createTopSection(data, t) {
     supplyTemp, exhaustTemp,
     exhaustFanSpeed, supplyFanSpeed, fanMode, fanControlModeLabel,
     co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
-    timerMinutes, airflowSvg, filterDaysRemaining,
+    timerMinutesRemaining, airflowSvg, filterDaysRemaining,
     balanceTriggersHtml, co2ZonesHtml,
     indoorHumidityClass, co2LevelClass,
     transportAvailable, isCalibrating,
     tempControlStatus
   } = data;
-  const safeTimerMinutes = Number.isFinite(timerMinutes) ? timerMinutes : 0;
+  const safeTimerMinutesRemaining = Number.isFinite(timerMinutesRemaining)
+    ? timerMinutesRemaining
+    : 0;
   const safeFilterDaysRemaining = Number.isFinite(filterDaysRemaining) ? filterDaysRemaining : '?';
 
   // Helper function to format humidity values
@@ -58,7 +60,7 @@ export function createTopSection(data, t) {
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M12 6v6l4 2"></path>
           </svg>
-          <span id="timer">${safeTimerMinutes} ${tr('time.minutes', 'min')}</span>
+          <span id="timer">${safeTimerMinutesRemaining} ${tr('time.minutes', 'min')}</span>
         </div>
 
         <div class="r-xtrs-hvac-fan-settings-container">

@@ -230,8 +230,9 @@ class HvacFanCard extends RamsesBaseCard {
     const transportState = this.getEntityState(transportStateEntity)
       || this.getEntityState(legacyTransportStateEntity);
     const transportAvailable = transportState?.state === 'on';
-    const filterDaysRemaining = this._getFilterDaysRemaining(
-      da10D0Data.days_remaining,
+    const filterDaysRemaining = this._getFilterDaysRemaining(da10D0Data.days_remaining, config);
+    const timerMinutesRemaining = this._getTimerMinutesRemaining(
+      da31Data.remaining_mins,
       config
     );
 
@@ -316,7 +317,7 @@ class HvacFanCard extends RamsesBaseCard {
         : null,
       tempControlStatus: this._getTempControlStatus(),
       dataSource31DA: da31Data.source === '31DA_message',
-      timerMinutes: Number.isFinite(da31Data.remaining_mins) ? da31Data.remaining_mins : 0,
+      timerMinutesRemaining,
       filterDaysRemaining,
 
       // Transport connection status
@@ -1212,8 +1213,9 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Get 10D0 data for filter information
     const da10D0Data = this.get10D0Data();
-    const filterDaysRemaining = this._getFilterDaysRemaining(
-      da10D0Data.days_remaining,
+    const filterDaysRemaining = this._getFilterDaysRemaining(da10D0Data.days_remaining, config);
+    const timerMinutesRemaining = this._getTimerMinutesRemaining(
+      da31Data.remaining_mins,
       config
     );
 
@@ -1257,7 +1259,7 @@ class HvacFanCard extends RamsesBaseCard {
         (this.getEntityState(config.bypass_entity)?.state === 'on' ? 100 : null),
       dehumEntitiesAvailable, // Add availability flag
       dataSource31DA: da31Data.source === '31DA_message', // Flag for UI
-      timerMinutes: Number.isFinite(da31Data.remaining_mins) ? da31Data.remaining_mins : 0,
+      timerMinutesRemaining,
       // Filter days remaining from 10D0 data
       filterDaysRemaining,
       // efficiency: 75   // Remove hardcoded value - let template calculate it
@@ -1355,6 +1357,29 @@ class HvacFanCard extends RamsesBaseCard {
     }
 
     return null;
+  }
+
+  _getTimerMinutesRemaining(messageTimerMinutes, config) {
+    if (Number.isFinite(messageTimerMinutes)) {
+      return messageTimerMinutes;
+    }
+
+    const deviceIdUnderscore = config.device_id.replace(/:/g, '_');
+    const candidates = [
+      config.remaining_mins_entity,
+      this._entityMappings?.remaining_mins_entity,
+      `sensor.${deviceIdUnderscore}_remaining_mins`,
+      `sensor.fan_${deviceIdUnderscore}_remaining_mins`,
+    ];
+
+    for (const entityId of candidates) {
+      const value = this.getEntityStateAsNumber(entityId, null);
+      if (Number.isFinite(value)) {
+        return value;
+      }
+    }
+
+    return 0;
   }
 
   // Check if dehumidify entities are available
