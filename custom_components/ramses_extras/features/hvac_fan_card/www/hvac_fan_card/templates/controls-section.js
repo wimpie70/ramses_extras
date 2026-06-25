@@ -11,6 +11,7 @@
  * @param {Object} [config={}] Card configuration.
  * @param {Function} [t] Optional translation function.
  * @param {boolean} [extrasControlEnabled=true] Whether extras control is enabled.
+ * @param {boolean} [tempControlEntitiesAvailable=false] Whether temp control should be shown.
  * @returns {string} HTML string.
  */
 export function createControlsSection(
@@ -18,7 +19,8 @@ export function createControlsSection(
   co2ControlEntitiesAvailable = false,
   config = {},
   t,
-  extrasControlEnabled = true
+  extrasControlEnabled = true,
+  tempControlEntitiesAvailable = false
 ) {
   const tr = (key, fallback, options = {}) => {
     try {
@@ -67,7 +69,7 @@ export function createControlsSection(
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.co2_control', 'CO2')}</div>
         </div>
         ` : ''}
-        ${config.temp_control_entity ? `
+        ${tempControlEntitiesAvailable && config.temp_control_entity ? `
         <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-temp-control" data-entity-id="${config.temp_control_entity}">
           <div class="r-xtrs-hvac-fan-control-icon">🌡️</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.temp_control', 'Temp control')}</div>

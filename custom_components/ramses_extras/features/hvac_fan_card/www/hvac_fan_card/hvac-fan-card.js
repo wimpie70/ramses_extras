@@ -359,7 +359,8 @@ class HvacFanCard extends RamsesBaseCard {
         co2ControlEntitiesAvailable,
         config,
         this.t?.bind(this),
-        extrasControlEnabled
+        extrasControlEnabled,
+        tempControlEntitiesAvailable
       ), // Pass availability flags and config
       createCardFooter(),
     ].join('');
@@ -1202,6 +1203,7 @@ class HvacFanCard extends RamsesBaseCard {
     // Check CO2 control entity availability
     const hass = this._hass;
     const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
+    const tempControlEntitiesAvailable = validateTempControlEntities(hass, config)?.available === true;
 
     // Get transport state from entity
     const transportStateEntity = config.transport_state_entity
@@ -1345,7 +1347,8 @@ class HvacFanCard extends RamsesBaseCard {
         co2ControlEntitiesAvailable,
         config,
         this.t?.bind(this),
-        extrasControlEnabled
+        extrasControlEnabled,
+        tempControlEntitiesAvailable
       ), // Pass availability flag and config
       createCardFooter(),
     ].join('');
