@@ -178,7 +178,6 @@ class HumidityControlBinarySensor(ExtrasBinarySensorEntity):
         self._is_on = is_on
         self._automation_attrs = dict(extra_attrs or {})
         self.async_write_ha_state()
-        _LOGGER.debug("Binary sensor %s state set to %s", self._attr_name, is_on)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

@@ -82,6 +82,8 @@ class TestCO2AutomationManager:
             "sensor.bath_co2",
             threshold=1000,
             zone_id="zone_bathroom",
+            activation_hysteresis=100,
+            deactivation_hysteresis=-100,
         )
         assert result is not None
         assert source_states["bathroom"] is True
@@ -94,6 +96,8 @@ class TestCO2AutomationManager:
             "sensor.bath_co2",
             threshold=1000,
             zone_id="zone_bathroom",
+            activation_hysteresis=100,
+            deactivation_hysteresis=-100,
         )
         assert result is not None
         assert source_states["bathroom"] is True
@@ -106,6 +110,8 @@ class TestCO2AutomationManager:
             "sensor.bath_co2",
             threshold=1000,
             zone_id="zone_bathroom",
+            activation_hysteresis=100,
+            deactivation_hysteresis=-100,
         )
         assert result is None
         assert source_states["bathroom"] is False

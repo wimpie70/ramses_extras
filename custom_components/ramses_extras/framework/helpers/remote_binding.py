@@ -74,7 +74,6 @@ class RemoteBindingRegistry:
             # Keep only last 100 unmatched entries
             if len(self._unmatched_traffic) > 100:
                 self._unmatched_traffic = self._unmatched_traffic[-100:]
-            _LOGGER.debug("Unmatched remote traffic from %s", normalized_rem)
 
         if matched and fan_id and command:
             normalized_fan = fan_id.replace("_", ":").strip()

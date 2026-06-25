@@ -67,7 +67,14 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         )
 
         self.config_entry = config_entry
-        self.config = CO2Config(hass, "", config_entry.options.get("co2_control", {}))
+        from custom_components.ramses_extras.framework.helpers.config.migration import (
+            get_migrated_feature_section,
+        )
+
+        merged = dict(config_entry.data or {})
+        merged.update(config_entry.options or {})
+        co2_section = get_migrated_feature_section(merged, "co2_control")
+        self.config = CO2Config(hass, "", co2_section)
 
         # Initialize Ramses commands for direct device control
         self.ramses_commands = RamsesCommands(hass)
@@ -723,8 +730,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         triggered_zones: list[str] = []
         if zone_manager:
             triggered_zones = await zone_manager.check_zone_triggers(
-                self.config.activation_hysteresis,
-                self.config.deactivation_hysteresis,
+                self._get_activation_hysteresis(clean_device_id),
+                self._get_deactivation_hysteresis(clean_device_id),
             )
 
         sensor_ctx = await self._get_sensor_control_context(clean_device_id)
@@ -815,6 +822,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         triggered: list[dict[str, Any]] = []
 
         threshold_default = self._get_threshold_value(device_id)
+        act_hyst = self._get_activation_hysteresis(device_id)
+        deact_hyst = self._get_deactivation_hysteresis(device_id)
 
         area_sensors = []
         if sensor_ctx and isinstance(sensor_ctx.get("area_sensors"), list):
@@ -843,6 +852,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 entity_id,
                 threshold,
                 zone_id,
+                activation_hysteresis=act_hyst,
+                deactivation_hysteresis=deact_hyst,
             )
             if source_result is not None:
                 triggered.append(source_result)
@@ -861,9 +872,35 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             internal_entity,
             threshold_default,
             None,
+            activation_hysteresis=act_hyst,
+            deactivation_hysteresis=deact_hyst,
         )
         if internal_result is not None:
             triggered.append(internal_result)
+
+        if not triggered:
+            # Log why nothing triggered when CO2 control is on
+            internal_state = self.hass.states.get(internal_entity)
+            internal_val = None
+            if internal_state and internal_state.state not in {
+                "unavailable",
+                "unknown",
+                "uninitialized",
+            }:
+                try:
+                    internal_val = float(internal_state.state)
+                except TypeError, ValueError:
+                    pass
+            _LOGGER.debug(
+                "CO2 no trigger %s: threshold=%d act_hyst=%d "
+                "internal=%s val=%s act_thresh=%d",
+                device_id,
+                threshold_default,
+                act_hyst,
+                internal_entity,
+                internal_val,
+                threshold_default + act_hyst,
+            )
 
         return triggered
 
@@ -895,6 +932,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         entity_id: str,
         threshold: int,
         zone_id: str | None,
+        activation_hysteresis: int = 0,
+        deactivation_hysteresis: int = 0,
     ) -> dict[str, Any] | None:
         """Evaluate and update hysteresis trigger state for one source."""
         state = self.hass.states.get(entity_id)
@@ -908,8 +947,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             source_states[source_id] = False
             return None
 
-        activation_threshold = threshold + self.config.activation_hysteresis
-        deactivation_threshold = threshold + self.config.deactivation_hysteresis
+        activation_threshold = threshold + activation_hysteresis
+        deactivation_threshold = threshold + deactivation_hysteresis
 
         was_active = source_states.get(source_id, False)
         is_active = was_active
@@ -917,6 +956,17 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             is_active = True
         elif was_active and co2_value <= deactivation_threshold:
             is_active = False
+
+        if is_active != was_active:
+            _LOGGER.debug(
+                "CO2 trigger %s: value=%.0f threshold=%d act=%d deact=%d -> %s",
+                source_id,
+                co2_value,
+                threshold,
+                activation_threshold,
+                deactivation_threshold,
+                "active" if is_active else "inactive",
+            )
 
         source_states[source_id] = is_active
         if not is_active:
@@ -982,6 +1032,32 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             except TypeError, ValueError:
                 pass
         return int(self.config.default_threshold)
+
+    def _get_activation_hysteresis(self, device_id: str) -> int:
+        """Resolve activation hysteresis from number entity when available."""
+        entity_id = (
+            f"number.co2_activation_hysteresis_{device_id.replace(':', '_').lower()}"
+        )
+        state = self.hass.states.get(entity_id)
+        if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
+            try:
+                return int(float(state.state))
+            except TypeError, ValueError:
+                pass
+        return int(self.config.activation_hysteresis)
+
+    def _get_deactivation_hysteresis(self, device_id: str) -> int:
+        """Resolve deactivation hysteresis from number entity when available."""
+        entity_id = (
+            f"number.co2_deactivation_hysteresis_{device_id.replace(':', '_').lower()}"
+        )
+        state = self.hass.states.get(entity_id)
+        if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
+            try:
+                return int(float(state.state))
+            except TypeError, ValueError:
+                pass
+        return int(self.config.deactivation_hysteresis)
 
     async def _update_automation_status(
         self,

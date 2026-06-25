@@ -112,9 +112,6 @@ class ExtrasPlatformEntity(ExtrasBaseEntity, Entity):
 
     async def async_added_to_hass(self) -> None:
         """Entity added to Home Assistant."""
-        _LOGGER.debug(
-            "%s entity %s added to hass", self._platform_type, self._attr_name
-        )
         await super().async_added_to_hass()
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:

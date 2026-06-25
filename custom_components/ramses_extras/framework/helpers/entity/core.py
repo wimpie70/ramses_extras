@@ -783,7 +783,6 @@ async def get_feature_entity_mappings(
     mappings = await _get_entity_mappings_from_feature(feature_id, device_id)
     if hass is not None:
         mappings = await _async_apply_entity_id_fallbacks(hass, mappings, device_id)
-    _LOGGER.debug(f"Feature {feature_id} mappings for {device_id}: {mappings}")
     return mappings
 
 

@@ -246,21 +246,10 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             parse_entity_mapping_templates_for_device,
         )
 
-        parsed_mappings = parse_entity_mapping_templates_for_device(
+        return parse_entity_mapping_templates_for_device(
             entity_mappings,
             device_id,
         )
-
-        for state_name, entity_template in entity_mappings.items():
-            parsed_entity = parsed_mappings.get(state_name)
-            self._logger.debug(
-                "Parsed %s: %s -> %s",
-                state_name,
-                entity_template,
-                parsed_entity,
-            )
-
-        return parsed_mappings
 
     async def _get_entity_mappings_from_feature(self) -> dict[str, str]:
         """Get entity mappings from the feature's configuration.
@@ -297,16 +286,7 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             if not isinstance(feature_definition, dict):
                 feature_definition = {}
 
-            entity_mappings = build_frontend_entity_mapping_templates(
-                feature_definition
-            )
-
-            self._logger.debug(
-                "Found entity mappings for %s: %s",
-                self.feature_identifier,
-                entity_mappings,
-            )
-            return entity_mappings
+            return build_frontend_entity_mapping_templates(feature_definition)
 
         except Exception as error:
             self._logger.error(

@@ -602,11 +602,6 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                 current_value = getattr(self, "_attr_native_value", None)
                 if current_value == result:
                     return
-                _LOGGER.debug(
-                    "Recalculated absolute humidity for %s: %.2f g/m³",
-                    self._attr_name,
-                    result,
-                )
                 self._attr_native_value = result
                 self.async_write_ha_state()
         except Exception as e:

@@ -52,14 +52,6 @@ def calculate_absolute_humidity(
             )
             return None
 
-        _LOGGER.debug(
-            "AH calculation: T=%.1f°C, RH=%.1f%%, e=%.1fPa -> AH=%.2fg/m³",
-            temperature,
-            relative_humidity,
-            vapor_pressure_pa,
-            absolute_humidity,
-        )
-
         return round(absolute_humidity, 2)
 
     except (ValueError, OverflowError, ZeroDivisionError) as e:

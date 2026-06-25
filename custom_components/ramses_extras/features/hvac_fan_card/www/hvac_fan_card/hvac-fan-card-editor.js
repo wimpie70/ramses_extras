@@ -78,6 +78,8 @@ class HvacFanCardEditor extends HTMLElement {
         .join('')
       : '<option disabled>No compatible devices found</option>';
 
+    const co2Threshold = this._config.co2_threshold ?? 1000;
+
     this.innerHTML = `
       <div class="card-config">
         <div class="form-group">
@@ -88,6 +90,12 @@ class HvacFanCardEditor extends HTMLElement {
           </select>
           <small class="form-help">Select the Ramses RF FAN device ID</small>
           <div class="form-note">You may need to enable the device in the Ramses Extras configuration. Check the Hello World settings.</div>
+        </div>
+        <div class="form-group">
+          <label for="co2_threshold">CO2 Threshold (ppm)</label>
+          <input type="number" id="co2_threshold" class="config-input"
+                 value="${co2Threshold}" min="0" max="2000" step="50" />
+          <small class="form-help">CO2 level above which ventilation is triggered (0–2000 ppm). Default: 1000</small>
         </div>
       </div>
 
@@ -145,6 +153,17 @@ class HvacFanCardEditor extends HTMLElement {
         deviceIdSelect.addEventListener('change', (e) => {
           this._config.device_id = e.target.value;
           this._dispatchConfigChange();
+        });
+      }
+
+      const co2ThresholdInput = this.querySelector('#co2_threshold');
+      if (co2ThresholdInput) {
+        co2ThresholdInput.addEventListener('change', (e) => {
+          const value = parseInt(e.target.value, 10);
+          if (!isNaN(value) && value >= 400 && value <= 2000) {
+            this._config.co2_threshold = value;
+            this._dispatchConfigChange();
+          }
         });
       }
     }, 0);

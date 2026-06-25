@@ -155,10 +155,6 @@ class PlatformSetup:
             hass.data["ramses_extras"]["entities"][entity.entity_id] = entity
             stored_count += 1
 
-        _LOGGER.debug(
-            "Stored %d entities for automation access in hass.data", stored_count
-        )
-
     @staticmethod
     def get_filtered_devices_for_feature(
         hass: HomeAssistant,
@@ -258,7 +254,7 @@ class PlatformSetup:
                 device_id_str,
             )
 
-        _LOGGER.info(
+        _LOGGER.debug(
             "Filtered %d devices to %d enabled devices for feature %s",
             len(device_ids),
             len(filtered_devices),

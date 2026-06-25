@@ -123,13 +123,6 @@ class SensorControlResolver:
             area_sensors = []
 
         result["area_sensors"] = self._resolve_area_sensors(area_sensors)
-        self._logger.debug(
-            "Resolved area sensors for %s (%s): configured=%d, resolved=%d",
-            device_id,
-            device_type,
-            len(area_sensors) if isinstance(area_sensors, list) else 0,
-            len(result["area_sensors"]),
-        )
 
         # Resolve each metric
         for metric in SUPPORTED_METRICS:
@@ -187,13 +180,6 @@ class SensorControlResolver:
             result["sources"]["indoor_humidity"]["spike_window_minutes"] = int(
                 indoor_humidity_override.get("spike_window_minutes", 5)
             )
-
-        self._logger.debug(
-            "Resolved sensor mappings for %s (%s): %s",
-            device_id,
-            device_type,
-            result["mappings"],
-        )
 
         return result
 
@@ -314,13 +300,6 @@ class SensorControlResolver:
                     fallback_config = sensor_control
 
                 if not normalized_keys:
-                    self._logger.debug(
-                        (
-                            "Selected sensor_control config from entry %s "
-                            "without device filter"
-                        ),
-                        getattr(entry, "entry_id", "unknown"),
-                    )
                     return sensor_control
 
                 for config_key in (
@@ -333,25 +312,8 @@ class SensorControlResolver:
                     if not isinstance(section, dict):
                         continue
                     if any(key in section for key in normalized_keys):
-                        self._logger.debug(
-                            (
-                                "Selected sensor_control config from entry %s "
-                                "for %s via %s"
-                            ),
-                            getattr(entry, "entry_id", "unknown"),
-                            device_id,
-                            config_key,
-                        )
                         return sensor_control
 
-            if fallback_config is not None and device_id is not None:
-                self._logger.debug(
-                    (
-                        "Using fallback sensor_control config for %s "
-                        "(no matching device key found)"
-                    ),
-                    device_id,
-                )
             return fallback_config
         except Exception as err:
             self._logger.error("Failed to get sensor_control config: %s", err)

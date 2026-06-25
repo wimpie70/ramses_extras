@@ -26,7 +26,7 @@ CO2_NUMBER_CONFIGS = {
         "unit": "ppm",
         "icon": "mdi:molecule-co2",
         "device_class": None,
-        "min_value": 400,
+        "min_value": 0,
         "max_value": 2000,
         "step": 50,
         "default_value": 1000,
@@ -152,7 +152,7 @@ CO2_CONTROL_VALIDATION_RULES = {
     "automation_enabled": {"type": "boolean", "required": False},
     "default_threshold": {
         "type": "numeric",
-        "min": 400,
+        "min": 0,
         "max": 2000,
         "required": False,
     },

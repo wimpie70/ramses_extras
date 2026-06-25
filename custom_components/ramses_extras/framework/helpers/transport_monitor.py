@@ -102,10 +102,6 @@ class TransportMonitor:
         # Only start a timer if one isn't already running
         existing_task = self._device_timeout_tasks.get(normalized_device_id)
         if existing_task and not existing_task.done():
-            _LOGGER.debug(
-                "Command sent to %s, timer already running",
-                normalized_device_id,
-            )
             return
 
         # Start new timeout task
@@ -114,11 +110,6 @@ class TransportMonitor:
                 self._device_timeout_handler(normalized_device_id)
             )
             self._device_timeout_tasks[normalized_device_id] = task
-
-        _LOGGER.debug(
-            "Command sent to %s, started 61s timeout timer",
-            normalized_device_id,
-        )
 
     def _refresh_coordinator(self) -> None:
         if not self._hass:

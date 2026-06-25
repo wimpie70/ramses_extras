@@ -674,12 +674,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         :param device_id: Device identifier
         :param entity_states: Validated entity state values (float or bool)
         """
-        _LOGGER.debug(
-            "_process_automation_logic: active=%s, enabled=%s, transport=%s",
-            self._automation_active,
-            self._is_feature_enabled(),
-            self.is_device_transport_available(device_id),
-        )
         if not self._automation_active or not self._is_feature_enabled():
             self._sync_zone_demands(device_id, None)
             return
@@ -712,12 +706,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # Check if switch is manually OFF - if so,
         #  don't run automation but keep switch state
         switch_state = entity_states.get("dehumidify")
-        _LOGGER.debug(
-            "Balance switch state for %s: %s (dehumidify_active=%s)",
-            device_id,
-            switch_state,
-            self._dehumidify_active,
-        )
         if switch_state is not None:
             switch_is_on = bool(switch_state)
 
@@ -1156,19 +1144,22 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if len(self._decision_history) > 100:
             self._decision_history.pop(0)
 
-        # Always log the decision for debugging
-        _LOGGER.debug(
-            "Decision for device %s: %s (confidence: %.2f, diff: %.2f, "
-            "indoor RH: %.1f%%)",
-            device_id,
-            decision["action"],
-            decision["confidence"],
-            decision["values"]["adjusted_diff"],
-            indoor_rh,
+        prev_action = (
+            self._decision_history[-2]["action"]
+            if len(self._decision_history) >= 2
+            else None
         )
-        if decision["reasoning"]:
+        if decision["action"] != prev_action and decision["reasoning"]:
             reasoning = "; ".join(decision["reasoning"])
-            _LOGGER.debug("Reasoning: %s", reasoning)
+            _LOGGER.debug(
+                "Decision for %s: %s (conf=%.2f, diff=%.2f, RH=%.1f%%): %s",
+                device_id,
+                decision["action"],
+                decision["confidence"],
+                decision["values"]["adjusted_diff"],
+                indoor_rh,
+                reasoning,
+            )
 
         return decision
 
@@ -1338,6 +1329,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         :param decision: Decision information
         """
         try:
+            was_dehumidify_active = self._dehumidify_active
             success = await self.fan_speed_arbiter.async_set_demand(
                 device_id,
                 feature_id=self.feature_id,
@@ -1358,11 +1350,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 self._clear_active_area_spike(device_id)
                 self._clear_active_indoor_spike(device_id)
 
-            reasoning = "; ".join(decision["reasoning"])
-            _LOGGER.info(
-                "Fan set to LOW mode (humidity balancing stopped): %s",
-                reasoning,
-            )
+            if was_dehumidify_active:
+                reasoning = "; ".join(decision["reasoning"])
+                _LOGGER.info(
+                    "Fan set to LOW mode (humidity balancing stopped): %s",
+                    reasoning,
+                )
 
         except Exception as e:
             _LOGGER.error("Failed to set fan to auto mode: %s", e)
@@ -1428,11 +1421,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 binary_sensor_entity.set_state(
                     is_active,
                     self._build_indicator_attributes(device_id, decision),
-                )
-                _LOGGER.debug(
-                    "Updated binary sensor %s: %s",
-                    entity_id,
-                    "on" if is_active else "off",
                 )
             else:
                 _LOGGER.warning(

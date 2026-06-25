@@ -124,8 +124,8 @@ async def test_async_clear_demand_without_remaining_demands_returns_to_auto(arbi
 
 
 @pytest.mark.asyncio
-async def test_async_apply_sends_same_command_multiple_times(arbiter):
-    """Arbiter should send command every time, even if same as previous."""
+async def test_async_apply_deduplicates_same_command(arbiter):
+    """Arbiter should skip sending the same command within the dedup window."""
     success = await arbiter.async_set_demand(
         "32_123456",
         feature_id="co2_control",
@@ -138,6 +138,7 @@ async def test_async_apply_sends_same_command_multiple_times(arbiter):
         "32:123456", "fan_medium"
     )
 
+    # Same command again within dedup window — should be skipped
     arbiter.ramses_commands.send_command.reset_mock()
     success = await arbiter.async_set_demand(
         "32_123456",
@@ -148,8 +149,38 @@ async def test_async_apply_sends_same_command_multiple_times(arbiter):
     )
 
     assert success is True
+    arbiter.ramses_commands.send_command.assert_not_awaited()
+
+    # Different command — should be sent
+    arbiter.ramses_commands.send_command.reset_mock()
+    success = await arbiter.async_set_demand(
+        "32_123456",
+        feature_id="co2_control",
+        source_id="co2_control",
+        requested_speed="fan_high",
+        priority=30,
+    )
+
+    assert success is True
     arbiter.ramses_commands.send_command.assert_awaited_once_with(
-        "32:123456", "fan_medium"
+        "32:123456", "fan_high"
+    )
+
+    # Same command after dedup window expires — should be re-sent
+    arbiter.ramses_commands.send_command.reset_mock()
+    # Simulate window expiry by backdating the last-applied timestamp
+    arbiter._last_applied["32:123456"] = ("fan_high", 0.0)
+    success = await arbiter.async_set_demand(
+        "32_123456",
+        feature_id="co2_control",
+        source_id="co2_control",
+        requested_speed="fan_high",
+        priority=30,
+    )
+
+    assert success is True
+    arbiter.ramses_commands.send_command.assert_awaited_once_with(
+        "32:123456", "fan_high"
     )
 
 

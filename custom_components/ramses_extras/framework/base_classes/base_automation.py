@@ -353,9 +353,6 @@ class ExtrasBaseAutomation(ABC):
         """
         if entity_id is None:
             return
-        _LOGGER.debug(
-            f"State change: {entity_id} -> {new_state.state if new_state else 'None'}"
-        )
 
         # Schedule async processing in a thread-safe manner
         def _create_async_task() -> None:
@@ -378,9 +375,7 @@ class ExtrasBaseAutomation(ABC):
         :param new_state: New state
         """
         if not new_state:
-            _LOGGER.debug(f"No new state for {entity_id}, skipping")
             return
-        _LOGGER.debug(f"New state for {entity_id}")
 
         # Extract device_id from entity name
         device_id = self._extract_device_id(entity_id)
@@ -401,34 +396,21 @@ class ExtrasBaseAutomation(ABC):
         if should_validate:
             # Validate all entities exist for this device
             if not await self._validate_device_entities(device_id):
-                _LOGGER.debug(
-                    f"Device {device_id}: Entities not ready for {self.feature_id}"
-                )
                 # Update validation time to prevent immediate re-checks
                 self._last_validation_time[device_id] = current_time
                 return
             # Validation passed, update timestamp
             self._last_validation_time[device_id] = current_time
             has_validated_successfully = True
-        else:
-            _LOGGER.debug(
-                f"Device {device_id}: Skipping validation (cooldown active) for"
-                f" {self.feature_id}"
-            )
 
         # Only proceed if we've successfully validated before or just
         #  validated successfully
         if not has_validated_successfully:
-            _LOGGER.debug(
-                f"Device {device_id}: No successful validation for {self.feature_id}, "
-                "skipping processing"
-            )
             return
 
         # Apply debouncing to prevent rapid changes (skip if debouncing is disabled)
         if self.debounce_seconds > 0:
             if device_id in self._change_timers:
-                _LOGGER.debug(f"Device {device_id}: Debouncing - ignoring rapid change")
                 return
 
             # Set debouncing timer
@@ -440,11 +422,7 @@ class ExtrasBaseAutomation(ABC):
         # Get all entity states for this device
         try:
             entity_states = await self._get_device_entity_states(device_id)
-            _LOGGER.debug(f"Device {device_id}: Got entity states: {entity_states}")
-        except ValueError as e:
-            # Use debug level instead of warning since unavailable entities
-            # are expected during startup or when devices are offline
-            _LOGGER.debug(f"Device {device_id}: Invalid entity states - {e}")
+        except ValueError:
             return
 
         # Call feature-specific processing logic

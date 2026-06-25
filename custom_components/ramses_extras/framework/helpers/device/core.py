@@ -82,7 +82,6 @@ def get_device_type(device: Any) -> str:
 
     try:
         device_type = device.__class__.__name__
-        _LOGGER.debug("Device type for %s: %s", device, device_type)
         return str(device_type)
     except Exception as e:
         _LOGGER.warning("Failed to get device type: %s", e)

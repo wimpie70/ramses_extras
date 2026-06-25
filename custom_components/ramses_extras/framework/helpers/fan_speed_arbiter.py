@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -73,6 +74,11 @@ class FanSpeedArbiter:
         self._demands: dict[str, dict[tuple[str, str], FanSpeedDemand]] = {}
         self._extras_control_enabled: dict[str, bool] = {}
         self._callbacks: dict[str, tuple[str, Any]] = {}
+        # Track last applied command + timestamp for deduplication.
+        # Same command is skipped for _dedup_seconds, then re-sent to
+        # correct any external speed changes (manual remote, etc.).
+        self._last_applied: dict[str, tuple[str, float]] = {}
+        self._dedup_seconds: float = 1.0
 
     @staticmethod
     def _normalize_device_id(device_id: str) -> str:
@@ -362,13 +368,16 @@ class FanSpeedArbiter:
         resolved = self.resolve(normalized_device_id)
         command_name = resolved.command_name
 
-        _LOGGER.debug(
-            "Arbiter applying command for %s: %s (priority=%s, source=%s)",
-            normalized_device_id,
-            command_name,
-            resolved.winning_demand.priority if resolved.winning_demand else "none",
-            resolved.winning_demand.source_id if resolved.winning_demand else "none",
-        )
+        # Deduplicate: skip sending the same command if it was applied
+        # within the dedup window. This prevents flooding the send buffer
+        # with identical commands on every state change (~5x/sec).
+        # After the window expires, the command is re-sent to correct
+        # any external speed changes (manual remote, other sources).
+        now = time.monotonic()
+        last = self._last_applied.get(normalized_device_id)
+        if last and last[0] == command_name and (now - last[1]) < self._dedup_seconds:
+            return True
+        self._last_applied[normalized_device_id] = (command_name, now)
 
         # Check transport state before sending command
         from .transport_monitor import get_transport_monitor

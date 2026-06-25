@@ -290,7 +290,6 @@ class RamsesCommands:
         """
         # Get command definition from registry
         cmd_def = self._command_registry.get_command(command_name)
-        _LOGGER.debug(f"Send Command - Command definition: {cmd_def}")
         if not cmd_def:
             return CommandResult(
                 success=False,
@@ -441,7 +440,7 @@ class RamsesCommands:
         try:
             device_id_formatted = device_id.replace("_", ":")
 
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Sending Ramses command to {device_id}: {cmd_def['code']} "
                 f"{cmd_def['description']}"
             )
@@ -449,12 +448,6 @@ class RamsesCommands:
             transport_monitor = get_transport_monitor()
             is_monitoring = transport_monitor.is_monitoring
             is_available = transport_monitor.is_device_available(device_id_formatted)
-            _LOGGER.debug(
-                "Transport check for %s: monitoring=%s, available=%s",
-                device_id_formatted,
-                is_monitoring,
-                is_available,
-            )
             if is_monitoring and not is_available:
                 _LOGGER.warning(
                     f"Skipping command {cmd_def['code']} - transport unavailable "
@@ -495,14 +488,6 @@ class RamsesCommands:
             from_id = await self._get_bound_rem_device(device_id_formatted)
             if from_id:
                 kwargs["from_id"] = from_id
-                _LOGGER.debug(
-                    f"Using bound REM device {from_id} as source for command to "
-                    f"{device_id}"
-                )
-            else:
-                _LOGGER.debug(
-                    f"No bound REM device found for {device_id}, using default source"
-                )
 
             if (
                 kwargs["device_id"] == "18:000730"

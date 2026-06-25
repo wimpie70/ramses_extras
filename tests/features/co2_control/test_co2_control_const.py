@@ -50,7 +50,7 @@ class TestCo2ControlConst:
         # Check specific config
         threshold = CO2_NUMBER_CONFIGS["co2_threshold"]
         assert threshold["unit"] == "ppm"
-        assert threshold["min_value"] == 400
+        assert threshold["min_value"] == 0
         assert threshold["max_value"] == 2000
         assert threshold["default_value"] == 1000
 
@@ -164,7 +164,7 @@ class TestCo2ControlConst:
         # Check threshold validation
         threshold_rule = CO2_CONTROL_VALIDATION_RULES["default_threshold"]
         assert threshold_rule["type"] == "numeric"
-        assert threshold_rule["min"] == 400
+        assert threshold_rule["min"] == 0
         assert threshold_rule["max"] == 2000
 
         # Check hysteresis validation

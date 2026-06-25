@@ -7,6 +7,7 @@ from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.ramses_extras.const import register_feature_platform
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
@@ -17,7 +18,7 @@ from custom_components.ramses_extras.framework.helpers.platform import PlatformS
 _LOGGER = logging.getLogger(__name__)
 
 
-class CO2ControlNumber(ExtrasNumberEntity):
+class CO2ControlNumber(ExtrasNumberEntity, RestoreEntity):
     """CO2 Control number entity."""
 
     def __init__(
@@ -45,6 +46,22 @@ class CO2ControlNumber(ExtrasNumberEntity):
         self._attr_native_unit_of_measurement = config.get(
             "unit", getattr(self, "_attr_native_unit_of_measurement", None)
         )
+
+    async def async_added_to_hass(self) -> None:
+        """Restore previous value on restart.
+
+        Only restore if no explicit default_value was provided via config
+        flow (which represents more recent user intent than a stale restore).
+        """
+        await super().async_added_to_hass()
+        if self._attr_native_value is not None:
+            # Config flow provided a value — keep it
+            return
+        if (last_state := await self.async_get_last_state()) is not None:
+            try:
+                self._attr_native_value = float(last_state.state)
+            except TypeError, ValueError:
+                pass
 
     @property
     def native_value(self) -> float:
@@ -83,8 +100,31 @@ async def create_co2_number_entities(
     config_entry: ConfigEntry | None,
 ) -> list[NumberEntity]:
     """Factory to create CO2 number entities for a device."""
+    # Map number_type → config flow key for initial value override
+    config_key_map = {
+        "co2_threshold": "default_threshold",
+        "co2_activation_hysteresis": "activation_hysteresis",
+        "co2_deactivation_hysteresis": "deactivation_hysteresis",
+    }
+
+    # Read saved settings from config entry options
+    saved_settings: dict[str, Any] = {}
+    if config_entry is not None:
+        from ....framework.helpers.config.migration import (
+            get_migrated_feature_section,
+        )
+
+        merged = {**config_entry.data, **config_entry.options}
+        section = get_migrated_feature_section(merged, "co2_control")
+        if isinstance(section, dict):
+            saved_settings = section
+
     entities: list[NumberEntity] = []
     for number_type, config in entity_configs.items():
+        # Override default_value with config flow setting if available
+        config_key = config_key_map.get(number_type)
+        if config_key and config_key in saved_settings:
+            config = {**config, "default_value": saved_settings[config_key]}
         entities.append(
             create_co2_number(hass, device_id, number_type, config, config_entry)
         )

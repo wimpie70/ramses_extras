@@ -444,12 +444,37 @@ class HvacFanCard extends RamsesBaseCard {
 
     try {
       await this._loadEntityMappings();
+      this._applyCardConfigToEntities();
       this.render();
     } catch (error) {
       logger.warn('HvacFanCard: Failed to load initial state:', error);
       this.render();
     } finally {
       this.clearUpdateThrottle();
+    }
+  }
+
+  _applyCardConfigToEntities() {
+    if (!this._hass || !this._config?.device_id) {
+      return;
+    }
+
+    // Apply CO2 threshold from card config to the number entity
+    if (this._config.co2_threshold !== undefined) {
+      const deviceIdUnderscore = this._config.device_id.replace(/:/g, '_');
+      const thresholdEntityId =
+        this._entityMappings?.co2_threshold_entity ||
+        `number.co2_threshold_${deviceIdUnderscore}`;
+      const currentState = this.getEntityState(thresholdEntityId);
+      const currentValue = currentState ? parseFloat(currentState.state) : null;
+      const configValue = parseFloat(this._config.co2_threshold);
+
+      if (!isNaN(configValue) && currentValue !== configValue) {
+        this._hass.callService('number', 'set_value', {
+          entity_id: thresholdEntityId,
+          value: configValue,
+        }).catch((err) => logger.warn('Failed to apply co2_threshold from card config:', err));
+      }
     }
   }
 
