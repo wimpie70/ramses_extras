@@ -56,7 +56,9 @@ async def ws_get_sensor_control_device_config(
                     dev_type = device.get("type")
                 else:
                     raw_id = device
-                    dev_type = getattr(device, "type", None)
+                    dev_type = getattr(device, "_SLUG", None) or getattr(
+                        device, "type", None
+                    )
 
                 dev_id = _extract_device_id(raw_id)
                 if dev_id is None:

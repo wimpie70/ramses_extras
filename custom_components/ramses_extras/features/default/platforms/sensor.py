@@ -919,10 +919,18 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                         return cast(str | None, device.get("type"))
                 elif hasattr(device, "device_id"):
                     if extract_device_id_as_string(device.device_id) == device_id:
-                        return cast(str | None, getattr(device, "type", None))
+                        return cast(
+                            str | None,
+                            getattr(device, "_SLUG", None)
+                            or getattr(device, "type", None),
+                        )
                 elif hasattr(device, "id"):
                     if extract_device_id_as_string(device.id) == device_id:
-                        return cast(str | None, getattr(device, "type", None))
+                        return cast(
+                            str | None,
+                            getattr(device, "_SLUG", None)
+                            or getattr(device, "type", None),
+                        )
         except Exception as err:  # pragma: no cover - defensive
             _LOGGER.debug("Failed to get device type for %s: %s", device_id, err)
 

@@ -671,7 +671,9 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 device_type = device.get("type")
             else:
                 raw_id = device
-                device_type = getattr(device, "type", None)
+                device_type = getattr(device, "_SLUG", None) or getattr(
+                    device, "type", None
+                )
 
             if raw_id is None:
                 continue

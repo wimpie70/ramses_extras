@@ -138,7 +138,7 @@ class RamsesMessageStream:
         commands = RamsesCommands(self._hass)
         max_attempts = 15
 
-        for _ in range(max_attempts):
+        for attempt in range(max_attempts):
             if self._msg_handler_unsub is not None:
                 break
 
@@ -148,9 +148,21 @@ class RamsesMessageStream:
                 msg_handler_unsub = add_msg_handler(self._handle_msg)
                 if callable(msg_handler_unsub):
                     self._msg_handler_unsub = msg_handler_unsub
+                    _LOGGER.info(
+                        "RamsesMessageStream: attached add_msg_handler "
+                        "after %d attempt(s)",
+                        attempt + 1,
+                    )
                     break
 
             await asyncio.sleep(1)
+
+        if self._msg_handler_unsub is None:
+            _LOGGER.warning(
+                "RamsesMessageStream: could not attach add_msg_handler "
+                "after %d attempts (ramses_cc coordinator not available)",
+                max_attempts,
+            )
 
         # Detect ramses_cc version to decide whether we need to fire
         # ramses_cc_message HA bus events ourselves (newer versions) or
@@ -309,8 +321,14 @@ class RamsesMessageStream:
             try:
                 data["_from_msg_handler"] = True
                 self._hass.bus.async_fire("ramses_cc_message", data)
-            except Exception:
-                pass
+                _LOGGER.debug(
+                    "Fired ramses_cc_message event: code=%s src=%s verb=%s",
+                    data.get("code"),
+                    data.get("src"),
+                    data.get("verb"),
+                )
+            except Exception as e:
+                _LOGGER.debug("Failed to fire ramses_cc_message event: %s", e)
 
 
 def get_ramses_message_stream(hass: HomeAssistant) -> RamsesMessageStream:

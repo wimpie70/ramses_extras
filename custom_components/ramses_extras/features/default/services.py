@@ -493,19 +493,33 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             bound_zone_id,
         )
 
+    def _schedule_observed_remote_packet(
+        src: object,
+        dst: object,
+        code: object,
+        payload: object,
+        verb: object,
+    ) -> None:
+        def _create_task() -> None:
+            hass.async_create_task(
+                _async_handle_observed_remote_packet(src, dst, code, payload, verb)
+            )
+
+        # ramses_cc callbacks can run on a worker thread.
+        # Schedule task creation safely on HA's event-loop thread.
+        hass.loop.call_soon_threadsafe(_create_task)
+
     def _handle_remote_event(event: object) -> None:
         data = getattr(event, "data", None)
         if not isinstance(data, dict):
             return
 
-        hass.async_create_task(
-            _async_handle_observed_remote_packet(
-                data.get("src"),
-                data.get("dst"),
-                data.get("code"),
-                data.get("payload"),
-                data.get("verb"),
-            )
+        _schedule_observed_remote_packet(
+            data.get("src"),
+            data.get("dst"),
+            data.get("code"),
+            data.get("payload"),
+            data.get("verb"),
         )
 
     def _handle_remote_msg(msg: object, *args: object, **kwargs: object) -> None:
@@ -519,14 +533,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         code = getattr(msg, "code", None)
         payload = getattr(msg, "payload", None)
         verb = getattr(msg, "verb", None)
-        hass.async_create_task(
-            _async_handle_observed_remote_packet(
-                src,
-                dst,
-                str(code) if code is not None else None,
-                payload,
-                str(verb) if verb is not None else None,
-            )
+        _schedule_observed_remote_packet(
+            src,
+            dst,
+            str(code) if code is not None else None,
+            payload,
+            str(verb) if verb is not None else None,
         )
 
     async def _async_resume_feature_control(device_id: str) -> None:

@@ -230,6 +230,11 @@ class HvacFanCard extends RamsesBaseCard {
     const transportState = this.getEntityState(transportStateEntity)
       || this.getEntityState(legacyTransportStateEntity);
     const transportAvailable = transportState?.state === 'on';
+    const filterDaysRemaining = this._getFilterDaysRemaining(da10D0Data.days_remaining, config);
+    const timerMinutesRemaining = this._getTimerMinutesRemaining(
+      da31Data.remaining_mins,
+      config
+    );
 
     // Temperature data - prefer 31DA real-time, fall back to entity states
     const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp :
@@ -242,10 +247,12 @@ class HvacFanCard extends RamsesBaseCard {
       this.getEntityStateAsNumber(config.exhaust_temp_entity, null);
 
     // Humidity data - prefer 31DA real-time, fall back to entity states
-    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity :
-      this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
-    const outdoorHumidity = da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity :
-      this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
+    const indoorHumidity = Number.isFinite(da31Data.indoor_humidity)
+      ? da31Data.indoor_humidity
+      : this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
+    const outdoorHumidity = Number.isFinite(da31Data.outdoor_humidity)
+      ? da31Data.outdoor_humidity
+      : this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
     const indoorAbsHumidity = this.getEntityStateAsNumber(
@@ -310,9 +317,8 @@ class HvacFanCard extends RamsesBaseCard {
         : null,
       tempControlStatus: this._getTempControlStatus(),
       dataSource31DA: da31Data.source === '31DA_message',
-      timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
-      filterDaysRemaining:
-        da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
+      timerMinutesRemaining,
+      filterDaysRemaining,
 
       // Transport connection status
       transportAvailable,
@@ -337,8 +343,10 @@ class HvacFanCard extends RamsesBaseCard {
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
+    // Add temperature control status HTML to template data
+    templateData.tempControlHtml = this._createTempControlSection();
     // Add balance triggers HTML to template data
-    templateData.balanceTriggersHtml = this._createBalanceTriggersSection();
+    templateData.balanceTriggersHtml = this._createBalanceTriggersSection(!templateData.tempControlHtml);
     // Add CO2 zones HTML to template data
     templateData.co2ZonesHtml = co2ControlEntitiesAvailable ? this._createCO2ZonesSection() : '';
 
@@ -542,8 +550,35 @@ class HvacFanCard extends RamsesBaseCard {
           }
         });
 
+        // Keep filter remaining mapped so shouldUpdate() can react to state changes,
+        // even when resolver/backends do not provide this key.
+        const deviceIdUnderscore = this._config.device_id.replace(/:/g, '_');
+        const fallbackFilterRemainingEntities = [
+          updatedConfig.filter_remaining_entity,
+          `sensor.${deviceIdUnderscore}_filter_remaining`,
+          `sensor.fan_${deviceIdUnderscore}_filter_remaining`,
+        ].filter(Boolean);
+        const resolvedFilterRemainingEntity = fallbackFilterRemainingEntities.find(
+          (entityId) => this._hass?.states?.[entityId] !== undefined
+        ) || fallbackFilterRemainingEntities[0] || null;
+        if (resolvedFilterRemainingEntity) {
+          updatedConfig.filter_remaining_entity = resolvedFilterRemainingEntity;
+          this._cachedEntities = {
+            ...(this._cachedEntities || {}),
+            filter_remaining_entity: resolvedFilterRemainingEntity,
+          };
+        }
+
         this._config = updatedConfig;
         this._entityMappings = { ...(this._entityMappings || {}), ...result.mappings };
+
+        // Force one refresh when mappings resolve so newly discovered entities
+        // (like filter remaining) are reflected immediately.
+        this.clearPreviousStates();
+        this.clearUpdateThrottle();
+        if (this.isConnected) {
+          this._scheduleRender(true);
+        }
       }
     } catch (error) {
       // If it's a version mismatch error, stop retrying
@@ -835,7 +870,51 @@ class HvacFanCard extends RamsesBaseCard {
    * Create balance status section for main card.
    * @returns {string} HTML string for balance status section.
    */
-  _createBalanceTriggersSection() {
+  _createTempControlSection() {
+    const config = this.config || {};
+    if (!config.temp_control_entity) {
+      return '';
+    }
+
+    const switchState = this.getEntityState(config.temp_control_entity);
+    if (!switchState) {
+      return '';
+    }
+
+    const statusEntity = this.getEntityState(config.temp_control_status_entity);
+    const activeEntity = this.getEntityState(config.temp_control_active_entity);
+
+    const statusState = statusEntity?.state || (switchState.state === 'on' ? 'idle' : 'disabled');
+    const normalizedStatus = typeof statusState === 'string' ? statusState.trim().toLowerCase() : '';
+
+    const isActive = activeEntity?.state === 'on' || ['cooling', 'heating_retention'].includes(normalizedStatus);
+
+    let tempStatus = '';
+    if (switchState.state !== 'on' || normalizedStatus === 'disabled') {
+      tempStatus = 'Temp → Off';
+    } else if (normalizedStatus === 'idle') {
+      tempStatus = 'Temp → On + Idle';
+    } else if (normalizedStatus === 'cooling') {
+      tempStatus = 'Temp → On + Cooling';
+    } else if (normalizedStatus === 'heating_retention') {
+      tempStatus = 'Temp → On + Retain Heat';
+    } else {
+      tempStatus = `Temp → On + ${statusState}`;
+    }
+
+    return `
+      <div class="r-xtrs-hvac-fan-balance-divider"></div>
+      <div class="r-xtrs-hvac-fan-balance-triggers">
+        <div class="r-xtrs-hvac-fan-balance-info">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${isActive ? 'active-temp' : ''}">
+            <span>🌡️ ${tempStatus}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _createBalanceTriggersSection(includeDivider = true) {
     const config = this.config || {};
     const dehumMode = this.getEntityState(config.dehum_mode_entity)?.state || 'off';
     const dehumActive = this.getEntityState(config.dehum_active_entity)?.state || 'off';
@@ -855,7 +934,7 @@ class HvacFanCard extends RamsesBaseCard {
     }
 
     return `
-      <div class="r-xtrs-hvac-fan-balance-divider"></div>
+      ${includeDivider ? '<div class="r-xtrs-hvac-fan-balance-divider"></div>' : ''}
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
           <div class="r-xtrs-hvac-fan-balance-info-row ${balanceTriggered ? 'active-humidity' : ''}">
@@ -1147,10 +1226,12 @@ class HvacFanCard extends RamsesBaseCard {
       this.getEntityStateAsNumber(config.exhaust_temp_entity, null);
 
     // Humidity data - prefer 31DA real-time, fall back to entity states
-    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity :
-      this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
-    const outdoorHumidity = da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity :
-      this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
+    const indoorHumidity = Number.isFinite(da31Data.indoor_humidity)
+      ? da31Data.indoor_humidity
+      : this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
+    const outdoorHumidity = Number.isFinite(da31Data.outdoor_humidity)
+      ? da31Data.outdoor_humidity
+      : this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
     const indoorAbsHumidity = this.getEntityStateAsNumber(
@@ -1178,6 +1259,11 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Get 10D0 data for filter information
     const da10D0Data = this.get10D0Data();
+    const filterDaysRemaining = this._getFilterDaysRemaining(da10D0Data.days_remaining, config);
+    const timerMinutesRemaining = this._getTimerMinutesRemaining(
+      da31Data.remaining_mins,
+      config
+    );
 
     // Fan data
     const rawData = {
@@ -1219,10 +1305,9 @@ class HvacFanCard extends RamsesBaseCard {
         (this.getEntityState(config.bypass_entity)?.state === 'on' ? 100 : null),
       dehumEntitiesAvailable, // Add availability flag
       dataSource31DA: da31Data.source === '31DA_message', // Flag for UI
-      timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
+      timerMinutesRemaining,
       // Filter days remaining from 10D0 data
-      filterDaysRemaining:
-        da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
+      filterDaysRemaining,
       // efficiency: 75   // Remove hardcoded value - let template calculate it
 
       // Transport connection status
@@ -1245,8 +1330,11 @@ class HvacFanCard extends RamsesBaseCard {
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
+    // Add temperature control status HTML to template data
+    templateData.tempControlHtml = this._createTempControlSection();
+
     // Add balance triggers HTML to template data
-    templateData.balanceTriggersHtml = this._createBalanceTriggersSection();
+    templateData.balanceTriggersHtml = this._createBalanceTriggersSection(!templateData.tempControlHtml);
 
     // Generate HTML using template functions
     const cardHtml = [
@@ -1283,6 +1371,64 @@ class HvacFanCard extends RamsesBaseCard {
     // Use the shared validation helper
     // eslint-disable-next-line no-unused-vars
     const validationReport = getEntityValidationReport(hass, config);
+  }
+
+  _getFilterDaysRemaining(messageDaysRemaining, config) {
+    if (Number.isFinite(messageDaysRemaining)) {
+      return messageDaysRemaining;
+    }
+
+    const deviceIdUnderscore = config.device_id.replace(/:/g, '_');
+    const candidates = [
+      config.filter_remaining_entity,
+      this._entityMappings?.filter_remaining_entity,
+      `sensor.${deviceIdUnderscore}_filter_remaining`,
+      `sensor.fan_${deviceIdUnderscore}_filter_remaining`,
+    ];
+    for (const entityId of candidates) {
+      const state = this.getEntityState(entityId);
+      if (!state) {
+        continue;
+      }
+
+      const stateValue = parseFloat(state.state);
+      if (!Number.isNaN(stateValue)) {
+        return stateValue;
+      }
+
+      const attributes = state.attributes || {};
+      for (const key of ['days_remaining', 'remaining_days', 'filter_remaining']) {
+        const attrValue = parseFloat(attributes[key]);
+        if (!Number.isNaN(attrValue)) {
+          return attrValue;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  _getTimerMinutesRemaining(messageTimerMinutes, config) {
+    if (Number.isFinite(messageTimerMinutes)) {
+      return messageTimerMinutes;
+    }
+
+    const deviceIdUnderscore = config.device_id.replace(/:/g, '_');
+    const candidates = [
+      config.remaining_mins_entity,
+      this._entityMappings?.remaining_mins_entity,
+      `sensor.${deviceIdUnderscore}_remaining_mins`,
+      `sensor.fan_${deviceIdUnderscore}_remaining_mins`,
+    ];
+
+    for (const entityId of candidates) {
+      const value = this.getEntityStateAsNumber(entityId, null);
+      if (Number.isFinite(value)) {
+        return value;
+      }
+    }
+
+    return 0;
   }
 
   // Check if dehumidify entities are available

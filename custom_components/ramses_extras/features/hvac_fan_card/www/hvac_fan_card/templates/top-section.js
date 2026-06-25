@@ -31,12 +31,16 @@ export function createTopSection(data, t) {
     supplyTemp, exhaustTemp,
     exhaustFanSpeed, supplyFanSpeed, fanMode, fanControlModeLabel,
     co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
-    timerMinutes, airflowSvg, filterDaysRemaining,
+    timerMinutesRemaining, airflowSvg, filterDaysRemaining,
     balanceTriggersHtml, co2ZonesHtml,
     indoorHumidityClass, co2LevelClass,
     transportAvailable, isCalibrating,
-    tempControlStatus
+    tempControlHtml
   } = data;
+  const safeTimerMinutesRemaining = Number.isFinite(timerMinutesRemaining)
+    ? timerMinutesRemaining
+    : 0;
+  const safeFilterDaysRemaining = Number.isFinite(filterDaysRemaining) ? filterDaysRemaining : '?';
 
   // Helper function to format humidity values
   const formatHumidity = (value, unit) => {
@@ -56,7 +60,7 @@ export function createTopSection(data, t) {
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M12 6v6l4 2"></path>
           </svg>
-          <span id="timer">${timerMinutes} ${tr('time.minutes', 'min')}</span>
+          <span id="timer">${safeTimerMinutesRemaining} ${tr('time.minutes', 'min')}</span>
         </div>
 
         <div class="r-xtrs-hvac-fan-settings-container">
@@ -83,7 +87,7 @@ export function createTopSection(data, t) {
           <div class="r-xtrs-hvac-fan-info-stack">
             <div>📊 ${efficiency}%</div>
             <div>🫧 <span class="${co2LevelClass || ''}">${co2Level}</span> ppm</div>
-            <div>📅 ${filterDaysRemaining}d</div>
+            <div id="filterDaysRemaining">📅 ${safeFilterDaysRemaining}d</div>
           </div>
         </div>
 
@@ -103,12 +107,10 @@ export function createTopSection(data, t) {
           </div>
           <div class="r-xtrs-hvac-fan-info-stack">
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
-            ${tempControlStatus ? `
-            <div id="tempControlStatus" class="${tempControlStatus.isCoolingOrHeating ? 'r-xtrs-temp-trigger' : ''}">🌡️ ${tr('controls.temp_control', 'Temp control')}: ${tr(`status.temp_control_${tempControlStatus.state}`, tempControlStatus.state)}${tempControlStatus.isCoolingOrHeating ? ' (controlling bypass)' : ''}</div>
-            ` : ''}
           </div>
 
           <!-- Balance Triggers & CO2 Zones Section (RIGHT panel) -->
+          ${tempControlHtml || ''}
           ${balanceTriggersHtml || ''}
           ${co2ZonesHtml || ''}
         </div>

@@ -158,6 +158,16 @@ async def run_entry_setup_pipeline(hass: HomeAssistant, entry: ConfigEntry) -> N
     data.pop("_integration_version", None)
     _LOGGER.debug("Cleared integration version cache for fresh lookup")
 
+    # Start the shared message stream early so that all features (including
+    # the HVAC Fan Card's frontend message broker) receive real-time RAMSES
+    # messages.  This must happen before card setup so that the stream is
+    # ready when the card requests data.
+    from ..helpers.ramses_message_stream import get_ramses_message_stream
+
+    stream = get_ramses_message_stream(hass)
+    stream.start()
+    _LOGGER.info("Started shared Ramses message stream")
+
     await setup_card_files_and_config(hass, entry)
 
     await register_services(hass)
@@ -430,10 +440,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     _LOGGER.info("Unloading Ramses Extras integration...")
 
-    # Stop any running automations before unloading
+    # Stop the shared message stream
     if DOMAIN in hass.data:
         domain_data = hass.data[DOMAIN]
         if isinstance(domain_data, dict):
+            stream = domain_data.get("ramses_message_stream")
+            if stream is not None and hasattr(stream, "stop"):
+                try:
+                    stream.stop()
+                    _LOGGER.info("Stopped shared Ramses message stream")
+                except Exception as e:
+                    _LOGGER.warning("Failed to stop message stream: %s", e)
+
             remote_listener_unsubs = domain_data.get("_fan_remote_listener_unsubs", [])
             if isinstance(remote_listener_unsubs, list):
                 for unsub in remote_listener_unsubs:
