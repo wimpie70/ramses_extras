@@ -37,6 +37,8 @@ export function createTopSection(data, t) {
     transportAvailable, isCalibrating,
     tempControlStatus
   } = data;
+  const safeTimerMinutes = Number.isFinite(timerMinutes) ? timerMinutes : 0;
+  const safeFilterDaysRemaining = Number.isFinite(filterDaysRemaining) ? filterDaysRemaining : '?';
 
   // Helper function to format humidity values
   const formatHumidity = (value, unit) => {
@@ -56,7 +58,7 @@ export function createTopSection(data, t) {
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M12 6v6l4 2"></path>
           </svg>
-          <span id="timer">${timerMinutes} ${tr('time.minutes', 'min')}</span>
+          <span id="timer">${safeTimerMinutes} ${tr('time.minutes', 'min')}</span>
         </div>
 
         <div class="r-xtrs-hvac-fan-settings-container">
@@ -83,7 +85,7 @@ export function createTopSection(data, t) {
           <div class="r-xtrs-hvac-fan-info-stack">
             <div>📊 ${efficiency}%</div>
             <div>🫧 <span class="${co2LevelClass || ''}">${co2Level}</span> ppm</div>
-            <div>📅 ${filterDaysRemaining}d</div>
+            <div id="filterDaysRemaining">📅 ${safeFilterDaysRemaining}d</div>
           </div>
         </div>
 

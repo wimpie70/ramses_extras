@@ -53,10 +53,14 @@ export class HvacFanCardHandlers {
 
             // Extract 10D0 data
             const filterData = HvacFanCardHandlers.extract10D0Data(payload);
+            if (!filterData.hvac_id) {
+                filterData.hvac_id = messageData?.data?.src || null;
+            }
             logger.debug('10D0 data extracted:', {
                 hvac_id: filterData.hvac_id,
                 filter_change_required: filterData.filter_change_required,
-                days_remaining: filterData.days_remaining
+                days_remaining: filterData.days_remaining,
+                payload_type: typeof payload,
             });
 
             // Update the card with filter information
@@ -135,6 +139,17 @@ export class HvacFanCardHandlers {
      * Extract relevant data from 10D0 message payload
      */
     static extract10D0Data(payload) {
+        const payloadObj = (typeof payload === 'object' && payload !== null) ? payload : {};
+        const rawPayloadHex = typeof payload === 'string'
+            ? payload
+            : (
+                payloadObj.payload
+                || payloadObj.raw_payload
+                || payloadObj.hex
+                || payloadObj.packet
+                || null
+            );
+
         const toNumberOrNull = (value) => {
             if (value === null || value === undefined || value === '') {
                 return null;
@@ -153,29 +168,47 @@ export class HvacFanCardHandlers {
             return null;
         };
 
+        const parseHexPayload = (value) => {
+            if (typeof value !== 'string') {
+                return { daysRemaining: null };
+            }
+            const clean = value.replace(/\s+/g, '').toUpperCase();
+            if (clean.length < 4 || clean.length % 2 !== 0 || !/^[0-9A-F]+$/.test(clean)) {
+                return { daysRemaining: null };
+            }
+            const parsedDays = Number.parseInt(clean.slice(0, 4), 16);
+            if (!Number.isFinite(parsedDays)) {
+                return { daysRemaining: null };
+            }
+            return { daysRemaining: parsedDays };
+        };
+
+        const parsedHex = parseHexPayload(rawPayloadHex);
+
         return {
-            hvac_id: payload.hvac_id,
+            hvac_id: payloadObj.hvac_id || null,
 
             // Filter information (if available)
             filter_change_required: Boolean(
-                payload.filter_change_required ?? payload.filter_replace_required
+                payloadObj.filter_change_required ?? payloadObj.filter_replace_required
             ),
             // RF payload field naming varies by version.
             days_remaining: firstNumeric(
-                payload.days_remaining,
-                payload.filter_remaining,
-                payload.filter_days_remaining
+                payloadObj.days_remaining,
+                payloadObj.filter_remaining,
+                payloadObj.filter_days_remaining,
+                parsedHex.daysRemaining
             ),
             days_lifetime: firstNumeric(
-                payload.days_lifetime,
-                payload.filter_days_lifetime,
-                payload.filter_lifetime_days
+                payloadObj.days_lifetime,
+                payloadObj.filter_days_lifetime,
+                payloadObj.filter_lifetime_days
             ),
             percent_remaining: firstNumeric(
-                payload.percent_remaining,
-                payload.filter_percent_remaining
+                payloadObj.percent_remaining,
+                payloadObj.filter_percent_remaining
             ),
-            maintenance_required: Boolean(payload.maintenance_required),
+            maintenance_required: Boolean(payloadObj.maintenance_required),
 
             timestamp: new Date().toISOString(),
             source: '10D0_message'

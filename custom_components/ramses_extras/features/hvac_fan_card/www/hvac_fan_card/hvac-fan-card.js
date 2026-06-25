@@ -316,7 +316,7 @@ class HvacFanCard extends RamsesBaseCard {
         : null,
       tempControlStatus: this._getTempControlStatus(),
       dataSource31DA: da31Data.source === '31DA_message',
-      timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
+      timerMinutes: Number.isFinite(da31Data.remaining_mins) ? da31Data.remaining_mins : 0,
       filterDaysRemaining,
 
       // Transport connection status
@@ -568,6 +568,14 @@ class HvacFanCard extends RamsesBaseCard {
 
         this._config = updatedConfig;
         this._entityMappings = { ...(this._entityMappings || {}), ...result.mappings };
+
+        // Force one refresh when mappings resolve so newly discovered entities
+        // (like filter remaining) are reflected immediately.
+        this.clearPreviousStates();
+        this.clearUpdateThrottle();
+        if (this.isConnected) {
+          this._scheduleRender(true);
+        }
       }
     } catch (error) {
       // If it's a version mismatch error, stop retrying
@@ -1249,7 +1257,7 @@ class HvacFanCard extends RamsesBaseCard {
         (this.getEntityState(config.bypass_entity)?.state === 'on' ? 100 : null),
       dehumEntitiesAvailable, // Add availability flag
       dataSource31DA: da31Data.source === '31DA_message', // Flag for UI
-      timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
+      timerMinutes: Number.isFinite(da31Data.remaining_mins) ? da31Data.remaining_mins : 0,
       // Filter days remaining from 10D0 data
       filterDaysRemaining,
       // efficiency: 75   // Remove hardcoded value - let template calculate it
@@ -1326,11 +1334,23 @@ class HvacFanCard extends RamsesBaseCard {
       `sensor.${deviceIdUnderscore}_filter_remaining`,
       `sensor.fan_${deviceIdUnderscore}_filter_remaining`,
     ];
-
     for (const entityId of candidates) {
-      const value = this.getEntityStateAsNumber(entityId, null);
-      if (Number.isFinite(value)) {
-        return value;
+      const state = this.getEntityState(entityId);
+      if (!state) {
+        continue;
+      }
+
+      const stateValue = parseFloat(state.state);
+      if (!Number.isNaN(stateValue)) {
+        return stateValue;
+      }
+
+      const attributes = state.attributes || {};
+      for (const key of ['days_remaining', 'remaining_days', 'filter_remaining']) {
+        const attrValue = parseFloat(attributes[key]);
+        if (!Number.isNaN(attrValue)) {
+          return attrValue;
+        }
       }
     }
 
