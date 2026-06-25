@@ -230,6 +230,13 @@ class HvacFanCard extends RamsesBaseCard {
     const transportState = this.getEntityState(transportStateEntity)
       || this.getEntityState(legacyTransportStateEntity);
     const transportAvailable = transportState?.state === 'on';
+    const legacyFilterRemainingEntity = `sensor.${config.device_id.replace(/:/g, '_')}_filter_remaining`;
+    const filterDaysRemaining = Number.isFinite(da10D0Data.days_remaining)
+      ? da10D0Data.days_remaining
+      : this.getEntityStateAsNumber(
+        config.filter_remaining_entity || legacyFilterRemainingEntity,
+        null
+      );
 
     // Temperature data - prefer 31DA real-time, fall back to entity states
     const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp :
@@ -313,10 +320,7 @@ class HvacFanCard extends RamsesBaseCard {
       tempControlStatus: this._getTempControlStatus(),
       dataSource31DA: da31Data.source === '31DA_message',
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
-      filterDaysRemaining:
-        Number.isFinite(da10D0Data.days_remaining)
-          ? da10D0Data.days_remaining
-          : this.getEntityStateAsNumber(config.filter_remaining_entity, null),
+      filterDaysRemaining,
 
       // Transport connection status
       transportAvailable,
@@ -1184,6 +1188,13 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Get 10D0 data for filter information
     const da10D0Data = this.get10D0Data();
+    const legacyFilterRemainingEntity = `sensor.${config.device_id.replace(/:/g, '_')}_filter_remaining`;
+    const filterDaysRemaining = Number.isFinite(da10D0Data.days_remaining)
+      ? da10D0Data.days_remaining
+      : this.getEntityStateAsNumber(
+        config.filter_remaining_entity || legacyFilterRemainingEntity,
+        null
+      );
 
     // Fan data
     const rawData = {
@@ -1227,10 +1238,7 @@ class HvacFanCard extends RamsesBaseCard {
       dataSource31DA: da31Data.source === '31DA_message', // Flag for UI
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
       // Filter days remaining from 10D0 data
-      filterDaysRemaining:
-        Number.isFinite(da10D0Data.days_remaining)
-          ? da10D0Data.days_remaining
-          : this.getEntityStateAsNumber(config.filter_remaining_entity, null),
+      filterDaysRemaining,
       // efficiency: 75   // Remove hardcoded value - let template calculate it
 
       // Transport connection status
