@@ -228,11 +228,8 @@ class PlatformSetup:
                 device_id_str.replace("_", ":"),
             }
             is_enabled = False
-            has_matrix_entry = False
             for candidate in candidates:
                 features_for_device = matrix_state.get(candidate)
-                if isinstance(features_for_device, Mapping):
-                    has_matrix_entry = True
                 if isinstance(features_for_device, Mapping) and (
                     features_for_device.get(feature_id) is True
                 ):
@@ -242,14 +239,12 @@ class PlatformSetup:
                 filtered_devices.append(device_id_str)
                 continue
 
-            # If the matrix doesn't contain this device at all, treat it as falling
-            # back to the global feature enablement.
-            if (not has_matrix_entry) and feature_globally_enabled:
-                filtered_devices.append(device_id_str)
-                continue
-
+            # If the matrix is non-empty but doesn't contain this device,
+            # skip it — the user has explicitly configured which devices
+            # should participate in ramses_extras. Only fall back to global
+            # enablement when the matrix is completely empty (handled above).
             _LOGGER.debug(
-                "Skipping disabled device for %s feature: %s",
+                "Skipping device not in matrix for %s feature: %s",
                 feature_id,
                 device_id_str,
             )
