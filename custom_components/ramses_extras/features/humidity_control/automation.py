@@ -110,6 +110,14 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # otherwise re-trigger the automation in a tight loop)
         self._processing_devices: set[str] = set()
 
+        # Recently-processed guard: when a batch of RF packets arrives,
+        # multiple entity state changes fire within the same millisecond.
+        # Without debounce_seconds > 0, each one triggers a full automation
+        # run.  This guard skips redundant runs that arrive within a short
+        # window of the last successful processing for the same device.
+        self._last_processed_time: dict[str, float] = {}
+        self._process_cooldown_seconds = 2.0
+
         # Performance tracking
         self._decision_count = 0
         self._active_cycles = 0
@@ -684,9 +692,25 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             _LOGGER.debug("Already processing %s, skipping re-entrant call", device_id)
             return
 
+        # Recently-processed guard: skip if we processed this device within
+        # the cooldown window.  When a batch of RF packets arrives, multiple
+        # entity state changes fire within the same millisecond; without
+        # this guard each one triggers a full automation run even though
+        # the underlying device state hasn't meaningfully changed.
+        now_mono = time.monotonic()
+        last_processed = self._last_processed_time.get(device_id, 0.0)
+        if (now_mono - last_processed) < self._process_cooldown_seconds:
+            _LOGGER.debug(
+                "Recently processed %s (%.1fs ago), skipping redundant run",
+                device_id,
+                now_mono - last_processed,
+            )
+            return
+
         self._processing_devices.add(device_id)
         try:
             await self._process_automation_logic_inner(device_id, entity_states)
+            self._last_processed_time[device_id] = time.monotonic()
         finally:
             self._processing_devices.discard(device_id)
 

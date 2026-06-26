@@ -6,6 +6,7 @@ CO2 control has priority over humidity control in the ventilation system.
 
 import asyncio
 import logging
+import time
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any, cast
@@ -91,6 +92,11 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self._trigger_meta: dict[str, dict[str, Any]] = {}
         # Re-entrancy guard: prevent concurrent _process_automation_logic runs
         self._processing_devices: set[str] = set()
+
+        # Recently-processed guard: coalesce rapid state changes from a
+        # batch of RF packets into a single automation run.
+        self._last_processed_time: dict[str, float] = {}
+        self._process_cooldown_seconds = 2.0
 
         self._zone_demand_registry = get_zone_demand_registry(hass)
         self._co2_demand_zones: dict[str, set[str]] = {}
@@ -319,9 +325,22 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             _LOGGER.debug("Already processing %s, skipping re-entrant call", device_id)
             return
 
+        # Recently-processed guard: coalesce rapid state changes from a
+        # batch of RF packets into a single automation run.
+        now_mono = time.monotonic()
+        last_processed = self._last_processed_time.get(device_id, 0.0)
+        if (now_mono - last_processed) < self._process_cooldown_seconds:
+            _LOGGER.debug(
+                "Recently processed %s (%.1fs ago), skipping redundant run",
+                device_id,
+                now_mono - last_processed,
+            )
+            return
+
         self._processing_devices.add(device_id)
         try:
             await self._process_automation_logic_inner(device_id, entity_states)
+            self._last_processed_time[device_id] = time.monotonic()
         finally:
             self._processing_devices.discard(device_id)
 

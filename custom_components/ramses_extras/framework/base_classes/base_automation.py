@@ -86,6 +86,10 @@ class ExtrasBaseAutomation(ABC):
         # Validation throttling
         self._last_validation_time: dict[str, float] = {}  # device_id -> timestamp
         self._validation_cooldown = 30  # seconds between validation for same device
+        # In-flight validation guard: prevents multiple concurrent
+        # _validate_device_entities calls for the same device when a
+        # batch of state-change tasks are all created in the same tick.
+        self._validating_devices: set[str] = set()
 
         # Transport state tracking
         self._transport_available: bool = True
@@ -399,14 +403,23 @@ class ExtrasBaseAutomation(ABC):
         has_validated_successfully = last_validation > 0
 
         if should_validate:
-            # Validate all entities exist for this device
-            if not await self._validate_device_entities(device_id):
-                # Update validation time to prevent immediate re-checks
-                self._last_validation_time[device_id] = current_time
-                return
-            # Validation passed, update timestamp
-            self._last_validation_time[device_id] = current_time
-            has_validated_successfully = True
+            # In-flight guard: if another task is already validating this
+            # device, skip validation and treat it as already validated
+            # (the other task will set the timestamp).
+            if device_id in self._validating_devices:
+                has_validated_successfully = True
+            else:
+                self._validating_devices.add(device_id)
+                try:
+                    if not await self._validate_device_entities(device_id):
+                        # Update validation time to prevent immediate re-checks
+                        self._last_validation_time[device_id] = current_time
+                        return
+                    # Validation passed, update timestamp
+                    self._last_validation_time[device_id] = current_time
+                    has_validated_successfully = True
+                finally:
+                    self._validating_devices.discard(device_id)
 
         # Only proceed if we've successfully validated before or just
         #  validated successfully
