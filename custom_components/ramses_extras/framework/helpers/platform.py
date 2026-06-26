@@ -217,6 +217,7 @@ class PlatformSetup:
         # Filter devices to only include those enabled for this feature.
         # We accept both `32:153289` and `32_153289` forms for robustness.
         filtered_devices = []
+        skipped_count = 0
         for device_id in device_ids:
             device_id_str = extract_device_id_as_string(device_id)
             if not isinstance(matrix_state, Mapping):
@@ -243,17 +244,15 @@ class PlatformSetup:
             # skip it — the user has explicitly configured which devices
             # should participate in ramses_extras. Only fall back to global
             # enablement when the matrix is completely empty (handled above).
-            _LOGGER.debug(
-                "Skipping device not in matrix for %s feature: %s",
-                feature_id,
-                device_id_str,
-            )
+            skipped_count += 1
 
         _LOGGER.debug(
-            "Filtered %d devices to %d enabled devices for feature %s",
+            "Filtered %d devices to %d enabled devices for feature %s "
+            "(skipped %d not in matrix)",
             len(device_ids),
             len(filtered_devices),
             feature_id,
+            skipped_count,
         )
 
         return filtered_devices
