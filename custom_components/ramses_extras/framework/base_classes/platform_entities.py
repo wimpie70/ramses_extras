@@ -441,7 +441,7 @@ async def generic_platform_setup(
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
-    _LOGGER.info(
+    _LOGGER.debug(
         "%s %s platform: found %d devices: %s",
         feature_id,
         platform_type,
@@ -455,7 +455,7 @@ async def generic_platform_setup(
             # Create entities for this device
             device_entities = await entity_factory(hass, device_id, config_entry)
             entities.extend(device_entities)
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Created %d %s entities for device %s",
                 len(device_entities),
                 platform_type,
@@ -469,7 +469,7 @@ async def generic_platform_setup(
                 e,
             )
 
-    _LOGGER.info("Total %s entities created: %d", platform_type, len(entities))
+    _LOGGER.debug("Total %s entities created: %d", platform_type, len(entities))
     if entities:
         async_add_entities(entities, True)
         _LOGGER.info(

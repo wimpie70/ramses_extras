@@ -378,7 +378,7 @@ class ConfigFlowHelper:
 
                 if config_flow_class:
                     feature_config_flows[feature_id] = config_flow_class
-                    _LOGGER.info(f"Discovered config flow for feature: {feature_id}")
+                    _LOGGER.debug(f"Discovered config flow for feature: {feature_id}")
                 else:
                     _LOGGER.debug(
                         f"No valid config flow class found for feature: {feature_id}"

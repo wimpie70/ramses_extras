@@ -82,7 +82,7 @@ class SimpleEntityManager:
             entities = await self._create_feature_entities(feature_id, device_id)
             created_entities.extend(entities)
 
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Created {len(created_entities)} entities for feature {feature_id}"
         )
         return created_entities
@@ -103,7 +103,7 @@ class SimpleEntityManager:
             entities = await self._remove_feature_entities(feature_id, device_id)
             removed_entities.extend(entities)
 
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Removed {len(removed_entities)} entities for feature {feature_id}"
         )
         return removed_entities
@@ -153,7 +153,7 @@ class SimpleEntityManager:
         entities_to_create = set(new_required_entities) - set(old_required_entities)
         entities_to_remove = set(old_required_entities) - set(new_required_entities)
 
-        _LOGGER.info(
+        _LOGGER.debug(
             "Entity changes calculated: %s to create, %s to remove",
             len(entities_to_create),
             len(entities_to_remove),
@@ -186,7 +186,7 @@ class SimpleEntityManager:
         # Find missing entities (should exist but don't)
         missing_entities = set(required_entities) - set(current_entities)
 
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Startup validation: {len(extra_entities)} extra entities, "
             f"{len(missing_entities)} missing entities"
         )
@@ -484,7 +484,7 @@ class SimpleEntityManager:
                 config_entry=None,  # Will be set by the integration on platforms load
             )
 
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Entity {entity_id} created in entity registry with ID {entry.id}"
             )
 
@@ -499,7 +499,7 @@ class SimpleEntityManager:
         """
         try:
             await self._create_entity_directly(entity_id)
-            _LOGGER.info(f"Entity {entity_id} created")
+            _LOGGER.debug(f"Entity {entity_id} created")
         except Exception as e:
             _LOGGER.error(f"Failed to create entity {entity_id}: {e}")
             raise
@@ -511,7 +511,7 @@ class SimpleEntityManager:
         """
         try:
             await self._remove_entity_directly(entity_id)
-            _LOGGER.info(f"Entity {entity_id} removed")
+            _LOGGER.debug(f"Entity {entity_id} removed")
         except Exception as e:
             _LOGGER.error(f"Failed to remove entity {entity_id}: {e}")
             raise

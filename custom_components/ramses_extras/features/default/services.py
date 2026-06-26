@@ -372,7 +372,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         zone_id,
                     )
                     coordinator.configure_zone(zone_id)
-                _LOGGER.info("Running zone actuation cycle for %s", device_id)
+                _LOGGER.debug("Running zone actuation cycle for %s", device_id)
                 await coordinator.async_run_zone_actuation_cycle()
             else:
                 _LOGGER.warning("No zone_id bound for REM command on %s", device_id)
@@ -596,7 +596,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         commands = RamsesCommands(hass)
         stats = commands.get_queue_statistics()
         hass.data.setdefault(DOMAIN, {})["queue_statistics"] = stats
-        _LOGGER.info("Queue statistics updated: %s", stats)
+        _LOGGER.debug("Queue statistics updated: %s", stats)
 
     domain_data = hass.data.setdefault(DOMAIN, {})
     if not domain_data.get("_fan_remote_listener_started"):
@@ -741,7 +741,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             coordinator = get_zone_coordinator(hass, fan_id)
             results = await coordinator.async_run_zone_actuation_cycle()
 
-            _LOGGER.info("Zone actuation cycle completed for %s: %s", fan_id, results)
+            _LOGGER.debug("Zone actuation cycle completed for %s: %s", fan_id, results)
 
             # Return results via event for UI feedback
             hass.bus.fire(
@@ -915,7 +915,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 if not zone_config or not zone_config.is_controllable:
                     continue
 
-                _LOGGER.info("Calibrating zone %s:%s", fan_id, zone_id)
+                _LOGGER.debug("Calibrating zone %s:%s", fan_id, zone_id)
 
                 inlet_entity = zone_config.inlet_valve_entity
                 outlet_entity = zone_config.outlet_valve_entity

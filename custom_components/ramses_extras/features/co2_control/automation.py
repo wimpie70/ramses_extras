@@ -1206,7 +1206,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             )
             if success:
                 self._last_fan_speed = target_speed
-                _LOGGER.info(
+                _LOGGER.debug(
                     "Set fan speed to %s for device %s (CO2 control)",
                     target_speed,
                     device_id,
@@ -1228,7 +1228,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             )
             if success:
                 self._last_fan_speed = idle_speed
-                _LOGGER.info("Returned fan to idle speed for device %s", device_id)
+                _LOGGER.debug("Returned fan to idle speed for device %s", device_id)
 
     async def _notify_priority_takeover(self) -> None:
         """Notify humidity control that CO2 has taken priority."""

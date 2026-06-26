@@ -77,7 +77,7 @@ class HumidityServices:
                 "switch", SERVICE_TURN_ON, {"entity_id": dehumidify_entity}
             )
 
-            _LOGGER.info("Dehumidification activated: %s", dehumidify_entity)
+            _LOGGER.debug("Dehumidification activated: %s", dehumidify_entity)
             return True
 
         except Exception as e:
@@ -104,7 +104,7 @@ class HumidityServices:
                 "switch", SERVICE_TURN_OFF, {"entity_id": dehumidify_entity}
             )
 
-            _LOGGER.info("Dehumidification deactivated: %s", dehumidify_entity)
+            _LOGGER.debug("Dehumidification deactivated: %s", dehumidify_entity)
             return True
 
         except Exception as e:
@@ -153,7 +153,7 @@ class HumidityServices:
             self._last_fan_speed[device_id] = (command_name, now_mono)
             success: bool = result.success
             if success:
-                _LOGGER.info(
+                _LOGGER.debug(
                     "Fan speed set to %s for device %s",
                     cmd.upper(),
                     device_id,
@@ -192,7 +192,7 @@ class HumidityServices:
                 "number", "set_value", {"entity_id": min_entity, "value": value}
             )
 
-            _LOGGER.info("Min humidity set: %s = %s%%", min_entity, value)
+            _LOGGER.debug("Min humidity set: %s = %s%%", min_entity, value)
             return True
 
         except Exception as e:
@@ -220,7 +220,7 @@ class HumidityServices:
                 "number", "set_value", {"entity_id": max_entity, "value": value}
             )
 
-            _LOGGER.info("Max humidity set: %s = %s%%", max_entity, value)
+            _LOGGER.debug("Max humidity set: %s = %s%%", max_entity, value)
             return True
 
         except Exception as e:
@@ -248,7 +248,7 @@ class HumidityServices:
                 "number", "set_value", {"entity_id": offset_entity, "value": value}
             )
 
-            _LOGGER.info("Humidity offset set: %s = %s", offset_entity, value)
+            _LOGGER.debug("Humidity offset set: %s = %s", offset_entity, value)
             return True
 
         except Exception as e:

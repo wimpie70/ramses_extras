@@ -46,7 +46,7 @@ class DeviceFilter:
                 filtered_devices.append(device)
                 _LOGGER.debug("Device %s matches feature requirements", device)
 
-        _LOGGER.info(
+        _LOGGER.debug(
             "Filtered %d devices to %d matching devices",
             len(devices),
             len(filtered_devices),

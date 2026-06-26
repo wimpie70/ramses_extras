@@ -233,7 +233,7 @@ class EntityGenerationManager:
         # Add high-end entities (if applicable)
         all_entities.extend(self.generate_high_end_entities(device_id, model_info))
 
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Generated {len(all_entities)} total entities for "
             f"{self.brand_name} device {device_id}"
         )

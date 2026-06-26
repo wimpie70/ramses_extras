@@ -73,7 +73,7 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
     _LOGGER.info("Registering Ramses Extras WebSocket commands")
 
     enabled_feature_names = get_enabled_feature_names(hass)
-    _LOGGER.info("Enabled features: %s", enabled_feature_names)
+    _LOGGER.debug("Enabled features: %s", enabled_feature_names)
 
     all_commands = extras_registry.get_all_websocket_commands()
     enabled_features_with_commands = [

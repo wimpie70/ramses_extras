@@ -116,7 +116,7 @@ class ExtrasBrandCustomizer:
             )
             entities.extend(high_end_entities)
 
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Added {len(entities)} entities for {self.brand_name} device {device_id}"
         )
 

@@ -457,7 +457,7 @@ async def test_remove_entity_wrapper_handles_error(hass, caplog) -> None:
 @pytest.mark.asyncio
 async def test_create_entity_success_logs(hass, caplog) -> None:
     """Test create_entity logs success."""
-    caplog.set_level("INFO")
+    caplog.set_level("DEBUG")
 
     manager = SimpleEntityManager(hass)
 
@@ -476,7 +476,7 @@ async def test_create_entity_success_logs(hass, caplog) -> None:
 @pytest.mark.asyncio
 async def test_remove_entity_success_logs(hass, caplog) -> None:
     """Test remove_entity logs success."""
-    caplog.set_level("INFO")
+    caplog.set_level("DEBUG")
 
     manager = SimpleEntityManager(hass)
 

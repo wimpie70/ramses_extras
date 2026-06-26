@@ -657,7 +657,7 @@ class ExtrasBaseAutomation(ABC):
             if entity and hasattr(entity, "set_state"):
                 # Call the entity's set_state method to update the binary sensor
                 entity.set_state(is_on)
-                _LOGGER.info(
+                _LOGGER.debug(
                     f"Updated binary sensor {entity_id} to {is_on} via set_state()"
                 )
                 return True

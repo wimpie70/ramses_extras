@@ -42,7 +42,7 @@ class CommandRegistry:
             "description": "Set fan to high speed"  # Optional description
         }
         """
-        _LOGGER.info(
+        _LOGGER.debug(
             f"🔧 Registering {len(commands)} commands for feature '{feature_id}'"
         )
         for cmd_name, cmd_def in commands.items():
@@ -70,7 +70,7 @@ class CommandRegistry:
                 f"Registered command '{cmd_name}' from feature '{feature_id}'"
             )
 
-        _LOGGER.info(
+        _LOGGER.debug(
             f"✅ Successfully registered {len(commands)} commands for "
             f"feature '{feature_id}'"
         )

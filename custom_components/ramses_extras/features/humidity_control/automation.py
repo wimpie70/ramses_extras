@@ -119,7 +119,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._paused_for_co2 = False
 
         _LOGGER.info("Enhanced Humidity Control automation initialized")
-        _LOGGER.info("Feature enabled status: %s", self._is_feature_enabled())
+        _LOGGER.debug("Feature enabled status: %s", self._is_feature_enabled())
 
     def _cancel_balance_switch_retry(self, device_id: str) -> None:
         handle = self._balance_switch_retry_handles.pop(device_id, None)
@@ -619,12 +619,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
             return
 
-        _LOGGER.info("Humidity control feature is enabled, proceeding with startup")
+        _LOGGER.debug("Humidity control feature is enabled, proceeding with startup")
 
         # Load configuration
         await self.config.async_load()
 
-        _LOGGER.info("Configuration loaded, starting base automation")
+        _LOGGER.debug("Configuration loaded, starting base automation")
 
         self._automation_active = True
         try:
@@ -1417,7 +1417,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         :param device_id: Device identifier
         """
-        _LOGGER.info(
+        _LOGGER.debug(
             "Stopping dehumidification for %s (switch OFF) - clearing fan demand",
             device_id,
         )
@@ -1429,7 +1429,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 feature_id=self.feature_id,
                 source_id="humidity_control",
             )
-            _LOGGER.info("Fan demand cleared for %s: success=%s", device_id, success)
+            _LOGGER.debug("Fan demand cleared for %s: success=%s", device_id, success)
             if not success:
                 _LOGGER.warning(
                     "Failed to set fan to auto mode for device %s",
@@ -1438,7 +1438,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             self._dehumidify_active = False
 
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Humidity balancing stopped for %s (switch already off, "
                 "respecting user choice)",
                 device_id,

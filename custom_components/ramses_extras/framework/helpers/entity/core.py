@@ -653,7 +653,7 @@ class EntityHelpers:
         # This is a placeholder implementation
         # In a real implementation, this would check for entities
         # that no longer have corresponding devices and remove them
-        _LOGGER.info(f"Would cleanup orphaned entities for devices: {device_ids}")
+        _LOGGER.debug(f"Would cleanup orphaned entities for devices: {device_ids}")
         return 0
 
     @staticmethod

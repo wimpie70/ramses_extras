@@ -63,7 +63,7 @@ class TransportMonitor:
         """
         normalized_device_id = device_id.replace("_", ":") if device_id else None
         self._callbacks[name] = (normalized_device_id, callback)
-        _LOGGER.info(
+        _LOGGER.debug(
             "Registered transport state callback: %s%s (total callbacks: %d)",
             name,
             f" for {normalized_device_id}" if normalized_device_id else "",

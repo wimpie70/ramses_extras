@@ -127,7 +127,7 @@ class ExtrasConfigManager:
 
             # This would update the config entry
             # Implementation depends on HA's config entry update mechanism
-            _LOGGER.info(f"{self.feature_id} configuration validation passed")
+            _LOGGER.debug(f"{self.feature_id} configuration validation passed")
             return True
 
         except Exception as e:

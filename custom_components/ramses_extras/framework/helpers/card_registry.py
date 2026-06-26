@@ -192,7 +192,7 @@ class CardRegistry:
                     existing_resources.add(card.resource_path)
                     new_resources_added += 1
                     needs_save = True
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "📝 Added resource: %s -> %s", card.type, card.resource_path
                     )
                 else:
@@ -202,7 +202,7 @@ class CardRegistry:
             if new_resources_added > 0 or needs_save:
                 await self._store.async_save(data)
                 if new_resources_added > 0:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "✅ CardRegistry: Added %d new resources (total: %d)",
                         new_resources_added,
                         len(data["items"]),
