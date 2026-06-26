@@ -238,13 +238,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 handle.cancel()
 
         async def _async_release_remote_override() -> None:
-            _cancel_remote_override_release()
-            arbiter.clear_manual_override_state(device_id)
-            await arbiter.async_commit_state(device_id, apply=False)
-            _clear_rem_zone_demands()
-            coordinator = get_zone_coordinator(hass, device_id)
-            await coordinator.async_run_zone_actuation_cycle()
-            await _async_resume_feature_control(device_id)
+            try:
+                _cancel_remote_override_release()
+                arbiter.clear_manual_override_state(device_id)
+                await arbiter.async_commit_state(device_id, apply=False)
+                _clear_rem_zone_demands()
+                coordinator = get_zone_coordinator(hass, device_id)
+                await coordinator.async_run_zone_actuation_cycle()
+                await _async_resume_feature_control(device_id)
+            except Exception as e:
+                _LOGGER.exception(
+                    "Error releasing remote override for %s: %s", device_id, e
+                )
 
         def _schedule_remote_override_release(
             timeout_seconds: int | None = None,
@@ -386,6 +391,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             _clear_rem_zone_demands()
 
     async def _async_handle_observed_remote_packet(
+        src: object,
+        dst: object,
+        code: object,
+        payload: object,
+        verb: object = None,
+    ) -> None:
+        try:
+            await _async_handle_observed_remote_packet_inner(
+                src, dst, code, payload, verb
+            )
+        except Exception as e:
+            _LOGGER.exception("Error handling observed remote packet: %s", e)
+
+    async def _async_handle_observed_remote_packet_inner(
         src: object,
         dst: object,
         code: object,

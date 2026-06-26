@@ -448,7 +448,15 @@ class ExtrasBaseAutomation(ABC):
             return
 
         # Call feature-specific processing logic
-        await self._process_automation_logic(device_id, entity_states)
+        try:
+            await self._process_automation_logic(device_id, entity_states)
+        except Exception as e:
+            _LOGGER.exception(
+                "Error in automation logic for %s on device %s: %s",
+                self.feature_id,
+                device_id,
+                e,
+            )
 
     async def _cancel_all_timers(self) -> None:
         """Cancel all pending debouncing timers."""
