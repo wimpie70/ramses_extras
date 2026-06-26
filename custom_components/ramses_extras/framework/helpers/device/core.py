@@ -46,20 +46,17 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     :return: The Ramses device object or None if not found
     """
     # Get the broker directly from hass.data
-    if "ramses_cc" not in hass.data:
-        _LOGGER.warning("Ramses CC not loaded for device %s", device_id)
+    if "ramses_cc" not in hass.data or not hass.data["ramses_cc"]:
         return None
 
     ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
     if not ramses_cc_entries:
-        _LOGGER.warning("No Ramses CC entries found for device %s", device_id)
         return None
 
     # Get the broker directly
     ramses_entry_id = next(iter(hass.data["ramses_cc"]))
     broker = hass.data["ramses_cc"][ramses_entry_id]
     if not broker:
-        _LOGGER.warning("No Ramses broker available for device %s", device_id)
         return None
 
     # Use broker's _get_device method for efficient lookup
@@ -67,7 +64,6 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     if device:
         return device
 
-    _LOGGER.warning("Device %s not found in broker", device_id)
     return None
 
 
