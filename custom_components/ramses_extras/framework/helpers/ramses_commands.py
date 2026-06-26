@@ -206,6 +206,9 @@ class DeviceCommandManager:
         # Clean up dedup signature tracking
         self._queued_signatures.pop(device_id, None)
 
+        # Clean up the queue itself (no more commands pending)
+        self._queues.pop(device_id, None)
+
     async def _execute_command(
         self, device_id: str, command_def: dict[str, Any], timeout: float
     ) -> CommandResult:
