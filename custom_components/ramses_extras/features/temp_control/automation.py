@@ -454,10 +454,17 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             "disabled": "fan_bypass_auto",
         }[desired_mode]
 
-        if (
-            self._last_bypass_command.get(device_id) != bypass_cmd
-            and desired_mode != prev_mode
-        ):
+        # Send bypass command only when the mode changed AND either the
+        # command name is different or enough time has passed since the
+        # last identical command (safety net against rapid oscillation
+        # when min_bypass_mode_interval_seconds is set very low).
+        bypass_dedup_seconds = 5.0
+        last_cmd = self._last_bypass_command.get(device_id)
+        last_cmd_time = self._last_bypass_command_time.get(device_id, 0.0)
+        command_changed = last_cmd != bypass_cmd
+        dedup_expired = (now - last_cmd_time) >= bypass_dedup_seconds
+
+        if desired_mode != prev_mode and (command_changed or dedup_expired):
             await self.ramses_commands.send_command(device_id, bypass_cmd)
             self._last_bypass_change[device_id] = now
             self._last_bypass_command[device_id] = bypass_cmd

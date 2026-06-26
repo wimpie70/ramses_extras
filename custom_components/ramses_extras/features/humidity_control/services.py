@@ -5,6 +5,7 @@ including dehumidification control and humidity threshold management.
 """
 
 import logging
+import time
 from typing import Any
 
 from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON
@@ -16,6 +17,9 @@ from custom_components.ramses_extras.framework.helpers.ramses_commands import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Minimum seconds between identical fan-speed service calls.
+_FAN_SPEED_DEDUP_SECONDS = 2.0
 
 
 class HumidityServices:
@@ -36,6 +40,9 @@ class HumidityServices:
 
         # Initialize Ramses commands for direct device control
         self.ramses_commands = RamsesCommands(hass)
+
+        # Dedup: {device_id: (command_name, monotonic_time)}
+        self._last_fan_speed: dict[str, tuple[str, float]] = {}
 
         # Service registry
         self._services = {
@@ -126,7 +133,24 @@ class HumidityServices:
             # Default commands register names like "fan_high", "fan_auto", ...
             command_name = cmd if cmd.startswith("fan_") else f"fan_{cmd}"
 
+            # Dedup: skip if the same fan speed was requested recently.
+            now_mono = time.monotonic()
+            last = self._last_fan_speed.get(device_id)
+            if (
+                last
+                and last[0] == command_name
+                and (now_mono - last[1]) < _FAN_SPEED_DEDUP_SECONDS
+            ):
+                _LOGGER.debug(
+                    "Dedup: skipping fan speed %s for %s (sent %.1fs ago)",
+                    command_name,
+                    device_id,
+                    now_mono - last[1],
+                )
+                return True
+
             result = await self.ramses_commands.send_command(device_id, command_name)
+            self._last_fan_speed[device_id] = (command_name, now_mono)
             success: bool = result.success
             if success:
                 _LOGGER.info(

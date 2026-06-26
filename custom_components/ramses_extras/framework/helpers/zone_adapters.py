@@ -462,6 +462,10 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
 
         self._has_homed: bool = False
         self._last_home_monotonic: float | None = None
+        # Dedup: track last sent position + monotonic time to avoid
+        # flooding valve service calls on rapid demand changes.
+        self._last_sent_position: int | None = None
+        self._last_sent_monotonic: float = 0.0
 
     def _should_home_for_target(self, target_position: int) -> bool:
         if not self._home_mode or target_position == self._home_position:
@@ -609,6 +613,22 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
             return False
 
         target = self.clamp_position(position)
+
+        # Dedup: skip if the same target was sent within the dedup
+        # window (unless homing is required, which always proceeds).
+        valve_dedup_seconds = 2.0
+        now_mono = time.monotonic()
+        if (
+            self._last_sent_position == target
+            and (now_mono - self._last_sent_monotonic) < valve_dedup_seconds
+        ):
+            _LOGGER.debug(
+                "Paired valves dedup: skipping set_position %d%% (sent %.1fs ago)",
+                target,
+                now_mono - self._last_sent_monotonic,
+            )
+            return True
+
         home_pos = max(0, min(100, int(self._home_position)))
         should_home = self._should_home_for_target(target)
 
@@ -650,6 +670,8 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
                 await _async_service_set(target)
 
             self._last_command_time = datetime.now()
+            self._last_sent_position = target
+            self._last_sent_monotonic = time.monotonic()
             return True
 
         clamped = target
@@ -672,6 +694,8 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
             )
 
             self._last_command_time = datetime.now()
+            self._last_sent_position = target
+            self._last_sent_monotonic = time.monotonic()
             _LOGGER.debug(
                 "Paired valves set to %d%% (inlet: %s, outlet: %s)",
                 clamped,
