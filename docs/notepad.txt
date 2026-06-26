@@ -106,6 +106,21 @@ we should be able to simulate and test this
 _cc:
 - We still don't see all the msg that are sent from RF, even with the Log all MQTT topics enabled
 - we don't discover devices while we DO SEE msgs sent by them...why not ???
+- **TIMING RACE**: `SIGNAL_UPDATE` in `event.py` (`async_process_msg`) fires synchronously
+  from the protocol's extra handler list, BEFORE the Gateway's async `_msg_handler` (which
+  does CQRS state ingestion via `create_task`) has a chance to run. Result: entities receive
+  the signal, call `async_write_ha_state`, read `native_value` → `hvac_state`, but `hvac_state`
+  is still stale because the ingestion task hasn't executed yet.
+  - **Fix attempt**: defer signal send with `asyncio.sleep(0)` via `async_create_task` —
+    signals ARE sent and entities ARE updated, but DB still shows stale values (sleep(0) may
+    not yield enough). Needs deeper investigation — possibly need to await the actual
+    ingestion task, or have the Gateway send the signal after ingestion completes.
+  - **Root cause location**: `ramses_tx/protocol/base.py:_msg_received()` calls
+    `self._msg_handler(msg)` first (async, scheduled via `create_task`), then iterates
+    `self._msg_handlers` (sync callbacks including the event entity). The sync callback
+    runs immediately, before the async task gets a timeslice.
+  - **Separate from ramses_rf PR #732** (which fixes state ingestion itself). This is a
+    ramses_cc issue that needs its own PR.
 
 ---------------
 
