@@ -326,8 +326,6 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
         data["enabled_features"] = new_enabled_features
         data["device_feature_matrix"] = new_matrix_state
 
-        await expose_feature_config_to_frontend(hass, entry)
-
         frontend_log_level_raw = entry.options.get("frontend_log_level")
         if isinstance(frontend_log_level_raw, str) and frontend_log_level_raw:
             frontend_log_level = frontend_log_level_raw
@@ -342,17 +340,42 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
         if not isinstance(log_level, str) or not log_level:
             log_level = "info"
 
+        # Only rewrite the frontend JS file when frontend-relevant options
+        # actually changed.  This avoids unnecessary disk writes (important
+        # for flash/memory-stick storage) when only feature-specific values
+        # like humidity thresholds or fan speeds are adjusted.
+        old_frontend_log_level = data.get("frontend_log_level")
+        old_log_level = data.get("log_level")
+        old_poll_ms = data.get("ramses_debugger_default_poll_ms")
+        new_poll_ms = entry.options.get("ramses_debugger_default_poll_ms")
+
+        frontend_config_changed = (
+            old_debug_mode != debug_mode
+            or old_enabled_features != new_enabled_features
+            or old_frontend_log_level != frontend_log_level
+            or old_log_level != log_level
+            or old_poll_ms != new_poll_ms
+        )
+
+        if frontend_config_changed:
+            await expose_feature_config_to_frontend(hass, entry)
+        else:
+            _LOGGER.debug(
+                "Skipping frontend config file write; "
+                "frontend-relevant options unchanged"
+            )
+
         data["debug_mode"] = debug_mode
         data["frontend_log_level"] = frontend_log_level
         data["log_level"] = log_level
+        data["ramses_debugger_default_poll_ms"] = new_poll_ms
 
         if old_debug_mode is None or old_debug_mode != debug_mode:
             _LOGGER.info("Debug mode changed: %s -> %s", old_debug_mode, debug_mode)
 
         options_payload: dict[str, Any] = {}
-        default_poll_ms = entry.options.get("ramses_debugger_default_poll_ms")
-        if isinstance(default_poll_ms, int):
-            options_payload["ramses_debugger_default_poll_ms"] = int(default_poll_ms)
+        if isinstance(new_poll_ms, int):
+            options_payload["ramses_debugger_default_poll_ms"] = int(new_poll_ms)
 
         hass.bus.async_fire(
             "ramses_extras_options_updated",

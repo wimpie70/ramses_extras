@@ -386,11 +386,30 @@ window.ramsesExtras.options = {js_options};
         )
         feature_config_file = destination_helpers_dir / "ramses-extras-features.js"
 
-        await asyncio.to_thread(feature_config_file.write_text, js_content)
+        # Safety net: skip the disk write if the file content is unchanged.
+        # This protects flash/memory-stick storage from unnecessary writes
+        # when the caller's guard didn't catch a no-op update.
+        def _write_if_changed() -> bool:
+            try:
+                existing = feature_config_file.read_text(encoding="utf-8")
+            except OSError:
+                existing = None
+            if existing == js_content:
+                return False
+            feature_config_file.write_text(js_content, encoding="utf-8")
+            return True
 
-        _LOGGER.info(
-            "Feature configuration exposed to frontend: %s", feature_config_file
-        )
+        written = await asyncio.to_thread(_write_if_changed)
+
+        if written:
+            _LOGGER.info(
+                "Feature configuration exposed to frontend: %s", feature_config_file
+            )
+        else:
+            _LOGGER.debug(
+                "Frontend config file unchanged, skipped write: %s",
+                feature_config_file,
+            )
 
     except Exception as e:
         _LOGGER.error("Failed to expose feature configuration to frontend: %s", e)
