@@ -821,6 +821,45 @@ class TestHumidityAutomationManager:
 
         assert result == "32_123456"
 
+    def test_extract_device_id_reads_legacy_sensor_control(self):
+        """Legacy flat sensor_control config maps area entities to a device."""
+        self.config_entry.options = {
+            "sensor_control": {
+                "area_sensors": {
+                    "32_123456": [
+                        {
+                            "temperature_entity": "sensor.bath_temp",
+                            "humidity_entity": "sensor.bath_humidity",
+                        }
+                    ],
+                },
+            },
+        }
+
+        result = self.manager._extract_device_id("sensor.bath_humidity")
+
+        assert result == "32_123456"
+
+    def test_generate_entity_patterns_reads_legacy_sensor_control(self):
+        """Legacy flat sensor_control config should contribute external area sensors."""
+        self.config_entry.options = {
+            "sensor_control": {
+                "area_sensors": {
+                    "32_123456": [
+                        {
+                            "temperature_entity": "sensor.bath_temp",
+                            "humidity_entity": "sensor.bath_humidity",
+                        }
+                    ],
+                },
+            },
+        }
+
+        patterns = self.manager._generate_entity_patterns()
+
+        assert "sensor.bath_temp" in patterns
+        assert "sensor.bath_humidity" in patterns
+
     async def test_start_stop(self):
         """Test start and stop methods."""
         with (
