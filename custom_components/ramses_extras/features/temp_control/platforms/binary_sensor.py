@@ -87,8 +87,11 @@ class TempControlActiveBinarySensor(ExtrasBinarySensorEntity):
         self._automation_attrs: dict[str, Any] = {}
 
     def set_state(self, is_on: bool, extra_attrs: dict[str, Any] | None = None) -> None:
+        new_attrs = dict(extra_attrs or {})
+        if self._is_on == is_on and self._automation_attrs == new_attrs:
+            return
         self._is_on = is_on
-        self._automation_attrs = dict(extra_attrs or {})
+        self._automation_attrs = new_attrs
         self.async_write_ha_state()
 
     @property

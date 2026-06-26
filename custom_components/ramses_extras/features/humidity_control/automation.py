@@ -732,6 +732,28 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             # If switch is OFF, stop automation but don't turn the switch off
             #  (it's already off)
             if not switch_is_on:
+                # Idempotency check: if there are no active humidity demands
+                # and dehumidify is not active, skip the command-sending
+                # stop sequence.  This prevents an avalanche where each
+                # command timeout (returning success=True) triggers another
+                # run that sends another command, filling the send buffer.
+                # The indicator is still set OFF (cheap, deduped by the
+                # binary sensor's set_state guard).
+                active_demands = self.fan_speed_arbiter.get_active_demands(device_id)
+                has_humidity_demand = any(
+                    d.feature_id == self.feature_id for d in active_demands
+                )
+                if not has_humidity_demand and not self._dehumidify_active:
+                    _LOGGER.debug(
+                        "Switch is OFF for device %s - already stopped, "
+                        "skipping redundant command send",
+                        device_id,
+                    )
+                    self._clear_active_area_spike(device_id)
+                    self._sync_zone_demands(device_id, None)
+                    await self._set_indicator_off(device_id)
+                    return
+
                 _LOGGER.info(
                     "Switch is OFF for device %s - clearing fan demand",
                     device_id,

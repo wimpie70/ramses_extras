@@ -56,13 +56,26 @@ class DeviceCommandManager:
         }
         # Queue depth tracking: {device_id: current_depth}
         self._queue_depths: dict[str, int] = {}
+        # Dedup tracking: signatures of commands currently in each device's
+        # queue, so we don't pile up identical commands when the caller
+        # re-fires rapidly (e.g. automation feedback loops).
+        self._queued_signatures: dict[str, set[str]] = {}
 
     def _get_device_queue(self, device_id: str) -> asyncio.Queue:
         """Get or create queue for a device."""
         if device_id not in self._queues:
             self._queues[device_id] = asyncio.Queue()
             self._queue_depths[device_id] = 0
+            self._queued_signatures[device_id] = set()
         return self._queues[device_id]
+
+    @staticmethod
+    def _command_signature(command_def: dict[str, Any]) -> str:
+        """Build a hashable signature from a command definition for dedup."""
+        code = command_def.get("code")
+        verb = command_def.get("verb")
+        payload = command_def.get("payload")
+        return f"{code}|{verb}|{payload}"
 
     async def send_command_to_device(
         self,
@@ -86,16 +99,29 @@ class DeviceCommandManager:
         current_time = time.time()
         last_time = self._last_command_time.get(device_id, 0)
         if current_time - last_time < self._min_interval:
-            # Queue the command for later execution
+            # Deduplicate: if an identical command is already queued for
+            # this device, skip it instead of piling up redundant sends.
             queue = self._get_device_queue(device_id)
+            sig = self._command_signature(command_def)
+            pending = self._queued_signatures.get(device_id, set())
+            if sig in pending:
+                _LOGGER.debug(
+                    "Dedup: skipping queued command %s for %s (already pending)",
+                    sig,
+                    device_id,
+                )
+                return CommandResult(success=True, queued=True)
+
             await queue.put(
                 {
                     "command_def": command_def,
                     "priority": priority,
                     "timeout": timeout,
                     "queued_time": current_time,
+                    "signature": sig,
                 }
             )
+            pending.add(sig)
             # Update queue depth
             self._queue_depths[device_id] = queue.qsize()
 
@@ -131,6 +157,12 @@ class DeviceCommandManager:
             try:
                 # Wait for next command with timeout
                 command_data = await asyncio.wait_for(queue.get(), timeout=0.5)
+
+                # Remove from pending signatures so future dedup allows
+                # the same command to be queued again after execution.
+                sig = command_data.get("signature")
+                if sig:
+                    self._queued_signatures.get(device_id, set()).discard(sig)
 
                 # Execute the command
                 result = await self._execute_command(
@@ -170,6 +202,9 @@ class DeviceCommandManager:
         # Clean up queue depth tracking
         if device_id in self._queue_depths:
             del self._queue_depths[device_id]
+
+        # Clean up dedup signature tracking
+        self._queued_signatures.pop(device_id, None)
 
     async def _execute_command(
         self, device_id: str, command_def: dict[str, Any], timeout: float

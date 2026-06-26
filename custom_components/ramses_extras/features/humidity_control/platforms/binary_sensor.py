@@ -174,9 +174,17 @@ class HumidityControlBinarySensor(ExtrasBinarySensorEntity):
         self.async_write_ha_state()
 
     def set_state(self, is_on: bool, extra_attrs: dict[str, Any] | None = None) -> None:
-        """Set the binary sensor state (used by automation)."""
+        """Set the binary sensor state (used by automation).
+
+        Skips the HA state write when neither the on/off state nor the
+        automation attributes have changed, preventing redundant state
+        change events that can re-trigger automations.
+        """
+        new_attrs = dict(extra_attrs or {})
+        if self._is_on == is_on and self._automation_attrs == new_attrs:
+            return
         self._is_on = is_on
-        self._automation_attrs = dict(extra_attrs or {})
+        self._automation_attrs = new_attrs
         self.async_write_ha_state()
 
     @property
