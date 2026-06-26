@@ -377,6 +377,11 @@ class ExtrasBaseAutomation(ABC):
         if not new_state:
             return
 
+        # Skip if the state value didn't actually change (avoids feedback loops
+        # where our own entity writes trigger state change events with same value)
+        if old_state is not None and old_state.state == new_state.state:
+            return
+
         # Extract device_id from entity name
         device_id = self._extract_device_id(entity_id)
         if not device_id:

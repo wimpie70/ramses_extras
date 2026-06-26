@@ -105,6 +105,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._balance_switch_retry_handles: dict[str, asyncio.Handle] = {}
         self._balance_switch_retry_attempts: dict[str, int] = {}
 
+        # Re-entrancy guard: prevent concurrent _process_automation_logic runs
+        # for the same device (state changes from our own commands would
+        # otherwise re-trigger the automation in a tight loop)
+        self._processing_devices: set[str] = set()
+
         # Performance tracking
         self._decision_count = 0
         self._active_cycles = 0
@@ -674,6 +679,21 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         :param device_id: Device identifier
         :param entity_states: Validated entity state values (float or bool)
         """
+        # Re-entrancy guard: skip if already processing this device
+        if device_id in self._processing_devices:
+            _LOGGER.debug("Already processing %s, skipping re-entrant call", device_id)
+            return
+
+        self._processing_devices.add(device_id)
+        try:
+            await self._process_automation_logic_inner(device_id, entity_states)
+        finally:
+            self._processing_devices.discard(device_id)
+
+    async def _process_automation_logic_inner(
+        self, device_id: str, entity_states: Mapping[str, float | bool]
+    ) -> None:
+        """Inner automation logic (called under re-entrancy guard)."""
         if not self._automation_active or not self._is_feature_enabled():
             self._sync_zone_demands(device_id, None)
             return
@@ -1176,6 +1196,14 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         :param new_state: New state
         """
         # State change handling - logging removed to reduce log volume
+
+        # Skip if the state value didn't actually change
+        if (
+            new_state is not None
+            and old_state is not None
+            and old_state.state == new_state.state
+        ):
+            return
 
         # Check if feature is still enabled first
         if not self._is_feature_enabled():

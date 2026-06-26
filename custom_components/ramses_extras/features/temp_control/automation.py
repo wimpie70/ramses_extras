@@ -73,6 +73,8 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         self._mode: dict[str, str] = {}  # device_id -> idle/cooling/heating_retention
         # Track which zones currently have a temp_control demand
         self._temp_demand_zones: dict[str, set[str]] = {}
+        # Re-entrancy guard: prevent concurrent _process_automation_logic runs
+        self._processing_devices: set[str] = set()
 
     def is_automation_active(self) -> bool:
         return self._automation_active
@@ -174,6 +176,14 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         and the change was not caused by a command we just sent, turn
         temp_control off for that device.
         """
+        # Skip if the state value didn't actually change
+        if (
+            new_state is not None
+            and old_state is not None
+            and old_state.state == new_state.state
+        ):
+            return
+
         import time as _time
 
         if (
@@ -317,6 +327,20 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         return resolved
 
     async def _process_automation_logic(
+        self, device_id: str, entity_states: Mapping[str, float | bool]
+    ) -> None:
+        # Re-entrancy guard: skip if already processing this device
+        if device_id in self._processing_devices:
+            _LOGGER.debug("Already processing %s, skipping re-entrant call", device_id)
+            return
+
+        self._processing_devices.add(device_id)
+        try:
+            await self._process_automation_logic_inner(device_id, entity_states)
+        finally:
+            self._processing_devices.discard(device_id)
+
+    async def _process_automation_logic_inner(
         self, device_id: str, entity_states: Mapping[str, float | bool]
     ) -> None:
         if not self._automation_active or not self._is_feature_enabled():

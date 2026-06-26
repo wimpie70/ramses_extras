@@ -89,6 +89,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self._latest_sensor_control_context: dict[str, dict[str, Any] | None] = {}
         self._source_trigger_states: dict[str, dict[str, bool]] = {}
         self._trigger_meta: dict[str, dict[str, Any]] = {}
+        # Re-entrancy guard: prevent concurrent _process_automation_logic runs
+        self._processing_devices: set[str] = set()
 
         self._zone_demand_registry = get_zone_demand_registry(hass)
         self._co2_demand_zones: dict[str, set[str]] = {}
@@ -312,6 +314,21 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self, device_id: str, entity_states: Mapping[str, float | bool]
     ) -> None:
         """Process CO2 logic for changed entities."""
+        # Re-entrancy guard: skip if already processing this device
+        if device_id in self._processing_devices:
+            _LOGGER.debug("Already processing %s, skipping re-entrant call", device_id)
+            return
+
+        self._processing_devices.add(device_id)
+        try:
+            await self._process_automation_logic_inner(device_id, entity_states)
+        finally:
+            self._processing_devices.discard(device_id)
+
+    async def _process_automation_logic_inner(
+        self, device_id: str, entity_states: Mapping[str, float | bool]
+    ) -> None:
+        """Inner automation logic (called under re-entrancy guard)."""
         if not self._automation_active or not self._is_feature_enabled():
             return
 
