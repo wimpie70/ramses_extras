@@ -261,7 +261,7 @@ class TransportMonitor:
         """
         async with self._lock:
             if self._monitor_task and not self._monitor_task.done():
-                _LOGGER.warning("Transport monitor is already running")
+                _LOGGER.debug("Transport monitor is already running")
                 return
 
             self._coordinator = coordinator

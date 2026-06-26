@@ -389,7 +389,11 @@ class ExtrasBaseAutomation(ABC):
         # Extract device_id from entity name
         device_id = self._extract_device_id(entity_id)
         if not device_id:
-            _LOGGER.warning(f"Could not extract device_id from entity: {entity_id}")
+            # This is expected for external sensors (e.g. area sensors
+            # configured in sensor_control) whose entity_ids don't
+            # contain a ramses device_id pattern.  Log at debug to
+            # avoid spamming the log on every sensor update.
+            _LOGGER.debug("Could not extract device_id from entity: %s", entity_id)
             return
 
         # Check validation cooldown for this device
