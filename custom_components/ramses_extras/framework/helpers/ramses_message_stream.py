@@ -12,6 +12,15 @@ from homeassistant.loader import async_get_integration
 from ...const import DOMAIN
 from .ramses_commands import RamsesCommands
 
+try:
+    from ramses_rf.messages import Message
+    from ramses_tx.dtos import PacketDTO
+    from ramses_tx.exceptions import PacketInvalid
+except ImportError:  # ramses_rf not available at import time
+    Message = None
+    PacketDTO = None
+    PacketInvalid = Exception
+
 _LOGGER = logging.getLogger(__name__)
 
 # ramses_cc 0.55.6 removed ramses_cc_message HA bus events and replaced
@@ -248,6 +257,45 @@ class RamsesMessageStream:
             return dto_value
         return None
 
+    def _parse_payload(self, data: dict[str, Any]) -> None:
+        """Enrich ``data["payload"]`` with a parsed dict if possible.
+
+        If the payload is a raw hex string, try to parse it via
+        ramses_rf's Message parser.  If it's already a dict (e.g. from
+        old ramses_cc events), keep it as-is.  Falls back to the raw
+        string if parsing fails or ramses_rf is not available.
+        """
+        payload = data.get("payload")
+        if payload is None or isinstance(payload, dict):
+            return
+
+        # payload is a raw hex string — try to parse it via ramses_rf
+        if Message is not None and PacketDTO is not None:
+            try:
+                from datetime import UTC
+                from datetime import datetime as dt
+
+                dto = PacketDTO(
+                    timestamp=dt.now(UTC),
+                    rssi="",
+                    verb=str(data.get("verb", "")).strip(),
+                    seq="000",
+                    addr1=str(data.get("src", "")),
+                    addr2=str(data.get("dst", "")),
+                    addr3="--:------",
+                    code=str(data.get("code", "")),
+                    length=f"{len(str(payload)) // 2:03d}",
+                    payload=str(payload),
+                )
+                parsed_msg = Message(dto)
+                data["payload"] = parsed_msg.payload
+                return
+            except PacketInvalid, Exception:
+                pass
+
+        # Keep as string if we couldn't parse
+        data["payload"] = str(payload) if payload is not None else None
+
     def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
         data = dict(event.data or {})
         data["time_fired"] = event.time_fired.isoformat(timespec="microseconds")
@@ -263,6 +311,9 @@ class RamsesMessageStream:
         frame = self._frame_from_dict(data)
         if frame:
             data["frame"] = frame
+        # Parse payload for backward compat with old ramses_cc events
+        # that may deliver raw hex payloads
+        self._parse_payload(data)
         self._notify_subscribers(data)
 
     def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
@@ -273,16 +324,16 @@ class RamsesMessageStream:
             if isinstance(packet, str) and packet
             else None
         )
-        payload = getattr(pkt, "payload", None)
-        if payload is None:
-            payload = getattr(msg, "payload", None)
+        raw_payload = getattr(pkt, "payload", None)
+        if raw_payload is None:
+            raw_payload = getattr(msg, "payload", None)
         data: dict[str, Any] = parsed or {
             "src": self._extract_msg_addr(msg, "src", "addr1"),
             "dst": self._extract_msg_addr(msg, "dst", "addr2"),
             "verb": str(getattr(msg, "verb", "")) or None,
             "code": str(getattr(msg, "code", "")) or None,
         }
-        data["payload"] = str(payload) if payload is not None else None
+        data["payload"] = raw_payload
 
         if "frame" not in data:
             frame = self._frame_from_dict(data)
@@ -292,6 +343,18 @@ class RamsesMessageStream:
         if isinstance(packet, str) and packet:
             data["packet"] = packet
             data.setdefault("frame", packet)
+
+        # Parse raw hex payload into a dict via ramses_rf's Message parser.
+        # msg is already a PacketDTO, so try Message(msg) directly first
+        # (faster than reconstructing a PacketDTO from the data dict).
+        if Message is not None and raw_payload is not None:
+            try:
+                parsed_msg = Message(msg)
+                data["payload"] = parsed_msg.payload
+            except PacketInvalid, Exception:
+                self._parse_payload(data)
+        else:
+            self._parse_payload(data)
 
         dtm = getattr(msg, "dtm", None)
         if dtm is None:
