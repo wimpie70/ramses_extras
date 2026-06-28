@@ -407,21 +407,37 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             if indoor_temp <= comfort_temp - settings.comfort_delta_activate:
                 desired_mode = "heating_retention"
             else:
-                # Cooling: outdoor air must be cooler than indoor by the
-                # configured delta AND above the safety floor (min_outdoor_temp).
-                if (
-                    indoor_temp >= comfort_temp + settings.comfort_delta_activate
-                    and outdoor_temp >= settings.min_outdoor_temp
-                    and outdoor_temp <= indoor_temp - settings.cooling_delta_activate
-                ):
-                    desired_mode = "cooling"
+                # Cooling: indoor must be above comfort by the activate delta.
+                # Two cooling sources:
+                #   1. Outdoor air cooler than indoor (free cooling)
+                #   2. Supply air cooler than indoor (evaporative cooler,
+                #      ground-coupled heat exchanger, etc.)
+                # Either source is sufficient to enter cooling mode.
+                if indoor_temp >= comfort_temp + settings.comfort_delta_activate:
+                    outdoor_can_cool = (
+                        outdoor_temp >= settings.min_outdoor_temp
+                        and outdoor_temp
+                        <= indoor_temp - settings.cooling_delta_activate
+                    )
+                    supply_can_cool = (
+                        supply_temp >= settings.min_supply_temp
+                        and supply_temp
+                        <= indoor_temp - settings.supply_cooler_delta_activate
+                    )
+                    if outdoor_can_cool or supply_can_cool:
+                        desired_mode = "cooling"
 
             # Apply hysteresis based on previous mode
             if prev_mode == "cooling" and desired_mode != "cooling":
-                if indoor_temp > comfort_temp + settings.comfort_delta_deactivate and (
-                    outdoor_temp <= indoor_temp - settings.cooling_delta_deactivate
-                ):
-                    desired_mode = "cooling"
+                if indoor_temp > comfort_temp + settings.comfort_delta_deactivate:
+                    outdoor_can_cool = outdoor_temp <= (
+                        indoor_temp - settings.cooling_delta_deactivate
+                    )
+                    supply_can_cool = supply_temp <= (
+                        indoor_temp - settings.supply_cooler_delta_deactivate
+                    )
+                    if outdoor_can_cool or supply_can_cool:
+                        desired_mode = "cooling"
 
             if prev_mode == "heating_retention" and desired_mode != "heating_retention":
                 if indoor_temp < comfort_temp - settings.comfort_delta_deactivate:

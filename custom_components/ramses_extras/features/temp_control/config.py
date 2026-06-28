@@ -26,6 +26,9 @@ class TempControlSettings:
     dewpoint_guard_enabled: bool
     dewpoint_margin_c: float
     default_desired_speed: str = "high"
+    supply_cooler_delta_activate: float = 1.0
+    supply_cooler_delta_deactivate: float = 0.5
+    min_supply_temp: float = 10.0
 
 
 class TempControlConfig:
@@ -75,6 +78,13 @@ class TempControlConfig:
             dewpoint_guard_enabled=_get_bool("dewpoint_guard_enabled", False),
             dewpoint_margin_c=_get_float("dewpoint_margin_c", 1.0),
             default_desired_speed=str(section.get("default_desired_speed", "high")),
+            supply_cooler_delta_activate=_get_float(
+                "supply_cooler_delta_activate", 1.0
+            ),
+            supply_cooler_delta_deactivate=_get_float(
+                "supply_cooler_delta_deactivate", 0.5
+            ),
+            min_supply_temp=_get_float("min_supply_temp", 10.0),
         )
 
 

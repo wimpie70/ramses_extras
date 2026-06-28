@@ -43,6 +43,13 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
         "default_desired_speed": str(section.get("default_desired_speed", "high")),
         "dewpoint_guard_enabled": bool(section.get("dewpoint_guard_enabled", False)),
         "dewpoint_margin_c": float(section.get("dewpoint_margin_c", 1.0)),
+        "supply_cooler_delta_activate": float(
+            section.get("supply_cooler_delta_activate", 1.0)
+        ),
+        "supply_cooler_delta_deactivate": float(
+            section.get("supply_cooler_delta_deactivate", 0.5)
+        ),
+        "min_supply_temp": float(section.get("min_supply_temp", 10.0)),
     }
 
 
@@ -139,6 +146,21 @@ async def async_step_temp_control_config(
             "dewpoint_margin_c": float(
                 user_input.get("dewpoint_margin_c", defaults["dewpoint_margin_c"])
             ),
+            "supply_cooler_delta_activate": float(
+                user_input.get(
+                    "supply_cooler_delta_activate",
+                    defaults["supply_cooler_delta_activate"],
+                )
+            ),
+            "supply_cooler_delta_deactivate": float(
+                user_input.get(
+                    "supply_cooler_delta_deactivate",
+                    defaults["supply_cooler_delta_deactivate"],
+                )
+            ),
+            "min_supply_temp": float(
+                user_input.get("min_supply_temp", defaults["min_supply_temp"])
+            ),
         }
         _persist_temp_control_settings(flow, settings)
 
@@ -197,6 +219,17 @@ async def async_step_temp_control_config(
             ): bool,
             vol.Required(
                 "dewpoint_margin_c", default=defaults["dewpoint_margin_c"]
+            ): vol.Coerce(float),
+            vol.Required(
+                "supply_cooler_delta_activate",
+                default=defaults["supply_cooler_delta_activate"],
+            ): vol.Coerce(float),
+            vol.Required(
+                "supply_cooler_delta_deactivate",
+                default=defaults["supply_cooler_delta_deactivate"],
+            ): vol.Coerce(float),
+            vol.Required(
+                "min_supply_temp", default=defaults["min_supply_temp"]
             ): vol.Coerce(float),
         }
     )

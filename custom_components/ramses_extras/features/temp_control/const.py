@@ -81,6 +81,9 @@ TEMP_CONTROL_DEFAULTS: dict[str, Any] = {
     "default_desired_speed": "high",
     "dewpoint_guard_enabled": False,
     "dewpoint_margin_c": 1.0,
+    "supply_cooler_delta_activate": 1.0,
+    "supply_cooler_delta_deactivate": 0.5,
+    "min_supply_temp": 10.0,
 }
 
 FEATURE_DEFINITION: dict[str, Any] = {

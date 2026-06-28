@@ -33,6 +33,9 @@ def make_settings(**overrides) -> TempControlSettings:
         "default_desired_speed": "high",
         "dewpoint_guard_enabled": False,
         "dewpoint_margin_c": 1.0,
+        "supply_cooler_delta_activate": 1.0,
+        "supply_cooler_delta_deactivate": 0.5,
+        "min_supply_temp": 10.0,
     }
     defaults.update(overrides)
     return TempControlSettings(**defaults)
@@ -42,7 +45,7 @@ def make_entity_states(
     temp_control=True,
     indoor_temp=22.0,
     outdoor_temp=18.0,
-    supply_temp=18.0,
+    supply_temp=25.0,
     comfort_temp=21.0,
     indoor_rh=50.0,
     min_rh=40.0,
@@ -140,7 +143,27 @@ class TestTempControlDecisionLogic:
         """When indoor above comfort + delta and outdoor can cool, enter cooling."""
         states = make_entity_states(
             indoor_temp=24.0,  # comfort(21) + delta_activate(1) = 22, 24 > 22
-            outdoor_temp=18.0,  # indoor(24) - supply_cooler_delta(1) = 23, 18 <= 23
+            outdoor_temp=18.0,  # indoor(24) - cooling_delta(1) = 23, 18 <= 23
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        assert automation_manager._mode["32:153289"] == "cooling"
+        automation_manager.ramses_commands.send_command.assert_called_once_with(
+            "32:153289", "fan_bypass_open"
+        )
+
+    @pytest.mark.asyncio
+    async def test_cooling_via_supply_air(self, automation_manager):
+        """Cooling via supply air when outdoor is warmer than indoor.
+
+        Supply temp (18) is cooler than indoor (24) by the required delta,
+        so cooling should activate even though outdoor (28) is hotter.
+        """
+        states = make_entity_states(
+            indoor_temp=24.0,
+            outdoor_temp=28.0,  # hotter than indoor → outdoor can't cool
+            supply_temp=18.0,  # indoor(24) - supply_delta(1) = 23, 18 <= 23
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)

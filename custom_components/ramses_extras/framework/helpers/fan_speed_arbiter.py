@@ -215,18 +215,26 @@ class FanSpeedArbiter:
         *,
         feature_id: str,
         source_id: str | None = None,
-    ) -> None:
+    ) -> bool:
+        """Clear demand state.  Returns True if any demand was removed."""
         normalized_device_id = self._normalize_device_id(device_id)
         device_demands = self._demands.get(normalized_device_id, {})
+        removed = False
         if source_id is None:
             keys_to_remove = [key for key in device_demands if key[0] == feature_id]
             for key in keys_to_remove:
                 device_demands.pop(key, None)
+                removed = True
         else:
-            device_demands.pop((feature_id, source_id), None)
+            key = (feature_id, source_id)
+            if key in device_demands:
+                device_demands.pop(key, None)
+                removed = True
 
         if not device_demands:
             self._demands.pop(normalized_device_id, None)
+
+        return removed
 
     async def async_set_manual_override(
         self,
@@ -296,8 +304,19 @@ class FanSpeedArbiter:
         feature_id: str,
         source_id: str | None = None,
     ) -> bool:
-        """Clear one or more feature demands and apply the resolved command."""
-        self._clear_demand_state(device_id, feature_id=feature_id, source_id=source_id)
+        """Clear one or more feature demands and apply the resolved command.
+
+        Only applies if a demand was actually removed.  This prevents
+        spurious commands (e.g. "fan_auto") when a feature clears a
+        demand that was never set — such as on startup when
+        temp_control clears its demand before humidity_control has
+        set its veto.
+        """
+        removed = self._clear_demand_state(
+            device_id, feature_id=feature_id, source_id=source_id
+        )
+        if not removed:
+            return True
         return await self.async_commit_state(device_id)
 
     def get_active_demands(self, device_id: str) -> list[FanSpeedDemand]:
