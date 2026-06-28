@@ -578,7 +578,9 @@ class ExtrasBaseAutomation(ABC):
             if device_id and str(device_id).strip():
                 return str(device_id)
 
-        _LOGGER.warning(f"Could not extract device_id from entity: {entity_id}")
+        # Subclasses may override _extract_device_id to resolve external
+        # entities (e.g. via config mappings).  Don't warn here — the
+        # override will log if it also fails.
         return None
 
     # ==================== DATA ACCESS ====================
@@ -729,10 +731,10 @@ class ExtrasBaseAutomation(ABC):
     async def _start_transport_monitoring(self) -> None:
         """Start transport monitoring if ramses_cc is available."""
         try:
-            # Try to get ramses_cc coordinator
-            from ..helpers.ramses_client import get_ramses_cc_coordinator
+            from ..helpers.ramses_commands import RamsesCommands
 
-            coordinator = await get_ramses_cc_coordinator(self.hass)
+            commands = RamsesCommands(self.hass)
+            coordinator = await commands._get_ramses_cc_coordinator()
 
             if coordinator and coordinator.client:
                 await self._transport_monitor.start_monitoring(coordinator, self.hass)
