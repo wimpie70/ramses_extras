@@ -436,8 +436,31 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             dewpoint = self._calc_dewpoint_c(indoor_temp, indoor_rh)
             margin = float(getattr(settings, "dewpoint_margin_c", 1.0))
             if dewpoint is not None and supply_temp < dewpoint + margin:
+                _LOGGER.debug(
+                    "Temp_control for %s: dewpoint guard cancelling cooling "
+                    "(supply=%.1f < dewpoint+margin=%.1f+%.1f=%.1f)",
+                    device_id,
+                    supply_temp,
+                    dewpoint,
+                    margin,
+                    dewpoint + margin,
+                )
                 desired_mode = "idle"
                 await self._clear_all_zone_demands(device_id)
+
+        _LOGGER.debug(
+            "Decision for %s: mode=%s (prev=%s, indoor=%.1f, outdoor=%.1f, "
+            "supply=%.1f, comfort=%.1f, RH=%.1f%%, areas=%d)",
+            device_id,
+            desired_mode,
+            prev_mode,
+            indoor_temp,
+            outdoor_temp,
+            supply_temp,
+            comfort_temp,
+            indoor_rh,
+            len(area_results),
+        )
 
         # Enforce minimum interval between bypass mode changes
         last_change = self._last_bypass_change.get(device_id, 0.0)
@@ -445,6 +468,13 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             desired_mode != prev_mode
             and (now - last_change) < settings.min_bypass_mode_interval_seconds
         ):
+            _LOGGER.debug(
+                "Temp_control for %s: suppressing %s->%s (min interval %.0fs)",
+                device_id,
+                prev_mode,
+                desired_mode,
+                settings.min_bypass_mode_interval_seconds,
+            )
             desired_mode = prev_mode
 
         bypass_cmd = {
@@ -465,6 +495,13 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         dedup_expired = (now - last_cmd_time) >= bypass_dedup_seconds
 
         if desired_mode != prev_mode and (command_changed or dedup_expired):
+            _LOGGER.debug(
+                "Temp_control for %s: sending bypass %s (%s->%s)",
+                device_id,
+                bypass_cmd,
+                prev_mode,
+                desired_mode,
+            )
             await self.ramses_commands.send_command(device_id, bypass_cmd)
             self._last_bypass_change[device_id] = now
             self._last_bypass_command[device_id] = bypass_cmd
@@ -477,6 +514,11 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         effective_speed_note = "no_speed_change"
         if desired_mode == "cooling":
             desired_speed = self._get_desired_speed_option(device_id)
+            _LOGGER.debug(
+                "Temp_control for %s: requesting fan %s (cooling mode)",
+                device_id,
+                desired_speed,
+            )
             await self.fan_speed_arbiter.async_set_demand(
                 device_id,
                 feature_id=self.feature_id,

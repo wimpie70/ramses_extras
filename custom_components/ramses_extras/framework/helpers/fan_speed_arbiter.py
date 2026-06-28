@@ -44,13 +44,20 @@ _SPEED_NORMALIZATION = {
 
 @dataclass(slots=True)
 class FanSpeedDemand:
-    """A single feature demand for a device fan speed."""
+    """A single feature demand for a device fan speed.
+
+    A demand can be a normal request (is_veto=False) or a veto
+    (is_veto=True).  A veto blocks ventilation from other features
+    and forces the fan to the requested (low) speed, regardless of
+    other features' speed requests.
+    """
 
     feature_id: str
     source_id: str
     requested_speed: str
     priority: int = 0
     reason: str = ""
+    is_veto: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -185,6 +192,7 @@ class FanSpeedArbiter:
         requested_speed: str | int,
         priority: int = 0,
         reason: str = "",
+        is_veto: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         normalized_device_id = self._normalize_device_id(device_id)
@@ -195,6 +203,7 @@ class FanSpeedArbiter:
             requested_speed=command_name,
             priority=priority,
             reason=reason,
+            is_veto=is_veto,
             metadata=metadata or {},
         )
         device_demands = self._demands.setdefault(normalized_device_id, {})
@@ -264,6 +273,7 @@ class FanSpeedArbiter:
         requested_speed: str | int,
         priority: int = 0,
         reason: str = "",
+        is_veto: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Create or update a feature demand and apply the resolved command."""
@@ -274,6 +284,7 @@ class FanSpeedArbiter:
             requested_speed=requested_speed,
             priority=priority,
             reason=reason,
+            is_veto=is_veto,
             metadata=metadata,
         )
         return await self.async_commit_state(device_id)
@@ -339,6 +350,26 @@ class FanSpeedArbiter:
                 active_demands=active_demands,
             )
 
+        # Veto demands: a feature that says "don't ventilate" overrides
+        # all normal speed demands.  Among multiple vetoes, the one with
+        # the highest priority wins (most urgent reason to stop).
+        veto_demands = [d for d in active_demands if d.is_veto]
+        if veto_demands:
+            winning_demand = max(
+                veto_demands,
+                key=lambda demand: (
+                    demand.priority,
+                    demand.updated_at,
+                ),
+            )
+            return ResolvedFanSpeed(
+                device_id=normalized_device_id,
+                command_name=winning_demand.requested_speed,
+                winning_demand=winning_demand,
+                active_demands=active_demands,
+            )
+
+        # No vetoes: pick the highest speed among normal demands.
         winning_demand = max(
             active_demands,
             key=lambda demand: (
