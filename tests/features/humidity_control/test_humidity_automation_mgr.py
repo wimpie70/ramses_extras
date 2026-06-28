@@ -104,10 +104,11 @@ class TestHumidityAutomationManager:
 
     @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
     @patch.object(HumidityAutomationManager, "_activate_dehumidification")
-    @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_clear_demand_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_set_fan_veto_and_binary_off")
     @patch.object(HumidityAutomationManager, "_update_automation_status")
     async def test_process_automation_logic_stop(
-        self, mock_update, mock_stop, mock_activate, mock_evaluate
+        self, mock_update, mock_veto, mock_clear, mock_activate, mock_evaluate
     ):
         """Test processing automation logic when dehumidification should stop."""
         device_id = "32_123456"
@@ -121,20 +122,27 @@ class TestHumidityAutomationManager:
             "dehumidify": True,
         }
 
-        decision = {"action": "stop", "reasoning": ["Test"], "confidence": 1.0}
+        decision = {
+            "action": "stop",
+            "reasoning": ["Test"],
+            "confidence": 1.0,
+            "humidity_role": "neutral",
+        }
         mock_evaluate.return_value = decision
 
         await self.manager._process_automation_logic(device_id, entity_states)
 
-        mock_stop.assert_called_once_with(device_id, decision)
+        mock_clear.assert_called_once_with(device_id, decision)
+        mock_veto.assert_not_called()
         mock_update.assert_called_once_with(device_id, decision)
 
     @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
     @patch.object(HumidityAutomationManager, "_activate_dehumidification")
-    @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_clear_demand_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_set_fan_veto_and_binary_off")
     @patch.object(HumidityAutomationManager, "_update_automation_status")
     async def test_process_automation_logic_skips_when_manual_override_active(
-        self, mock_update, mock_stop, mock_activate, mock_evaluate
+        self, mock_update, mock_veto, mock_clear, mock_activate, mock_evaluate
     ):
         """Sticky manual override should short-circuit humidity automation."""
         device_id = "32_123456"
@@ -145,17 +153,19 @@ class TestHumidityAutomationManager:
 
         mock_evaluate.assert_not_called()
         mock_activate.assert_not_called()
-        mock_stop.assert_not_called()
+        mock_clear.assert_not_called()
+        mock_veto.assert_not_called()
         mock_update.assert_not_called()
 
     @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
     @patch.object(HumidityAutomationManager, "_activate_dehumidification")
-    @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_clear_demand_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_set_fan_veto_and_binary_off")
     @patch.object(HumidityAutomationManager, "_update_automation_status")
     async def test_process_automation_logic_stop_uses_low_balance_demand(
-        self, mock_update, mock_stop, mock_activate, mock_evaluate
+        self, mock_update, mock_veto, mock_clear, mock_activate, mock_evaluate
     ):
-        """Stop decisions should keep humidity's low-speed demand active."""
+        """Neutral stop decisions should clear demand (let other features decide)."""
         device_id = "32_123456"
         entity_states = {
             "indoor_rh": 50.0,
@@ -172,15 +182,81 @@ class TestHumidityAutomationManager:
             "reasoning": ["Humidity in range for balance mode"],
             "confidence": 1.0,
             "control_mode": "balance",
+            "humidity_role": "neutral",
         }
         mock_evaluate.return_value = decision
 
         await self.manager._process_automation_logic(device_id, entity_states)
 
-        mock_stop.assert_called_once_with(device_id, decision)
+        mock_clear.assert_called_once_with(device_id, decision)
+        mock_veto.assert_not_called()
         mock_activate.assert_not_called()
         mock_update.assert_called_once_with(device_id, decision)
         assert self.manager._dehumidify_active is False
+
+    @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
+    @patch.object(HumidityAutomationManager, "_update_automation_status")
+    async def test_process_automation_logic_veto_calls_arbiter_with_is_veto(
+        self, mock_update, mock_evaluate
+    ):
+        """Veto decisions should call async_set_demand with is_veto=True."""
+        device_id = "32_123456"
+        entity_states = {
+            "indoor_rh": 62.0,
+            "indoor_abs": 16.0,
+            "outdoor_abs": 26.0,
+            "min_humidity": 40.0,
+            "max_humidity": 57.0,
+            "offset": 0.2,
+            "dehumidify": True,
+        }
+
+        decision = {
+            "action": "stop",
+            "reasoning": ["High indoor RH but outside wetter"],
+            "confidence": 0.6,
+            "humidity_role": "veto",
+        }
+        mock_evaluate.return_value = decision
+
+        await self.manager._process_automation_logic(device_id, entity_states)
+
+        self.fan_speed_arbiter.async_set_demand.assert_called_once()
+        call_kwargs = self.fan_speed_arbiter.async_set_demand.call_args
+        assert call_kwargs.kwargs.get("is_veto") is True
+        assert call_kwargs.kwargs.get("requested_speed") == "fan_low"
+        assert call_kwargs.kwargs.get("priority") == 100
+        self.fan_speed_arbiter.async_clear_demand.assert_not_called()
+
+    @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
+    @patch.object(HumidityAutomationManager, "_update_automation_status")
+    async def test_process_automation_logic_neutral_clears_demand(
+        self, mock_update, mock_evaluate
+    ):
+        """Neutral decisions should clear the demand, not set a new one."""
+        device_id = "32_123456"
+        entity_states = {
+            "indoor_rh": 50.0,
+            "indoor_abs": 10.0,
+            "outdoor_abs": 10.0,
+            "min_humidity": 40.0,
+            "max_humidity": 60.0,
+            "offset": 0.2,
+            "dehumidify": True,
+        }
+
+        decision = {
+            "action": "stop",
+            "reasoning": ["Humidity in acceptable range"],
+            "confidence": 1.0,
+            "humidity_role": "neutral",
+        }
+        mock_evaluate.return_value = decision
+
+        await self.manager._process_automation_logic(device_id, entity_states)
+
+        self.fan_speed_arbiter.async_clear_demand.assert_called_once()
+        self.fan_speed_arbiter.async_set_demand.assert_not_called()
 
     async def test_process_automation_logic_switch_off(self):
         """Test processing automation logic when switch is off."""
@@ -366,6 +442,106 @@ class TestHumidityAutomationManager:
         )
         assert decision["action"] == "stop"
         assert "acceptable range" in decision["reasoning"][0]
+
+    # --- humidity_role classification tests ---
+
+    async def test_humidity_role_demand_when_high_rh_inside_wetter(self):
+        """High indoor RH + inside wetter than outside → demand (ventilate)."""
+        decision = await self.manager._evaluate_humidity_conditions(
+            device_id="test",
+            indoor_rh=70.0,
+            indoor_abs=18.0,
+            outdoor_abs=12.0,
+            min_humidity=40.0,
+            max_humidity=60.0,
+            offset=0.2,
+        )
+        assert decision["action"] == "dehumidify"
+        assert decision["humidity_role"] == "demand"
+
+    async def test_humidity_role_veto_when_high_rh_outside_wetter(self):
+        """High indoor RH + outside significantly wetter → veto (block ventilation)."""
+        decision = await self.manager._evaluate_humidity_conditions(
+            device_id="test",
+            indoor_rh=62.0,
+            indoor_abs=16.0,
+            outdoor_abs=26.0,
+            min_humidity=40.0,
+            max_humidity=57.0,
+            offset=0.2,
+        )
+        assert decision["action"] == "stop"
+        assert decision["humidity_role"] == "veto"
+
+    async def test_humidity_role_neutral_when_high_rh_about_equal(self):
+        """High indoor RH + abs about equal → neutral (step aside)."""
+        decision = await self.manager._evaluate_humidity_conditions(
+            device_id="test",
+            indoor_rh=62.0,
+            indoor_abs=16.0,
+            outdoor_abs=16.1,
+            min_humidity=40.0,
+            max_humidity=57.0,
+            offset=0.2,
+        )
+        assert decision["action"] == "stop"
+        assert decision["humidity_role"] == "neutral"
+
+    async def test_humidity_role_demand_when_low_rh_outside_wetter(self):
+        """Low indoor RH + outside wetter → demand (ventilate to humidify)."""
+        decision = await self.manager._evaluate_humidity_conditions(
+            device_id="test",
+            indoor_rh=30.0,
+            indoor_abs=5.0,
+            outdoor_abs=10.0,
+            min_humidity=40.0,
+            max_humidity=60.0,
+            offset=0.2,
+        )
+        assert decision["action"] == "dehumidify"
+        assert decision["humidity_role"] == "demand"
+
+    async def test_humidity_role_veto_when_low_rh_outside_drier(self):
+        """Low indoor RH + outside significantly drier → veto (block ventilation)."""
+        decision = await self.manager._evaluate_humidity_conditions(
+            device_id="test",
+            indoor_rh=30.0,
+            indoor_abs=8.0,
+            outdoor_abs=5.0,
+            min_humidity=40.0,
+            max_humidity=60.0,
+            offset=0.2,
+        )
+        assert decision["action"] == "stop"
+        assert decision["humidity_role"] == "veto"
+
+    async def test_humidity_role_neutral_when_low_rh_about_equal(self):
+        """Low indoor RH + abs about equal → neutral (step aside)."""
+        decision = await self.manager._evaluate_humidity_conditions(
+            device_id="test",
+            indoor_rh=30.0,
+            indoor_abs=8.0,
+            outdoor_abs=8.1,
+            min_humidity=40.0,
+            max_humidity=60.0,
+            offset=0.2,
+        )
+        assert decision["action"] == "stop"
+        assert decision["humidity_role"] == "neutral"
+
+    async def test_humidity_role_neutral_when_rh_in_range(self):
+        """RH within range → neutral (step aside)."""
+        decision = await self.manager._evaluate_humidity_conditions(
+            device_id="test",
+            indoor_rh=50.0,
+            indoor_abs=10.0,
+            outdoor_abs=20.0,
+            min_humidity=40.0,
+            max_humidity=60.0,
+            offset=0.2,
+        )
+        assert decision["action"] == "stop"
+        assert decision["humidity_role"] == "neutral"
 
     async def test_evaluate_humidity_conditions_area_spike_detected(self):
         """Area spike should trigger spike_boost dehumidification."""
