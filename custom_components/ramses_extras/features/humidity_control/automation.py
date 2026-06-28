@@ -821,7 +821,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 # Activate dehumidification: set fan HIGH, binary sensor ON
                 await self._activate_dehumidification(device_id, decision)
             elif decision["action"] == "stop":
-                await self._set_fan_low_and_binary_off(device_id, decision)
+                role = decision.get("humidity_role", "neutral")
+                if role == "veto":
+                    # Ventilating would make humidity worse — veto other
+                    # features' ventilation demands.
+                    await self._set_fan_veto_and_binary_off(device_id, decision)
+                else:
+                    # Neutral: humidity is fine, step aside and let other
+                    # features (temp_control, co2_control) decide fan speed.
+                    await self._clear_demand_and_binary_off(device_id, decision)
 
             # Update indicator based on decision
             await self._update_automation_status(device_id, decision)
@@ -1018,12 +1026,18 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             },
             "confidence": 0.0,
             "control_mode": "idle",
+            # humidity_role determines how the arbiter treats this decision:
+            #  "demand"  – wants ventilation (dehumidify)
+            #  "veto"    – ventilating would make humidity worse, block others
+            #  "neutral" – humidity is fine, let other features decide
+            "humidity_role": "neutral",
         }
 
         # PRIORITY 1: High humidity check (relative humidity threshold) - ORIGINAL LOGIC
         if indoor_rh > max_humidity:
             if indoor_abs > outdoor_abs + offset:  # ORIGINAL COMPARISON
                 decision["action"] = "dehumidify"
+                decision["humidity_role"] = "demand"
                 decision["reasoning"].append(
                     f"High indoor RH: {indoor_rh:.1f}% > {max_humidity:.1f}% "
                     f"with indoor abs ({indoor_abs:.2f}) > outdoor abs "
@@ -1031,8 +1045,21 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 )
                 decision["confidence"] = 0.9
                 decision["control_mode"] = "balance"
-            else:
+            elif abs(indoor_abs - outdoor_abs) <= offset:
+                # About equal — ventilating won't help but won't hurt much.
+                # Step aside and let temp_control / co2_control decide.
                 decision["action"] = "stop"
+                decision["humidity_role"] = "neutral"
+                decision["reasoning"].append(
+                    f"High indoor RH: {indoor_rh:.1f}% > {max_humidity:.1f}% "
+                    f"but indoor abs ({indoor_abs:.2f}) ~= outdoor abs "
+                    f"({outdoor_abs:.2f}) (within offset {offset:.2f})"
+                )
+                decision["confidence"] = 0.6
+            else:
+                # Outside is significantly wetter — veto ventilation.
+                decision["action"] = "stop"
+                decision["humidity_role"] = "veto"
                 decision["reasoning"].append(
                     f"High indoor RH: {indoor_rh:.1f}% > {max_humidity:.1f}% "
                     f"but indoor abs ({indoor_abs:.2f}) <= outdoor abs "
@@ -1044,6 +1071,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         elif indoor_rh < min_humidity:
             if indoor_abs < outdoor_abs - offset:  # ORIGINAL COMPARISON
                 decision["action"] = "dehumidify"  # Bring in humid air
+                decision["humidity_role"] = "demand"
                 decision["reasoning"].append(
                     f"Low indoor RH: {indoor_rh:.1f}% < {min_humidity:.1f}% "
                     f"with indoor abs ({indoor_abs:.2f}) < outdoor abs "
@@ -1051,8 +1079,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 )
                 decision["confidence"] = 0.8
                 decision["control_mode"] = "balance"
-            else:
+            elif abs(indoor_abs - outdoor_abs) <= offset:
+                # About equal — ventilating won't change much. Step aside.
                 decision["action"] = "stop"
+                decision["humidity_role"] = "neutral"
+                decision["reasoning"].append(
+                    f"Low indoor RH: {indoor_rh:.1f}% < {min_humidity:.1f}% "
+                    f"but indoor abs ({indoor_abs:.2f}) ~= outdoor abs "
+                    f"({outdoor_abs:.2f}) (within offset {offset:.2f})"
+                )
+                decision["confidence"] = 0.7
+            else:
+                # Outside is significantly drier — veto ventilation.
+                decision["action"] = "stop"
+                decision["humidity_role"] = "veto"
                 decision["reasoning"].append(
                     f"Low indoor RH: {indoor_rh:.1f}% < {min_humidity:.1f}% "
                     f"but indoor abs ({indoor_abs:.2f}) >= outdoor abs "
@@ -1063,6 +1103,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # PRIORITY 3: In acceptable range - Stay at normal speed
         else:
             decision["action"] = "stop"
+            decision["humidity_role"] = "neutral"
             decision["reasoning"].append(
                 f"Humidity in acceptable range (RH: {indoor_rh:.1f}%, "
                 f"range: {min_humidity:.1f}% - {max_humidity:.1f}%)"
@@ -1218,9 +1259,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if decision["action"] != prev_action and decision["reasoning"]:
             reasoning = "; ".join(decision["reasoning"])
             _LOGGER.debug(
-                "Decision for %s: %s (conf=%.2f, diff=%.2f, RH=%.1f%%): %s",
+                "Decision for %s: %s/%s (conf=%.2f, diff=%.2f, RH=%.1f%%): %s",
                 device_id,
                 decision["action"],
+                decision.get("humidity_role", "?"),
                 decision["confidence"],
                 decision["values"]["adjusted_diff"],
                 indoor_rh,
@@ -1433,6 +1475,92 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         except Exception as e:
             _LOGGER.error("Failed to set fan to auto mode: %s", e)
+
+    async def _set_fan_veto_and_binary_off(
+        self, device_id: str, decision: dict[str, Any]
+    ) -> None:
+        """Veto ventilation: block other features from ventilating.
+
+        Used when ventilating would make humidity worse (e.g. outside is
+        wetter than inside while indoor RH is already high).
+        Sets a veto demand with high priority so the arbiter overrides
+        any temp_control / co2_control ventilation requests.
+
+        :param device_id: Device identifier
+        :param decision: Decision information
+        """
+        try:
+            was_dehumidify_active = self._dehumidify_active
+            success = await self.fan_speed_arbiter.async_set_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="humidity_control",
+                requested_speed="fan_low",
+                priority=100,
+                reason="humidity_veto",
+                is_veto=True,
+                metadata=decision,
+            )
+            if not success:
+                _LOGGER.warning(
+                    "Failed to set fan veto for device %s",
+                    device_id,
+                )
+
+            self._dehumidify_active = False
+            if decision.get("control_mode") != "spike_boost":
+                self._clear_active_area_spike(device_id)
+                self._clear_active_indoor_spike(device_id)
+
+            if was_dehumidify_active:
+                reasoning = "; ".join(decision["reasoning"])
+                _LOGGER.info(
+                    "Humidity veto (blocking ventilation): %s",
+                    reasoning,
+                )
+
+        except Exception as e:
+            _LOGGER.error("Failed to set fan veto: %s", e)
+
+    async def _clear_demand_and_binary_off(
+        self, device_id: str, decision: dict[str, Any]
+    ) -> None:
+        """Neutral: clear humidity demand and let other features decide.
+
+        Used when humidity is within range or about equal between inside
+        and outside.  Does not set any fan speed — steps aside so
+        temp_control / co2_control can decide.
+
+        :param device_id: Device identifier
+        :param decision: Decision information
+        """
+        try:
+            was_dehumidify_active = self._dehumidify_active
+            success = await self.fan_speed_arbiter.async_clear_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="humidity_control",
+            )
+            if not success:
+                _LOGGER.warning(
+                    "Failed to clear humidity demand for device %s",
+                    device_id,
+                )
+
+            self._dehumidify_active = False
+            if decision.get("control_mode") != "spike_boost":
+                self._clear_active_area_spike(device_id)
+                self._clear_active_indoor_spike(device_id)
+
+            if was_dehumidify_active:
+                reasoning = "; ".join(decision["reasoning"])
+                _LOGGER.info(
+                    "Humidity neutral (stepping aside): %s",
+                    reasoning,
+                )
+
+        except Exception as e:
+            _LOGGER.error("Failed to clear humidity demand: %s", e)
 
     async def _stop_dehumidification_without_switch_change(
         self, device_id: str

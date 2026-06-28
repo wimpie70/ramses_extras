@@ -104,10 +104,11 @@ class TestHumidityAutomationManager:
 
     @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
     @patch.object(HumidityAutomationManager, "_activate_dehumidification")
-    @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_clear_demand_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_set_fan_veto_and_binary_off")
     @patch.object(HumidityAutomationManager, "_update_automation_status")
     async def test_process_automation_logic_stop(
-        self, mock_update, mock_stop, mock_activate, mock_evaluate
+        self, mock_update, mock_veto, mock_clear, mock_activate, mock_evaluate
     ):
         """Test processing automation logic when dehumidification should stop."""
         device_id = "32_123456"
@@ -121,20 +122,27 @@ class TestHumidityAutomationManager:
             "dehumidify": True,
         }
 
-        decision = {"action": "stop", "reasoning": ["Test"], "confidence": 1.0}
+        decision = {
+            "action": "stop",
+            "reasoning": ["Test"],
+            "confidence": 1.0,
+            "humidity_role": "neutral",
+        }
         mock_evaluate.return_value = decision
 
         await self.manager._process_automation_logic(device_id, entity_states)
 
-        mock_stop.assert_called_once_with(device_id, decision)
+        mock_clear.assert_called_once_with(device_id, decision)
+        mock_veto.assert_not_called()
         mock_update.assert_called_once_with(device_id, decision)
 
     @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
     @patch.object(HumidityAutomationManager, "_activate_dehumidification")
-    @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_clear_demand_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_set_fan_veto_and_binary_off")
     @patch.object(HumidityAutomationManager, "_update_automation_status")
     async def test_process_automation_logic_skips_when_manual_override_active(
-        self, mock_update, mock_stop, mock_activate, mock_evaluate
+        self, mock_update, mock_veto, mock_clear, mock_activate, mock_evaluate
     ):
         """Sticky manual override should short-circuit humidity automation."""
         device_id = "32_123456"
@@ -145,17 +153,19 @@ class TestHumidityAutomationManager:
 
         mock_evaluate.assert_not_called()
         mock_activate.assert_not_called()
-        mock_stop.assert_not_called()
+        mock_clear.assert_not_called()
+        mock_veto.assert_not_called()
         mock_update.assert_not_called()
 
     @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
     @patch.object(HumidityAutomationManager, "_activate_dehumidification")
-    @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_clear_demand_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_set_fan_veto_and_binary_off")
     @patch.object(HumidityAutomationManager, "_update_automation_status")
     async def test_process_automation_logic_stop_uses_low_balance_demand(
-        self, mock_update, mock_stop, mock_activate, mock_evaluate
+        self, mock_update, mock_veto, mock_clear, mock_activate, mock_evaluate
     ):
-        """Stop decisions should keep humidity's low-speed demand active."""
+        """Neutral stop decisions should clear demand (let other features decide)."""
         device_id = "32_123456"
         entity_states = {
             "indoor_rh": 50.0,
@@ -172,12 +182,14 @@ class TestHumidityAutomationManager:
             "reasoning": ["Humidity in range for balance mode"],
             "confidence": 1.0,
             "control_mode": "balance",
+            "humidity_role": "neutral",
         }
         mock_evaluate.return_value = decision
 
         await self.manager._process_automation_logic(device_id, entity_states)
 
-        mock_stop.assert_called_once_with(device_id, decision)
+        mock_clear.assert_called_once_with(device_id, decision)
+        mock_veto.assert_not_called()
         mock_activate.assert_not_called()
         mock_update.assert_called_once_with(device_id, decision)
         assert self.manager._dehumidify_active is False

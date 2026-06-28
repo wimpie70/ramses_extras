@@ -6,6 +6,7 @@ import pytest
 
 from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import (
     FanSpeedArbiter,
+    FanSpeedDemand,
     get_fan_speed_arbiter,
 )
 
@@ -428,3 +429,122 @@ def test_get_fan_speed_arbiter_uses_fallback_attribute_for_mock_hass():
         second = get_fan_speed_arbiter(mock_hass)
 
     assert first is second
+
+
+def test_veto_overrides_higher_speed_demand(arbiter):
+    """A veto demand should win over a higher-speed normal demand."""
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+            ("humidity_control", "humidity_control"): FanSpeedDemand(
+                feature_id="humidity_control",
+                source_id="humidity_control",
+                requested_speed="fan_low",
+                priority=100,
+                reason="humidity_veto",
+                is_veto=True,
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32_123456")
+
+    assert resolved.command_name == "fan_low"
+    assert resolved.winning_demand is not None
+    assert resolved.winning_demand.is_veto is True
+    assert resolved.winning_demand.feature_id == "humidity_control"
+
+
+def test_veto_with_lower_priority_still_wins(arbiter):
+    """A veto with lower priority than another veto still wins on priority."""
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+            ("humidity_control", "humidity_control"): FanSpeedDemand(
+                feature_id="humidity_control",
+                source_id="humidity_control",
+                requested_speed="fan_low",
+                priority=50,
+                reason="humidity_veto",
+                is_veto=True,
+            ),
+            ("co2_control", "co2_control"): FanSpeedDemand(
+                feature_id="co2_control",
+                source_id="co2_control",
+                requested_speed="fan_low",
+                priority=200,
+                reason="co2_veto",
+                is_veto=True,
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32_123456")
+
+    # Higher-priority veto wins among vetoes
+    assert resolved.command_name == "fan_low"
+    assert resolved.winning_demand is not None
+    assert resolved.winning_demand.is_veto is True
+    assert resolved.winning_demand.feature_id == "co2_control"
+
+
+def test_no_veto_uses_highest_speed(arbiter):
+    """Without vetoes, the highest speed demand should still win."""
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+            ("humidity_control", "humidity_control"): FanSpeedDemand(
+                feature_id="humidity_control",
+                source_id="humidity_control",
+                requested_speed="fan_low",
+                priority=5,
+                reason="humidity_balance_idle",
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32_123456")
+
+    assert resolved.command_name == "fan_high"
+    assert resolved.winning_demand is not None
+    assert resolved.winning_demand.feature_id == "temp_control"
+
+
+def test_neutral_clears_demand_lets_others_win(arbiter):
+    """When humidity clears its demand (neutral), temp_control should win."""
+    # Only temp_control has a demand — humidity cleared its demand
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32_123456")
+
+    assert resolved.command_name == "fan_high"
+    assert resolved.winning_demand is not None
+    assert resolved.winning_demand.feature_id == "temp_control"
