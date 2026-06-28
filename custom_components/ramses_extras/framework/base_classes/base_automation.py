@@ -14,6 +14,7 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
+from fnmatch import fnmatch
 from typing import Any, Protocol
 
 from homeassistant.core import CoreState, Event, HomeAssistant, State
@@ -298,13 +299,15 @@ class ExtrasBaseAutomation(ABC):
 
         # Register listeners for each entity pattern
         for pattern in self.entity_patterns:
-            if pattern.endswith("*"):
-                prefix = pattern[:-1]  # Remove the *
-                entity_type = prefix.split(".")[0]
+            if "*" in pattern:
+                # Wildcard pattern (e.g. "sensor.*_indoor_temp" or
+                # "switch.temp_control_*"): match all entities of the
+                # appropriate domain using fnmatch.
+                entity_type = pattern.split(".")[0]
                 entities = self.hass.states.async_all(entity_type)
 
                 for entity in entities:
-                    if entity.entity_id.startswith(prefix):
+                    if fnmatch(entity.entity_id, pattern):
                         _LOGGER.debug("Found entity: %s", entity.entity_id)
                         if _register_listener(entity.entity_id):
                             listeners_registered += 1
@@ -515,9 +518,8 @@ class ExtrasBaseAutomation(ABC):
         :return: True if entity matches any pattern
         """
         for pattern in self.entity_patterns:
-            if pattern.endswith("*"):
-                prefix = pattern[:-1]
-                if entity_id.startswith(prefix):
+            if "*" in pattern:
+                if fnmatch(entity_id, pattern):
                     return True
             elif entity_id == pattern:
                 return True

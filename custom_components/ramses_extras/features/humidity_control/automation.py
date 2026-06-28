@@ -10,6 +10,7 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
+from fnmatch import fnmatch
 from typing import Any, cast
 
 from homeassistant.core import Event, HomeAssistant, State
@@ -284,82 +285,54 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # Find any entities that match our patterns
         for pattern in patterns:
-            if pattern.endswith("*"):
-                prefix = pattern[:-1]  # Remove the *
-                entity_type = prefix.split(".")[0]
+            if "*" in pattern:
+                entity_type = pattern.split(".")[0]
                 entities = self.hass.states.async_all(entity_type)
+                matching_entities = [
+                    state for state in entities if fnmatch(state.entity_id, pattern)
+                ]
+            elif self.hass.states.get(pattern) is not None:
+                matching_entities = [self.hass.states.get(pattern)]
+            else:
+                matching_entities = []
 
-                if "*" in pattern:
-                    # Handle wildcard patterns
-                    if pattern.startswith(f"{entity_type}."):
-                        # Pattern like "sensor.*_indoor_humidity"
-                        if ".*_" in pattern:
-                            # Extract suffix after .*
-                            suffix = pattern.split(".*_", 1)[1]
-                            matching_entities = [
-                                state
-                                for state in entities
-                                if state.entity_id.endswith(f"_{suffix}")
-                            ]
-                        else:
-                            # Pattern like "sensor.indoor_absolute_humidity_*"
-                            matching_entities = [
-                                state
-                                for state in entities
-                                if state.entity_id.startswith(prefix)
-                            ]
-                    else:
-                        # Fallback for other wildcard patterns
-                        matching_entities = [
-                            state
-                            for state in entities
-                            if state.entity_id.startswith(prefix[:-1])
-                        ]
-                else:
-                    matching_entities = [
-                        state
-                        for state in entities
-                        if state.entity_id.startswith(prefix)
-                    ]
-
-                if matching_entities:
+            if matching_entities:
+                _LOGGER.debug(
+                    "Found %d matching entities for pattern %s",
+                    len(matching_entities),
+                    pattern,
+                )
+                # Check each matching entity's device has all required entities
+                for entity_state in matching_entities:
+                    device_id = self._extract_device_id(entity_state.entity_id)
                     _LOGGER.debug(
-                        "Found %d matching entities for pattern %s",
-                        len(matching_entities),
-                        pattern,
+                        "Checking device_id=%s from entity %s",
+                        device_id,
+                        entity_state.entity_id,
                     )
-                    # Check each matching entity's device has all required entities
-                    for entity_state in matching_entities:
-                        device_id = self._extract_device_id(entity_state.entity_id)
+                    if device_id:
+                        validation_result = await self._validate_device_entities(
+                            device_id
+                        )
                         _LOGGER.debug(
-                            "Checking device_id=%s from entity %s",
+                            "Validation result for %s: %s",
                             device_id,
+                            validation_result,
+                        )
+                        if validation_result:
+                            _LOGGER.info(
+                                "Humidity control: device %s has all %s entities ready",
+                                device_id,
+                                self.feature_id,
+                            )
+                            return True
+                    else:
+                        _LOGGER.warning(
+                            "Could not extract device_id from %s",
                             entity_state.entity_id,
                         )
-                        if device_id:
-                            validation_result = await self._validate_device_entities(
-                                device_id
-                            )
-                            _LOGGER.debug(
-                                "Validation result for %s: %s",
-                                device_id,
-                                validation_result,
-                            )
-                            if validation_result:
-                                _LOGGER.info(
-                                    "Humidity control: device %s has all %s "
-                                    "entities ready",
-                                    device_id,
-                                    self.feature_id,
-                                )
-                                return True
-                        else:
-                            _LOGGER.warning(
-                                "Could not extract device_id from %s",
-                                entity_state.entity_id,
-                            )
-                else:
-                    _LOGGER.debug("No matching entities found for pattern %s", pattern)
+            else:
+                _LOGGER.debug("No matching entities found for pattern %s", pattern)
 
         return False
 

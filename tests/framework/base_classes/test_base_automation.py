@@ -356,6 +356,36 @@ class TestExtrasBaseAutomation:
         assert automation._entity_matches_patterns("switch.control_32_153289") is True
         assert automation._entity_matches_patterns("sensor.other_32_153289") is False
 
+    def test_entity_matches_patterns_middle_wildcard(self, automation):
+        """Test entity pattern matching with wildcard in the middle.
+
+        Patterns like ``sensor.*_indoor_temp`` must match entities such as
+        ``sensor.32_153289_indoor_temp``.  This is critical for temp_control
+        to find its temperature sensor entities.
+        """
+        automation._entity_patterns = [
+            "sensor.*_indoor_temp",
+            "sensor.*_outdoor_temp",
+            "sensor.*_supply_temp",
+        ]
+
+        assert (
+            automation._entity_matches_patterns("sensor.32_153289_indoor_temp") is True
+        )
+        assert (
+            automation._entity_matches_patterns("sensor.32_153289_outdoor_temp") is True
+        )
+        assert (
+            automation._entity_matches_patterns("sensor.32_153289_supply_temp") is True
+        )
+        assert (
+            automation._entity_matches_patterns("sensor.32_153289_indoor_humidity")
+            is False
+        )
+        assert (
+            automation._entity_matches_patterns("sensor.indoor_temp_32_153289") is False
+        )
+
     @pytest.mark.asyncio
     async def test_validate_device_entities_missing(self, automation, hass):
         """Test device entity validation with missing entities."""

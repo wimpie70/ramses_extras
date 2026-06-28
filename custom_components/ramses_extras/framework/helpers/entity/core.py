@@ -12,6 +12,7 @@ import asyncio
 import importlib
 import logging
 import re
+from fnmatch import fnmatch
 from typing import Any, cast
 
 from homeassistant.core import HomeAssistant
@@ -593,9 +594,11 @@ class EntityHelpers:
                 entity.entity_id if hasattr(entity, "entity_id") else str(entity)
             )
             for pattern in patterns:
-                if pattern.endswith("*"):
-                    prefix = pattern[:-1]
-                    if prefix and entity_id.startswith(prefix):  # Skip empty prefix
+                if "*" in pattern:
+                    # Reject patterns without a domain prefix (e.g. "*")
+                    if "." not in pattern:
+                        continue
+                    if fnmatch(entity_id, pattern):
                         matching_entities.append(entity_id)
                         break
                 elif entity_id == pattern:
