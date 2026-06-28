@@ -548,3 +548,187 @@ def test_neutral_clears_demand_lets_others_win(arbiter):
     assert resolved.command_name == "fan_high"
     assert resolved.winning_demand is not None
     assert resolved.winning_demand.feature_id == "temp_control"
+
+
+# --- Integration-style tests: simulate full humidity + temp_control flow ---
+
+
+def test_integration_humidity_veto_blocks_temp_cooling(arbiter):
+    """Simulate: temp_control wants cooling (fan_high) but humidity vetoes.
+
+    This is the scenario from the bug report: humidity says 'stop' because
+    outside is wetter, but temp_control wants to cool.  The veto should win.
+    """
+    # temp_control sets a fan_high demand (cooling mode)
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+            # humidity_control vetoes because outside is wetter
+            ("humidity_control", "humidity_control"): FanSpeedDemand(
+                feature_id="humidity_control",
+                source_id="humidity_control",
+                requested_speed="fan_low",
+                priority=100,
+                reason="humidity_veto",
+                is_veto=True,
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32_123456")
+
+    # Veto wins — fan should be low, not high
+    assert resolved.command_name == "fan_low"
+    assert resolved.winning_demand is not None
+    assert resolved.winning_demand.is_veto is True
+    assert resolved.winning_demand.feature_id == "humidity_control"
+    # Both demands are still active (veto doesn't remove temp_control's demand)
+    assert len(resolved.active_demands) == 2
+
+
+def test_integration_humidity_neutral_lets_temp_cool(arbiter):
+    """Simulate: humidity is neutral (steps aside), temp_control cools.
+
+    Humidity clears its demand.  Only temp_control has a demand.
+    temp_control's fan_high should win.
+    """
+    # humidity_control cleared its demand (neutral) — only temp_control remains
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32:123456")
+
+    assert resolved.command_name == "fan_high"
+    assert resolved.winning_demand is not None
+    assert resolved.winning_demand.feature_id == "temp_control"
+    assert not resolved.winning_demand.is_veto
+
+
+def test_integration_humidity_demand_and_temp_cool_both_want_high(arbiter):
+    """Simulate: both humidity and temp want ventilation — no conflict."""
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+            ("humidity_control", "humidity_control"): FanSpeedDemand(
+                feature_id="humidity_control",
+                source_id="humidity_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="humidity_dehumidify",
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32:123456")
+
+    # Both want fan_high — highest speed wins (tie broken by priority/timestamp)
+    assert resolved.command_name == "fan_high"
+    assert resolved.winning_demand is not None
+    assert not resolved.winning_demand.is_veto
+
+
+def test_integration_co2_veto_overrides_temp_and_humidity(arbiter):
+    """Simulate: CO2 vetoes, temp and humidity both want ventilation."""
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+            ("humidity_control", "humidity_control"): FanSpeedDemand(
+                feature_id="humidity_control",
+                source_id="humidity_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="humidity_dehumidify",
+            ),
+            ("co2_control", "co2_control"): FanSpeedDemand(
+                feature_id="co2_control",
+                source_id="co2_control",
+                requested_speed="fan_low",
+                priority=200,
+                reason="co2_veto",
+                is_veto=True,
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32_123456")
+
+    # CO2 veto wins
+    assert resolved.command_name == "fan_low"
+    assert resolved.winning_demand is not None
+    assert resolved.winning_demand.is_veto is True
+    assert resolved.winning_demand.feature_id == "co2_control"
+
+
+def test_integration_humidity_veto_then_clear_lets_temp_resume(arbiter):
+    """Simulate: humidity vetoes, then clears veto — temp_control resumes.
+
+    This verifies that clearing the veto demand allows temp_control's
+    demand to take effect again.
+    """
+    # Step 1: humidity veto blocks temp_control
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+            ("humidity_control", "humidity_control"): FanSpeedDemand(
+                feature_id="humidity_control",
+                source_id="humidity_control",
+                requested_speed="fan_low",
+                priority=100,
+                reason="humidity_veto",
+                is_veto=True,
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32_123456")
+    assert resolved.command_name == "fan_low"
+
+    # Step 2: humidity clears its veto (conditions changed — now neutral)
+    arbiter._demands = {
+        "32:123456": {
+            ("temp_control", "temp_control"): FanSpeedDemand(
+                feature_id="temp_control",
+                source_id="temp_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="temp_control_cooling",
+            ),
+        }
+    }
+
+    resolved = arbiter.resolve("32_123456")
+    assert resolved.command_name == "fan_high"
+    assert resolved.winning_demand.feature_id == "temp_control"
