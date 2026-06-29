@@ -1179,35 +1179,48 @@ class HvacFanCard extends RamsesBaseCard {
       .map(metric => this._createSensorSourceIndicator(metric))
       .filter(html => html.trim() !== '');
 
-    // Comfort temperature (Temperature Control) — the resolver exposes
-    // comfort_temp_entity in the mappings; show it as a sensor source
-    // when it differs from the default param_75.
+    // Comfort temperature (Temperature Control) — always show the
+    // actual source being used, following the resolution priority:
+    //   1. comfort_temp_entity (from sensor_control resolver mappings)
+    //   2. param_75 (FAN default)
+    //   3. none → show "?" and error state
     const comfortEntity = this._config.comfort_temp_entity
       || this._entityMappings?.comfort_temp_entity;
     const defaultComfortEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
-    if (comfortEntity && comfortEntity !== defaultComfortEntity) {
-      const state = this.getEntityState(comfortEntity);
-      let comfortValue = '—';
-      if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
-        const numValue = parseFloat(state.state);
-        comfortValue = isNaN(numValue) ? state.state : `${numValue.toFixed(1)} °C`;
-      }
-      indicators.push(`
-        <div class="r-xtrs-hvac-fan-sensor-source-indicator r-xtrs-hvac-fan-sensor-source-external valid" title="Comfort temp source: ${comfortEntity}">
-          <div class="r-xtrs-hvac-fan-sensor-source-header">
-            <span class="r-xtrs-hvac-fan-sensor-source-icon">🎯</span>
-            <span class="r-xtrs-hvac-fan-sensor-source-label">Comfort Temp</span>
-            <span class="r-xtrs-hvac-fan-sensor-source-kind">external</span>
-          </div>
-          <div class="r-xtrs-hvac-fan-sensor-source-details">
-            <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
-              <span class="r-xtrs-hvac-fan-sensor-source-entity">${comfortEntity}</span>
-              <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${comfortValue}</span>
-            </div>
+    const actualComfortEntity = comfortEntity || defaultComfortEntity;
+    const comfortState = this.getEntityState(actualComfortEntity);
+    const comfortAvailable = comfortState
+      && comfortState.state !== 'unavailable'
+      && comfortState.state !== 'unknown';
+    let comfortValue = '—';
+    if (comfortAvailable) {
+      const numValue = parseFloat(comfortState.state);
+      comfortValue = isNaN(numValue) ? comfortState.state : `${numValue.toFixed(1)} °C`;
+    }
+    const comfortKind = comfortEntity ? 'external' : 'param_75';
+    const comfortStatusClass = comfortAvailable
+      ? (comfortEntity
+        ? 'r-xtrs-hvac-fan-sensor-source-external valid'
+        : 'r-xtrs-hvac-fan-sensor-source-derived')
+      : 'r-xtrs-hvac-fan-sensor-source-external invalid';
+    const comfortTitle = comfortAvailable
+      ? `Comfort temp source: ${actualComfortEntity}`
+      : `Comfort temp unavailable: ${actualComfortEntity}`;
+    indicators.push(`
+      <div class="r-xtrs-hvac-fan-sensor-source-indicator ${comfortStatusClass}" title="${comfortTitle}">
+        <div class="r-xtrs-hvac-fan-sensor-source-header">
+          <span class="r-xtrs-hvac-fan-sensor-source-icon">🎯</span>
+          <span class="r-xtrs-hvac-fan-sensor-source-label">Comfort Temp</span>
+          <span class="r-xtrs-hvac-fan-sensor-source-kind">${comfortKind}</span>
+        </div>
+        <div class="r-xtrs-hvac-fan-sensor-source-details">
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-entity">${actualComfortEntity}</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${comfortAvailable ? comfortValue : '?'}</span>
           </div>
         </div>
-      `);
-    }
+      </div>
+    `);
 
     const areaIndicators = (this._areaSensors || [])
       .map(areaSensor => this._createAreaSensorIndicator(areaSensor))
