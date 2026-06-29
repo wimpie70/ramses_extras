@@ -242,6 +242,7 @@ async def ws_get_entity_mappings(
             "indoor_humidity": "indoor_humidity_entity",
             "outdoor_humidity": "outdoor_humidity_entity",
             "co2": "co2_entity",
+            "comfort_temp_entity": "comfort_temp_entity",
         }
 
         async def _overlay_provider(
@@ -252,7 +253,9 @@ async def ws_get_entity_mappings(
                 return {}
 
             try:
-                from ...features.sensor_control.resolver import SensorControlResolver
+                from ...features.sensor_control.resolver import (
+                    SensorControlResolver,
+                )
 
                 device_type = _get_device_type(device_id)
                 if not device_type:

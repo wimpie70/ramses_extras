@@ -39,6 +39,7 @@ class SensorControlDeviceHandler(Protocol):
         device_sources: dict[str, Any],
         device_abs_inputs: dict[str, Any],
         user_input: dict[str, Any] | None,
+        device_section: dict[str, Any] | None = None,
     ) -> Any: ...
 
 

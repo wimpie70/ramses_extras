@@ -24,7 +24,8 @@ export function createParameterEditSection(params) {
     try {
       if (typeof t === 'function') {
         const result = t(key, options);
-        if (typeof result === 'string' && result !== key) {
+        // t() returns '' for missing keys, so also check for non-empty
+        if (typeof result === 'string' && result !== key && result !== '') {
           return result;
         }
       }
@@ -64,15 +65,17 @@ export function createParameterEditSection(params) {
       </div>
       ` : ''}
 
-      ${params.tempControlEntities && params.tempControlEntities.length > 0 ? `
+      ${(params.tempControlEntities && params.tempControlEntities.length > 0) || params.tempControlSettings ? `
       <!-- Temp Control Settings Section -->
       <div class="r-xtrs-hvac-fan-param-section-header">
         <h3>${tr('parameters.temp_control_settings', 'Temperature Control Settings')}</h3>
       </div>
-      <div class="r-xtrs-hvac-fan-param-list" style="max-height: 200px; overflow-y: auto;">
-        ${params.tempControlEntities.map(entity =>
+      <div class="r-xtrs-hvac-fan-param-list" style="max-height: 300px; overflow-y: auto;">
+        ${params.tempControlEntities ? params.tempControlEntities.map(entity =>
           createTempControlItem(entity, tr)
-        ).join('')}
+        ).join('') : ''}
+        ${params.comfortTempValue ? createComfortTempItem(params.comfortTempValue, tr) : ''}
+        ${params.tempControlSettings ? createTempControlSettingItems(params.tempControlSettings, tr) : ''}
       </div>
       ` : ''}
 
@@ -211,6 +214,92 @@ function createTempControlItem(entity, tr) {
       </div>
     </div>
   `;
+}
+
+/**
+ * Render the comfort temp row.
+ *
+ * - If an external comfort_temp_entity is configured, show a number
+ *   input to edit that entity's value directly (via set_value service).
+ * - If no external entity is configured (using default param_75), show
+ *   the current param_75 value as read-only info.
+ *
+ * @param {Object} comfortTemp { entity, value, isExternal }
+ * @param {Function} tr Translation helper.
+ * @returns {string} HTML string.
+ */
+function createComfortTempItem(comfortTemp, tr) {
+  const label = tr('parameters.comfort_temp', 'Comfort Temp');
+  const currentEntity = comfortTemp.entity || '';
+
+  if (comfortTemp.isExternal) {
+    // Entity is configured — edit its value directly
+    const numMatch = comfortTemp.value.match(/^([\d.]+)/);
+    const numVal = numMatch ? numMatch[1] : '';
+    return `
+      <div class="r-xtrs-hvac-fan-param-item" data-comfort-temp="value">
+        <div class="r-xtrs-hvac-fan-param-info">
+          <label class="r-xtrs-hvac-fan-param-label">${label}</label>
+          <span class="r-xtrs-hvac-fan-param-unit">${currentEntity}</span>
+        </div>
+        <div class="r-xtrs-hvac-fan-param-input-container">
+          <input type="number" class="r-xtrs-hvac-fan-param-input" data-comfort-temp-value="${numVal}" step="0.1" value="${numVal}" />
+          <button class="r-xtrs-hvac-fan-param-update-btn" data-action="set-comfort-temp-value" data-entity-id="${currentEntity}">${tr('parameters.update', 'Update')}</button>
+          <span class="r-xtrs-hvac-fan-param-status"></span>
+        </div>
+      </div>
+    `;
+  }
+
+  // No external entity — show param_75 value as read-only info
+  return `
+    <div class="r-xtrs-hvac-fan-param-item" data-comfort-temp="info">
+      <div class="r-xtrs-hvac-fan-param-info">
+        <label class="r-xtrs-hvac-fan-param-label">${label}</label>
+        <span class="r-xtrs-hvac-fan-param-unit">${comfortTemp.value} <small>(param_75)</small></span>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render temp_control numeric settings as editable input rows.
+ * Each field has an input, an Update button, and a status span.
+ * @param {Object} settings Temp control settings from WebSocket.
+ * @param {Function} tr Translation helper.
+ * @returns {string} HTML string.
+ */
+function createTempControlSettingItems(settings, tr) {
+  const fields = [
+    { key: 'comfort_delta_activate', label: 'Comfort Delta (Activate)', unit: '°C', step: '0.1' },
+    { key: 'comfort_delta_deactivate', label: 'Comfort Delta (Deactivate)', unit: '°C', step: '0.1' },
+    { key: 'cooling_delta_activate', label: 'Cooling Delta (Activate)', unit: '°C', step: '0.1' },
+    { key: 'cooling_delta_deactivate', label: 'Cooling Delta (Deactivate)', unit: '°C', step: '0.1' },
+    { key: 'min_outdoor_temp', label: 'Min Outdoor Temp', unit: '°C', step: '0.5' },
+    { key: 'dewpoint_margin_c', label: 'Dewpoint Margin', unit: '°C', step: '0.1' },
+    { key: 'supply_cooler_delta_activate', label: 'Supply Cooler Delta (Activate)', unit: '°C', step: '0.1' },
+    { key: 'supply_cooler_delta_deactivate', label: 'Supply Cooler Delta (Deactivate)', unit: '°C', step: '0.1' },
+    { key: 'min_supply_temp', label: 'Min Supply Temp', unit: '°C', step: '0.5' },
+  ];
+
+  return fields.map(f => {
+    const raw = settings[f.key];
+    if (raw === undefined || raw === null) return '';
+    const val = typeof raw === 'number' ? raw : parseFloat(raw) || 0;
+    return `
+      <div class="r-xtrs-hvac-fan-param-item" data-temp-setting="${f.key}">
+        <div class="r-xtrs-hvac-fan-param-info">
+          <label class="r-xtrs-hvac-fan-param-label">${f.label}</label>
+          <span class="r-xtrs-hvac-fan-param-unit">${f.unit}</span>
+        </div>
+        <div class="r-xtrs-hvac-fan-param-input-container">
+          <input type="number" class="r-xtrs-hvac-fan-param-input" data-setting-key="${f.key}" step="${f.step}" value="${val}" />
+          <button class="r-xtrs-hvac-fan-param-update-btn" data-action="save-temp-setting" data-setting-key="${f.key}">${tr('parameters.update', 'Update')}</button>
+          <span class="r-xtrs-hvac-fan-param-status"></span>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 /**

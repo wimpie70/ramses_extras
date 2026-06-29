@@ -115,6 +115,19 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   /**
+   * Override shouldUpdate to suppress full re-renders while in
+   * parameter edit mode. The edit window handles its own in-place
+   * updates (CSS classes) and does not need a full DOM rebuild when
+   * entity states change after a service call.
+   */
+  shouldUpdate() {
+    if (this.parameterEditMode && this._parameterModeRendered && !this._parameterModeDirty) {
+      return false;
+    }
+    return super.shouldUpdate();
+  }
+
+  /**
    * Card-specific rendering implementation
    */
   _renderContent() {
@@ -175,12 +188,16 @@ class HvacFanCard extends RamsesBaseCard {
 
     const humidityControlEntities = this._getHumidityControlEntities();
     const tempControlEntities = this._getTempControlEntities();
+    const tempControlSettings = await this._fetchTempControlSettings();
+    const comfortTempValue = this._getComfortTempValue();
     const parameterItems = this._createParameterItems(this.availableParams);
 
     const templateData = {
       device_id: this.config.device_id,
       humidityControlEntities,
       tempControlEntities,
+      tempControlSettings,
+      comfortTempValue,
       parameterItems,
       t: this.t?.bind(this),
     };
@@ -1179,6 +1196,55 @@ class HvacFanCard extends RamsesBaseCard {
       .map(metric => this._createSensorSourceIndicator(metric))
       .filter(html => html.trim() !== '');
 
+    // Comfort temperature (Temperature Control) — always show the
+    // actual source being used, following the resolution priority:
+    //   1. comfort_temp_entity from sensor_control resolver (external)
+    //   2. param_75 (FAN default, internal)
+    //   3. none → show "?" and error state
+    // The base hvac_fan_card mapping sets comfort_temp_entity to
+    // param_75 by default, so we must compare against that to know
+    // whether the resolver actually overrode it with an external entity.
+    const defaultComfortEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
+    const configComfortEntity = this._config.comfort_temp_entity
+      || this._entityMappings?.comfort_temp_entity;
+    // Only treat as external if it differs from the default param_75
+    const isExternal = configComfortEntity
+      && configComfortEntity !== defaultComfortEntity;
+    const actualComfortEntity = configComfortEntity || defaultComfortEntity;
+    const comfortState = this.getEntityState(actualComfortEntity);
+    const comfortAvailable = comfortState
+      && comfortState.state !== 'unavailable'
+      && comfortState.state !== 'unknown';
+    let comfortValue = '—';
+    if (comfortAvailable) {
+      const numValue = parseFloat(comfortState.state);
+      comfortValue = isNaN(numValue) ? comfortState.state : `${numValue.toFixed(1)} °C`;
+    }
+    const comfortKind = isExternal ? 'external' : 'param_75';
+    const comfortStatusClass = comfortAvailable
+      ? (isExternal
+        ? 'r-xtrs-hvac-fan-sensor-source-external valid'
+        : 'r-xtrs-hvac-fan-sensor-source-derived')
+      : 'r-xtrs-hvac-fan-sensor-source-external invalid';
+    const comfortTitle = comfortAvailable
+      ? `Comfort temp source: ${actualComfortEntity}`
+      : `Comfort temp unavailable: ${actualComfortEntity}`;
+    indicators.push(`
+      <div class="r-xtrs-hvac-fan-sensor-source-indicator ${comfortStatusClass}" title="${comfortTitle}">
+        <div class="r-xtrs-hvac-fan-sensor-source-header">
+          <span class="r-xtrs-hvac-fan-sensor-source-icon">🎯</span>
+          <span class="r-xtrs-hvac-fan-sensor-source-label">Comfort Temp</span>
+          <span class="r-xtrs-hvac-fan-sensor-source-kind">${comfortKind}</span>
+        </div>
+        <div class="r-xtrs-hvac-fan-sensor-source-details">
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-entity">${actualComfortEntity}</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${comfortAvailable ? comfortValue : '?'}</span>
+          </div>
+        </div>
+      </div>
+    `);
+
     const areaIndicators = (this._areaSensors || [])
       .map(areaSensor => this._createAreaSensorIndicator(areaSensor))
       .filter(html => html.trim() !== '');
@@ -1656,10 +1722,11 @@ class HvacFanCard extends RamsesBaseCard {
     if (!hass) return [];
 
     const deviceIdUnderscore = deviceId.replace(/:/g, '_');
+    // The on/off switch is controlled via the front-of-card button,
+    // not in the edit window — exclude it here.
+    // Status is read-only (not a setting) — also excluded.
     const entities = [
-      `switch.temp_control_${deviceIdUnderscore}`,
       `select.temp_control_desired_speed_${deviceIdUnderscore}`,
-      `sensor.temp_control_status_${deviceIdUnderscore}`,
     ];
 
     const items = [];
@@ -1670,15 +1737,9 @@ class HvacFanCard extends RamsesBaseCard {
       let nameKey = null;
       let nameFallback = null;
 
-      if (entityId.includes('switch.')) {
-        nameKey = 'controls.temp_control';
-        nameFallback = 'Temp Control (Bypass)';
-      } else if (entityId.includes('desired_speed')) {
+      if (entityId.includes('desired_speed')) {
         nameKey = 'parameters.temp_control_desired_speed';
         nameFallback = 'Desired Speed (Cooling)';
-      } else if (entityId.includes('status')) {
-        nameKey = 'parameters.temp_control_status';
-        nameFallback = 'Status';
       }
 
       items.push({
@@ -1691,6 +1752,132 @@ class HvacFanCard extends RamsesBaseCard {
     });
 
     return items;
+  }
+
+  /**
+   * Fetch temp_control settings (deltas, dewpoint, etc.) via WebSocket.
+   * @returns {Promise<Object|null>} Settings object or null.
+   */
+  async _fetchTempControlSettings() {
+    if (!this._hass || !this._config?.device_id) return null;
+    try {
+      const result = await this._sendWebSocketCommand({
+        type: 'ramses_extras/temp_control/get_device_config',
+        device_id: this._config.device_id,
+      }, `temp_control_config_${this._config.device_id}`);
+      return result?.settings || null;
+    } catch (e) {
+      logger.debug('Failed to fetch temp_control settings:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Get the current comfort temp value from the resolved entity.
+   * @returns {Object} { entity, value, isExternal }
+   */
+  _getComfortTempValue() {
+    const defaultEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
+    const configEntity = this._config.comfort_temp_entity
+      || this._entityMappings?.comfort_temp_entity;
+    const isExternal = configEntity && configEntity !== defaultEntity;
+    const entity = configEntity || defaultEntity;
+    const state = this.getEntityState(entity);
+    let value = '—';
+    if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
+      const num = parseFloat(state.state);
+      value = isNaN(num) ? state.state : `${num.toFixed(1)} °C`;
+    }
+    return { entity, value, isExternal: !!isExternal };
+  }
+
+  /**
+   * Set the value of the configured comfort_temp_entity directly.
+   * Calls the appropriate service based on the entity domain
+   * (input_number.set_value, number.set_value, etc.).
+   * @param {HTMLElement} button The update button that was clicked.
+   * @param {string} entityId The comfort_temp_entity ID.
+   * @returns {Promise<void>}
+   */
+  async _setComfortTempValue(button, entityId) {
+    if (!entityId) return;
+    const paramItem = button?.closest('[data-comfort-temp]');
+    const input = button?.previousElementSibling;
+    const rawValue = input?.value;
+    if (rawValue === undefined || rawValue === '') {
+      return;
+    }
+    const value = parseFloat(rawValue);
+    if (isNaN(value)) {
+      return;
+    }
+
+    if (paramItem) paramItem.classList.add('loading');
+
+    try {
+      const domain = entityId.split('.')[0];
+      const serviceMap = {
+        input_number: ['input_number', 'set_value'],
+        number: ['number', 'set_value'],
+      };
+      const [svcDomain, svcName] = serviceMap[domain] || ['number', 'set_value'];
+      await this._hass.callService(svcDomain, svcName, {
+        entity_id: entityId,
+        value,
+      });
+      if (paramItem) {
+        paramItem.classList.remove('loading');
+        paramItem.classList.add('success');
+        setTimeout(() => paramItem.classList.remove('success'), 2000);
+      }
+    } catch (error) {
+      logger.error(`Failed to set comfort temp value for ${entityId}:`, error);
+      if (paramItem) {
+        paramItem.classList.remove('loading');
+        paramItem.classList.add('error');
+        setTimeout(() => paramItem.classList.remove('error'), 2000);
+      }
+    }
+  }
+
+  /**
+   * Save a single temp_control setting via WebSocket.
+   * Updates the row in-place (no full redraw).
+   * @param {HTMLElement} button The update button that was clicked.
+   * @param {string} settingKey The setting key (e.g. comfort_delta_activate).
+   * @returns {Promise<void>}
+   */
+  async _saveTempSetting(button, settingKey) {
+    if (!settingKey) return;
+    const paramItem = button?.closest('[data-temp-setting]');
+    const input = button?.previousElementSibling;
+    const rawValue = input?.value;
+    if (rawValue === undefined || rawValue === '') {
+      return;
+    }
+
+    if (paramItem) paramItem.classList.add('loading');
+
+    try {
+      await this._sendWebSocketCommand({
+        type: 'ramses_extras/temp_control/set_device_config',
+        device_id: this._config.device_id,
+        settings: { [settingKey]: parseFloat(rawValue) },
+      }, `set_temp_setting_${this._config.device_id}_${settingKey}`);
+
+      if (paramItem) {
+        paramItem.classList.remove('loading');
+        paramItem.classList.add('success');
+        setTimeout(() => paramItem.classList.remove('success'), 2000);
+      }
+    } catch (error) {
+      logger.error(`Failed to save temp setting ${settingKey}:`, error);
+      if (paramItem) {
+        paramItem.classList.remove('loading');
+        paramItem.classList.add('error');
+        setTimeout(() => paramItem.classList.remove('error'), 2000);
+      }
+    }
   }
 
   /**
@@ -2202,38 +2389,75 @@ class HvacFanCard extends RamsesBaseCard {
             // Device parameter update (2411)
             this.updateParameter(paramKey, newValue);
           } else if (action === 'update-humidity' && entityId && newValue !== undefined) {
-            // Humidity control update
+            // Humidity control update — in-place, no full redraw
+            const paramItem = button.closest('.r-xtrs-hvac-fan-param-item');
+            if (paramItem) paramItem.classList.add('loading');
             try {
               await this._hass.callService('number', 'set_value', {
                 entity_id: entityId,
                 value: parseFloat(newValue),
               });
-              this._prevStates = null;
-              this.render();
+              if (paramItem) {
+                paramItem.classList.remove('loading');
+                paramItem.classList.add('success');
+                setTimeout(() => paramItem.classList.remove('success'), 2000);
+              }
             } catch (error) {
               logger.error(`Failed to update humidity control ${entityId}:`, error);
+              if (paramItem) {
+                paramItem.classList.remove('loading');
+                paramItem.classList.add('error');
+                setTimeout(() => paramItem.classList.remove('error'), 2000);
+              }
             }
           } else if (action === 'update-select' && entityId && newValue !== undefined) {
+            // Select update — in-place, no full redraw
+            const paramItem = button.closest('.r-xtrs-hvac-fan-param-item');
+            if (paramItem) paramItem.classList.add('loading');
             try {
               await this._hass.callService('select', 'select_option', {
                 entity_id: entityId,
                 option: newValue,
               });
-              this._prevStates = null;
-              this.render();
+              if (paramItem) {
+                paramItem.classList.remove('loading');
+                paramItem.classList.add('success');
+                setTimeout(() => paramItem.classList.remove('success'), 2000);
+              }
             } catch (error) {
               logger.error(`Failed to update select ${entityId}:`, error);
+              if (paramItem) {
+                paramItem.classList.remove('loading');
+                paramItem.classList.add('error');
+                setTimeout(() => paramItem.classList.remove('error'), 2000);
+              }
             }
           } else if (action === 'update-switch' && entityId && newValue !== undefined) {
+            // Switch update — in-place, no full redraw
+            const paramItem = button.closest('.r-xtrs-hvac-fan-param-item');
+            if (paramItem) paramItem.classList.add('loading');
             try {
               await this._hass.callService('switch', newValue === 'on' ? 'turn_on' : 'turn_off', {
                 entity_id: entityId,
               });
-              this._prevStates = null;
-              this.render();
+              if (paramItem) {
+                paramItem.classList.remove('loading');
+                paramItem.classList.add('success');
+                setTimeout(() => paramItem.classList.remove('success'), 2000);
+              }
             } catch (error) {
               logger.error(`Failed to update switch ${entityId}:`, error);
+              if (paramItem) {
+                paramItem.classList.remove('loading');
+                paramItem.classList.add('error');
+                setTimeout(() => paramItem.classList.remove('error'), 2000);
+              }
             }
+          } else if (action === 'set-comfort-temp-value') {
+            await this._setComfortTempValue(button, entityId);
+          } else if (action === 'save-temp-setting') {
+            const settingKey = button.getAttribute('data-setting-key');
+            await this._saveTempSetting(button, settingKey);
           }
         });
       });

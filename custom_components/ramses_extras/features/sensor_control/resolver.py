@@ -124,6 +124,15 @@ class SensorControlResolver:
 
         result["area_sensors"] = self._resolve_area_sensors(area_sensors)
 
+        # Comfort temp entity (Temperature Control) — stored at device level,
+        # not under "sources". Exposed as a mapping so consumers (temp_control
+        # automation, hvac_fan_card) can use it to override param_75.
+        comfort_temp_entity = str(
+            device_section.get("comfort_temp_entity") or ""
+        ).strip()
+        if comfort_temp_entity:
+            result["mappings"]["comfort_temp_entity"] = comfort_temp_entity
+
         # Resolve each metric
         for metric in SUPPORTED_METRICS:
             # Absolute humidity metrics are driven by abs_humidity_inputs rather

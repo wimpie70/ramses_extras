@@ -447,7 +447,15 @@ class ExtrasBaseAutomation(ABC):
         # Get all entity states for this device
         try:
             entity_states = await self._get_device_entity_states(device_id)
-        except ValueError:
+        except ValueError as exc:
+            # Feature-specific subclasses may raise a ValueError subclass
+            # (e.g. ComfortTempUnavailableError) that warrants a distinct status.
+            # If the subclass has a handler for it, call it; otherwise just
+            # skip this cycle as before.
+            if type(exc).__name__ == "ComfortTempUnavailableError":
+                handler = getattr(self, "_set_waiting_for_comfort_temp", None)
+                if handler:
+                    handler(device_id)
             return
 
         # Call feature-specific processing logic

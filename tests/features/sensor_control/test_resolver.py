@@ -239,6 +239,49 @@ class TestSensorControlResolver:
         assert result["sources"]["outdoor_abs_humidity"]["kind"] == "internal"
 
     @pytest.mark.asyncio
+    async def test_resolve_entity_mappings_exposes_comfort_temp_entity(self):
+        """comfort_temp_entity at device level is exposed in mappings."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "sensor_control": {
+                "devices": {
+                    self.device_id: {
+                        "sources": {},
+                        "comfort_temp_entity": "input_number.my_comfort",
+                    }
+                }
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert result["mappings"]["comfort_temp_entity"] == "input_number.my_comfort"
+
+    @pytest.mark.asyncio
+    async def test_resolve_entity_mappings_no_comfort_temp_entity(self):
+        """No comfort_temp_entity in config → not in mappings."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "sensor_control": {
+                "devices": {
+                    self.device_id: {
+                        "sources": {},
+                    }
+                }
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert "comfort_temp_entity" not in result["mappings"]
+
+    @pytest.mark.asyncio
     async def test_resolve_entity_mappings_with_area_sensors(self):
         """Test resolver returns validated area sensor summaries."""
         config_entry = MagicMock()

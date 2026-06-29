@@ -748,6 +748,133 @@ class TestGetDeviceEntityStates:
             result = await automation_manager._get_device_entity_states("32:153289")
             assert result["co2_active"] is False
 
+    @pytest.mark.asyncio
+    async def test_comfort_temp_entity_overlay(self, automation_manager):
+        """comfort_temp_entity from sensor_control overrides param_75 mapping."""
+
+        def mock_get(entity_id):
+            states = {
+                "switch.temp_control_32_153289": "on",
+                "sensor.32_153289_indoor_temp": "22.0",
+                "sensor.32_153289_outdoor_temp": "18.0",
+                "sensor.32_153289_supply_temp": "18.0",
+                # param_75 is unavailable (the problem we're solving)
+                "number.32_153289_param_75": "unavailable",
+                # external entity provides the comfort temp
+                "input_number.my_comfort": "19.5",
+                "sensor.32_153289_indoor_humidity": "50.0",
+                "number.relative_humidity_minimum_32_153289": "40.0",
+                "number.relative_humidity_maximum_32_153289": "60.0",
+                "binary_sensor.dehumidifying_active_32_153289": "off",
+                "binary_sensor.co2_active_32_153289": "off",
+            }
+            s = MagicMock()
+            s.state = states.get(entity_id, "0")
+            return s
+
+        automation_manager.hass.states.get = mock_get
+        # sensor_control context provides comfort_temp_entity
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={
+                "mappings": {"comfort_temp_entity": "input_number.my_comfort"},
+                "sources": {},
+                "area_sensors": [],
+            }
+        )
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers."
+            "entity.core.get_feature_entity_mappings",
+            new_callable=AsyncMock,
+        ) as mock_mappings:
+            mock_mappings.return_value = {
+                "temp_control": "switch.temp_control_32_153289",
+                "indoor_temp": "sensor.32_153289_indoor_temp",
+                "outdoor_temp": "sensor.32_153289_outdoor_temp",
+                "supply_temp": "sensor.32_153289_supply_temp",
+                "comfort_temp": "number.32_153289_param_75",
+                "indoor_rh": "sensor.32_153289_indoor_humidity",
+                "min_rh": "number.relative_humidity_minimum_32_153289",
+                "max_rh": "number.relative_humidity_maximum_32_153289",
+                "dehumidifying_active": (
+                    "binary_sensor.dehumidifying_active_32_153289"
+                ),
+                "co2_active": "binary_sensor.co2_active_32_153289",
+            }
+            result = await automation_manager._get_device_entity_states("32:153289")
+
+            # Should use the external entity, not the unavailable param_75
+            assert result["comfort_temp"] == 19.5
+
+    @pytest.mark.asyncio
+    async def test_comfort_temp_unavailable_raises_specific(self, automation_manager):
+        """ComfortTempUnavailableError raised when comfort temp is unavailable
+        and no fallback entity is configured in sensor_control."""
+        from custom_components.ramses_extras.features.temp_control.automation import (
+            ComfortTempUnavailableError,
+        )
+
+        def mock_get(entity_id):
+            states = {
+                "switch.temp_control_32_153289": "on",
+                "sensor.32_153289_indoor_temp": "22.0",
+                "sensor.32_153289_outdoor_temp": "18.0",
+                "sensor.32_153289_supply_temp": "18.0",
+                "number.32_153289_param_75": "unavailable",
+                "sensor.32_153289_indoor_humidity": "50.0",
+                "number.relative_humidity_minimum_32_153289": "40.0",
+                "number.relative_humidity_maximum_32_153289": "60.0",
+                "binary_sensor.dehumidifying_active_32_153289": "off",
+                "binary_sensor.co2_active_32_153289": "off",
+            }
+            s = MagicMock()
+            s.state = states.get(entity_id, "0")
+            return s
+
+        automation_manager.hass.states.get = mock_get
+        # No sensor_control context (no comfort_temp_entity configured)
+        automation_manager._get_sensor_control_context = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers."
+            "entity.core.get_feature_entity_mappings",
+            new_callable=AsyncMock,
+        ) as mock_mappings:
+            mock_mappings.return_value = {
+                "temp_control": "switch.temp_control_32_153289",
+                "indoor_temp": "sensor.32_153289_indoor_temp",
+                "outdoor_temp": "sensor.32_153289_outdoor_temp",
+                "supply_temp": "sensor.32_153289_supply_temp",
+                "comfort_temp": "number.32_153289_param_75",
+                "indoor_rh": "sensor.32_153289_indoor_humidity",
+                "min_rh": "number.relative_humidity_minimum_32_153289",
+                "max_rh": "number.relative_humidity_maximum_32_153289",
+                "dehumidifying_active": (
+                    "binary_sensor.dehumidifying_active_32_153289"
+                ),
+                "co2_active": "binary_sensor.co2_active_32_153289",
+            }
+            with pytest.raises(ComfortTempUnavailableError):
+                await automation_manager._get_device_entity_states("32:153289")
+
+    @pytest.mark.asyncio
+    async def test_set_waiting_for_comfort_temp_sets_status(self, automation_manager):
+        """_set_waiting_for_comfort_temp sets status and active indicator."""
+        automation_manager._set_active_indicator = MagicMock()
+        automation_manager._set_status_sensor = MagicMock()
+
+        automation_manager._set_waiting_for_comfort_temp("32:153289")
+
+        automation_manager._set_active_indicator.assert_called_once()
+        call_args = automation_manager._set_active_indicator.call_args
+        assert call_args[0][0] == "32:153289"
+        assert call_args[0][1] is False  # active=False
+
+        automation_manager._set_status_sensor.assert_called_once()
+        status_args = automation_manager._set_status_sensor.call_args
+        assert status_args[0][0] == "32:153289"
+        assert status_args[0][1] == "waiting_for_comfort_temp"
+
 
 # ---- _process_automation_logic early return ----
 

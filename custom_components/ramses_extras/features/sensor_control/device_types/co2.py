@@ -71,6 +71,7 @@ async def handle_internal_fan_sensors(
     device_sources: dict[str, Any],
     device_abs_inputs: dict[str, Any],
     user_input: dict[str, Any] | None,
+    device_section: dict[str, Any] | None = None,
 ) -> Any:
     """CO2 devices don't support internal fan sensors configuration."""
     raise NotImplementedError("CO2 devices do not support FAN sensor configuration")

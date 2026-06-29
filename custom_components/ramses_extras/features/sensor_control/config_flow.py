@@ -1215,7 +1215,12 @@ async def async_step_sensor_control_config(
         )
         try:
             return await handler.handle_internal_fan_sensors(
-                flow, selected_device_id, device_sources, device_abs_inputs, user_input
+                flow,
+                selected_device_id,
+                device_sources,
+                device_abs_inputs,
+                user_input,
+                device_section=device_section,
             )
         except Exception as e:
             _LOGGER.error("Error in handle_internal_fan_sensors: %s", e, exc_info=True)

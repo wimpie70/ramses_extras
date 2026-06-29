@@ -547,8 +547,13 @@ async def handle_internal_fan_sensors(
     device_sources: dict[str, Any],
     device_abs_inputs: dict[str, Any],
     user_input: dict[str, Any] | None,
+    device_section: dict[str, Any] | None = None,
 ) -> Any:
-    """Handle internal fan sensors: temp/humidity/CO2/abs humidity config."""
+    """Handle internal fan sensors: temp/humidity/CO2/abs humidity config.
+
+    Also manages the comfort_temp_entity (Temperature Control) setting, which
+    overrides the FAN's param_75 comfort setpoint with an external HA entity.
+    """
     import logging
 
     _logger = logging.getLogger(__name__)
@@ -631,6 +636,21 @@ async def handle_internal_fan_sensors(
             ),
         }
 
+        # Comfort temp entity (Temperature Control) — overrides param_75
+        comfort_temp_kind = str(user_input.get("comfort_temp_kind") or "none")
+        if comfort_temp_kind == "none":
+            comfort_temp_entity = ""
+        else:
+            comfort_temp_entity = str(
+                user_input.get("comfort_temp_entity") or ""
+            ).strip()
+        _logger.debug(
+            "Persisting comfort_temp_entity=%r (kind=%s) for device %s",
+            comfort_temp_entity,
+            comfort_temp_kind,
+            selected_device_id,
+        )
+
         # Update the config — persist both canonical and legacy sections
         # so the resolver (which reads legacy first) sees the updated values.
         from ....framework.helpers.config.migration import (
@@ -652,10 +672,18 @@ async def handle_internal_fan_sensors(
 
         device_config[SENSOR_CONTROL_SOURCES_KEY] = updated_sources
         device_config[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = updated_abs_inputs
+        if comfort_temp_entity:
+            device_config["comfort_temp_entity"] = comfort_temp_entity
+        else:
+            device_config.pop("comfort_temp_entity", None)
         devices_config[norm_device_id] = device_config
         sensor_control_section["devices"] = devices_config
 
         _persist_sensor_control_section(flow, options, sensor_control_section)
+        _logger.debug(
+            "After persist: sensor_control devices=%s",
+            list(devices_config.keys()),
+        )
 
         # Return to group selection
         flow._sensor_control_group_stage = "select_group"
@@ -683,6 +711,10 @@ async def handle_internal_fan_sensors(
     co2_cfg = device_sources.get("co2", {})
     indoor_abs_cfg = device_abs_inputs.get("indoor_abs_humidity", {})
     outdoor_abs_cfg = device_abs_inputs.get("outdoor_abs_humidity", {})
+    # Comfort temp entity (Temperature Control) — stored at device level
+    comfort_temp_default = (
+        str(device_section.get("comfort_temp_entity") or "") if device_section else ""
+    )
 
     # Temperature kind options
     temp_kind_options = [
@@ -841,6 +873,30 @@ async def handle_internal_fan_sensors(
                 "outdoor_abs_humidity_humidity_entity",
                 default=outdoor_abs_cfg.get("humidity", {}).get("entity_id"),
             ): sensor_selector_or_none,
+            # Comfort temperature (Temperature Control)
+            # Overrides the FAN's param_75 comfort setpoint with an external
+            # HA entity (e.g. input_number). Used by temp_control automation
+            # and the hvac_fan_card.
+            vol.Optional(
+                "comfort_temp_kind",
+                default="external" if comfort_temp_default else "none",
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(
+                            value="none", label="Internal (use FAN param_75)"
+                        ),
+                        selector.SelectOptionDict(
+                            value="external", label="External (HA entity)"
+                        ),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                "comfort_temp_entity",
+                default=comfort_temp_default or None,
+            ): sensor_selector_or_none,
         }
     )
 
@@ -848,7 +904,9 @@ async def handle_internal_fan_sensors(
         "Internal Fan Sensors\n\n"
         f"Configure internal sensor sources for device: `{selected_device_id}`\n\n"
         "Define what sensors should be used. Instead of the standard internal sensors"
-        " you can map other (external) sensors of your choice."
+        " you can map other (external) sensors of your choice.\n\n"
+        "The **Comfort temperature (Temperature Control)** field overrides the"
+        " FAN's param_75 setpoint with an external HA entity (e.g. input_number)."
     )
 
     _logger.debug("Returning form for internal_fan_sensors")
