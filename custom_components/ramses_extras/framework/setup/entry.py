@@ -84,6 +84,14 @@ def initialize_entry_data(hass: HomeAssistant, entry: ConfigEntry) -> None:
     )
     hass.data[DOMAIN]["PLATFORM_REGISTRY"] = PLATFORM_REGISTRY
 
+    # Persist initial device_feature_matrix so the first
+    # async_update_listener call can detect real changes (and not
+    # trigger a spurious reload on the first config edit).
+    dfm = entry.data.get("device_feature_matrix")
+    hass.data[DOMAIN]["device_feature_matrix"] = (
+        dict(dfm) if isinstance(dfm, dict) else {}
+    )
+
     # Persist initial sensor_control options so the first
     # async_update_listener call can detect real changes (and not
     # trigger a spurious reload on the first config edit).
@@ -412,6 +420,14 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
         # Persist for next comparison
         data["_last_sensor_control_options"] = (
             dict(new_sensor_control) if isinstance(new_sensor_control, dict) else {}
+        )
+
+        _LOGGER.debug(
+            "async_update_listener: enabled_features_changed=%s, "
+            "matrix_changed=%s, sensor_control_changed=%s",
+            enabled_features_changed,
+            matrix_changed,
+            sensor_control_changed,
         )
 
         if enabled_features_changed or matrix_changed or sensor_control_changed:

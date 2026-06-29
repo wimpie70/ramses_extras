@@ -85,7 +85,7 @@ class TestTempControlConst:
         assert "temp_control_status" in mapping["sensor"]
 
     def test_temp_control_websocket_commands(self):
-        """Test TEMP_CONTROL_WEBSOCKET_COMMANDS has get_device_config."""
+        """Test TEMP_CONTROL_WEBSOCKET_COMMANDS has expected commands."""
         from custom_components.ramses_extras.features.temp_control.const import (
             TEMP_CONTROL_WEBSOCKET_COMMANDS,
         )
@@ -94,6 +94,11 @@ class TestTempControlConst:
         assert (
             TEMP_CONTROL_WEBSOCKET_COMMANDS["get_device_config"]
             == "ramses_extras/temp_control/get_device_config"
+        )
+        assert "set_device_config" in TEMP_CONTROL_WEBSOCKET_COMMANDS
+        assert (
+            TEMP_CONTROL_WEBSOCKET_COMMANDS["set_device_config"]
+            == "ramses_extras/temp_control/set_device_config"
         )
 
     def test_temp_control_defaults(self):

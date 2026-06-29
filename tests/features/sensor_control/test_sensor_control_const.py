@@ -110,7 +110,10 @@ class TestSensorControlConst:
         assert SENSOR_CONTROL_BOOLEAN_CONFIGS == {}
         assert SENSOR_CONTROL_DEVICE_ENTITY_MAPPING == {}
         assert SENSOR_CONTROL_WEBSOCKET_COMMANDS == {
-            "get_device_config": "ramses_extras/sensor_control/get_device_config"
+            "get_device_config": "ramses_extras/sensor_control/get_device_config",
+            "set_comfort_temp_entity": (
+                "ramses_extras/sensor_control/set_comfort_temp_entity"
+            ),
         }
 
     def test_feature_definition_structure(self):
