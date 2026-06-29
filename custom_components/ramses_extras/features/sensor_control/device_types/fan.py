@@ -637,10 +637,17 @@ async def handle_internal_fan_sensors(
         }
 
         # Comfort temp entity (Temperature Control) — overrides param_75
-        comfort_temp_entity = str(user_input.get("comfort_temp_entity") or "").strip()
+        comfort_temp_kind = str(user_input.get("comfort_temp_kind") or "none")
+        if comfort_temp_kind == "none":
+            comfort_temp_entity = ""
+        else:
+            comfort_temp_entity = str(
+                user_input.get("comfort_temp_entity") or ""
+            ).strip()
         _logger.debug(
-            "Persisting comfort_temp_entity=%r for device %s",
+            "Persisting comfort_temp_entity=%r (kind=%s) for device %s",
             comfort_temp_entity,
+            comfort_temp_kind,
             selected_device_id,
         )
 
@@ -665,7 +672,10 @@ async def handle_internal_fan_sensors(
 
         device_config[SENSOR_CONTROL_SOURCES_KEY] = updated_sources
         device_config[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = updated_abs_inputs
-        device_config["comfort_temp_entity"] = comfort_temp_entity
+        if comfort_temp_entity:
+            device_config["comfort_temp_entity"] = comfort_temp_entity
+        else:
+            device_config.pop("comfort_temp_entity", None)
         devices_config[norm_device_id] = device_config
         sensor_control_section["devices"] = devices_config
 
@@ -867,6 +877,22 @@ async def handle_internal_fan_sensors(
             # Overrides the FAN's param_75 comfort setpoint with an external
             # HA entity (e.g. input_number). Used by temp_control automation
             # and the hvac_fan_card.
+            vol.Optional(
+                "comfort_temp_kind",
+                default="external" if comfort_temp_default else "none",
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(
+                            value="none", label="Internal (use FAN param_75)"
+                        ),
+                        selector.SelectOptionDict(
+                            value="external", label="External (HA entity)"
+                        ),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 "comfort_temp_entity",
                 default=comfort_temp_default or None,
