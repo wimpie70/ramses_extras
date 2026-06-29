@@ -423,7 +423,8 @@ class TestAsyncHandleStateChange:
 
     @pytest.mark.asyncio
     async def test_external_bypass_change_turns_off_switch(self, automation_manager):
-        """External bypass change (no recent command) → turn off switch."""
+        """External bypass change while forcing bypass (cooling) → turn off switch."""
+        automation_manager._mode["32:153289"] = "cooling"
         automation_manager._last_bypass_command_time["32:153289"] = 0.0
         automation_manager.hass.states.get = MagicMock(
             return_value=MagicMock(state="on")
@@ -444,6 +445,34 @@ class TestAsyncHandleStateChange:
                 {"entity_id": "switch.temp_control_32_153289"},
             )
             mock_super.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_external_bypass_change_in_idle_does_not_turn_off(
+        self, automation_manager
+    ):
+        """Bypass change in idle mode (bypass auto) → NOT a manual override.
+
+        In idle mode temp_control sent fan_bypass_auto, so the device is
+        free to move the damper on its own.  These changes must not
+        disable temp_control.
+        """
+        automation_manager._mode["32:153289"] = "idle"
+        automation_manager._last_bypass_command_time["32:153289"] = 0.0
+        automation_manager.hass.states.get = MagicMock(
+            return_value=MagicMock(state="on")
+        )
+        with patch.object(
+            ExtrasBaseAutomation,
+            "_async_handle_state_change",
+            new_callable=AsyncMock,
+        ) as mock_super:
+            await automation_manager._async_handle_state_change(
+                "binary_sensor.32_153289_bypass_position",
+                MagicMock(state="open"),
+                MagicMock(state="closed"),
+            )
+            automation_manager.hass.services.async_call.assert_not_called()
+            mock_super.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_bypass_change_no_old_state_passes_through(self, automation_manager):

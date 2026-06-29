@@ -531,6 +531,9 @@ class TestTempControlBypassSafetyNet:
 
         # No recent bypass command from temp_control (old timestamp)
         automation_manager._last_bypass_command_time["32:153289"] = time.time() - 60
+        # Safety net only fires when temp_control is actively forcing a
+        # bypass state (cooling/heating_retention), not in idle.
+        automation_manager._mode["32:153289"] = "cooling"
 
         old_state = MagicMock()
         new_state = MagicMock()
@@ -965,3 +968,167 @@ class TestTempControlPerAreaEvaluation:
 
         # Cooling should win
         assert automation_manager._mode["32:153289"] == "cooling"
+
+
+class TestTempControlBypassFlowProdScenario:
+    """End-to-end flow tests simulating the prod HA scenario.
+
+    Reproduces: temp_control in idle → humidity_control veto forces fan_low
+    via the arbiter → FAN device repositions the bypass damper → the bypass
+    position entity changes → the safety net must NOT turn temp_control off.
+
+    Also covers: temp_control disabled while forcing bypass → fan_bypass_auto
+    is sent so the device resumes autonomous bypass control.
+    """
+
+    @pytest.mark.asyncio
+    async def test_idle_bypass_change_from_humidity_veto_does_not_disable(
+        self, automation_manager
+    ):
+        """Prod scenario: idle mode + humidity veto → bypass moves → no disable.
+
+        1. temp_control evaluates to idle (indoor near comfort, no cooling/
+           heating needed) and sends fan_bypass_auto.
+        2. humidity_control sets a veto (fan_low) via the arbiter because
+           outside is wetter than inside.
+        3. The FAN device, now running at low speed with bypass in auto,
+           repositions the damper → binary_sensor.*_bypass_position changes.
+        4. The safety net must NOT turn temp_control off, because in idle
+           mode the bypass is in the device's hands.
+        """
+        import time
+
+        hass = automation_manager.hass
+
+        # Step 1: temp_control is on and in idle mode (sent fan_bypass_auto)
+        switch_state = MagicMock()
+        switch_state.state = "on"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+        automation_manager._mode["32:153289"] = "idle"
+        # Timestamp is stale — simulates steady state where no bypass
+        # command was sent for a while (the original false-positive trigger)
+        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 120
+
+        # Step 3: bypass position entity changes (device repositioned damper)
+        old_state = MagicMock(state="open")
+        new_state = MagicMock(state="closed")
+
+        with patch.object(
+            type(automation_manager).__mro__[1],
+            "_async_handle_state_change",
+            new_callable=AsyncMock,
+        ) as mock_super:
+            await automation_manager._async_handle_state_change(
+                "binary_sensor.32_153289_bypass_position",
+                old_state,
+                new_state,
+            )
+
+        # Safety net must NOT turn off the switch
+        hass.services.async_call.assert_not_called()
+        # Mode must remain idle (not changed to disabled)
+        assert automation_manager._mode["32:153289"] == "idle"
+        # State change passes through to normal handler
+        mock_super.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cooling_bypass_external_change_disables_temp_control(
+        self, automation_manager
+    ):
+        """Contrast: in cooling mode (forcing bypass open), an external bypass
+        change IS a real manual override → temp_control is disabled.
+        """
+        import time
+
+        hass = automation_manager.hass
+        switch_state = MagicMock()
+        switch_state.state = "on"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+        automation_manager._mode["32:153289"] = "cooling"
+        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 120
+
+        old_state = MagicMock(state="open")
+        new_state = MagicMock(state="closed")
+
+        await automation_manager._async_handle_state_change(
+            "binary_sensor.32_153289_bypass_position",
+            old_state,
+            new_state,
+        )
+
+        hass.services.async_call.assert_called_once_with(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.temp_control_32_153289"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_disabled_releases_bypass_when_forcing(
+        self, automation_manager
+    ):
+        """_handle_disabled sends fan_bypass_auto when previously forcing bypass.
+
+        When temp_control was in cooling/heating_retention (forcing a bypass
+        state) and gets disabled, the bypass must be released back to the
+        device's autonomous control.  Without this the damper stays stuck.
+        """
+        automation_manager._mode["32:153289"] = "cooling"
+        automation_manager.ramses_commands.send_command = AsyncMock()
+
+        await automation_manager._handle_disabled("32:153289", reason="disabled")
+
+        # fan_bypass_auto sent to release the damper
+        automation_manager.ramses_commands.send_command.assert_called_once_with(
+            "32:153289", "fan_bypass_auto"
+        )
+        assert automation_manager._mode["32:153289"] == "disabled"
+
+    @pytest.mark.asyncio
+    async def test_handle_disabled_does_not_release_bypass_in_idle(
+        self, automation_manager
+    ):
+        """_handle_disabled does NOT send fan_bypass_auto when already idle.
+
+        In idle we already sent fan_bypass_auto, so no need to resend on
+        disable (avoids a spurious command).
+        """
+        automation_manager._mode["32:153289"] = "idle"
+        automation_manager.ramses_commands.send_command = AsyncMock()
+
+        await automation_manager._handle_disabled("32:153289", reason="disabled")
+
+        automation_manager.ramses_commands.send_command.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stop_releases_bypass_when_forcing(self, automation_manager):
+        """stop() sends fan_bypass_auto for devices that were forcing bypass."""
+        automation_manager._mode["32:153289"] = "heating_retention"
+        automation_manager.ramses_commands.send_command = AsyncMock()
+        automation_manager._clear_speed_demand = AsyncMock()
+        automation_manager._clear_all_zone_demands = AsyncMock()
+
+        with patch.object(
+            type(automation_manager).__mro__[1], "stop", new_callable=AsyncMock
+        ):
+            await automation_manager.stop()
+
+        automation_manager.ramses_commands.send_command.assert_called_once_with(
+            "32:153289", "fan_bypass_auto"
+        )
+
+    @pytest.mark.asyncio
+    async def test_stop_does_not_release_bypass_in_idle(self, automation_manager):
+        """stop() does NOT send fan_bypass_auto for idle devices."""
+        automation_manager._mode["32:153289"] = "idle"
+        automation_manager.ramses_commands.send_command = AsyncMock()
+        automation_manager._clear_speed_demand = AsyncMock()
+        automation_manager._clear_all_zone_demands = AsyncMock()
+
+        with patch.object(
+            type(automation_manager).__mro__[1], "stop", new_callable=AsyncMock
+        ):
+            await automation_manager.stop()
+
+        automation_manager.ramses_commands.send_command.assert_not_called()
