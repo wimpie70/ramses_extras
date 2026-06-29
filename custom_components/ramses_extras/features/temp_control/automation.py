@@ -130,6 +130,12 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         for device_id in list(self._mode):
             await self._clear_speed_demand(device_id)
             await self._clear_all_zone_demands(device_id)
+            # Release the bypass back to the device's own control so it
+            # is not left in a forced open/close state when temp_control
+            # stops.  Only send if we were actively forcing a bypass state
+            # (cooling/heating_retention); in idle we already sent auto.
+            if self._mode.get(device_id) in {"cooling", "heating_retention"}:
+                await self._release_bypass(device_id)
 
         await super().stop()
 
@@ -199,23 +205,38 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 switch_id = f"switch.temp_control_{device_id.replace(':', '_')}"
                 switch_state = self.hass.states.get(switch_id)
                 if switch_state and switch_state.state == "on":
-                    # Was this change caused by our own command?
-                    last_cmd_time = self._last_bypass_command_time.get(device_id, 0.0)
-                    now = _time.time()
-                    # Allow a 10s window for our command to take effect
-                    if now - last_cmd_time > 10.0:
-                        _LOGGER.info(
-                            "External bypass change detected for %s "
-                            "(no recent temp_control command); "
-                            "turning temp_control off",
-                            device_id,
+                    # Only treat bypass changes as a manual override when
+                    # temp_control is actively forcing a bypass state
+                    # (cooling = bypass open, heating_retention = bypass
+                    # close).  In "idle" mode we sent fan_bypass_auto, so
+                    # the FAN device is free to move the bypass damper on
+                    # its own — those changes are expected, not manual
+                    # overrides, and must not disable temp_control.
+                    # This also covers bypass movements induced by other
+                    # features (e.g. humidity_control veto forcing fan_low)
+                    # when the device repositions the damper in response.
+                    current_mode = self._mode.get(device_id, "idle")
+                    if current_mode in {"cooling", "heating_retention"}:
+                        # Was this change caused by our own command?
+                        last_cmd_time = self._last_bypass_command_time.get(
+                            device_id, 0.0
                         )
-                        await self.hass.services.async_call(
-                            "switch",
-                            "turn_off",
-                            {"entity_id": switch_id},
-                        )
-                        return
+                        now = _time.time()
+                        # Allow a 10s window for our command to take effect
+                        if now - last_cmd_time > 10.0:
+                            _LOGGER.info(
+                                "External bypass change detected for %s "
+                                "(mode=%s, no recent temp_control command); "
+                                "turning temp_control off",
+                                device_id,
+                                current_mode,
+                            )
+                            await self.hass.services.async_call(
+                                "switch",
+                                "turn_off",
+                                {"entity_id": switch_id},
+                            )
+                            return
 
         # Bypass debounce for user-initiated switch toggles — these should
         # be processed immediately, not delayed by sensor-fluctuation debounce.
@@ -576,15 +597,38 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
     async def _handle_disabled(self, device_id: str, reason: str) -> None:
         await self._clear_speed_demand(device_id)
         await self._clear_all_zone_demands(device_id)
+        prev_mode = self._mode.get(device_id)
         self._mode[device_id] = "disabled"
         # Reset bypass change timestamp so the first mode change after
         # re-enabling is not blocked by the min-interval guard.
         self._last_bypass_change.pop(device_id, None)
         self._last_bypass_command.pop(device_id, None)
 
+        # Release the bypass back to the device's own control so it is
+        # not left in a forced open/close state.  Only send if we were
+        # actively forcing a bypass state; in idle we already sent auto,
+        # and on a fresh startup (no prev_mode) the device is already
+        # autonomous.
+        if prev_mode in {"cooling", "heating_retention"}:
+            await self._release_bypass(device_id)
+
         attrs = {"mode": "disabled", "reason": reason}
         self._set_active_indicator(device_id, False, attrs)
         self._set_status_sensor(device_id, "disabled", attrs)
+
+    async def _release_bypass(self, device_id: str) -> None:
+        """Send fan_bypass_auto so the device resumes autonomous bypass control.
+
+        Used when temp_control stops or is disabled while it was actively
+        forcing a bypass state (cooling/heating_retention).  Without this
+        the bypass damper is left in the last forced position.
+        """
+        try:
+            await self.ramses_commands.send_command(device_id, "fan_bypass_auto")
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to release bypass to auto for %s: %s", device_id, err
+            )
 
     async def _clear_speed_demand(self, device_id: str) -> None:
         try:
