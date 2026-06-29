@@ -1179,6 +1179,36 @@ class HvacFanCard extends RamsesBaseCard {
       .map(metric => this._createSensorSourceIndicator(metric))
       .filter(html => html.trim() !== '');
 
+    // Comfort temperature (Temperature Control) — the resolver exposes
+    // comfort_temp_entity in the mappings; show it as a sensor source
+    // when it differs from the default param_75.
+    const comfortEntity = this._config.comfort_temp_entity
+      || this._entityMappings?.comfort_temp_entity;
+    const defaultComfortEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
+    if (comfortEntity && comfortEntity !== defaultComfortEntity) {
+      const state = this.getEntityState(comfortEntity);
+      let comfortValue = '—';
+      if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
+        const numValue = parseFloat(state.state);
+        comfortValue = isNaN(numValue) ? state.state : `${numValue.toFixed(1)} °C`;
+      }
+      indicators.push(`
+        <div class="r-xtrs-hvac-fan-sensor-source-indicator r-xtrs-hvac-fan-sensor-source-external valid" title="Comfort temp source: ${comfortEntity}">
+          <div class="r-xtrs-hvac-fan-sensor-source-header">
+            <span class="r-xtrs-hvac-fan-sensor-source-icon">🎯</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-label">Comfort Temp</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-kind">external</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-details">
+            <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+              <span class="r-xtrs-hvac-fan-sensor-source-entity">${comfortEntity}</span>
+              <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${comfortValue}</span>
+            </div>
+          </div>
+        </div>
+      `);
+    }
+
     const areaIndicators = (this._areaSensors || [])
       .map(areaSensor => this._createAreaSensorIndicator(areaSensor))
       .filter(html => html.trim() !== '');

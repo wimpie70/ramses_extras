@@ -107,7 +107,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         # Track temps + core controls; naming can vary by sensor_control.
         # Also track bypass position for the state-based manual override
         # safety net (detect external bypass changes).
-        return [
+        patterns = [
             "switch.temp_control_*",
             "select.temp_control_desired_speed_*",
             "sensor.*_indoor_temp",
@@ -122,6 +122,40 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             "sensor.co2_zone_status_*",
             "binary_sensor.*_bypass_position",
         ]
+
+        # Also listen for changes to the configured comfort_temp_entity
+        # (external HA helper like input_number) so the automation
+        # re-evaluates when it changes.  This is a concrete entity ID,
+        # not a pattern — the base class registers exact entities too.
+        try:
+            from custom_components.ramses_extras.framework.helpers.config import (  # noqa: PLC0415
+                migration as cfg_migration,
+            )
+            from custom_components.ramses_extras.framework.helpers.config import (  # noqa: PLC0415
+                model as cfg_model,
+            )
+
+            for device_id in self._iter_candidate_device_ids():
+                config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
+                if not config_entry:
+                    continue
+                sc_section = cfg_migration.get_migrated_feature_section(
+                    dict(config_entry.options), "sensor_control"
+                )
+                devices = sc_section.get("devices", {})
+                if not isinstance(devices, dict):
+                    continue
+                norm_id = cfg_model.normalize_device_id(device_id)
+                dev_cfg = devices.get(norm_id) or devices.get(device_id)
+                if not isinstance(dev_cfg, dict):
+                    continue
+                comfort_entity = str(dev_cfg.get("comfort_temp_entity") or "").strip()
+                if comfort_entity and comfort_entity not in patterns:
+                    patterns.append(comfort_entity)
+        except Exception:
+            pass
+
+        return patterns
 
     async def start(self) -> None:
         if not self._is_feature_enabled():
