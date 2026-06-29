@@ -323,13 +323,13 @@ async def test_update_fan_params_error(ramses_commands, hass):
 
 
 @pytest.mark.asyncio
-async def test_update_fan_params_blocked_when_no_2411_support(ramses_commands, hass):
-    """Ensure fan param refresh is skipped when device lacks 2411 support."""
+async def test_update_fan_params_blocked_when_device_not_found(ramses_commands, hass):
+    """Ensure fan param refresh is skipped when device can't be found."""
     hass.data = {"ramses_cc": {"entry_id": MagicMock()}}
 
     with (
         patch.object(
-            ramses_commands, "_device_supports_2411", return_value=False
+            ramses_commands, "_device_supports_2411", return_value=None
         ) as mock_supports,
         patch.dict(hass.data["ramses_cc"], {}, clear=False),
     ):
@@ -337,7 +337,34 @@ async def test_update_fan_params_blocked_when_no_2411_support(ramses_commands, h
 
     mock_supports.assert_called_once()
     assert result.success is False
-    assert "does not advertise 2411" in result.error_message
+    assert "not found in ramses_rf" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_update_fan_params_allowed_when_2411_flag_false(ramses_commands, hass):
+    """Fan param refresh proceeds even when supports_2411 is False.
+
+    The supports_2411 flag defaults to False and only becomes True after
+    the device receives a 2411 message.  Blocking on False creates a
+    chicken-and-egg: the refresh is the mechanism that triggers 2411
+    messages.  So False (device found, no 2411 yet) must be allowed
+    through; only None (device not found) is blocked.
+    """
+    mock_broker = MagicMock()
+    mock_broker.get_all_fan_params = MagicMock()
+
+    hass.data = {"ramses_cc": {"entry_id": mock_broker}}
+
+    with (
+        patch.object(
+            ramses_commands, "_device_supports_2411", return_value=False
+        ) as mock_supports,
+    ):
+        result = await ramses_commands.update_fan_params("32_123456")
+
+    mock_supports.assert_called_once()
+    assert result.success is True
+    mock_broker.get_all_fan_params.assert_called_once()
 
 
 @pytest.mark.asyncio

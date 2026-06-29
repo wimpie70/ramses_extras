@@ -354,11 +354,33 @@ class RamsesCommands:
         # Convert device_id format if needed (32_153289 -> 32:153289)
         device_id_formatted = device_id.replace("_", ":")
 
-        # Ensure the ramses_rf device advertises 2411 support before spamming requests
+        # Resolve the ramses_cc broker first — without it nothing works.
+        ramses_cc_data = self.hass.data.get("ramses_cc", {})
+        broker = None
+        for _entry_id, broker_instance in ramses_cc_data.items():
+            if hasattr(broker_instance, "get_all_fan_params"):
+                broker = broker_instance
+                break
+
+        if not broker:
+            return CommandResult(
+                success=False, error_message="ramses_cc broker not found"
+            )
+
+        # Only block when the device can't be found at all.  The
+        # supports_2411 flag defaults to False in ramses_rf and is only
+        # set to True *after* the device receives a 2411 message — so
+        # blocking on False creates a chicken-and-egg: the refresh is
+        # the mechanism that triggers 2411 messages, but it's blocked
+        # because no 2411 messages have arrived yet (e.g. after HA
+        # restart).  Since update_fan_params is only called from the
+        # FAN card/service, the device is always a FAN that may support
+        # 2411; allow the refresh and let the requests fail naturally
+        # if the device truly doesn't support it.
         supports_2411 = await self._device_supports_2411(device_id_formatted)
-        if supports_2411 is False:
+        if supports_2411 is None:
             msg = (
-                f"Device {device_id_formatted} does not advertise 2411 support; "
+                f"Device {device_id_formatted} not found in ramses_rf; "
                 "skipping update_fan_params"
             )
             _LOGGER.info(msg)
@@ -383,18 +405,6 @@ class RamsesCommands:
             del self._update_fan_params_tasks[device_id_formatted]
 
         try:
-            ramses_cc_data = self.hass.data.get("ramses_cc", {})
-            broker = None
-            for entry_id, broker_instance in ramses_cc_data.items():
-                if hasattr(broker_instance, "get_all_fan_params"):
-                    broker = broker_instance
-                    break
-
-            if not broker:
-                return CommandResult(
-                    success=False, error_message="ramses_cc broker not found"
-                )
-
             call_data = {"device_id": device_id_formatted}
             if from_id:
                 call_data["from_id"] = from_id

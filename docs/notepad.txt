@@ -119,22 +119,6 @@ we should be able to simulate and test this
   Periodic RQ polling would restore the fast update feel without the command side-effects.
   Note: this is prepared in RF and for now we should not do this in extras
 
-- **Migrate frontend message delivery to Event Entity (with backward compat)** — DONE:
-  ramses_cc >= 0.55.6 has a proper HA Event Entity (`event.ramses_cc_regex_event`) that fires
-  for every inbound packet when `message_events` regex is configured (e.g. `.*`). This is the
-  modern HA-recommended way (see ramses_cc issue #552) — it fires as `state_changed`, which is
-  in HA's websocket SUBSCRIBE_ALLOWLIST, so any user can subscribe (not just admin).
-  Implementation (ramses-message-broker.js):
-  - Modern path: subscribes to `state_changed`, filters for `event.ramses_cc_regex_event`,
-    extracts data from `new_state.attributes.data` (same code/src/verb/payload structure).
-  - Legacy path: also subscribes to `ramses_cc_message` bus events (for ramses_cc < 0.55.6
-    or when message_events is not configured). May fail for non-admin — expected.
-  - Dedup: 5s TTL Map keyed by `src|code|dtm` prevents processing the same message twice
-    when both paths are active.
-  - Backend (`ramses_message_stream.py`) unchanged — keeps firing bus events for backward compat
-    and keeps `add_msg_handler` for backend automations/traffic collector.
-  - Verified: non-admin websocket test receives 31DA/10D0/22F1/31D9 events via the modern path.
-
 
 -- other:
 
@@ -204,3 +188,20 @@ Traceback (most recent call last):
     raise TypeError("Either a port_name or an input_file must be specified")
 TypeError: Either a port_name or an input_file must be specified
 2026-05-05 16:04:23.891 INFO (MainThread) [homeassistant.config_entries] Config entry 'RAMSES RF' for ramses_cc integration not ready yet: Setup failed: Either a port_name or an input_file must be specified; Retrying in 5 seconds
+
+
+--- TODO: configurable comfort temp source for temp_control ---
+
+Currently temp_control reads comfort temp from `number.{device_id}_param_75`
+(2411 param 75). When a FAN doesn't support 2411 params (or param_75 is not
+set), `_as_float` raises ValueError and the automation silently does nothing
+— no bypass commands, no status update, no error visible on the card.
+
+Plan: add a config option in temp_control to use an external comfort temp
+entity (HA helper like input_number) as an alternative/override for param_75.
+- config_flow: add "comfort_temp_entity" optional field
+- const.py: add to entity_mappings as fallback
+- automation.py _get_device_entity_states: try param_75 first, fall back to
+  the configured external entity; if both unavailable, set status to
+  "waiting_for_comfort_temp" instead of silently skipping
+- card: show a clear indicator when comfort temp is missing
