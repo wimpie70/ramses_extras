@@ -50,7 +50,6 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
             section.get("supply_cooler_delta_deactivate", 0.5)
         ),
         "min_supply_temp": float(section.get("min_supply_temp", 10.0)),
-        "comfort_temp_entity": str(section.get("comfort_temp_entity", "")),
     }
 
 
@@ -162,12 +161,6 @@ async def async_step_temp_control_config(
             "min_supply_temp": float(
                 user_input.get("min_supply_temp", defaults["min_supply_temp"])
             ),
-            "comfort_temp_entity": str(
-                user_input.get(
-                    "comfort_temp_entity",
-                    defaults.get("comfort_temp_entity", ""),
-                )
-            ),
         }
         _persist_temp_control_settings(flow, settings)
 
@@ -238,10 +231,6 @@ async def async_step_temp_control_config(
             vol.Required(
                 "min_supply_temp", default=defaults["min_supply_temp"]
             ): vol.Coerce(float),
-            vol.Optional(
-                "comfort_temp_entity",
-                default=defaults.get("comfort_temp_entity", ""),
-            ): selector.EntitySelector(),
         }
     )
 

@@ -309,13 +309,9 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             self.feature_id, device_id, self.hass
         )
 
-        # Apply comfort_temp_entity overlay from config (external HA helper
-        # like input_number) when the FAN doesn't support 2411 param 75.
-        settings = self.config.get_settings()
-        if settings.comfort_temp_entity:
-            mappings["comfort_temp"] = settings.comfort_temp_entity
-
         # Apply sensor_control overlays for indoor/outdoor temp + humidity
+        # and comfort_temp_entity (configured under sensor_control's
+        # "Internal fan sensors" → "(Temperature Control)" section).
         sensor_ctx = await self._get_sensor_control_context(device_id)
         if sensor_ctx:
             metric_mappings = cast(dict[str, str], sensor_ctx.get("mappings") or {})
@@ -330,6 +326,10 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             humidity_entity = metric_mappings.get("indoor_humidity")
             if humidity_entity:
                 mappings["indoor_rh"] = humidity_entity
+            # comfort_temp_entity from sensor_control overrides param_75
+            comfort_entity = metric_mappings.get("comfort_temp_entity")
+            if comfort_entity:
+                mappings["comfort_temp"] = comfort_entity
 
         def _get_state(entity_id: str) -> Any:
             state = self.hass.states.get(entity_id)

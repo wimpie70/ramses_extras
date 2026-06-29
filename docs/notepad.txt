@@ -192,15 +192,24 @@ TypeError: Either a port_name or an input_file must be specified
 
 --- TODO: configurable comfort temp source for temp_control ---
 
-DONE: Added comfort_temp_entity config option to temp_control.
-- config_flow.py: optional EntitySelector for comfort_temp_entity
-- config.py: TempControlSettings.comfort_temp_entity (default "")
-- const.py: TEMP_CONTROL_DEFAULTS["comfort_temp_entity"] = ""
-- automation.py: overlay applied in _get_device_entity_states; if
-  comfort_temp unavailable and no fallback configured, raises
-  ComfortTempUnavailableError → status set to "waiting_for_comfort_temp"
-  instead of silently skipping
+DONE: Added comfort_temp_entity to sensor_control (FAN Configuration).
+The comfort temp entity is configured under:
+  FAN Configuration → Internal Fan Sensors → Comfort temperature (Temperature Control)
+
+It overrides param_75 when the FAN doesn't support 2411 params.
+
+Changes:
+- sensor_control/device_types/fan.py: added comfort_temp_entity field to
+  the Internal Fan Sensors form, persisted to device_config
+- sensor_control/resolver.py: exposes comfort_temp_entity in result mappings
+- default/websocket_commands.py: comfort_temp_entity added to
+  _metric_to_entity_key so card gets it from resolver
+- temp_control/automation.py: reads comfort_temp_entity from sensor_control
+  context, overrides mappings["comfort_temp"]; raises
+  ComfortTempUnavailableError when unavailable → status set to
+  "waiting_for_comfort_temp" instead of silently skipping
 - base_automation.py: catches ComfortTempUnavailableError by class name
   and calls _set_waiting_for_comfort_temp if available
-- Tests: 203 temp_control tests pass, full suite 3875 pass
+- Tests: 3876 passed, ruff + mypy clean
+- Docs: updated TEMP_CONTROL_FEATURE_PLAN.md and FAN_CONFIGURATION_USER_GUIDE.md
 - Card already reads config.comfort_temp_entity (hvac_fan_card const.py)

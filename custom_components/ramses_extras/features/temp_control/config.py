@@ -29,7 +29,6 @@ class TempControlSettings:
     supply_cooler_delta_activate: float = 1.0
     supply_cooler_delta_deactivate: float = 0.5
     min_supply_temp: float = 10.0
-    comfort_temp_entity: str = ""
 
 
 class TempControlConfig:
@@ -67,10 +66,6 @@ class TempControlConfig:
                 return bool(default)
             return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
-        def _get_str(key: str, default: str) -> str:
-            raw = section.get(key, TEMP_CONTROL_DEFAULTS.get(key, default))
-            return str(raw) if raw else default
-
         return TempControlSettings(
             comfort_delta_activate=_get_float("comfort_delta_activate", 1.0),
             comfort_delta_deactivate=_get_float("comfort_delta_deactivate", 0.5),
@@ -90,7 +85,6 @@ class TempControlConfig:
                 "supply_cooler_delta_deactivate", 0.5
             ),
             min_supply_temp=_get_float("min_supply_temp", 10.0),
-            comfort_temp_entity=_get_str("comfort_temp_entity", ""),
         )
 
 

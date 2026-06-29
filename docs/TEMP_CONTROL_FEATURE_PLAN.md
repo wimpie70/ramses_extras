@@ -389,8 +389,17 @@ Added to `features/hvac_fan_card/const.py` → `FEATURE_DEFINITION["entity_mappi
 ### 13.3 Comfort temperature source
 
 - FAN comfort parameter (param 75) is the global default.
+- A **global comfort temperature entity** can be configured in **FAN Configuration** → **Internal Fan Sensors** → **Comfort temperature (Temperature Control)**. This overrides param_75 for FANs that don't support 2411 parameters (or where param_75 is unavailable). The entity can be any HA entity with a numeric state (e.g. `input_number.my_comfort`).
 - Per-area comfort temperature can be set via `comfort_temperature_entity` in sensor_control area config (see §14).
 - The comfort parameter remains editable from the HVAC Fan Card settings window (2411 parameter editor).
+
+Comfort temp is resolved with this priority:
+
+1. **Area sensor `comfort_temperature_entity`** — if set, use that entity's value (per-area, see §14).
+2. **Global `comfort_temp_entity`** (FAN Configuration → Internal Fan Sensors) — if set, use that entity's value.
+3. **FAN global comfort temperature** (param 75) — fallback when no comfort entity is configured.
+
+When comfort temp is unavailable (no entity configured and param_75 is unavailable), the automation sets the status to `waiting_for_comfort_temp` instead of silently skipping the device.
 
 ### 13.4 Manual override semantics
 

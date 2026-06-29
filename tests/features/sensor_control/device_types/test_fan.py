@@ -342,3 +342,81 @@ async def test_handle_internal_fan_sensors_displays_form_when_no_input():
     assert call_kwargs["step_id"] == "feature_config"
     assert "data_schema" in call_kwargs
     assert result == flow.async_show_form.return_value
+
+
+@pytest.mark.asyncio
+async def test_handle_internal_fan_sensors_persists_comfort_temp_entity():
+    """comfort_temp_entity is persisted to device_config when submitted."""
+
+    flow = MagicMock()
+    flow._config_entry = MagicMock(options={"sensor_control": {}})
+    flow.hass = MagicMock()
+    flow.hass.config_entries.async_update_entry = MagicMock()
+
+    user_input = {
+        "indoor_temperature_kind": "internal",
+        "indoor_humidity_kind": "internal",
+        "indoor_humidity_spike_enabled": False,
+        "indoor_humidity_spike_rise_percent": 10,
+        "indoor_humidity_spike_window_minutes": 5,
+        "outdoor_temperature_kind": "internal",
+        "outdoor_humidity_kind": "internal",
+        "co2_kind": "internal",
+        "indoor_abs_humidity_temperature_kind": "internal",
+        "indoor_abs_humidity_humidity_kind": "none",
+        "outdoor_abs_humidity_temperature_kind": "internal",
+        "outdoor_abs_humidity_humidity_kind": "none",
+        "comfort_temp_entity": "input_number.my_comfort",
+    }
+
+    persisted_section: dict = {}
+
+    def capture_persist(_flow, _options, section):
+        persisted_section.update(section)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.helpers.config.migration.get_migrated_feature_section",
+            return_value={"devices": {}},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._persist_sensor_control_section",
+            side_effect=capture_persist,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_step_sensor_control_config",
+            AsyncMock(return_value={"type": "form"}),
+        ),
+    ):
+        await handle_internal_fan_sensors(flow, "32:123456", {}, {}, user_input)
+
+    devices = persisted_section.get("devices", {})
+    device_config = devices.get("32:123456", {})
+    assert device_config.get("comfort_temp_entity") == "input_number.my_comfort"
+
+
+@pytest.mark.asyncio
+async def test_handle_internal_fan_sensors_form_has_comfort_temp_field():
+    """The form schema includes comfort_temp_entity field."""
+
+    flow = MagicMock()
+    flow.async_show_form = MagicMock(return_value={"type": "form"})
+    flow._config_entry = MagicMock(options={})
+    flow.hass = MagicMock()
+
+    device_section = {"comfort_temp_entity": "input_number.existing"}
+
+    await handle_internal_fan_sensors(
+        flow,
+        "32:123456",
+        {},
+        {},
+        None,
+        device_section=device_section,
+    )
+
+    flow.async_show_form.assert_called_once()
+    call_kwargs = flow.async_show_form.call_args.kwargs
+    schema = call_kwargs["data_schema"]
+    # The schema should have comfort_temp_entity as an optional field
+    assert "comfort_temp_entity" in schema.schema

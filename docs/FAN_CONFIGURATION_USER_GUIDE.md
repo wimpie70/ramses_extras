@@ -114,6 +114,14 @@ The **Internal Fan Sensors** section consolidates sensor configuration for your 
 │ Internal Fan Sensors - 32:153289        │
 ├─────────────────────────────────────────┤
 │                                         │
+│ Indoor Temperature:                     │
+│   [Internal / External entity]          │
+│ Indoor Humidity:                        │
+│   [Internal / External entity]          │
+│ Outdoor Temperature:                    │
+│   [Internal / External entity]          │
+│ Outdoor Humidity:                       │
+│   [Internal / External entity]          │
 │ CO2 Sensors:                            │
 │   [Select CO2 sensor entities...]       │
 │                                         │
@@ -125,10 +133,35 @@ The **Internal Fan Sensors** section consolidates sensor configuration for your 
 │   Temperature: [Auto / Select entity]    │
 │   Humidity:    [Auto / Select entity]    │
 │                                         │
+│ Comfort temperature (Temperature        │
+│   Control): [Select entity or leave     │
+│   empty to use FAN param_75]            │
+│                                         │
 │ [Save Configuration]                   │
 │                                         │
 └─────────────────────────────────────────┘
 ```
+
+### Comfort Temperature (Temperature Control)
+
+The **Comfort temperature** field allows you to override the FAN's built-in comfort temperature setpoint (parameter 75) with an external Home Assistant entity. This is useful when:
+
+- Your FAN doesn't support 2411 parameters (param_75 is unavailable)
+- You want to use a dynamic comfort temperature from a thermostat, schedule, or input_number helper
+
+**How it works:**
+
+- When configured, the selected entity's numeric state is used as the comfort temperature by the **Temperature Control** automation and displayed on the **HVAC Fan Card**.
+- When left empty, the FAN's param_75 is used (default behavior).
+- The entity can be any HA entity with a numeric state (e.g. `input_number.my_comfort`, `sensor.thermostat_target`, `climate.living_room`).
+
+**Configuration steps:**
+1. Select **Internal Fan Sensors** from the group menu
+2. Scroll to the **Comfort temperature (Temperature Control)** field
+3. Select or type the entity ID to use as comfort temperature
+4. Save to apply the override
+
+> **Note:** Per-area comfort temperature entities (configured under Area Sensors) take priority over this global setting. See the Temperature Control feature plan for the full resolution priority.
 
 ### CO2 Sensors
 

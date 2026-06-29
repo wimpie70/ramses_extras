@@ -36,7 +36,6 @@ def make_settings(**overrides) -> TempControlSettings:
         "supply_cooler_delta_activate": 1.0,
         "supply_cooler_delta_deactivate": 0.5,
         "min_supply_temp": 10.0,
-        "comfort_temp_entity": "",
     }
     defaults.update(overrides)
     return TempControlSettings(**defaults)

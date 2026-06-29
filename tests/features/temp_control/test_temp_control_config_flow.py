@@ -60,7 +60,6 @@ class TestGetSectionDefaults:
         assert defaults["default_desired_speed"] == "high"
         assert defaults["dewpoint_guard_enabled"] is False
         assert defaults["dewpoint_margin_c"] == 1.0
-        assert defaults["comfort_temp_entity"] == ""
 
     def test_defaults_from_legacy_store(self, mock_flow):
         mock_flow._config_entry.options = {

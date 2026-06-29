@@ -41,7 +41,6 @@ def make_settings(**overrides) -> TempControlSettings:
         "default_desired_speed": "high",
         "dewpoint_guard_enabled": False,
         "dewpoint_margin_c": 1.0,
-        "comfort_temp_entity": "",
     }
     defaults.update(overrides)
     return TempControlSettings(**defaults)
@@ -751,7 +750,7 @@ class TestGetDeviceEntityStates:
 
     @pytest.mark.asyncio
     async def test_comfort_temp_entity_overlay(self, automation_manager):
-        """Configured comfort_temp_entity overrides default param_75 mapping."""
+        """comfort_temp_entity from sensor_control overrides param_75 mapping."""
 
         def mock_get(entity_id):
             states = {
@@ -774,11 +773,13 @@ class TestGetDeviceEntityStates:
             return s
 
         automation_manager.hass.states.get = mock_get
-        automation_manager._get_sensor_control_context = AsyncMock(return_value=None)
-
-        # Configure comfort_temp_entity in settings
-        automation_manager.config.get_settings = MagicMock(
-            return_value=make_settings(comfort_temp_entity="input_number.my_comfort")
+        # sensor_control context provides comfort_temp_entity
+        automation_manager._get_sensor_control_context = AsyncMock(
+            return_value={
+                "mappings": {"comfort_temp_entity": "input_number.my_comfort"},
+                "sources": {},
+                "area_sensors": [],
+            }
         )
 
         with patch(
@@ -808,7 +809,7 @@ class TestGetDeviceEntityStates:
     @pytest.mark.asyncio
     async def test_comfort_temp_unavailable_raises_specific(self, automation_manager):
         """ComfortTempUnavailableError raised when comfort temp is unavailable
-        and no fallback entity is configured."""
+        and no fallback entity is configured in sensor_control."""
         from custom_components.ramses_extras.features.temp_control.automation import (
             ComfortTempUnavailableError,
         )
@@ -831,11 +832,8 @@ class TestGetDeviceEntityStates:
             return s
 
         automation_manager.hass.states.get = mock_get
+        # No sensor_control context (no comfort_temp_entity configured)
         automation_manager._get_sensor_control_context = AsyncMock(return_value=None)
-        # No comfort_temp_entity configured (default empty string)
-        automation_manager.config.get_settings = MagicMock(
-            return_value=make_settings(comfort_temp_entity="")
-        )
 
         with patch(
             "custom_components.ramses_extras.framework.helpers."
