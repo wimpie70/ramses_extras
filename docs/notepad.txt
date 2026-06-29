@@ -33,6 +33,16 @@ Check on startup if ramses_cc has:
 - Enable Send Packet Service
 Log errors if not configured.
 
+Also check HA Core config (this belongs in ramses_cc, not _extras, since it affects all
+ramses_cc users — most don't use _extras):
+- **Recorder component loaded**: check `"recorder" in hass.config.components` at setup.
+  If missing, log a WARNING (not error, integration still works in-memory):
+  "HA recorder component is not loaded — sensor history and long-term statistics
+  will not be stored. Add 'default_config:' or 'recorder:' to configuration.yaml."
+  Background: without the recorder, in-memory state is current but the database gets
+  no updates, so history graphs and logbook show stale data. This looks like a ramses_cc
+  bug but is actually a missing HA Core config. (Issue #750)
+
 ### ha-sim Simulator Isolation Prerequisites
 **For device_simulator feature to work with automatic isolation:**
 
@@ -99,6 +109,32 @@ we should be able to simulate and test this
 
 
 --- next to do:
+
+- **Periodic 31DA polling**: Add a configurable periodic `RQ 31DA` poll (e.g., every 30-60s) in
+  ramses_extras to trigger fresh 31DA status responses from the fan. This would give the
+  hvac_fan_card near-real-time updates without sending spurious fan speed commands (22F1).
+  The card's `requestInitialData()` already does this on connect; add a periodic version.
+  Background: after fixing the arbiter to not send spurious 22F1 commands on every state
+  change, the card only updates on the fan's natural unsolicited 31DA cadence (every 2-5 min).
+  Periodic RQ polling would restore the fast update feel without the command side-effects.
+
+- **Migrate frontend message delivery to Event Entity (with backward compat)**:
+  ramses_cc >= 0.55.6 has a proper HA Event Entity (`event.ramses_cc_regex_event`) that fires
+  for every inbound packet when `message_events` regex is configured (e.g. `.*`). This is the
+  modern HA-recommended way (see ramses_cc issue #552) — it fires as `state_changed`, which is
+  in HA's websocket SUBSCRIBE_ALLOWLIST, so any user can subscribe (not just admin).
+  Currently ramses_extras fires custom `ramses_cc_message` bus events via `add_msg_handler`,
+  which requires admin for websocket subscription.
+  Migration plan:
+  - Frontend `RamsesMessageBroker`: subscribe to `state_changed` filtered to
+    `event.ramses_cc_regex_event` when available (ramses_cc >= 0.55.6 + message_events configured).
+    Extract message data from `new_state.attributes.data` (same code/src/verb/payload structure).
+  - Backward compat: for ramses_cc < 0.55.6 (or message_events not configured), keep the
+    current `ramses_cc_message` bus event path via `add_msg_handler`.
+  - Keep `add_msg_handler` attachment regardless — backend automations and traffic collector
+    still need raw message access.
+  - Detection: check if `event.ramses_cc_regex_event` entity exists and has fired recently;
+    if yes, use the modern path. If no, fall back to bus events.
 
 
 -- other:
