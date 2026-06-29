@@ -15,7 +15,8 @@ export function createTopSection(data, t) {
     try {
       if (typeof t === 'function') {
         const result = t(key, options);
-        if (typeof result === 'string' && result !== key) {
+        // t() returns '' for missing keys, so also check for non-empty
+        if (typeof result === 'string' && result !== key && result !== '') {
           return result;
         }
       }
