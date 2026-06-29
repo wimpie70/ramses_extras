@@ -1699,8 +1699,9 @@ class HvacFanCard extends RamsesBaseCard {
     if (!hass) return [];
 
     const deviceIdUnderscore = deviceId.replace(/:/g, '_');
+    // The on/off switch is controlled via the front-of-card button,
+    // not in the edit window — exclude it here.
     const entities = [
-      `switch.temp_control_${deviceIdUnderscore}`,
       `select.temp_control_desired_speed_${deviceIdUnderscore}`,
       `sensor.temp_control_status_${deviceIdUnderscore}`,
     ];
