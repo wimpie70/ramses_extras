@@ -68,7 +68,9 @@ TEMP_CONTROL_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {
     }
 }
 
-TEMP_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {}
+TEMP_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {
+    "get_device_config": "ramses_extras/temp_control/get_device_config",
+}
 
 TEMP_CONTROL_DEFAULTS: dict[str, Any] = {
     "enabled": True,

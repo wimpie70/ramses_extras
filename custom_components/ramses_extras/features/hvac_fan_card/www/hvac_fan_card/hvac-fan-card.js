@@ -175,12 +175,16 @@ class HvacFanCard extends RamsesBaseCard {
 
     const humidityControlEntities = this._getHumidityControlEntities();
     const tempControlEntities = this._getTempControlEntities();
+    const tempControlSettings = await this._fetchTempControlSettings();
+    const comfortTempValue = this._getComfortTempValue();
     const parameterItems = this._createParameterItems(this.availableParams);
 
     const templateData = {
       device_id: this.config.device_id,
       humidityControlEntities,
       tempControlEntities,
+      tempControlSettings,
+      comfortTempValue,
       parameterItems,
       t: this.t?.bind(this),
     };
@@ -1181,13 +1185,19 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Comfort temperature (Temperature Control) — always show the
     // actual source being used, following the resolution priority:
-    //   1. comfort_temp_entity (from sensor_control resolver mappings)
-    //   2. param_75 (FAN default)
+    //   1. comfort_temp_entity from sensor_control resolver (external)
+    //   2. param_75 (FAN default, internal)
     //   3. none → show "?" and error state
-    const comfortEntity = this._config.comfort_temp_entity
-      || this._entityMappings?.comfort_temp_entity;
+    // The base hvac_fan_card mapping sets comfort_temp_entity to
+    // param_75 by default, so we must compare against that to know
+    // whether the resolver actually overrode it with an external entity.
     const defaultComfortEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
-    const actualComfortEntity = comfortEntity || defaultComfortEntity;
+    const configComfortEntity = this._config.comfort_temp_entity
+      || this._entityMappings?.comfort_temp_entity;
+    // Only treat as external if it differs from the default param_75
+    const isExternal = configComfortEntity
+      && configComfortEntity !== defaultComfortEntity;
+    const actualComfortEntity = configComfortEntity || defaultComfortEntity;
     const comfortState = this.getEntityState(actualComfortEntity);
     const comfortAvailable = comfortState
       && comfortState.state !== 'unavailable'
@@ -1197,9 +1207,9 @@ class HvacFanCard extends RamsesBaseCard {
       const numValue = parseFloat(comfortState.state);
       comfortValue = isNaN(numValue) ? comfortState.state : `${numValue.toFixed(1)} °C`;
     }
-    const comfortKind = comfortEntity ? 'external' : 'param_75';
+    const comfortKind = isExternal ? 'external' : 'param_75';
     const comfortStatusClass = comfortAvailable
-      ? (comfortEntity
+      ? (isExternal
         ? 'r-xtrs-hvac-fan-sensor-source-external valid'
         : 'r-xtrs-hvac-fan-sensor-source-derived')
       : 'r-xtrs-hvac-fan-sensor-source-external invalid';
@@ -1701,9 +1711,9 @@ class HvacFanCard extends RamsesBaseCard {
     const deviceIdUnderscore = deviceId.replace(/:/g, '_');
     // The on/off switch is controlled via the front-of-card button,
     // not in the edit window — exclude it here.
+    // Status is read-only (not a setting) — also excluded.
     const entities = [
       `select.temp_control_desired_speed_${deviceIdUnderscore}`,
-      `sensor.temp_control_status_${deviceIdUnderscore}`,
     ];
 
     const items = [];
@@ -1714,15 +1724,9 @@ class HvacFanCard extends RamsesBaseCard {
       let nameKey = null;
       let nameFallback = null;
 
-      if (entityId.includes('switch.')) {
-        nameKey = 'controls.temp_control';
-        nameFallback = 'Temp Control (Bypass)';
-      } else if (entityId.includes('desired_speed')) {
+      if (entityId.includes('desired_speed')) {
         nameKey = 'parameters.temp_control_desired_speed';
         nameFallback = 'Desired Speed (Cooling)';
-      } else if (entityId.includes('status')) {
-        nameKey = 'parameters.temp_control_status';
-        nameFallback = 'Status';
       }
 
       items.push({
@@ -1735,6 +1739,43 @@ class HvacFanCard extends RamsesBaseCard {
     });
 
     return items;
+  }
+
+  /**
+   * Fetch temp_control settings (deltas, dewpoint, etc.) via WebSocket.
+   * @returns {Promise<Object|null>} Settings object or null.
+   */
+  async _fetchTempControlSettings() {
+    if (!this._hass || !this._config?.device_id) return null;
+    try {
+      const result = await this._sendWebSocketCommand({
+        type: 'ramses_extras/temp_control/get_device_config',
+        device_id: this._config.device_id,
+      }, `temp_control_config_${this._config.device_id}`);
+      return result?.settings || null;
+    } catch (e) {
+      logger.debug('Failed to fetch temp_control settings:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Get the current comfort temp value from the resolved entity.
+   * @returns {Object} { entity, value, isExternal }
+   */
+  _getComfortTempValue() {
+    const defaultEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
+    const configEntity = this._config.comfort_temp_entity
+      || this._entityMappings?.comfort_temp_entity;
+    const isExternal = configEntity && configEntity !== defaultEntity;
+    const entity = configEntity || defaultEntity;
+    const state = this.getEntityState(entity);
+    let value = '—';
+    if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
+      const num = parseFloat(state.state);
+      value = isNaN(num) ? state.state : `${num.toFixed(1)} °C`;
+    }
+    return { entity, value, isExternal: !!isExternal };
   }
 
   /**

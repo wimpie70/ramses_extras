@@ -638,6 +638,11 @@ async def handle_internal_fan_sensors(
 
         # Comfort temp entity (Temperature Control) — overrides param_75
         comfort_temp_entity = str(user_input.get("comfort_temp_entity") or "").strip()
+        _logger.debug(
+            "Persisting comfort_temp_entity=%r for device %s",
+            comfort_temp_entity,
+            selected_device_id,
+        )
 
         # Update the config — persist both canonical and legacy sections
         # so the resolver (which reads legacy first) sees the updated values.
@@ -665,6 +670,10 @@ async def handle_internal_fan_sensors(
         sensor_control_section["devices"] = devices_config
 
         _persist_sensor_control_section(flow, options, sensor_control_section)
+        _logger.debug(
+            "After persist: sensor_control devices=%s",
+            list(devices_config.keys()),
+        )
 
         # Return to group selection
         flow._sensor_control_group_stage = "select_group"
