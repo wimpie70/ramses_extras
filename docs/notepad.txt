@@ -192,16 +192,15 @@ TypeError: Either a port_name or an input_file must be specified
 
 --- TODO: configurable comfort temp source for temp_control ---
 
-Currently temp_control reads comfort temp from `number.{device_id}_param_75`
-(2411 param 75). When a FAN doesn't support 2411 params (or param_75 is not
-set), `_as_float` raises ValueError and the automation silently does nothing
-— no bypass commands, no status update, no error visible on the card.
-
-Plan: add a config option in temp_control to use an external comfort temp
-entity (HA helper like input_number) as an alternative/override for param_75.
-- config_flow: add "comfort_temp_entity" optional field
-- const.py: add to entity_mappings as fallback
-- automation.py _get_device_entity_states: try param_75 first, fall back to
-  the configured external entity; if both unavailable, set status to
-  "waiting_for_comfort_temp" instead of silently skipping
-- card: show a clear indicator when comfort temp is missing
+DONE: Added comfort_temp_entity config option to temp_control.
+- config_flow.py: optional EntitySelector for comfort_temp_entity
+- config.py: TempControlSettings.comfort_temp_entity (default "")
+- const.py: TEMP_CONTROL_DEFAULTS["comfort_temp_entity"] = ""
+- automation.py: overlay applied in _get_device_entity_states; if
+  comfort_temp unavailable and no fallback configured, raises
+  ComfortTempUnavailableError → status set to "waiting_for_comfort_temp"
+  instead of silently skipping
+- base_automation.py: catches ComfortTempUnavailableError by class name
+  and calls _set_waiting_for_comfort_temp if available
+- Tests: 203 temp_control tests pass, full suite 3875 pass
+- Card already reads config.comfort_temp_entity (hvac_fan_card const.py)

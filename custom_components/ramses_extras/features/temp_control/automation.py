@@ -42,6 +42,15 @@ from .const import FEATURE_ID, TEMP_CONTROL_DEFAULTS
 _LOGGER = logging.getLogger(__name__)
 
 
+class ComfortTempUnavailableError(ValueError):
+    """Raised when comfort temp is unavailable and no fallback is configured.
+
+    Subclasses ValueError so existing ``except ValueError`` handlers still
+    catch it, but callers that want to distinguish the case can catch this
+    specific exception to set a ``waiting_for_comfort_temp`` status.
+    """
+
+
 class TempControlAutomationManager(ExtrasBaseAutomation):
     @staticmethod
     def _calc_dewpoint_c(temp_c: float, rh_percent: float) -> float | None:
@@ -148,6 +157,9 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         for device_id in self._iter_candidate_device_ids():
             try:
                 entity_states = await self._get_device_entity_states(device_id)
+            except ComfortTempUnavailableError:
+                self._set_waiting_for_comfort_temp(device_id)
+                continue
             except ValueError:
                 continue
             await self._process_automation_logic(device_id, entity_states)
@@ -169,6 +181,9 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         for dev_id in device_ids:
             try:
                 entity_states = await self._get_device_entity_states(dev_id)
+            except ComfortTempUnavailableError:
+                self._set_waiting_for_comfort_temp(dev_id)
+                continue
             except ValueError:
                 continue
             await self._process_automation_logic(dev_id, entity_states)
@@ -246,6 +261,9 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 device_id = device_id.replace("_", ":")
                 try:
                     entity_states = await self._get_device_entity_states(device_id)
+                except ComfortTempUnavailableError:
+                    self._set_waiting_for_comfort_temp(device_id)
+                    return
                 except ValueError:
                     return
                 await self._process_automation_logic(device_id, entity_states)
@@ -291,6 +309,12 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             self.feature_id, device_id, self.hass
         )
 
+        # Apply comfort_temp_entity overlay from config (external HA helper
+        # like input_number) when the FAN doesn't support 2411 param 75.
+        settings = self.config.get_settings()
+        if settings.comfort_temp_entity:
+            mappings["comfort_temp"] = settings.comfort_temp_entity
+
         # Apply sensor_control overlays for indoor/outdoor temp + humidity
         sensor_ctx = await self._get_sensor_control_context(device_id)
         if sensor_ctx:
@@ -330,7 +354,12 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         resolved["indoor_temp"] = _as_float(mappings["indoor_temp"])
         resolved["outdoor_temp"] = _as_float(mappings["outdoor_temp"])
         resolved["supply_temp"] = _as_float(mappings["supply_temp"])
-        resolved["comfort_temp"] = _as_float(mappings["comfort_temp"])
+        try:
+            resolved["comfort_temp"] = _as_float(mappings["comfort_temp"])
+        except ValueError:
+            raise ComfortTempUnavailableError(
+                f"Comfort temp entity {mappings['comfort_temp']} unavailable"
+            ) from None
 
         # Humidity
         resolved["indoor_rh"] = _as_float(mappings["indoor_rh"])
@@ -679,6 +708,26 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 entity.set_status(status, attrs)
             except Exception:
                 entity.set_native_value(status)
+
+    def _set_waiting_for_comfort_temp(self, device_id: str) -> None:
+        """Set status to waiting_for_comfort_temp when comfort temp is unavailable.
+
+        This is used instead of silently skipping the device, so the card
+        can show a clear indicator that comfort temp is missing.
+        """
+        attrs = {
+            "mode": "waiting",
+            "reason": "comfort_temp_unavailable",
+            "message": "Comfort temp entity is unavailable. "
+            "Configure a comfort_temp_entity in temp_control settings.",
+        }
+        self._set_active_indicator(device_id, False, attrs)
+        self._set_status_sensor(device_id, "waiting_for_comfort_temp", attrs)
+        _LOGGER.warning(
+            "Temp_control for %s: comfort temp unavailable, "
+            "setting status to waiting_for_comfort_temp",
+            device_id,
+        )
 
     # ---- sensor_control integration ----
 

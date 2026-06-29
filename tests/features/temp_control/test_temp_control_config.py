@@ -106,3 +106,32 @@ class TestTempControlConfig:
             raise AssertionError("Should have raised FrozenInstanceError")
         except AttributeError:
             pass  # dataclass(frozen=True) raises AttributeError on set
+
+    def test_comfort_temp_entity_defaults_empty(self):
+        """Test that comfort_temp_entity defaults to empty string."""
+        settings = self.config.get_settings()
+        assert settings.comfort_temp_entity == ""
+
+    def test_comfort_temp_entity_from_options(self):
+        """Test that comfort_temp_entity is read from config options."""
+        self.config_entry.options = {
+            "ramses_extras": {
+                "features": {
+                    "temp_control": {
+                        "comfort_temp_entity": "input_number.my_comfort",
+                    }
+                }
+            }
+        }
+        settings = self.config.get_settings()
+        assert settings.comfort_temp_entity == "input_number.my_comfort"
+
+    def test_comfort_temp_entity_from_legacy_section(self):
+        """Test that comfort_temp_entity is read from legacy section."""
+        self.config_entry.options = {
+            "temp_control": {
+                "comfort_temp_entity": "input_number.legacy_comfort",
+            }
+        }
+        settings = self.config.get_settings()
+        assert settings.comfort_temp_entity == "input_number.legacy_comfort"

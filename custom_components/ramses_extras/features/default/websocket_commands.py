@@ -248,47 +248,66 @@ async def ws_get_entity_mappings(
             device_id: str,
             base_mappings: dict[str, str],
         ) -> dict[str, Any]:
-            if not _is_feature_enabled("sensor_control"):
-                return {}
+            overlays: dict[str, Any] = {}
 
+            # --- temp_control overlay: comfort_temp_entity ---
+            # If the user configured an external comfort temp entity (e.g.
+            # input_number) in temp_control settings, it takes priority over
+            # the default number.{device_id}_param_75 mapping.  This applies
+            # to both the card (via this resolver) and the automation.
             try:
-                from ...features.sensor_control.resolver import SensorControlResolver
+                config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+                if config_entry is not None:
+                    from ...features.temp_control.config import TempControlConfig
 
-                device_type = _get_device_type(device_id)
-                if not device_type:
-                    return {}
-
-                resolver = SensorControlResolver(hass)
-                sensor_result = await resolver.resolve_entity_mappings(
-                    device_id,
-                    device_type,
-                )
-
-                merged_mappings = base_mappings.copy()
-                # Merge sensor_control mappings under both their canonical
-                # metric names (e.g. "indoor_temperature") and the card-facing
-                # entity keys (e.g. "indoor_temp_entity") so that cards using
-                # either naming convention pick up the overrides.
-                for metric, entity_id in sensor_result["mappings"].items():
-                    merged_mappings[metric] = entity_id
-                    card_key = _metric_to_entity_key.get(metric)
-                    if card_key and entity_id:
-                        merged_mappings[card_key] = entity_id
-
-                return {
-                    "mappings": merged_mappings,
-                    "sources": sensor_result["sources"],
-                    "raw_internal": sensor_result.get("raw_internal"),
-                    "abs_humidity_inputs": sensor_result.get("abs_humidity_inputs", {}),
-                    "area_sensors": sensor_result.get("area_sensors", []),
-                }
+                    tc_config = TempControlConfig(hass, config_entry)
+                    tc_settings = tc_config.get_settings()
+                    if tc_settings.comfort_temp_entity:
+                        merged = dict(base_mappings)
+                        merged["comfort_temp_entity"] = tc_settings.comfort_temp_entity
+                        overlays["mappings"] = merged
             except Exception as err:
-                _LOGGER.error(
-                    "Failed to apply sensor_control overlays: %s",
-                    err,
-                    exc_info=True,
-                )
-                return {}
+                _LOGGER.debug("temp_control overlay skipped: %s", err)
+
+            # --- sensor_control overlay ---
+            if _is_feature_enabled("sensor_control"):
+                try:
+                    from ...features.sensor_control.resolver import (
+                        SensorControlResolver,
+                    )
+
+                    device_type = _get_device_type(device_id)
+                    if device_type:
+                        resolver = SensorControlResolver(hass)
+                        sensor_result = await resolver.resolve_entity_mappings(
+                            device_id,
+                            device_type,
+                        )
+
+                        # Start from temp_control-merged mappings (if any)
+                        # so sensor_control overlays stack on top.
+                        merged_mappings = dict(overlays.get("mappings", base_mappings))
+                        for metric, entity_id in sensor_result["mappings"].items():
+                            merged_mappings[metric] = entity_id
+                            card_key = _metric_to_entity_key.get(metric)
+                            if card_key and entity_id:
+                                merged_mappings[card_key] = entity_id
+
+                        overlays["mappings"] = merged_mappings
+                        overlays["sources"] = sensor_result["sources"]
+                        overlays["raw_internal"] = sensor_result.get("raw_internal")
+                        overlays["abs_humidity_inputs"] = sensor_result.get(
+                            "abs_humidity_inputs", {}
+                        )
+                        overlays["area_sensors"] = sensor_result.get("area_sensors", [])
+                except Exception as err:
+                    _LOGGER.error(
+                        "Failed to apply sensor_control overlays: %s",
+                        err,
+                        exc_info=True,
+                    )
+
+            return overlays
 
         # Determine feature identifier
         if const_module:
