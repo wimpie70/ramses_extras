@@ -24,62 +24,15 @@ Core components:
 - RP frames: `000 RP --- src dst --:------ code len payload` (no extra space)
 - 2411 parameters: DB lookup by parameter ID, realistic payload values
 
-### RF Config Validation
-Check on startup if ramses_cc has:
-- Bound REM configured
-- Enable Message Events with regex: 31DA|10D0
-- Enable Send Packet Service
-Log errors if not configured.
-
-Also check HA Core config (this belongs in ramses_cc, not _extras, since it affects all
-ramses_cc users — most don't use _extras):
-- **Recorder component loaded**: check `"recorder" in hass.config.components` at setup.
-  If missing, log a WARNING (not error, integration still works in-memory):
-  "HA recorder component is not loaded — sensor history and long-term statistics
-  will not be stored. Add 'default_config:' or 'recorder:' to configuration.yaml."
-  Background: without the recorder, in-memory state is current but the database gets
-  no updates, so history graphs and logbook show stale data. This looks like a ramses_cc
-  bug but is actually a missing HA Core config. (Issue #750)
-
-### ha-sim Simulator Isolation Prerequisites
-**For device_simulator feature to work with automatic isolation:**
-
-1. **MQTT Integration in ha-sim**
-   - Must be configured in `configuration.yaml` or UI:
-   ```yaml
-   mqtt:
-     broker: 192.168.40.11 # Replace with your MQTT broker IP
-     port: 1883
-     username: "your_username" # Replace with your MQTT username
-     password: "your_password" # Replace with your MQTT password
-   ```
-   - Required for MqttEndpoint to subscribe/publish
-
-2. **ramses_cc Config (auto-enforced)**
-   - Must use MQTT transport (not serial)
-   - Device simulator automatically reconfigures to:
-     - Topic: `RAMSES/GATEWAY_SIM/18:001234`
-     - HGI: `18:001234` (fake, isolated from production)
-   - note: the topic namespace is hardcoded in the simulator code.
-   in _rf there is a strict check on prefix `RAMSES/GATEWAY` and also 3 parts divided by '/'
-   but we can add the _SIM suffix to the topic to pass the check.
-
-3. **MQTT Broker Permissions**
-   - User must have subscribe/publish rights to `RAMSES/GATEWAY_SIM/#`
-   - Same broker credentials as production
-
-4. **Port Configuration**
-   - ha-sim uses port 8124 (not 8123)
-   - Set in `configuration.yaml`:
-   ```yaml
-   http:
-     server_port: 8124
-   ```
-
-**Isolation Behavior:**
-- Production devices use: `RAMSES/GATEWAY/18:xxxxxx`
-- Simulator uses: `RAMSES/GATEWAY_SIM/18:001234`
-- Zero crosstalk between namespaces
+### ha-sim Simulator Isolation Prerequisites — DONE
+All prerequisites fully implemented:
+- MQTT integration: uses HA built-in MQTT (user configures broker once)
+- ramses_cc auto-enforcement: reconfigures to RAMSES/GATEWAY_SIM/18:001234 on enable
+- Topic namespace: RAMSES/GATEWAY_SIM passes ramses_rf startswith("RAMSES/GATEWAY") check
+- Port 8124: configured in deployments/ha-sim/ (docker-compose.yml, configuration.yaml.example)
+- State save/restore: full ramses_cc state saved on enable, restored on disable/remove
+- Safe to deploy on normal dev setups
+Code: features/device_simulator/__init__.py (_enforce_simulator_isolation, _remember_original_ramses_cc_state, async_restore_ramses_cc_gateway_topic)
 
 
 ## other
@@ -91,10 +44,6 @@ ramses_cc users — most don't use _extras):
  mqtt://slimmemeter:j@diebla@@192.168.40.11:1883
 - simulator:
 ### check loading time takes long
-
-test ### can we now safe deploy the sim on a normal dev ?
-- we need to save the full state and set it back on
- disable sim/remove _extras (schema, topics, known devices, settings that we change on the sim)
 
 ### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
 Shouldn't we filter this ? we know from our database what belongs to what
