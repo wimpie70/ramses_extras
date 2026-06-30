@@ -24,8 +24,6 @@ Core components:
 - RP frames: `000 RP --- src dst --:------ code len payload` (no extra space)
 - 2411 parameters: DB lookup by parameter ID, realistic payload values
 
-**Next Steps**: UI Cards (Phase 8)
-
 ### RF Config Validation
 Check on startup if ramses_cc has:
 - Bound REM configured
