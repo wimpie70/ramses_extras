@@ -320,6 +320,10 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self, device_id: str, entity_states: Mapping[str, float | bool]
     ) -> None:
         """Process CO2 logic for changed entities."""
+        # Normalize device_id to colon format so that all callers
+        # (parent class with underscore format, startup with colon
+        # format) share the same key in per-device dicts.
+        device_id = device_id.replace("_", ":")
         # Re-entrancy guard: skip if already processing this device
         if device_id in self._processing_devices:
             _LOGGER.debug("Already processing %s, skipping re-entrant call", device_id)
@@ -753,10 +757,13 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         :param device_id: Device identifier (may include device type suffix)
         """
-        # Normalize device_id by stripping device type suffix
+        # Normalize device_id by stripping device type suffix and
+        # converting to colon format to match _zone_managers keys
+        # (which come from hass.data[DOMAIN]["devices"] in colon format).
         clean_device_id = device_id
         if device_id and " (" in device_id:
             clean_device_id = device_id.split(" (")[0]
+        clean_device_id = clean_device_id.replace("_", ":")
 
         if not self._is_automation_enabled_for_device(clean_device_id):
             await self._clear_disabled_co2_state(clean_device_id)

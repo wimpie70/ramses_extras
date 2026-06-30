@@ -84,6 +84,7 @@ ramses_cc users — most don't use _extras):
 - Zero crosstalk between namespaces
 
 
+## other
 ### check framework for feature specific code that needs to be moved to it's features
 ### Ramses Packet Log explorer: auto mode seem to be broken
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
@@ -190,26 +191,31 @@ TypeError: Either a port_name or an input_file must be specified
 2026-05-05 16:04:23.891 INFO (MainThread) [homeassistant.config_entries] Config entry 'RAMSES RF' for ramses_cc integration not ready yet: Setup failed: Either a port_name or an input_file must be specified; Retrying in 5 seconds
 
 
---- TODO: configurable comfort temp source for temp_control ---
+--- DONE: configurable comfort temp source for temp_control ---
 
-DONE: Added comfort_temp_entity to sensor_control (FAN Configuration).
-The comfort temp entity is configured under:
+Released in 0.20.11. Comfort temp entity configured under:
   FAN Configuration → Internal Fan Sensors → Comfort temperature (Temperature Control)
-
-It overrides param_75 when the FAN doesn't support 2411 params.
+  (dropdown: Internal (use FAN param_75) / External (HA entity))
 
 Changes:
-- sensor_control/device_types/fan.py: added comfort_temp_entity field to
-  the Internal Fan Sensors form, persisted to device_config
+- sensor_control/device_types/fan.py: comfort_temp_kind dropdown + entity selector,
+  persisted to device_config, removed when "Internal" selected
 - sensor_control/resolver.py: exposes comfort_temp_entity in result mappings
-- default/websocket_commands.py: comfort_temp_entity added to
-  _metric_to_entity_key so card gets it from resolver
-- temp_control/automation.py: reads comfort_temp_entity from sensor_control
-  context, overrides mappings["comfort_temp"]; raises
-  ComfortTempUnavailableError when unavailable → status set to
-  "waiting_for_comfort_temp" instead of silently skipping
-- base_automation.py: catches ComfortTempUnavailableError by class name
-  and calls _set_waiting_for_comfort_temp if available
-- Tests: 3876 passed, ruff + mypy clean
-- Docs: updated TEMP_CONTROL_FEATURE_PLAN.md and FAN_CONFIGURATION_USER_GUIDE.md
-- Card already reads config.comfort_temp_entity (hvac_fan_card const.py)
+- sensor_control/websocket_commands.py: set_comfort_temp_entity WebSocket command
+- temp_control/websocket_commands.py: get_device_config + set_device_config commands
+- temp_control/const.py: registered WebSocket commands
+- temp_control/automation.py: reads comfort_temp_entity from sensor_control context,
+  overrides mappings["comfort_temp"]; raises ComfortTempUnavailableError when unavailable
+- framework/setup/entry.py: initialize device_feature_matrix in hass.data during setup
+  (fixes spurious reload on first config edit); reload on sensor_control changes
+- hvac_fan_card/hvac-fan-card.js:
+  - shouldUpdate() override: suppress re-renders in parameter edit mode
+  - Comfort temp indicator: compare against default param_75 to determine external vs internal
+  - Edit window: all temp_control settings editable (deltas, dewpoint, supply cooler, etc.)
+    with in-place CSS feedback (loading/success/error) — no full redraw
+  - Comfort temp value: editable directly when external entity configured
+  - Removed status entity and on/off toggle from edit window
+  - update-humidity/update-select/update-switch: in-place CSS feedback (no full redraw)
+- hvac_fan_card/templates/parameter-edit.js: createComfortTempItem, createTempControlSettingItems
+- translations/en.json + nl.json: temp_control_settings, temp_control_desired_speed keys
+- Tests: updated for new WebSocket commands and comfort_temp_kind dropdown

@@ -413,6 +413,11 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
     async def _process_automation_logic(
         self, device_id: str, entity_states: Mapping[str, float | bool]
     ) -> None:
+        # Normalize device_id to colon format so that all callers
+        # (parent class with underscore format, startup/switch toggle
+        # with colon format) share the same key in self._mode and
+        # other per-device dicts.
+        device_id = device_id.replace("_", ":")
         # Re-entrancy guard: skip if already processing this device
         if device_id in self._processing_devices:
             _LOGGER.debug("Already processing %s, skipping re-entrant call", device_id)
