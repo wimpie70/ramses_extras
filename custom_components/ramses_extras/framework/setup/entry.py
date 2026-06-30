@@ -194,6 +194,11 @@ async def run_entry_setup_pipeline(hass: HomeAssistant, entry: ConfigEntry) -> N
 
     await cleanup_orphaned_devices(hass, entry)
 
+    # Validate ramses_cc configuration required by ramses_extras features
+    from .validation import validate_rf_config
+
+    await validate_rf_config(hass)
+
     await create_and_start_feature_instances(hass, entry)
 
     # Configure zones from YAML in zone coordinators
