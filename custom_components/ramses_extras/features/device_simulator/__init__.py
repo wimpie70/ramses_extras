@@ -296,6 +296,21 @@ async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
         return False
 
     hass.config_entries.async_update_entry(cc_entry, options=cc_options)
+
+    # Wipe stale HA devices discovered during simulator isolation before
+    # reloading ramses_cc.  A plain async_reload() keeps stale devices
+    # around, which then re-hydrate through ramses_cc and pollute the
+    # device registry with simulator-only devices.
+    dev_reg = dr.async_get(hass)
+    stale = dr.async_entries_for_config_entry(dev_reg, cc_entry.entry_id)
+    for dev in stale:
+        dev_reg.async_remove_device(dev.id)
+    if stale:
+        _LOGGER.info(
+            "Simulator restore: removed %d stale HA devices from ramses_cc",
+            len(stale),
+        )
+
     await hass.config_entries.async_reload(cc_entry.entry_id)
 
     # Clear saved state so a subsequent sim-enable will re-capture
