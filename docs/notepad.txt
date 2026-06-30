@@ -36,8 +36,17 @@ Code: features/device_simulator/__init__.py (_enforce_simulator_isolation, _reme
 
 
 ## other
-### check framework for feature specific code that needs to be moved to it's features
-### Ramses Packet Log explorer: auto mode seem to be broken
+### check framework for feature specific code that needs to be moved to it's features — DONE
+Framework is clean. No feature-specific imports or runtime logic in base classes.
+Two minor borderline cases found (not worth fixing — abstraction would add complexity without benefit):
+- framework/setup/features.py: device_simulator hardcoded for force-recreate on reload (lifecycle hook)
+- framework/helpers/config/migration.py: humidity_control special deep-merge in config migration
+All other feature name references are string constants for config section lookups or illustrative docstring examples.
+### Ramses Packet Log explorer: auto mode seem to be broken — FIXED
+Auto mode was non-functional — only did a one-shot refresh on UI events, no polling.
+Fixed: added _startPolling/_stopPolling with setInterval (5s default, configurable via
+poll_interval config or ramses_debugger_default_poll_ms global). Polling starts when
+mode is set to auto, stops on manual/disconnect. Matches traffic analyser pattern.
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
 ---

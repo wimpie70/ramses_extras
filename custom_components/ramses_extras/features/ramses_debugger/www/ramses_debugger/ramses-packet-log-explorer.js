@@ -17,7 +17,7 @@
  *
  * Performance:
  * - Uses callWebSocketShared() for request de-duplication
- * - No polling by default (manual refresh mode)
+ * - Auto mode polls every 5s (configurable via poll_interval)
  * - Efficient file list caching
  *
  * @module ramses-packet-log-explorer
@@ -56,6 +56,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     this._lastError = null;
     this._autoLoaded = false;
     this._domInitialized = false;
+    this._pollInterval = null;
   }
 
   set hass(hass) {
@@ -119,6 +120,50 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     void this._refreshFiles();
   }
 
+  _onDisconnected() {
+    this._stopPolling();
+  }
+
+  _startPolling() {
+    this._stopPolling();
+    if (this._loadMode !== 'auto') {
+      return;
+    }
+
+    let pollInterval = Number(this._config?.poll_interval || 5000);
+    const globalDefault = Number(window?.ramsesExtras?.options?.ramses_debugger_default_poll_ms);
+    if (pollInterval === 5000 && Number.isFinite(globalDefault) && globalDefault > 0) {
+      pollInterval = globalDefault;
+    }
+    const safeInterval = Number.isFinite(pollInterval) ? Math.max(1000, pollInterval) : 5000;
+
+    const doPoll = async () => {
+      if (!this._selectedFileId) {
+        return;
+      }
+      const viewer = this.shadowRoot?.getElementById('r-xtrs-pack-log-messagesViewer');
+      if (viewer && typeof viewer.refresh === 'function') {
+        try {
+          await viewer.refresh();
+        } catch (error) {
+          logger.warn('Packet log auto-poll refresh failed:', error);
+        }
+      }
+    };
+
+    void doPoll();
+    this._pollInterval = setInterval(() => {
+      void doPoll();
+    }, safeInterval);
+  }
+
+  _stopPolling() {
+    if (this._pollInterval) {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
+    }
+  }
+
   async _refreshFiles() {
     if (!this._hass) {
       return;
@@ -174,7 +219,9 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
       this._autoLoadedFileId = null;
       this.render();
 
-      if (this._loadMode === 'auto') {
+      // In auto mode, the polling timer will pick up the new file on
+      // the next tick.  In manual mode, do a one-shot refresh.
+      if (this._loadMode !== 'auto') {
         const viewer = this.shadowRoot.getElementById('r-xtrs-pack-log-messagesViewer');
         if (viewer && typeof viewer.refresh === 'function') {
           void viewer.refresh();
@@ -196,10 +243,9 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
       this.render();
 
       if (this._loadMode === 'auto') {
-        const viewer = this.shadowRoot.getElementById('r-xtrs-pack-log-messagesViewer');
-        if (viewer && typeof viewer.refresh === 'function') {
-          void viewer.refresh();
-        }
+        this._startPolling();
+      } else {
+        this._stopPolling();
       }
     });
 
@@ -270,7 +316,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
             <select id="r-xtrs-pack-log-fileSelect" title="Select which packet log file to view"></select>
             <button id="r-xtrs-pack-log-refreshFiles" title="Reload the list of available packet log files">Refresh</button>
             <label>mode:</label>
-            <select id="r-xtrs-pack-log-loadMode" title="Auto-load refreshes when the file changes">
+            <select id="r-xtrs-pack-log-loadMode" title="Auto mode polls the file every few seconds for new messages">
               <option value="manual">manual</option>
               <option value="auto">auto</option>
             </select>
@@ -327,7 +373,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
         && this._selectedFileId
         && this._selectedFileId !== this._autoLoadedFileId) {
         this._autoLoadedFileId = this._selectedFileId;
-        void viewer.refresh();
+        this._startPolling();
       }
     }
 
