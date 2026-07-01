@@ -149,7 +149,7 @@ async def test_ws_get_enabled_features_no_config_entry(connection):
     connection.send_result.assert_called_with(
         1,
         {
-            "enabled_features": {},
+            "enabled_features": None,
             "options": {},
         },
     )
