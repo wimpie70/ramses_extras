@@ -50,7 +50,9 @@ async def ws_get_enabled_features(
                     or {}
                 )
             else:
-                enabled_features = {}
+                # ramses_extras hasn't finished setup yet — return None so the
+                # card knows features are still loading (not disabled)
+                enabled_features = None
 
         options_payload: dict[str, Any] = {}
         config_entry = hass.data.get(DOMAIN, {}).get("config_entry")

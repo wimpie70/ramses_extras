@@ -663,6 +663,25 @@ export class RamsesBaseCard extends HTMLElement {
   _ensureFeatureConfigLoaded() {
     window.ramsesExtras = window.ramsesExtras || {};
 
+    // features is null when ramses_extras hasn't finished setup yet
+    // (WebSocket returned enabled_features=null). Retry with backoff.
+    if (window.ramsesExtras.features === null) {
+      const retryCount = window.ramsesExtras._featureLoadRetries || 0;
+      if (retryCount < 10) {
+        window.ramsesExtras._featureLoadRetries = retryCount + 1;
+        window.ramsesExtras._featuresLoadPromise = null;
+        window.ramsesExtras.features = undefined; // re-trigger load
+        // Schedule a re-render after a delay to retry
+        if (this._hass && this._config) {
+          clearTimeout(this._featureRetryTimer);
+          this._featureRetryTimer = setTimeout(() => {
+            this._featureRetryTimer = null;
+            this._scheduleRender();
+          }, 2000 * (retryCount + 1)); // 2s, 4s, 6s... up to 20s
+        }
+      }
+    }
+
     if (window.ramsesExtras.features) {
       return Promise.resolve();
     }
@@ -675,7 +694,12 @@ export class RamsesBaseCard extends HTMLElement {
           type: 'ramses_extras/default/get_enabled_features',
         })
           .then((result) => {
-            window.ramsesExtras.features = result?.enabled_features || {};
+            // Preserve null (still loading) vs {} (no features enabled)
+            const ef = result?.enabled_features;
+            window.ramsesExtras.features = (ef === null || ef === undefined) ? null : ef;
+            if (window.ramsesExtras.features !== null) {
+              window.ramsesExtras._featureLoadRetries = 0;
+            }
             if (result?.options && typeof result.options === 'object') {
               window.ramsesExtras.options = result.options;
             }
