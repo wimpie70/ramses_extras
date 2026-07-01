@@ -651,6 +651,25 @@ export class RamsesBaseCard extends HTMLElement {
     }
 
     const enabled = window.ramsesExtras.features[featureName] === true;
+
+    // If the feature is not found in an empty-ish features dict, it may have
+    // been loaded before ramses_extras finished setup. Retry once.
+    if (!enabled && window.ramsesExtras._featureLoadRetries < 3) {
+      const hasAny = Object.keys(window.ramsesExtras.features).length > 0;
+      if (!hasAny || window.ramsesExtras.features[featureName] === undefined) {
+        logger.debug(
+          `${this.constructor.name}: isFeatureEnabled() - feature not found, ` +
+          `may be loading too early, retrying...`
+        );
+        // Force a fresh WebSocket fetch
+        window.ramsesExtras._featuresLoadPromise = null;
+        window.ramsesExtras.features = undefined;
+        window.ramsesExtras._featureLoadRetries = (window.ramsesExtras._featureLoadRetries || 0) + 1;
+        this._ensureFeatureConfigLoaded();
+        return null; // show loading state, will re-render when WS completes
+      }
+    }
+
     logger.debug(
       `${this.constructor.name}: isFeatureEnabled() - ` +
       `featureName="${featureName}", ` +

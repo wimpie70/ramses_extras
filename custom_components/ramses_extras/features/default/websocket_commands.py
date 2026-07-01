@@ -41,6 +41,10 @@ async def ws_get_enabled_features(
     """
     try:
         enabled_features = hass.data.get(DOMAIN, {}).get("enabled_features")
+        _LOGGER.debug(
+            "ws_get_enabled_features: hass.data enabled_features=%s",
+            enabled_features,
+        )
         if enabled_features is None:
             config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
             if config_entry is not None:
