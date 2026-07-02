@@ -24,6 +24,7 @@ RAMSES_CC_STORAGE_VERSION = 1
 SZ_CLIENT_STATE = "client_state"
 SZ_SCHEMA = "schema"
 SZ_PACKETS = "packets"
+SZ_DISCOVERY = "discovery"
 
 
 def _ensure_hgi_entry(
@@ -282,6 +283,7 @@ async def async_apply_profile(
     reset_rf_cache: bool = False,
     skip_rf_hydrate: bool | None = None,
     enable_eavesdrop: bool = False,
+    clear_discovery_state: bool = False,
 ) -> dict[str, Any]:
     """Apply a profile: stop devices, update known_list, reload, set timeouts."""
 
@@ -353,6 +355,13 @@ async def async_apply_profile(
             actions.append("cleared_rf_cache")
         except Exception as err:  # noqa: BLE001
             LOGGER.warning("Profile load: failed to clear RF cache: %s", err)
+
+    if clear_discovery_state:
+        try:
+            await _clear_discovery_state(hass)
+            actions.append("cleared_discovery_state")
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Profile load: failed to clear discovery state: %s", err)
 
     LOGGER.info("Loaded simulator profile: %s (actions: %s)", profile_name, actions)
     return {
@@ -445,7 +454,7 @@ async def _update_known_list_and_reload(
 
 
 async def _clear_ramses_rf_cache(hass: HomeAssistant) -> None:
-    """Clear ramses_cc client_state schema/packets and delete ramses.db."""
+    """Clear ramses_cc client_state schema/packets/discovery and delete ramses.db."""
 
     from homeassistant.helpers.storage import Store as HaStore
 
@@ -459,9 +468,25 @@ async def _clear_ramses_rf_cache(hass: HomeAssistant) -> None:
     if SZ_PACKETS in client_state:
         client_state.pop(SZ_PACKETS, None)
         changed = True
+    if SZ_DISCOVERY in stored:
+        stored.pop(SZ_DISCOVERY, None)
+        changed = True
     if changed:
         await ha_store.async_save(stored)
-        LOGGER.info("Profile load: cleared HA client_state schema/packets")
+        LOGGER.info("Profile load: cleared HA client_state schema/packets/discovery")
+
+
+async def _clear_discovery_state(hass: HomeAssistant) -> None:
+    """Clear only the ramses_cc discovery state (found devices list)."""
+
+    from homeassistant.helpers.storage import Store as HaStore
+
+    ha_store: HaStore = HaStore(hass, RAMSES_CC_STORAGE_VERSION, RAMSES_CC_STORAGE_KEY)
+    stored: dict[str, Any] = await ha_store.async_load() or {}
+    if SZ_DISCOVERY in stored:
+        stored.pop(SZ_DISCOVERY, None)
+        await ha_store.async_save(stored)
+        LOGGER.info("Profile load: cleared discovery state")
 
     try:
         db_path = Path(hass.config.config_dir) / "ramses.db"
@@ -509,9 +534,12 @@ async def _reload_ramses_cc(
             if SZ_PACKETS in client_state:
                 client_state.pop(SZ_PACKETS)
                 changed = True
+            if SZ_DISCOVERY in stored:
+                stored.pop(SZ_DISCOVERY)
+                changed = True
             if changed:
                 await ha_store.async_save(stored)
-                LOGGER.info("Profile load: cleared HA store schema+packets")
+                LOGGER.info("Profile load: cleared HA store schema+packets+discovery")
         except Exception as err:  # noqa: BLE001
             LOGGER.warning("Profile load: could not clear HA store schema: %s", err)
 

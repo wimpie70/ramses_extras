@@ -407,6 +407,16 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "default": False,
             "helper": "Removes the ramses database file for a clean start.",
         },
+        {
+            "key": "clear_discovery_state",
+            "label": "Clear discovery state",
+            "type": "checkbox",
+            "default": False,
+            "helper": (
+                "Clears the ramses_cc discovery state (found devices list) "
+                "from .storage before loading the profile."
+            ),
+        },
     ]
     + COMMON_SCENARIO_PARAMS,  # type: ignore[dict-item]
 }

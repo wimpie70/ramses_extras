@@ -42,6 +42,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._profileEavesdrop = {};
     this._profileSkipHydrate = {};
     this._profileClearLog = {};
+    this._profileClearDiscovery = {};
     this._tab = "profiles";
     this._newCodeInput = {};
     this._profileReload = {};
@@ -50,6 +51,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._profileEavesdrop = {};
     this._profileSkipHydrate = {};
     this._profileClearLog = {};
+    this._profileClearDiscovery = {};
     this._profileNotice = null;
     this._scenarioParams = {};
     this._deviceSubscription = null;
@@ -855,6 +857,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const eavesdrop = this._profileEavesdrop[name] ?? false;
     const skipHydrate = this._profileSkipHydrate[name] ?? false;
     const clearLog = this._profileClearLog[name] ?? false;
+    const clearDiscovery = this._profileClearDiscovery[name] ?? false;
     // Get checkbox value from DOM
     const checkbox = this.shadowRoot.querySelector(`[data-action='auto-answer-check'][data-profile='${name}']`);
     const autoAnswer = checkbox ? checkbox.checked : true;
@@ -867,6 +870,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       enable_eavesdrop: eavesdrop,
       remove_database: skipHydrate,
       clear_message_log: clearLog,
+      clear_discovery_state: clearDiscovery,
       enable_auto_answer: autoAnswer,
     });
     this._activeProfile = name;
@@ -1563,6 +1567,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     root.querySelectorAll("[data-action='clear-log-check']").forEach(chk => {
       chk.addEventListener("change", (e) => {
         this._profileClearLog = { ...this._profileClearLog, [chk.dataset.profile]: e.target.checked };
+      });
+    });
+
+    root.querySelectorAll("[data-action='clear-discovery-check']").forEach(chk => {
+      chk.addEventListener("change", (e) => {
+        this._profileClearDiscovery = { ...this._profileClearDiscovery, [chk.dataset.profile]: e.target.checked };
       });
     });
 

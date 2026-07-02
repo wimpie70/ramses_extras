@@ -59,6 +59,7 @@ export function buildProfileLoaderCard(card) {
   const eavesdropField = card._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "enable_eavesdrop");
   const skipHydrateField = card._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "remove_database");
   const clearLogField = card._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "clear_message_log");
+  const clearDiscoveryField = card._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "clear_discovery_state");
 
   const profileName = (params.profile_name ?? card._activeProfile ?? nameField?.default ?? "").trim();
   const yamlValue = params.profile_yaml ?? card._activeProfileYaml ?? "";
@@ -69,6 +70,7 @@ export function buildProfileLoaderCard(card) {
   const eavesdropValue = params.enable_eavesdrop ?? eavesdropField?.default ?? false;
   const skipHydrateValue = params.remove_database ?? skipHydrateField?.default ?? false;
   const clearLogValue = params.clear_message_log ?? clearLogField?.default ?? false;
+  const clearDiscoveryValue = params.clear_discovery_state ?? clearDiscoveryField?.default ?? false;
 
   const profileNameInput = `
     <div class="scenario-field">
@@ -118,6 +120,12 @@ export function buildProfileLoaderCard(card) {
       ${clearLogField?.label || "Clear message log"}
     </label>`;
 
+  const clearDiscoveryToggle = `
+    <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;" title="${clearDiscoveryField?.helper || ""}">
+      <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="clear_discovery_state" data-type="checkbox" ${clearDiscoveryValue ? "checked" : ""} />
+      ${clearDiscoveryField?.label || "Clear discovery state"}
+    </label>`;
+
   const currentScale = params.speed ?? card._loaderTimeoutScale ?? 1.0;
   const scaleInput = `
     <label style="display:flex; flex-direction:column; gap:4px; font-size:0.8em;">
@@ -148,6 +156,7 @@ export function buildProfileLoaderCard(card) {
         ${eavesdropToggle}
         ${skipHydrateToggle}
         ${clearLogToggle}
+        ${clearDiscoveryToggle}
         ${scaleInput}
       </div>
       <div style="margin-top: 8px; display:flex; gap:8px; flex-wrap:wrap;">
@@ -168,6 +177,7 @@ export function buildProfiles(card) {
         const eavesdropChecked = (card._profileEavesdrop[p.name] ?? true) ? " checked" : "";
         const skipHydrateChecked = (card._profileSkipHydrate[p.name] ?? true) ? " checked" : "";
         const clearLogChecked = (card._profileClearLog[p.name] ?? true) ? " checked" : "";
+        const clearDiscoveryChecked = (card._profileClearDiscovery[p.name] ?? false) ? " checked" : "";
         const autoAnswerChecked = (p.enable_auto_answer ?? true) ? " checked" : "";
         const deleteButton = p.can_delete
           ? `<button class="btn btn-secondary" data-action="delete-profile" data-profile="${p.name}" style="margin-left:auto;">Delete</button>`
@@ -209,6 +219,10 @@ export function buildProfiles(card) {
               <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
                 <input type="checkbox" data-action="clear-log-check" data-profile="${p.name}"${clearLogChecked} />
                 Clear message log
+              </label>
+              <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Clear ramses_cc discovery state (found devices list) before loading.">
+                <input type="checkbox" data-action="clear-discovery-check" data-profile="${p.name}"${clearDiscoveryChecked} />
+                Clear discovery
               </label>
               <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Enable auto-answer when this profile is loaded.">
                 <input type="checkbox" data-action="auto-answer-check" data-profile="${p.name}"${autoAnswerChecked} />

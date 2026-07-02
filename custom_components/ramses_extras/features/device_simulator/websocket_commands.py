@@ -1121,6 +1121,7 @@ async def ws_activate_profile_device(
         vol.Optional("enable_eavesdrop", default=False): bool,
         vol.Optional("remove_database", default=False): bool,
         vol.Optional("clear_message_log", default=False): bool,
+        vol.Optional("clear_discovery_state", default=False): bool,
         vol.Optional("enable_auto_answer", default=True): bool,
     }
 )
@@ -1190,6 +1191,7 @@ async def ws_load_profile(
             reset_rf_cache=msg.get("reset_rf_cache", False),
             skip_rf_hydrate=remove_database,
             enable_eavesdrop=msg.get("enable_eavesdrop", False),
+            clear_discovery_state=msg.get("clear_discovery_state", False),
         )
     except Exception as err:  # noqa: BLE001
         connection.send_error(msg["id"], "error", str(err))
@@ -1702,6 +1704,7 @@ async def _start_load_profile_yaml(
         reset_rf_cache=params.get("reset_rf_cache", False),
         skip_rf_hydrate=params.get("remove_database"),
         enable_eavesdrop=params.get("enable_eavesdrop", False),
+        clear_discovery_state=params.get("clear_discovery_state", False),
     )
     result.setdefault("scenario_id", SCENARIO_LOAD_PROFILE_YAML)
     result.setdefault(
