@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -85,7 +86,10 @@ class FanSpeedArbiter:
         # Same command is skipped for _dedup_seconds, then re-sent to
         # correct any external speed changes (manual remote, etc.).
         self._last_applied: dict[str, tuple[str, float]] = {}
-        self._dedup_seconds: float = 1.0
+        self._dedup_seconds: float = 30.0
+        # Per-device locks to serialize commit_state calls and prevent
+        # race conditions when multiple features set demands concurrently.
+        self._commit_locks: dict[str, asyncio.Lock] = {}
 
     @staticmethod
     def _normalize_device_id(device_id: str) -> str:
@@ -177,10 +181,12 @@ class FanSpeedArbiter:
     async def async_commit_state(self, device_id: str, *, apply: bool = True) -> bool:
         """Apply and publish pending state changes for a device."""
         normalized_device_id = self._normalize_device_id(device_id)
-        result = True
-        if apply:
-            result = await self.async_apply(normalized_device_id)
-        self._notify_control_mode_changed(normalized_device_id)
+        lock = self._commit_locks.setdefault(normalized_device_id, asyncio.Lock())
+        async with lock:
+            result = True
+            if apply:
+                result = await self.async_apply(normalized_device_id)
+            self._notify_control_mode_changed(normalized_device_id)
         return result
 
     def _set_demand_state(

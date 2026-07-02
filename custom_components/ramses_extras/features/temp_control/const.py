@@ -87,6 +87,7 @@ TEMP_CONTROL_DEFAULTS: dict[str, Any] = {
     "supply_cooler_delta_activate": 1.0,
     "supply_cooler_delta_deactivate": 0.5,
     "min_supply_temp": 10.0,
+    "reevaluation_interval_seconds": 300,
 }
 
 FEATURE_DEFINITION: dict[str, Any] = {

@@ -29,6 +29,7 @@ class TempControlSettings:
     supply_cooler_delta_activate: float = 1.0
     supply_cooler_delta_deactivate: float = 0.5
     min_supply_temp: float = 10.0
+    reevaluation_interval_seconds: int = 300
 
 
 class TempControlConfig:
@@ -85,6 +86,9 @@ class TempControlConfig:
                 "supply_cooler_delta_deactivate", 0.5
             ),
             min_supply_temp=_get_float("min_supply_temp", 10.0),
+            reevaluation_interval_seconds=_get_int(
+                "reevaluation_interval_seconds", 300
+            ),
         )
 
 

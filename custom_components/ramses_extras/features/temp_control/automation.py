@@ -12,6 +12,7 @@ conditions allow it.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import time
@@ -84,6 +85,8 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         self._temp_demand_zones: dict[str, set[str]] = {}
         # Re-entrancy guard: prevent concurrent _process_automation_logic runs
         self._processing_devices: set[str] = set()
+        # Periodic re-evaluation timer (safety net for stable temps)
+        self._reevaluation_timer: asyncio.TimerHandle | None = None
 
     def is_automation_active(self) -> bool:
         return self._automation_active
@@ -166,9 +169,11 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
         self._automation_active = True
         await super().start()
+        self._start_reevaluation_timer()
 
     async def stop(self) -> None:
         self._automation_active = False
+        self._stop_reevaluation_timer()
 
         for device_id in list(self._mode):
             await self._clear_speed_demand(device_id)
@@ -181,6 +186,45 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 await self._release_bypass(device_id)
 
         await super().stop()
+
+    def _start_reevaluation_timer(self) -> None:
+        """Start a periodic timer to re-evaluate bypass state.
+
+        This is a safety net for situations where temp values are stable
+        and no state change events fire (e.g. indoor temp stays at 21.2°C
+        for hours).  Without this timer, temp_control would never wake up
+        to close the bypass if outdoor conditions change.
+        """
+        self._stop_reevaluation_timer()
+        settings = self.config.get_settings()
+        interval = max(60, settings.reevaluation_interval_seconds)
+        self._reevaluation_timer = self.hass.loop.call_later(
+            interval, self._schedule_reevaluation
+        )
+
+    def _stop_reevaluation_timer(self) -> None:
+        if self._reevaluation_timer is not None:
+            self._reevaluation_timer.cancel()
+            self._reevaluation_timer = None
+
+    def _schedule_reevaluation(self) -> None:
+        """Timer callback: schedule async re-evaluation and restart timer."""
+        if not self._automation_active or not self._is_feature_enabled():
+            return
+        asyncio.create_task(self._reevaluate_all_devices())
+        self._start_reevaluation_timer()
+
+    async def _reevaluate_all_devices(self) -> None:
+        """Re-evaluate all candidate devices (periodic safety net)."""
+        for device_id in self._iter_candidate_device_ids():
+            try:
+                entity_states = await self._get_device_entity_states(device_id)
+            except ComfortTempUnavailableError:
+                self._set_waiting_for_comfort_temp(device_id)
+                continue
+            except ValueError:
+                continue
+            await self._process_automation_logic(device_id, entity_states)
 
     async def _on_homeassistant_started(self, event: Event | None) -> None:
         await super()._on_homeassistant_started(event)
