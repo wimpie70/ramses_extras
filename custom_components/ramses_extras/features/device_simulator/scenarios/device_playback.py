@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 from ..const import SCENARIO_AUTO_ANSWER, SCENARIO_DEVICE_PLAYBACK
@@ -9,6 +10,8 @@ from ..system_config import SIM_DEVICE_ID
 from .base import ScenarioContext, ScenarioDefinition, ScenarioResult
 
 LOGGER = logging.getLogger(__name__)
+
+_DEVICE_ID_RE = re.compile(r"^[0-9A-Fa-f]{2}:[0-9A-Fa-f]{6}$")
 
 
 async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResult:
@@ -242,6 +245,11 @@ def _infer_device_map(
             continue
         # Try direct device ID lookup (for conversations that use actual addresses)
         if context.engine.is_device_active(peer):
+            mapping[slug] = peer
+            continue
+        # If the peer is already a valid device ID (XX:NNNNNN), use it directly.
+        # The auto-activate logic will create an ActiveDevice for it.
+        if _DEVICE_ID_RE.match(peer):
             mapping[slug] = peer
             continue
         default_id = SIM_DEVICE_ID.get(slug)
