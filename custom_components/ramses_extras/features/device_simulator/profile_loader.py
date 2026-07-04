@@ -405,8 +405,8 @@ async def _update_known_list_and_reload(
 
     if schema is not None:
         new_options[CONF_SCHEMA] = deepcopy(schema)
-    else:
-        new_options.pop(CONF_SCHEMA, None)
+    # When schema is None (preload_schema=False), preserve the existing
+    # schema in the config entry instead of removing it
 
     object.__setattr__(entry, "options", MappingProxyType(new_options))
 
