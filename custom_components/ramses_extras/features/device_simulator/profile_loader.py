@@ -519,6 +519,28 @@ async def _reload_ramses_cc(
         if stale:
             LOGGER.info("Profile load: removed %d stale HA devices", len(stale))
 
+        # Also clear CONF_SCHEMA from the config entry options — without this,
+        # ramses_cc recreates all old devices from the stale config schema on
+        # reload even though .storage was wiped.
+        try:
+            ce_store: HaStore = HaStore(hass, 1, "core.config_entries")
+            ce_data: dict = await ce_store.async_load() or {}
+            for stored_entry in ce_data.get("entries", []):
+                if stored_entry.get("entry_id") == entry_id:
+                    opts = dict(stored_entry.get("options", {}))
+                    if CONF_SCHEMA in opts:
+                        opts.pop(CONF_SCHEMA, None)
+                        stored_entry["options"] = opts
+                        LOGGER.info(
+                            "Profile load: cleared CONF_SCHEMA from config entry"
+                        )
+                        break
+            await ce_store.async_save(ce_data)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning(
+                "Profile load: could not clear CONF_SCHEMA from options: %s", err
+            )
+
         try:
             ha_store: HaStore = HaStore(
                 hass,

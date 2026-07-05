@@ -6,47 +6,67 @@
 - docs/ZONES_IMPLEMENTATION_PLAN.md
 - docs/CONFIGURATION_STRATEGY.md
 
+## Working Rules (Phase 4 — passive scan)
+- User commits/pushes, deploys to HA, restarts HA — assistant does not
+- Test files with good coverage — every PR includes tests
+- Sphinx docstrings on all files, classes, methods (:param, :return, :raises)
+- No advertising in commits/PRs — no "Generated with Devin", no "Co-Authored-By"
+- Track progress in the issue — update as phases complete
+- No per-packet disk writes — scan is in-memory, persist on change/shutdown/checkpoint
+- Non-blocking — scan handler is sync, minimal work per packet
+- Full plan: docs/plan_627_phase4.md
+
 ## Active Projects
 
-### Device Simulator
-**Status**: Core infrastructure COMPLETE. Frame format validated against ramses_tx.
-**Location**: `features/device_simulator/IMPLEMENTATION_PLAN.md`
+## schema_architecture.md — Q4 follow-up: storage migration scaffolding (separate PR)
+Per codeowner Q4 decision: register `async_migrate_func` hook in ramses_cc `store.py`
+NOW as a no-op identity migration (v1→v1), so the hook + version label are in place
+before the real v1→v2 (traits) migration is needed. Avoids repeating the V1 config-flow
+pain (missing upgrade() method).
 
-Core components:
-- Message database (parses `ramses_rf/tests/fixtures/regression_packets_sorted.txt`)
-- Virtual gateway (MQTT endpoint on `RAMSES/GATEWAY_SIM/18:001234`)
-- Response engine (handles RQ → RP, including 2411 parameters)
-- Periodic emitter (I frames at configured intervals)
-- Scenario engine (device playback, flooding, timeout, conversation tests)
+Current state (verified):
+- `const.py:28` — `STORAGE_VERSION = 1`
+- `store.py:32` — `Store(hass, STORAGE_VERSION, STORAGE_KEY)` — NO `migrate_func` passed
+- `__init__.py:240` — `async_migrate_entry()` handles config-entry v1→v2 only (packet_log/ramses_rf cleanup)
+- `coordinator.py:274-309` — informal runtime known_list→orphans migration (not a Store-version migration)
+- Tests: `tests/tests_new/test_init.py:396-446` cover config-entry migration; no Store migration tests
 
-**Key Implementation Details** (see IMPLEMENTATION_PLAN.md "Frame Format Requirements"):
-- I frames: `082  I --- src --:------ src code len payload` (extra space after verb)
-- RP frames: `000 RP --- src dst --:------ code len payload` (no extra space)
-- 2411 parameters: DB lookup by parameter ID, realistic payload values
-
-### ha-sim Simulator Isolation Prerequisites — DONE
-All prerequisites fully implemented:
-- MQTT integration: uses HA built-in MQTT (user configures broker once)
-- ramses_cc auto-enforcement: reconfigures to RAMSES/GATEWAY_SIM/18:001234 on enable
-- Topic namespace: RAMSES/GATEWAY_SIM passes ramses_rf startswith("RAMSES/GATEWAY") check
-- Port 8124: configured in deployments/ha-sim/ (docker-compose.yml, configuration.yaml.example)
-- State save/restore: full ramses_cc state saved on enable, restored on disable/remove
-- Safe to deploy on normal dev setups
-Code: features/device_simulator/__init__.py (_enforce_simulator_isolation, _remember_original_ramses_cc_state, async_restore_ramses_cc_gateway_topic)
-
+PR scope (ramses_cc):
+1. `store.py`: pass `migrate_func=_async_migrate_data` to `Store(...)`, add no-op
+   `_async_migrate_data(old_version, old_data)` returning `old_data` unchanged with TODO for v1→v2
+2. `tests/tests_new/test_store.py`: test that v1 payload passes through migrate func unchanged
+3. Do NOT bump `STORAGE_VERSION` yet — bump only when the v1→v2 (traits) format change lands
+4. Track v1→v2 (traits), v2→v3 (commands), v3→v4 (known_list removal) as checkboxes in a small issue
 
 ## other
-### check framework for feature specific code that needs to be moved to it's features — DONE
-Framework is clean. No feature-specific imports or runtime logic in base classes.
-Two minor borderline cases found (not worth fixing — abstraction would add complexity without benefit):
-- framework/setup/features.py: device_simulator hardcoded for force-recreate on reload (lifecycle hook)
-- framework/helpers/config/migration.py: humidity_control special deep-merge in config migration
-All other feature name references are string constants for config section lookups or illustrative docstring examples.
-### Ramses Packet Log explorer: auto mode seem to be broken — FIXED
-Auto mode was non-functional — only did a one-shot refresh on UI events, no polling.
-Fixed: added _startPolling/_stopPolling with setInterval (5s default, configurable via
-poll_interval config or ramses_debugger_default_poll_ms global). Polling starts when
-mode is set to auto, stops on manual/disconnect. Matches traffic analyser pattern.
+### SLOW STARTUP: get_all_fan_params blocks HA startup for 200+ seconds
+
+**Symptom:** HA takes 220s to initialize after restart with ramses_cc + FAN devices.
+
+**Root cause:** `fan_handler.py:257` calls `coordinator.get_all_fan_params(call)`
+unconditionally during setup for every FAN device. This sends 16 RQ 2411 commands
+with 0.5s gaps. At the same time, the ramses_rf DiscoveryService is sending RQ
+2E04, 2349, 22F8, etc. to all devices. All commands go through the same QoS
+queue (single transport). When a discovery command times out (20s), it blocks
+the queue — the 2411 commands sitting behind it can't be sent. With 8 devices
+being probed and multiple timeout cycles, the queue gets backed up for 200+ seconds.
+
+**Fix:** Remove the unconditional `get_all_fan_params` call at `fan_handler.py:257`.
+The `on_fan_first_message` callback at line 201 already calls `get_all_fan_params`
+after the FAN sends its first message — this is the correct trigger. The
+unconditional call at line 257 is redundant and causes QoS queue contention
+with the discovery service during startup.
+
+**Branch:** Create new branch in ramses_cc for this fix (after PR 759 is merged).
+
+### BUG: device_simulator card shows "Disabled" after restart until config is re-saved
+After HA restart (or container restart), the device_simulator card shows "Disabled"
+even though the feature is enabled and the profile is loaded. The user has to go to
+ramses_extras config and save it again before the card becomes usable. The sim profile
+loads correctly ("profile 'normal' loaded") but `ws_get_ui_status` returns 0 devices
+until the config is re-saved. Likely a startup ordering issue — the sim initializes
+before ramses_cc has registered its devices, so the sim has no devices to show.
+
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
 ---
@@ -175,3 +195,34 @@ Changes:
 - hvac_fan_card/templates/parameter-edit.js: createComfortTempItem, createTempControlSettingItems
 - translations/en.json + nl.json: temp_control_settings, temp_control_desired_speed keys
 - Tests: updated for new WebSocket commands and comfort_temp_kind dropdown
+
+## TODO: ramses_rf follow-up — discovery scan callback for real-time notifications
+
+**Context:** ramses_rf's DiscoveryScan is purely polling-based — no callback/event
+when a new device is first seen. ramses_cc currently polls every 30 min (plus an
+immediate check 10s after startup) to detect new devices and send persistent
+notifications. This means a user waits up to 30 min in steady state before being
+notified of a new device.
+
+**Goal:** Add a callback/listener mechanism to DiscoveryScan in ramses_rf so
+ramses_cc can register an `on_new_device` callback and get notified in real time
+when the scan engine classifies a new device.
+
+**Where to add it (ramses_rf):**
+- `src/ramses_rf/discovery_scan.py` — DiscoveryScan class
+- Add a `callbacks: list[Callable[[DiscoveredDevice], None]]` param or
+  an `add_listener(callback)` method
+- Fire the callback when a device transitions from unknown → classified
+  (i.e., when `likely_type` is first assigned)
+
+**Where to use it (ramses_cc):**
+- `custom_components/ramses_cc/discovery.py` — DiscoveryManager
+- Register a listener at startup that calls `check_for_new_devices()` +
+  sends the persistent notification immediately
+- Keep the 30-min checkpoint for lost-device detection and state persistence
+
+**Prerequisite:** The ramses_rf PR that introduced DiscoveryScan was just merged.
+This callback would be a follow-up PR on ramses_rf.
+
+**Priority:** Medium — the 10s immediate check + 30 min polling works, but
+real-time notification is much better UX for the discovery review flow.
