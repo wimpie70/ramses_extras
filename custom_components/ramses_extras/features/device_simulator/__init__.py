@@ -742,8 +742,8 @@ async def create_device_simulator_feature(
         hgi_device_id = SIMULATOR_HGI_ID  # 18:001234
         dst = "--:------"  # Broadcast
         code = "0005"  # HGI presence announcement packet
-        payload = "0005DC0101F40205DC"  # HGI presence payload
-        payload_len = len(payload) // 2  # 9 bytes
+        payload = "0000FF01"  # HGI presence payload (valid 0005 I-frame)
+        payload_len = len(payload) // 2  # 4 bytes
         # Format: RSSI VERB --- SRC DST BROADCAST CODE LEN PAYLOAD
         # For HGI I frames: BROADCAST = SRC (the HGI itself)
         initial_frame = (

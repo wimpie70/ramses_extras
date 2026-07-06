@@ -160,8 +160,8 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 0000B400B40000
-  notes: Filter remaining ~180 days, 180 day lifetime (8 bytes)
+  - 00B400B40000
+  notes: Filter remaining ~180 days, 180 day lifetime (6 bytes)
 - code: 10E0
   rq_verb: RQ
   rp_verb: RP
@@ -274,7 +274,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '000000000000000000000000'
+  - '0000000000000000000000'
   notes: Unknown HVAC code (RP ^00[0-9A-F]{20}$)
 - code: 313F
   rq_verb: RQ
