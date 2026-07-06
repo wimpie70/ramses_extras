@@ -20,7 +20,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -56,6 +56,20 @@ from .scenarios.base import ScenarioContext, ScenarioDefinition, ScenarioResult
 from .system_config import SIM_DEVICE_ID, SystemConfigProfile
 
 MESSAGE_EVENT = "ramses_extras_simulator_messages"
+
+# Codes where the first byte of the payload is the zone_idx.
+# For these codes, the RP payload must echo the requested zone so the
+# caller (ramses_cc) can correlate the response with its request.
+_ZONE_SPECIFIC_CODES: Final[set[str]] = {
+    "0004",  # zone name
+    "0005",  # zone type/mask
+    "0008",  # relay demand (zone-specific variant)
+    "000A",  # zone binding
+    "000C",  # zone map
+    "2309",  # zone setpoint
+    "2349",  # zone setpoint/mode override
+    "30C9",  # zone temperature
+}
 
 _PACKET_RE = re.compile(
     # Match RAMSES frame format: [RSSI] VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
@@ -1268,11 +1282,24 @@ class ScenarioEngine:
 
         # Standard response handling for non-2411 codes
         if resp and resp.payloads:
-            key = (slug, code)
-            idx = self._response_index.get(key, 0) % len(resp.payloads)
-            payload = resp.payloads[idx]
-            self._response_index[key] = idx + 1
             delay_ms = resp.delay_ms
+            # Zone-specific codes: the first byte of the payload is the
+            # zone_idx.  Match it to the requested zone so ramses_cc can
+            # correlate the RP with its RQ.  Falls back to dynamic response
+            # if no DB payload matches the requested zone.
+            if code in _ZONE_SPECIFIC_CODES and len(rq_payload) >= 2:
+                zone_hex = rq_payload[:2].upper()
+                payload = next(
+                    (p for p in resp.payloads if p[:2].upper() == zone_hex),
+                    None,
+                )
+                if payload is None:
+                    payload = build_dynamic_response(slug, code, rq_payload)
+            else:
+                key = (slug, code)
+                idx = self._response_index.get(key, 0) % len(resp.payloads)
+                payload = resp.payloads[idx]
+                self._response_index[key] = idx + 1
         else:
             payload = build_dynamic_response(slug, code, rq_payload)
 
