@@ -145,7 +145,14 @@ class ResponseEngine:
                 LOGGER.debug("ResponseEngine: dropping RQ - broadcast destination")
                 return
 
-            if verb == "RQ" and self._engine and self._engine.is_device_active(dst):
+            if (
+                verb == "RQ"
+                and self._engine
+                and (
+                    self._engine.is_device_active(dst)
+                    or self._engine.answer_unknown_devices
+                )
+            ):
                 LOGGER.debug(
                     "ResponseEngine: %s handled by ScenarioEngine; "
                     "skipping legacy reply",

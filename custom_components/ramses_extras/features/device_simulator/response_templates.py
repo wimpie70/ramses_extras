@@ -30,7 +30,7 @@ def build_dynamic_response(
 
     Currently synthesizes RP payloads for:
     - CTL: 000C, 30C9, 2349 (zone/heating discovery)
-    - FAN: 22F1, 31D9, 22E0, 22E5, 22E9 (HVAC discovery fallbacks)
+    - FAN: 22F1, 31D9, 22E0, 22E5, 22E9, 22F8 (HVAC discovery fallbacks)
     """
 
     slug_norm = (slug or "").upper()
@@ -206,6 +206,11 @@ def build_dynamic_response(
             # Speed cap: 100%
             # RP format: ^00[0-9A-F]{6}$
             return "00000064"
+
+        if code_norm == "22F8":
+            # fan_22f8 (moisture scenario?): return minimal mode 00 (off)
+            # RP format: ^00[0-9A-F]{4}$ (3 bytes)
+            return "000000"
 
         if code_norm == "2210":
             # Air quality / exhaust fan speed: minimal 42-byte response
