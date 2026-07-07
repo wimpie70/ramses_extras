@@ -1,0 +1,453 @@
+Here's the PR 764 status overview:
+
+PR 764: implement passive device scan cc 762 4b
+Branch: feature/passive-scan-cc → master
+State: Draft, Open, Mergeable (clean)
+Review: Approved by silverailscolo
+Size: +2758 / -22 across 13 files, 13 commits (rebased on master)
+
+## CI status (last run)
+Check          | Status
+---            | ---
+test (3.14)    | ✅ pass (722 passed, 10 skipped)
+lint (3.14)    | ✅ pass
+type (3.14)    | ✅ pass
+validate       | ✅ pass
+validate-hacs  | ✅ pass
+coverage (3.14)| ❌ fail (93% vs 94% required — see blocker below)
+
+## Coverage blocker
+
+`discovery.py` drops to 24% in CI because `ramses_rf.discovery_scan`
+is not installed. The test file uses `pytest.importorskip` which skips
+all 72 discovery tests when the module is absent.
+
+- `manifest.json` requires `ramses-rf==0.57.8` (has discovery_scan)
+- `requirements_dev.txt` pins `ramses-rf==0.57.6` (does NOT have it)
+- Once the codeowner bumps `requirements_dev.txt` to 0.57.8, coverage
+  jumps back to 98% and the threshold is met
+
+Local coverage (with discovery_scan available): 98% (94 missing of 4307)
+
+## What's done (Phase 4a + 4b)
+
+### Phase 4a: ramses_rf scan engine — merged
+- `discovery_scan.py`: DiscoveryScan class, DiscoveredDevice dataclass
+- Classification: prefix→type + verb/code→type (dict lookups)
+- start/stop/get_devices/export_json/import_json
+- No HA dependencies, no topology mutation
+
+### Phase 4b: ramses_cc HA integration — complete
+- DiscoveryManager class with passive observer
+- accept/discard/remove/enable/disable_discovered_device services
+- add_faked_rem service
+- Schema auto-generation on accept (generate_schema_entry)
+- _derive_known_list_from_schema (schema → known_list)
+- _strip_schema_extensions (inject remotes: [] for 30: devices)
+- Config flow: "Review discovered devices" step (accept/decline/skip)
+- "Clear discovery state" option in cache step
+- Persistence to .storage/ramses_cc
+- Passive scan migration (known_list-only → schema orphans)
+- enforce_known_list auto-forcing when passive scan is on
+- Lost device detection + notification
+- Persistent notifications for new/lost devices
+- 153 tests added across 6 test files
+
+## Where we are in the big plan (issue 627)
+
+### Phase 1: discover_known_devices service — ✅ DONE (PR 759)
+### Phase 2: discovery command gaps — ✅ DONE (PR 758)
+### Phase 3: CQRS event bus — ⏳ Phil's territory (not started)
+### Phase 4a: ramses_rf scan engine — ✅ DONE (merged)
+### Phase 4b: ramses_cc HA integration — ✅ DONE (PR 764, blocked on coverage)
+
+## What we can work on NOW (ramses_cc only, no ramses_rf dependency)
+
+From schema_architecture.md "NEXT (ramses_cc only)":
+
+1. **Cache → config sync**: on save_state, write rich schema back to
+   config entry options (preserving disabled_devices, user overrides)
+   - Config-flow toggle: schema_sync_mode = auto|manual
+   - Auto: compare cached schema vs config schema, update config with
+     richer cached topology (new zones, moved devices)
+   - Never overwrite user-authored keys (_alias, _enabled, _class)
+   - This is the biggest SSOT win we can deliver without ramses_rf changes
+
+2. **remove_device service**: clean removal from schema + registry
+   - Removes from schema (zones, orphans, main_tcs)
+   - Removes from known_list
+   - Removes HA device registry entry
+   - Keeps schema clean when devices die/are replaced
+
+3. **Zone reassignment**: detect device in two zones, keep latest
+   - When ramses_rf learns a device moved zones, cache has new zone
+   - On merge, remove from old zone in config schema
+   - Prevents duplicate zone entries
+
+4. **Discovery: classify CO2 sensors** in generate_schema_entry
+   - Currently FAN and REM are handled, CO2 may fall through to orphans
+   - Add: if likely_type == "CO2": add to parent's sensors[]
+
+## What's BLOCKED on ramses_rf (LATER)
+
+5. TopologyChangedEvent callback → real-time schema updates (needs ramses_rf PR)
+6. Query CTL for zone map (000C) on accept → immediate zone info
+7. Device health: track unavailable devices, suggest removal
+8. HVAC: implement load_fan, FAN as Parent, HVAC binding rules
+9. HVAC: fix gateway.schema() to output HVAC structure
+10. HVAC: support dual-role devices (CO2 + REM)
+
+## Phil's execution plan (from review of PR 764)
+
+Phil (PWhite-Eng) has agreed on a 4-step sequence:
+
+| Step | Owner | Focus | Status |
+|------|-------|-------|--------|
+| 1. Stabilize Discovery | Phil + community | Resolve 666, 677, 627 regressions | Active |
+| 2. Schema SSOT & Passive Scan | **Us (parallel)** | PR 764 + schema merge + cache→config sync | **In progress** |
+| 3. Strict DTO Boundaries (#714) | Phil + us | CQRS Read-Models across all entities | After step 1-2 |
+| 4. Coordinator SIGNAL_UPDATE | Us | Wire to StateUpdatedEvent bus, remove sleep hack | After step 3 |
+
+**Key constraints from Phil:**
+- Do NOT touch `gateway.py` `_msg_handler` — he's gutting it ("The Great Lobotomy")
+- Do NOT touch entity files for DTO changes — he's replacing dict-based APIs
+- Do NOT propose a ramses_rf PR for topology callbacks — he's already building
+  `StateUpdatedEvents` via the CQRS StateProjector. We wire into that later.
+
+## Recommended next steps (Step 2 work, all ramses_cc-only)
+
+### A. Fix schema merge logic (services.py / discovery.py)
+The current `_apply_schema_entry` uses `deep_merge` blindly:
+- Accepting a TRV into a zone that already has a sensor → **overwrites** the
+  existing sensor silently
+- Accepting a device already in orphans → can create **duplicates**
+- No check for "is this device_id already somewhere in the schema?"
+
+Fix: make `_apply_schema_entry` smarter — check for existing device_id,
+remove from old location, then merge into new location. Deduplicate orphans.
+
+### B. Cache → config sync (coordinator.py)
+Currently learned topology only lives in `.storage/ramses_cc` cache.
+The config entry schema is never updated with learned topology.
+
+Fix: on `async_save_client_state`, compare learned schema (from
+`client.get_state()`) with config entry schema. If learned has richer
+topology (devices in zones that config has in orphans, new zones, new
+DHW bindings), write that back to config entry options. Preserve
+user-authored keys (_alias, _enabled, _class).
+
+### C. Get PR 764 unblocked
+Coverage blocker: codeowner bumps `requirements_dev.txt` to 0.57.8.
+✅ RESOLVED — requirements_dev.txt now pins ramses-rf==0.57.9 (matches
+manifest.json). discovery_scan module available, all 72 discovery tests
+run. Local: 695 passed, 10 skipped.
+
+### Later (after Phil's Step 3):
+- Wire ramses_cc to `StateUpdatedEvents` (replaces polling)
+- SIGNAL_UPDATE refactor (Step 4)
+
+
+<a id="whats-left-to-do"></a>
+## What's left to do on PR 764 (comprehensive)
+
+Sources: schema_architecture.md "NEXT (ramses_cc only)" + "Priority order
+for implementation" + PR 764 review conversation (silverailscolo, PWhite-Eng)
++ test gap analysis + corruption/edit-scenario coverage.
+
+### A. Features still missing (ramses_cc-only, no ramses_rf dependency)
+
+1. **`remove_device` service** — ✅ DONE
+   Registered a new standalone service that removes a device from
+   schema (zones, orphans, main_tcs, DHW, HVAC remotes/sensors),
+   known_list, and HA device registry. Also removes the device's own
+   top-level key and clears `main_tcs` if it points to the device.
+   The HGI gateway cannot be removed (raises `ServiceValidationError`).
+   Also removes from ramses_rf client's `_include` lists so
+   `enforce_known_list` stops allowing packets for the device.
+   - Service schema: `SCH_REMOVE_DEVICE` with `device_id` field
+   - Service handler: `async_remove_device` in `services.py`
+   - Coordinator delegate: `async_remove_device` in `coordinator.py`
+   - Registered in `__init__.py` (always available, not passive-scan-only)
+   - Translations (en.json, nl.json), services.yaml, icons.json
+   - Tests: 17 cases in `test_services.py` + 1 in `test_init.py`
+
+2. **Zone→zone reassignment in `sync_learned_topology`** — ✅ DONE
+   `sync_learned_topology` now handles **zone→zone moves**, **zone→DHW
+   moves**, and **DHW→zone moves**. If a device moves from zone 01 to
+   zone 02, the old zone's sensor/actuator is cleared. If a device moves
+   from a zone to DHW (or vice versa), the old location is cleaned up.
+   - Section 1e in `schemas.py:sync_learned_topology` builds a
+     `learned_device_zones` map (device_id → zone_idx) and a
+     `learned_dhw_devices` set from the learned schema, then scans all
+     config zones and removes devices that the learned schema placed in
+     a different location.
+   - Section 1f clears DHW sensor/valves if the learned schema now has
+     the device in a zone instead of DHW.
+   - Tests: 9 cases in `test_schemas.py` covering zone→zone (sensor,
+     actuator), zone→DHW, DHW→zone, DHW valve→zone, no-move, user-key
+     preservation, empty-list cleanup, and multi-device moves.
+
+3. **CO2 sensor classification in `generate_schema_entry`** — ✅ DONE
+   `discovery.py:generate_schema_entry` now handles CO2 alongside REM.
+   Both `37:` devices go to the parent FAN's `remotes[]` list (or
+   `orphans_hvac` if no parent is known). Previously CO2 sensors fell
+   through to the default `{SZ_ORPHANS_HEAT: [device_id]}` — wrong
+   domain.
+
+   **Design decision (conservative approach):** CO2 and REM are merged
+   into a single branch because:
+   - The scan engine classifies `37:` devices dynamically — a single
+     device flips between `CO2` and `REM` depending on which packet
+     arrived last (they send both `I 1298` and `I 22F1`).
+   - `ramses_rf` ignores HVAC schema anyway (`load_fan` stub), so the
+     `sensors[]` vs `remotes[]` distinction has no effect today.
+   - Dual-role devices (CO2 sensor + REM) are deferred to the Builder
+     pattern (LATER item 10 in schema_architecture.md).
+
+   **Known limitation:** when `ctl_id` is set but `bound_to` (FAN) is
+   not, the CO2 sensor is placed under the CTL's `remotes[]` — which is
+   technically wrong (CTLs don't have `remotes`, that's a FAN concept).
+   This is a pre-existing issue inherited from the REM branch and will
+   be addressed when HVAC topology is properly implemented (LATER item
+   8-10).
+
+   Tests added: 6 cases in `test_discovery_manager.py`
+   (CO2 with/without parent, with ctl_id, case-insensitive, edge cases).
+
+4. **Cache HVAC schema separately** — ✅ DONE
+   HVAC topology (FAN entries with `remotes`/`sensors`, `orphans_hvac`)
+   is now cached separately in `.storage/ramses_cc` under the
+   `SZ_HVAC_SCHEMA` key.  This works around the ramses_rf `load_fan`
+   stub which causes `gateway.schema()` to omit HVAC topology —
+   without separate caching, HVAC entries would be lost on every
+   restart.
+   - `extract_hvac_schema` in `schemas.py` pulls HVAC entries from
+     the config schema (FAN entries with `remotes`/`sensors` keys,
+     plus `orphans_hvac`).
+   - `merge_hvac_schema` in `schemas.py` unions cached HVAC entries
+     into the config schema on startup (union for `remotes`,
+     `sensors`, and `orphans_hvac` lists — no duplicates).
+   - `async_save_client_state` in `coordinator.py` extracts and
+     passes the HVAC schema to `store.async_save`.
+   - `async_setup` in `coordinator.py` loads the cached HVAC schema
+     and merges it into the config schema before creating the client.
+   - `store.py` persists `SZ_HVAC_SCHEMA` alongside the existing
+     `client_state`, `remotes`, and `discovery` keys.  When
+     `hvac_schema=None`, existing HVAC cache is preserved.
+   - Tests: 14 in `test_schemas.py` (extract/merge), 3 in
+     `test_store.py` (save/preserve), 1 in `test_coordinator.py`
+     (updated for new save signature).
+
+### B. Items deferred/acknowledged in PR 764 conversation
+
+These were explicitly discussed in the PR conversation and deferred:
+
+- **Edit device traits form in config flow** — deferred as follow-up PR
+  (agreed with silverailscolo). The `_alias`, `_class`, `_enabled`,
+  `_skipped` traits are stored in schema but there's no UI to edit them
+  per-device without raw schema editing.
+- **HVAC topology roundtrip** — ramses_rf gap (`load_fan` stub), not
+  ours. Tracked as LATER item 8-10 in schema_architecture.md.
+- **Event-driven sync** — Step 4, waits for ramses_rf `StateUpdatedEvent`
+  bus (PWhite-Eng's CQRS Phase 2.95). Currently polling every 5 min.
+- **`_faked`/`_scheme`/`_bound` traits** — stay in known_list for now,
+  not migrated to schema (Phase 2 of schema_architecture.md, needs
+  ramses_rf PR to accept `_` keys in validators).
+- **TopologyChangedEvent callback** — LATER item 5, needs ramses_rf PR.
+- **Query CTL for zone map (000C) on accept** — LATER item 6.
+- **Device health: track unavailable devices, suggest removal** —
+  LATER item 7.
+
+### C. Comprehensive test coverage needed
+
+Current test counts: test_schemas.py (46), test_services.py (134),
+test_coordinator.py (83), test_config_flow.py (51), test_init.py (19),
+test_store.py (12), test_discovery_manager.py (~70). Total ~415 tests,
+718 passing with 10 skipped. But there are significant gaps:
+
+#### C.1 Tests for new functions (features in section A)
+
+**`remove_device` service (A.1):** ✅ DONE — 17 tests in test_services.py + 1 in test_init.py
+- Remove device from zone sensor → sensor cleared, zone preserved
+- Remove device from zone actuators list → removed, list preserved
+- Remove device that is `appliance_control` → cleared, TCS preserved
+- Remove device from `orphans_heat` → removed, list preserved
+- Remove device from `orphans_heat` (only entry) → list key removed
+- Remove device from HVAC remotes list → removed, list preserved
+- Remove device's own top-level key (e.g. "32:153289": {}) → deleted
+- Remove device that is `main_tcs` → main_tcs cleared, key deleted
+- Remove device from known_list overrides → removed
+- Remove device from DHW sensor → cleared, DHW system preserved
+- Remove device that exists in multiple locations → all removed
+- Remove device and persist to config entry → async_update_entry called
+- Remove device from HA device registry → async_remove_device called
+- Remove device from ramses_rf client _include lists → removed
+- Remove HGI gateway → ServiceValidationError
+- Remove non-existent device → ServiceValidationError
+- Service registered even when passive scan disabled → has_service True
+- Service wrapper called from __init__.py → coordinator method called
+
+**Zone→zone reassignment (A.2):** ✅ DONE — 9 tests added
+- Zone→zone sensor move → old zone sensor cleared, new zone has it
+- Zone→zone actuator move → removed from old, kept in new, others preserved
+- Zone→DHW sensor move → old zone sensor cleared, DHW gets it
+- DHW→zone sensor move → DHW sensor cleared, zone gets it
+- DHW valve→zone move → DHW valve cleared, zone actuator added
+- No move (device stays in same zone) → returns None
+- User-authored keys (`_name`) preserved in old zone on move
+- Empty actuators list removed when all actuators move away
+- Multiple devices move simultaneously → all cleaned up
+
+**CO2 classification (A.3):** ✅ DONE — 6 tests added
+- `likely_type="CO2"` with `bound_to` (parent FAN) → added to FAN remotes[]
+- `likely_type="CO2"` without `bound_to` → goes to orphans_hvac
+- `likely_type="CO2"` with `ctl_id` but no FAN → uses ctl_id as fallback
+  parent (known limitation — see A.3 design decision above)
+- `likely_type="co2"` (lowercase) → case-insensitive, same result
+- CO2 with `bound_to` in edge-case test class
+- CO2 without `bound_to` in edge-case test class
+- Future: CO2 → `sensors[]` instead of `remotes[]` when load_fan is
+  implemented and Builder pattern can distinguish dual-role devices
+
+**HVAC schema caching (A.4):** ✅ DONE — 17 tests added
+- `extract_hvac_schema` extracts FAN entries (remotes/sensors) + orphans_hvac
+- `extract_hvac_schema` with sensors list → extracted
+- `extract_hvac_schema` with no HVAC entries → empty dict
+- `extract_hvac_schema` with non-dict input → empty dict
+- `extract_hvac_schema` with FAN without lists → not extracted
+- `merge_hvac_schema` into empty config → all entries added
+- `merge_hvac_schema` union remotes → no duplicates
+- `merge_hvac_schema` union orphans_hvac → no duplicates
+- `merge_hvac_schema` adds sensors to FAN that only had remotes
+- `merge_hvac_schema` with empty cache → returns config unchanged
+- `merge_hvac_schema` with None cache → returns config unchanged
+- `merge_hvac_schema` with no overlap → all HVAC added, heat preserved
+- `merge_hvac_schema` preserves heat topology entries
+- `merge_hvac_schema` roundtrip (extract → merge) → idempotent
+- Store: `async_save` with `hvac_schema` → saved under `SZ_HVAC_SCHEMA`
+- Store: `async_save` with `hvac_schema=None` → preserves existing
+- Store: `async_save` with no existing HVAC → no key saved
+
+#### C.2 Tests for user schema edits (manual config flow edits)
+
+These test that user-authored schema edits survive the sync/merge cycle:
+
+**✅ DONE — 10 tests added (7 new + 3 pre-existing)**
+- User adds `_alias: "Living Room"` to a zone → preserved ✅
+- User sets `_class: "underfloor_heating"` → preserved ✅ (pre-existing)
+- User sets `_enabled: false` on a zone → preserved across sync ✅
+- User sets `_skipped: true` on a zone → preserved across sync ✅
+- User edits `main_tcs` to a different CTL → preserved, not overwritten ✅
+- User adds a device to a zone manually that ramses_rf hasn't learned →
+  preserved, not removed by sync ✅
+- User removes a device from schema entirely → sync does not re-add it
+  from cache ✅
+- User edits `device_comments` → preserved by `sync_learned_topology`
+  (comments + zone sync combo) ✅
+- User adds custom `_` prefixed key → `strip_traits_for_validation`
+  removes it for validation ✅
+- `_disabled: "yes"` (string instead of bool) → stripped correctly ✅
+- User provides a minimal schema → `schema_is_minimal` returns True ✅
+  (pre-existing)
+
+#### C.3 Tests for corruption / malformed schema
+
+These test graceful degradation when the schema or cache is corrupt:
+
+**✅ DONE — 12 tests added (9 new + 3 coordinator safety net + pre-existing)**
+- **Non-dict TCS entry** → `sync_learned_topology` skips it ✅ (pre-existing)
+- **Non-dict zone** → skipped, no crash ✅ (pre-existing)
+- **`main_tcs` → non-existent key** → coordinator safety net clears it ✅
+- **`main_tcs` → TRV ID (04:)** → safety net clears it ✅
+- **Valid `main_tcs` (01:)** → preserved ✅
+- **Device in zone sensor AND orphans** → removes from orphans ✅ (pre-existing)
+- **Duplicate device in two zones** → keeps learned, removes stale ✅
+- **Orphan list with non-string entries** (123, null) → no crash ✅
+  (also fixed: `sorted()` now filters to strings only)
+- **`zones` as a list instead of dict** → no crash ✅
+  (also fixed: `setdefault` replaced with isinstance guard)
+- **Sensor as dict instead of string** → no crash ✅
+  (also fixed: `isinstance(str)` guard before set lookups)
+- **`remotes` as string instead of list** → `remove_device_from_schema` no crash ✅
+- **Empty schema `{}`** → all functions return empty/None ✅
+- **None schema** → treated as empty/None, no crash ✅
+  (also fixed: `merge_schemas` and `sync_learned_topology` now guard
+  against non-dict inputs)
+- **Corrupt cache (non-dict)** → `merge_schemas` returns None ✅
+  (also fixed: `merge_schemas` now guards against non-dict inputs)
+- **`_disabled: "yes"` (string)** → `strip_traits_for_validation` strips it ✅
+
+**Robustness fixes applied to `schemas.py`:**
+- `merge_schemas`: guard against non-dict `config_schema`/`cached_schema`
+- `sync_learned_topology`: guard against non-dict `config_schema`
+- Zone sync: `isinstance(dict)` check before `setdefault` on config zones
+- Zone reassignment: `isinstance(str)` check before set lookups for
+  sensors and actuators (prevents `unhashable type: 'dict'` error)
+- Orphan cleanup: filter to strings before `sorted()` (prevents
+  `'<' not supported between 'int' and 'NoneType'` error)
+- Learned device zone/DHW maps: `isinstance(str)` guards before adding
+  to sets/dicts (prevents unhashable type errors from corrupt learned
+  schema)
+
+#### C.4 Tests for the sync/merge lifecycle
+
+- `sync_learned_topology` called on 5-min interval → config entry updated
+- `sync_learned_topology` called on `sync_topology` service → same
+- `sync_learned_topology` NOT called on unload (commit `e9dd308` fix)
+  → `_skip_topology_sync` flag prevents stale write
+- `sync_learned_topology` called when config entry is None → no-op
+- `merge_schemas` with config minimal + cache rich → enriched schema
+- `merge_schemas` with config rich + cache minimal → config preserved
+- `merge_schemas` with both empty → empty schema
+- `merge_schemas` with conflicting zone sensors → config wins
+- `_derive_known_list_from_schema` with HVAC devices → includes them
+- `_strip_schema_extensions` with `30:` device → injects `remotes: []`
+- `_strip_schema_extensions` with `_disabled` trait → removes `_` keys
+- HGI always kept in known_list even when schema_is_ssot (commit `dbfdfc1`)
+- `enforce_known_list` auto-forced when passive scan enabled
+- Lost device detection: marks devices older than threshold
+- Lost device notification: sent when `auto_notify` enabled
+- Lost device: skipped for non-accepted devices
+- Lost device: handles invalid `last_seen` date
+
+#### C.5 Tests for discovery service lifecycle
+
+- All 8 passive scan services registered when scan enabled
+- No passive scan services registered when scan disabled
+- Services removed on unload (commit `cd179e0` fix)
+- `accept_discovered_device` → schema fragment generated, merged, entities created
+- `accept_discovered_device` with explicit `schema_entry` → uses provided
+- `accept_discovered_device` with `ctl_id` → places in TCS
+- `discard_discovered_device` → status changed, not in schema
+- `remove_discovered_device` → removed from discovery list
+- `enable_discovered_device` / `disable_discovered_device` → toggles enabled
+- `add_faked_rem` → faked REM created with bound_to
+- `get_discovered_devices` with status filter → filtered list
+- `get_discovered_devices` with no filter → all devices
+- Discovery manager not running → service raises `HomeAssistantError`
+- Device not in discovery list → `ServiceValidationError`
+- Discovery state persisted to `.storage` on save
+- Discovery state restored on startup
+- `clear_discovery` option in cache step → wipes discovery state
+- Config flow "Review discovered devices" step → shows form with devices
+- Config flow accept/decline/skip per device → correct schema update
+- Config flow "none" bulk option (commit `f74a4ff`) → no changes
+
+### D. CI / release blockers
+
+- ✅ Coverage blocker resolved (ramses-rf 0.57.9 in requirements_dev.txt)
+- ⚠️ Lingering task in `test_entities[minimal]` teardown
+  (`PortTransport._create_connection()` pending) — commit `9fc250c`
+  added a sleep workaround, but may flake under load. Worth investigating
+  a proper transport cleanup in ramses_tx.
+- Push branch `feature/passive-scan-cc` (currently 35 commits ahead of
+  `wimpie70/feature/passive-scan-cc` after the two origin/master merges)
+
+### E. Documentation updates needed
+
+- Update `docs/Here's the PR 764 status overview:` with this list
+- Update `docs/schema_architecture.md` "Priority order for implementation"
+  to mark `remove_device` service (✅ DONE), zone reassignment, CO2
+  classification (✅ DONE), and HVAC schema caching as in-progress
+- Add migration notes to `schema_architecture.md` for the `remove_device`
+  service (no schema version bump needed, additive)

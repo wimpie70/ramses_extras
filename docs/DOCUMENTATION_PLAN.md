@@ -36,7 +36,7 @@ This document catalogs the current documentation state for the Ramses Extras pro
 | **User Guides** | 0 | ❌ **Critical gap** |
 | **Examples** | 1 | ⚠️ Needs expansion |
 | **Troubleshooting** | 0 | ❌ Missing |
-| **Developer Guides** | 0 | ⚠️ Nice to have |
+| **Developer Guides** | 1 | ✅ `HA_SIM_TEST_TOOL.md` |
 
 ---
 

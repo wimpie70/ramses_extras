@@ -67,7 +67,7 @@ repos:
     hooks:
       - id: codespell
         args:
-          - --ignore-words-list=hass,soler,reenabled,re-enabled
+          - --ignore-words-list=hass,soler,reenabled,re-enabled,DED
           - --skip="./.*,*.csv,*.json,*.ambr,docs/notepad.txt"
           - --quiet-level=2
         exclude_types: [csv, json, html]

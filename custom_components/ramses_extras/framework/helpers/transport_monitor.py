@@ -390,6 +390,10 @@ class TransportMonitor:
         The ramses_rf gateway passes a PacketDTO (or, in older versions,
         a Message object).  PacketDTO has addr1/addr2/addr3 string fields;
         Message has src/dst Address objects with .id.  We support both.
+
+        Any message from a device proves it is online — mark it online
+        even if no callback is explicitly tracking it.  This prevents a
+        device from being stuck offline after a transient command failure.
         """
         try:
             self._refresh_coordinator()
@@ -400,15 +404,11 @@ class TransportMonitor:
                 src = getattr(getattr(msg, "src", None), "id", None)
 
             if isinstance(src, str) and ":" in src:
-                normalized_src = src.replace("_", ":")
-                tracked_device_ids = {
-                    device_id
-                    for device_id, _ in self._callbacks.values()
-                    if device_id is not None
-                }
-
-                if normalized_src in tracked_device_ids:
-                    self.update_device_message_received(src)
+                # Mark the device online — receiving a message from it
+                # proves it is reachable.  This also covers devices that
+                # were marked offline by a failed command but are still
+                # broadcasting info packets.
+                self.update_device_message_received(src)
         except Exception as e:
             _LOGGER.error("Error handling ramses_cc client message: %s", e)
 

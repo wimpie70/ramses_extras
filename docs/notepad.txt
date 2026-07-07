@@ -137,7 +137,7 @@ we should be able to simulate and test this
 
 
 -- other:
-
+- create a mermaid https://github.com/ramses-rf/ramses_cc/pull/764#issuecomment-4905294337
 _cc:
 - We still don't see all the msg that are sent from RF, even with the Log all MQTT topics enabled
 - we don't discover devices while we DO SEE msgs sent by them...why not ???
@@ -204,22 +204,3 @@ Traceback (most recent call last):
     raise TypeError("Either a port_name or an input_file must be specified")
 TypeError: Either a port_name or an input_file must be specified
 2026-05-05 16:04:23.891 INFO (MainThread) [homeassistant.config_entries] Config entry 'RAMSES RF' for ramses_cc integration not ready yet: Setup failed: Either a port_name or an input_file must be specified; Retrying in 5 seconds
-
-----
-
-
-2026-07-07 08:08:11.079 INFO (paho-mqtt-client-) [ramses_tx.transport.mqtt] mq Rx: b'{"msg": "000 RP --- 01:150000 18:001234 --:------ 000C 006 09040013305E", "ts": "2026-07-07T08:08:11.064875"}'
-2026-07-07 08:08:11.085 INFO (MainThread) [ramses_tx.protocol.base] Recv'd: 000 RP --- 01:150000 18:001234 --:------ 000C 006 09040013305E
-2026-07-07 08:08:11.085 DEBUG (MainThread) [custom_components.ramses_cc.event] handle_event ramses_cc_regex_match, data: {'type': <RamsesEventType.REGEX: 'ramses_cc_regex_match'>, 'device_id': '01:150000', 'dtm': '2026-07-07T08:08:11.064875+02:00', 'src': '01:150000', 'dst': '18:001234', 'verb': 'RP', 'code': '000C', 'payload': {'zone_type': '04', 'zone_idx': '09', 'device_role': 'zone_sensor', 'devices': ['04:208990']}, 'packet': 'RP --- 01:150000 18:001234 --:------ 000C 006 09040013305E'}
-2026-07-07 08:08:11.091 ERROR (MainThread) [ramses_rf.legacy_trace] FILTER EXCEPTION: Device 04:208990 failed filter checks: Can't create 04:208990: it is not an allowed device_id (if required, add it to the known_list)
-2026-07-07 08:08:11.092 ERROR (MainThread) [ramses_rf.legacy_trace] BIND EXCEPTION: Failed fetching 04:208990: Can't create 04:208990: it is not an allowed device_id (if required, add it to the known_list)
-2026-07-07 08:08:11.092 INFO (MainThread) [ramses_rf.dispatcher] ||  01:150000 |  18:001234 | RP | unknown_000C     |  09  || {'zone_type': '04', 'zone_idx': '09', 'device_role': 'zone_sensor', 'devices': ['04:208990']}
-2026-07-07 08:08:11.092 ERROR (MainThread) [ramses_rf.legacy_trace] FILTER EXCEPTION: Device 04:208990 failed filter checks: Can't create 04:208990: it is unwanted or invalid
-2026-07-07 08:08:11.092 WARNING (MainThread) [ramses_rf.legacy_trace] SUPPRESSED in Zone 000C handler (sensor): Can't create 04:208990: it is unwanted or invalid. Packet dropped.
-2026-07-07 08:08:13.156 INFO (MainThread) [custom_components.ramses_cc.coordinator] Saving the client state cache (packets, schema)
-2026-07-07 08:08:13.156 INFO (MainThread) [custom_components.ramses_cc.coordinator] Saving state: discovery_manager=True, cached=False, discovery_devices=1
-2026-07-07 08:08:13.900 INFO (MainThread) [ramses_tx.transport.mqtt] mq Tx: {"msg": "RQ --- 18:001234 01:150000 --:------ 000C 002 0908"}
-2026-07-07 08:08:13.925 DEBUG (SyncWorker_0) [custom_components.ramses_extras.features.device_simulator.const] Simulator MQTT msg on RAMSES/GATEWAY_SIM/18:001234/tx: {"msg": "RQ --- 18:001234 01:150000 --:------ 000C 002 0908"}
-2026-07-07 08:08:13.925 DEBUG (SyncWorker_0) [custom_components.ramses_extras.features.device_simulator.const] Simulator received from ramses_rf: RQ --- 18:001234 01:150000 --:------ 000C 002 0908
-2026-07-07 08:08:13.925 DEBUG (SyncWorker_0) [custom_components.ramses_extras.features.device_simulator.const] Endpoint 136960468459472: dispatching frame to 2 handler(s)
-2026-07-07 08:08:13.925 DEBUG (SyncWorker_0) [custom_components.ramses_extras.features.device_simulator.const] Endpoint 136960468459472: scheduling handler 136960468145408 for frame: RQ --- 18:001234 01:150000 --:------ 000C 002 0908
