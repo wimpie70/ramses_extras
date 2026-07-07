@@ -779,6 +779,17 @@ async def create_device_simulator_feature(
             scenario_definitions=discover_scenarios(),
         )
 
+    # Restore the active profile's schema so schema-aware responses (e.g. 000C)
+    # work immediately after a restart without waiting for a profile reload.
+    engine = registry["device_simulator_engine"]
+    config_store = registry.get("device_simulator_config_store")
+    if config_store and not engine.profile_schema:
+        profile_name = config_store.get_active_profile()
+        if profile_name:
+            profile = config_store.get_profile(profile_name)
+            if profile:
+                engine.set_profile_schema(profile.device_configs.get("_schema") or None)
+
     registry["device_simulator_response_engine"].set_engine(
         registry["device_simulator_engine"]
     )
