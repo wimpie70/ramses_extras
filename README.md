@@ -328,6 +328,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 - 📖 Read the [Wiki Architecture Guide](https://github.com/wimpie70/ramses_extras/wiki)
 - 🛠️ Write your code
 - 🧪 Write tests for new features
+- 🧪 For ha-sim end-to-end testing, see [docs/HA_SIM_TEST_TOOL.md](docs/HA_SIM_TEST_TOOL.md)
 
 ## 📜 **License**
 

@@ -50,7 +50,7 @@ from .message_log import (
     MessageOrigin,
     PacketDirection,
 )
-from .response_templates import build_dynamic_response
+from .response_templates import build_dynamic_response, build_schema_000c_response
 from .scenarios import discover_scenarios
 from .scenarios.base import ScenarioContext, ScenarioDefinition, ScenarioResult
 from .system_config import SIM_DEVICE_ID, SystemConfigProfile
@@ -146,6 +146,7 @@ class ScenarioEngine:
         self._scenario_definitions = scenario_definitions or discover_scenarios()
         self._profile_device_ids: set[str] = set()
         self._manual_device_ids: set[str] = set()
+        self._profile_schema: dict[str, Any] | None = None
         self._primed_fans: set[str] = set()
         self._autonomous_speed: float = 1.0
         self._recent_frames: dict[tuple[PacketDirection, str, str], float] = {}
@@ -369,6 +370,7 @@ class ScenarioEngine:
     def build_profile_devices(self, profile: SystemConfigProfile) -> list[ActiveDevice]:
         """Construct ActiveDevice instances for every profile known_list entry."""
 
+        self.set_profile_schema(profile.device_configs.get("_schema") or None)
         known_list = profile.device_configs.get("_known_list") or {}
         devices: list[ActiveDevice] = []
         for device_id, entry in known_list.items():
@@ -397,6 +399,7 @@ class ScenarioEngine:
             if device and device.origin == "profile":
                 self._active_devices.pop(device_id, None)
         self._profile_device_ids.clear()
+        self.set_profile_schema(None)
 
     async def async_stop_manual_devices(self, device_id: str | None = None) -> None:
         """Stop and remove devices that were injected manually."""
@@ -1280,6 +1283,49 @@ class ScenarioEngine:
                 "ScenarioEngine: unable to build 2411 payload for %s", rq_payload
             )
 
+        # 000C (zone_devices): prefer schema-aware response so device IDs
+        # match the active profile's known_list rather than recorded captures.
+        # Recorded payloads reference real device IDs from a different network's
+        # capture, which ramses_rf rejects when they're not in the known_list.
+        if code == "000C" and rq_payload:
+            if self._profile_schema is None:
+                # No schema available (e.g. after a reload that lost the engine
+                # state) — don't respond with recorded payloads that reference
+                # foreign device IDs.
+                LOGGER.debug(
+                    "ScenarioEngine: 000C zone %s — no schema, not responding",
+                    rq_payload[:2],
+                )
+                return
+            schema_payload = build_schema_000c_response(
+                rq_payload, dst, self._profile_schema
+            )
+            if schema_payload is not None:
+                payload = schema_payload
+                delay_ms = resp.delay_ms if resp else 0
+                if delay_ms > 0:
+                    await asyncio.sleep(delay_ms / 1000.0)
+                packet = self._build_packet(dst, src, VERB_RP, code, payload)
+                try:
+                    await self._endpoint.send_packet(packet)
+                    self._messages_sent += 1
+                    self._message_log.append(
+                        f"[{asyncio.get_event_loop().time():.3f}] {packet[:60]}..."
+                    )
+                    if len(self._message_log) > 1000:
+                        self._message_log = self._message_log[-500:]
+                    self._log_and_emit("outbound", packet, origin="auto_answer")
+                    LOGGER.debug("Responded %s RP/%s → %s", dst, code, src)
+                except Exception as err:
+                    LOGGER.warning("Failed to send RP for %s/%s: %s", dst, code, err)
+                return
+            # schema says zone doesn't exist or has no devices — don't respond
+            LOGGER.debug(
+                "ScenarioEngine: 000C zone %s not in schema, not responding",
+                rq_payload[:2],
+            )
+            return
+
         # Standard response handling for non-2411 codes
         if resp and resp.payloads:
             delay_ms = resp.delay_ms
@@ -1438,6 +1484,18 @@ class ScenarioEngine:
         LOGGER.info(
             "Auto-answer %s", "enabled" if enabled else "disabled (no RQ replies)"
         )
+
+    def set_profile_schema(self, schema: dict[str, Any] | None) -> None:
+        """Store the active profile's schema for schema-aware responses.
+
+        :param schema: The _schema dict from the active profile, or None to clear.
+        """
+        self._profile_schema = schema
+
+    @property
+    def profile_schema(self) -> dict[str, Any] | None:
+        """Return the active profile's schema (for schema-aware responses)."""
+        return self._profile_schema
 
     @property
     def answer_unknown_devices(self) -> bool:

@@ -307,6 +307,10 @@ async def async_apply_profile(
         state_needs_save = True
     if engine:
         engine.set_auto_answer(profile.enable_auto_answer)
+        # Store the profile schema so the ScenarioEngine can build
+        # schema-aware 000C (zone_devices) responses with device IDs
+        # that match the active known_list.
+        engine.set_profile_schema(profile.device_configs.get("_schema") or None)
     actions.append(
         f"auto_answer={'enabled' if profile.enable_auto_answer else 'disabled'}"
     )

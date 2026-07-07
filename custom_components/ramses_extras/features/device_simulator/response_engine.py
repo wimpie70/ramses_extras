@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Final
 
 from .const import LOGGER
 from .device_db import DeviceDatabase, ResponseEntry
-from .response_templates import build_dynamic_response
+from .response_templates import build_dynamic_response, build_schema_000c_response
 from .system_config import ConfigProfileStore
 
 if TYPE_CHECKING:
@@ -187,6 +187,11 @@ class ResponseEngine:
             if verb == "W":
                 payload = self._build_write_ack_payload(parsed, response)
 
+            # 000C (zone_devices): prefer schema-aware response so device IDs
+            # match the active profile's known_list rather than recorded captures.
+            if not payload and code == "000C" and verb == "RQ":
+                payload = self._build_schema_000c_response(parsed["payload"], dst)
+
             if not payload and response and response.payloads:
                 payload = response.payloads[0]
                 delay_ms = response.delay_ms
@@ -287,6 +292,28 @@ class ResponseEngine:
 
         type_code = device_id.split(":")[0]
         return type_map.get(type_code)
+
+    def _build_schema_000c_response(self, rq_payload: str, dst: str) -> str | None:
+        """Build a 000C (zone_devices) RP payload from the active profile schema.
+
+        Delegates to the shared build_schema_000c_response helper.
+
+        :param rq_payload: RQ payload (zone_idx + zone_type, e.g. "0904")
+        :param dst: Destination device ID (the CTL being queried)
+        :return: RP payload string, or None if zone not in schema
+        """
+        if not self._config_store:
+            return None
+
+        profile_name = self._config_store.get_active_profile()
+        if not profile_name:
+            return None
+        profile = self._config_store.get_profile(profile_name)
+        if not profile:
+            return None
+
+        schema = profile.device_configs.get("_schema", {})
+        return build_schema_000c_response(rq_payload, dst, schema)
 
     def _build_write_ack_payload(
         self, parsed: dict[str, str], response: ResponseEntry | None

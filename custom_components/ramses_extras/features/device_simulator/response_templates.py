@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 """Helpers for synthesizing dynamic RP payloads."""
 
@@ -10,6 +11,83 @@ class DynamicResponse:
     """Structured dynamic response (for future extensibility)."""
 
     payload: str
+
+
+def _dev_id_to_hex_id(device_id: str) -> str:
+    """Convert '01:150003' to 6-hex-char ID used in 000C payloads.
+
+    Uses the same encoding as ramses_tx.address.dev_id_to_hex_id:
+    (dev_type << 18) + serial.
+    """
+    dev_type = int(device_id[:2])
+    serial = int(device_id[-6:])
+    return f"{(dev_type << 18) + serial:0>6X}"
+
+
+def build_schema_000c_response(
+    rq_payload: str,
+    dst: str,
+    schema: dict[str, Any] | None,
+) -> str | None:
+    """Build a 000C (zone_devices) RP payload from the active profile schema.
+
+    The schema defines which sensor/actuator devices belong to each zone.
+    This avoids returning recorded payloads that reference device IDs from
+    a different network's capture (which ramses_rf would reject because
+    those devices are not in the known_list).
+
+    :param rq_payload: RQ payload (zone_idx + zone_type, e.g. "0904")
+    :param dst: Destination device ID (the CTL being queried)
+    :param schema: Active profile's _schema dict, or None
+    :return: RP payload string, or None if zone not in schema
+    """
+    if not schema:
+        return None
+
+    rq_payload = (rq_payload or "").upper()
+    if len(rq_payload) < 4:
+        return None
+
+    zone_idx = rq_payload[:2]
+    zone_type = rq_payload[2:4]
+
+    # Find the CTL entry in the schema — it's the one with "zones".
+    # The dst device is the CTL being queried; check its schema entry first,
+    # then fall back to any entry with "zones".
+    ctl_schema = schema.get(dst)
+    if not ctl_schema or "zones" not in ctl_schema:
+        for _dev_id, entry in schema.items():
+            if isinstance(entry, dict) and "zones" in entry:
+                ctl_schema = entry
+                break
+    if not ctl_schema or "zones" not in ctl_schema:
+        return None
+
+    zones = ctl_schema.get("zones", {})
+    zone = zones.get(zone_idx)
+    if not zone:
+        # Zone not in schema — don't respond (avoids referencing
+        # devices that aren't in the known_list).
+        return None
+
+    # zone_type 04 = zone_sensor, 08 = rad_actuator
+    if zone_type == "04":
+        sensor_id = zone.get("sensor")
+        if not sensor_id:
+            return None
+        return f"{zone_idx}{zone_type}00{_dev_id_to_hex_id(sensor_id)}"
+
+    if zone_type == "08":
+        actuators = zone.get("actuators") or zone.get("actuator") or []
+        if isinstance(actuators, str):
+            actuators = [actuators]
+        if not actuators:
+            return None
+        parts = [f"{zone_idx}{zone_type}00{_dev_id_to_hex_id(a)}" for a in actuators]
+        return "".join(parts)
+
+    # Other zone_types (DHW, HTG, etc.) — fall through to recorded payloads.
+    return None
 
 
 def _coerce_hex_byte(value: str | None) -> int:
