@@ -6,73 +6,96 @@
 - docs/ZONES_IMPLEMENTATION_PLAN.md
 - docs/CONFIGURATION_STRATEGY.md
 
-## Working Rules (Phase 4 — passive scan)
-- User commits/pushes, deploys to HA, restarts HA — assistant does not
-- Test files with good coverage — every PR includes tests
-- Sphinx docstrings on all files, classes, methods (:param, :return, :raises)
-- No advertising in commits/PRs — no "Generated with Devin", no "Co-Authored-By"
-- Track progress in the issue — update as phases complete
-- No per-packet disk writes — scan is in-memory, persist on change/shutdown/checkpoint
-- Non-blocking — scan handler is sync, minimal work per packet
-- Full plan: docs/plan_627_phase4.md
-
 ## Active Projects
 
-## schema_architecture.md — Q4 follow-up: storage migration scaffolding (separate PR)
-Per codeowner Q4 decision: register `async_migrate_func` hook in ramses_cc `store.py`
-NOW as a no-op identity migration (v1→v1), so the hook + version label are in place
-before the real v1→v2 (traits) migration is needed. Avoids repeating the V1 config-flow
-pain (missing upgrade() method).
+### Device Simulator
+**Status**: Core infrastructure COMPLETE. Frame format validated against ramses_tx.
+**Location**: `features/device_simulator/IMPLEMENTATION_PLAN.md`
 
-Current state (verified):
-- `const.py:28` — `STORAGE_VERSION = 1`
-- `store.py:32` — `Store(hass, STORAGE_VERSION, STORAGE_KEY)` — NO `migrate_func` passed
-- `__init__.py:240` — `async_migrate_entry()` handles config-entry v1→v2 only (packet_log/ramses_rf cleanup)
-- `coordinator.py:274-309` — informal runtime known_list→orphans migration (not a Store-version migration)
-- Tests: `tests/tests_new/test_init.py:396-446` cover config-entry migration; no Store migration tests
+Core components:
+- Message database (parses `ramses_rf/tests/fixtures/regression_packets_sorted.txt`)
+- Virtual gateway (MQTT endpoint on `RAMSES/GATEWAY_SIM/18:001234`)
+- Response engine (handles RQ → RP, including 2411 parameters)
+- Periodic emitter (I frames at configured intervals)
+- Scenario engine (device playback, flooding, timeout, conversation tests)
 
-PR scope (ramses_cc):
-1. `store.py`: pass `migrate_func=_async_migrate_data` to `Store(...)`, add no-op
-   `_async_migrate_data(old_version, old_data)` returning `old_data` unchanged with TODO for v1→v2
-2. `tests/tests_new/test_store.py`: test that v1 payload passes through migrate func unchanged
-3. Do NOT bump `STORAGE_VERSION` yet — bump only when the v1→v2 (traits) format change lands
-4. Track v1→v2 (traits), v2→v3 (commands), v3→v4 (known_list removal) as checkboxes in a small issue
+**Key Implementation Details** (see IMPLEMENTATION_PLAN.md "Frame Format Requirements"):
+- I frames: `082  I --- src --:------ src code len payload` (extra space after verb)
+- RP frames: `000 RP --- src dst --:------ code len payload` (no extra space)
+- 2411 parameters: DB lookup by parameter ID, realistic payload values
 
-## other
-### SLOW STARTUP: get_all_fan_params blocks HA startup for 200+ seconds
+**Next Steps**: UI Cards (Phase 8)
 
-**Symptom:** HA takes 220s to initialize after restart with ramses_cc + FAN devices.
+### RF Config Validation
+Check on startup if ramses_cc has:
+- Bound REM configured
+- Enable Message Events with regex: 31DA|10D0
+- Enable Send Packet Service
+Log errors if not configured.
 
-**Root cause:** `fan_handler.py:257` calls `coordinator.get_all_fan_params(call)`
-unconditionally during setup for every FAN device. This sends 16 RQ 2411 commands
-with 0.5s gaps. At the same time, the ramses_rf DiscoveryService is sending RQ
-2E04, 2349, 22F8, etc. to all devices. All commands go through the same QoS
-queue (single transport). When a discovery command times out (20s), it blocks
-the queue — the 2411 commands sitting behind it can't be sent. With 8 devices
-being probed and multiple timeout cycles, the queue gets backed up for 200+ seconds.
+Also check HA Core config (this belongs in ramses_cc, not _extras, since it affects all
+ramses_cc users — most don't use _extras):
+- **Recorder component loaded**: check `"recorder" in hass.config.components` at setup.
+  If missing, log a WARNING (not error, integration still works in-memory):
+  "HA recorder component is not loaded — sensor history and long-term statistics
+  will not be stored. Add 'default_config:' or 'recorder:' to configuration.yaml."
+  Background: without the recorder, in-memory state is current but the database gets
+  no updates, so history graphs and logbook show stale data. This looks like a ramses_cc
+  bug but is actually a missing HA Core config. (Issue #750)
 
-**Fix:** Remove the unconditional `get_all_fan_params` call at `fan_handler.py:257`.
-The `on_fan_first_message` callback at line 201 already calls `get_all_fan_params`
-after the FAN sends its first message — this is the correct trigger. The
-unconditional call at line 257 is redundant and causes QoS queue contention
-with the discovery service during startup.
+### ha-sim Simulator Isolation Prerequisites
+**For device_simulator feature to work with automatic isolation:**
 
-**Branch:** Create new branch in ramses_cc for this fix (after PR 759 is merged).
+1. **MQTT Integration in ha-sim**
+   - Must be configured in `configuration.yaml` or UI:
+   ```yaml
+   mqtt:
+     broker: 192.168.40.11 # Replace with your MQTT broker IP
+     port: 1883
+     username: "your_username" # Replace with your MQTT username
+     password: "your_password" # Replace with your MQTT password
+   ```
+   - Required for MqttEndpoint to subscribe/publish
 
-### BUG: device_simulator card shows "Disabled" after restart until config is re-saved
-After HA restart (or container restart), the device_simulator card shows "Disabled"
-even though the feature is enabled and the profile is loaded. The user has to go to
-ramses_extras config and save it again before the card becomes usable. The sim profile
-loads correctly ("profile 'normal' loaded") but `ws_get_ui_status` returns 0 devices
-until the config is re-saved. Likely a startup ordering issue — the sim initializes
-before ramses_cc has registered its devices, so the sim has no devices to show.
+2. **ramses_cc Config (auto-enforced)**
+   - Must use MQTT transport (not serial)
+   - Device simulator automatically reconfigures to:
+     - Topic: `RAMSES/GATEWAY_SIM/18:001234`
+     - HGI: `18:001234` (fake, isolated from production)
+   - note: the topic namespace is hardcoded in the simulator code.
+   in _rf there is a strict check on prefix `RAMSES/GATEWAY` and also 3 parts divided by '/'
+   but we can add the _SIM suffix to the topic to pass the check.
 
+3. **MQTT Broker Permissions**
+   - User must have subscribe/publish rights to `RAMSES/GATEWAY_SIM/#`
+   - Same broker credentials as production
+
+4. **Port Configuration**
+   - ha-sim uses port 8124 (not 8123)
+   - Set in `configuration.yaml`:
+   ```yaml
+   http:
+     server_port: 8124
+   ```
+
+**Isolation Behavior:**
+- Production devices use: `RAMSES/GATEWAY/18:xxxxxx`
+- Simulator uses: `RAMSES/GATEWAY_SIM/18:001234`
+- Zero crosstalk between namespaces
+
+
+### check framework for feature specific code that needs to be moved to it's features
+### Ramses Packet Log explorer: auto mode seem to be broken
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
 ---
  mqtt://slimmemeter:j@diebla@@192.168.40.11:1883
 - simulator:
 ### check loading time takes long
+
+test ### can we now safe deploy the sim on a normal dev ?
+- we need to save the full state and set it back on
+ disable sim/remove _extras (schema, topics, known devices, settings that we change on the sim)
 
 ### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
 Shouldn't we filter this ? we know from our database what belongs to what
@@ -95,6 +118,22 @@ we should be able to simulate and test this
   change, the card only updates on the fan's natural unsolicited 31DA cadence (every 2-5 min).
   Periodic RQ polling would restore the fast update feel without the command side-effects.
   Note: this is prepared in RF and for now we should not do this in extras
+
+- **Migrate frontend message delivery to Event Entity (with backward compat)** — DONE:
+  ramses_cc >= 0.55.6 has a proper HA Event Entity (`event.ramses_cc_regex_event`) that fires
+  for every inbound packet when `message_events` regex is configured (e.g. `.*`). This is the
+  modern HA-recommended way (see ramses_cc issue #552) — it fires as `state_changed`, which is
+  in HA's websocket SUBSCRIBE_ALLOWLIST, so any user can subscribe (not just admin).
+  Implementation (ramses-message-broker.js):
+  - Modern path: subscribes to `state_changed`, filters for `event.ramses_cc_regex_event`,
+    extracts data from `new_state.attributes.data` (same code/src/verb/payload structure).
+  - Legacy path: also subscribes to `ramses_cc_message` bus events (for ramses_cc < 0.55.6
+    or when message_events is not configured). May fail for non-admin — expected.
+  - Dedup: 5s TTL Map keyed by `src|code|dtm` prevents processing the same message twice
+    when both paths are active.
+  - Backend (`ramses_message_stream.py`) unchanged — keeps firing bus events for backward compat
+    and keeps `add_msg_handler` for backend automations/traffic collector.
+  - Verified: non-admin websocket test receives 31DA/10D0/22F1/31D9 events via the modern path.
 
 
 -- other:
@@ -166,63 +205,21 @@ Traceback (most recent call last):
 TypeError: Either a port_name or an input_file must be specified
 2026-05-05 16:04:23.891 INFO (MainThread) [homeassistant.config_entries] Config entry 'RAMSES RF' for ramses_cc integration not ready yet: Setup failed: Either a port_name or an input_file must be specified; Retrying in 5 seconds
 
+----
 
---- DONE: configurable comfort temp source for temp_control ---
 
-Released in 0.20.11. Comfort temp entity configured under:
-  FAN Configuration → Internal Fan Sensors → Comfort temperature (Temperature Control)
-  (dropdown: Internal (use FAN param_75) / External (HA entity))
-
-Changes:
-- sensor_control/device_types/fan.py: comfort_temp_kind dropdown + entity selector,
-  persisted to device_config, removed when "Internal" selected
-- sensor_control/resolver.py: exposes comfort_temp_entity in result mappings
-- sensor_control/websocket_commands.py: set_comfort_temp_entity WebSocket command
-- temp_control/websocket_commands.py: get_device_config + set_device_config commands
-- temp_control/const.py: registered WebSocket commands
-- temp_control/automation.py: reads comfort_temp_entity from sensor_control context,
-  overrides mappings["comfort_temp"]; raises ComfortTempUnavailableError when unavailable
-- framework/setup/entry.py: initialize device_feature_matrix in hass.data during setup
-  (fixes spurious reload on first config edit); reload on sensor_control changes
-- hvac_fan_card/hvac-fan-card.js:
-  - shouldUpdate() override: suppress re-renders in parameter edit mode
-  - Comfort temp indicator: compare against default param_75 to determine external vs internal
-  - Edit window: all temp_control settings editable (deltas, dewpoint, supply cooler, etc.)
-    with in-place CSS feedback (loading/success/error) — no full redraw
-  - Comfort temp value: editable directly when external entity configured
-  - Removed status entity and on/off toggle from edit window
-  - update-humidity/update-select/update-switch: in-place CSS feedback (no full redraw)
-- hvac_fan_card/templates/parameter-edit.js: createComfortTempItem, createTempControlSettingItems
-- translations/en.json + nl.json: temp_control_settings, temp_control_desired_speed keys
-- Tests: updated for new WebSocket commands and comfort_temp_kind dropdown
-
-## TODO: ramses_rf follow-up — discovery scan callback for real-time notifications
-
-**Context:** ramses_rf's DiscoveryScan is purely polling-based — no callback/event
-when a new device is first seen. ramses_cc currently polls every 30 min (plus an
-immediate check 10s after startup) to detect new devices and send persistent
-notifications. This means a user waits up to 30 min in steady state before being
-notified of a new device.
-
-**Goal:** Add a callback/listener mechanism to DiscoveryScan in ramses_rf so
-ramses_cc can register an `on_new_device` callback and get notified in real time
-when the scan engine classifies a new device.
-
-**Where to add it (ramses_rf):**
-- `src/ramses_rf/discovery_scan.py` — DiscoveryScan class
-- Add a `callbacks: list[Callable[[DiscoveredDevice], None]]` param or
-  an `add_listener(callback)` method
-- Fire the callback when a device transitions from unknown → classified
-  (i.e., when `likely_type` is first assigned)
-
-**Where to use it (ramses_cc):**
-- `custom_components/ramses_cc/discovery.py` — DiscoveryManager
-- Register a listener at startup that calls `check_for_new_devices()` +
-  sends the persistent notification immediately
-- Keep the 30-min checkpoint for lost-device detection and state persistence
-
-**Prerequisite:** The ramses_rf PR that introduced DiscoveryScan was just merged.
-This callback would be a follow-up PR on ramses_rf.
-
-**Priority:** Medium — the 10s immediate check + 30 min polling works, but
-real-time notification is much better UX for the discovery review flow.
+2026-07-07 08:08:11.079 INFO (paho-mqtt-client-) [ramses_tx.transport.mqtt] mq Rx: b'{"msg": "000 RP --- 01:150000 18:001234 --:------ 000C 006 09040013305E", "ts": "2026-07-07T08:08:11.064875"}'
+2026-07-07 08:08:11.085 INFO (MainThread) [ramses_tx.protocol.base] Recv'd: 000 RP --- 01:150000 18:001234 --:------ 000C 006 09040013305E
+2026-07-07 08:08:11.085 DEBUG (MainThread) [custom_components.ramses_cc.event] handle_event ramses_cc_regex_match, data: {'type': <RamsesEventType.REGEX: 'ramses_cc_regex_match'>, 'device_id': '01:150000', 'dtm': '2026-07-07T08:08:11.064875+02:00', 'src': '01:150000', 'dst': '18:001234', 'verb': 'RP', 'code': '000C', 'payload': {'zone_type': '04', 'zone_idx': '09', 'device_role': 'zone_sensor', 'devices': ['04:208990']}, 'packet': 'RP --- 01:150000 18:001234 --:------ 000C 006 09040013305E'}
+2026-07-07 08:08:11.091 ERROR (MainThread) [ramses_rf.legacy_trace] FILTER EXCEPTION: Device 04:208990 failed filter checks: Can't create 04:208990: it is not an allowed device_id (if required, add it to the known_list)
+2026-07-07 08:08:11.092 ERROR (MainThread) [ramses_rf.legacy_trace] BIND EXCEPTION: Failed fetching 04:208990: Can't create 04:208990: it is not an allowed device_id (if required, add it to the known_list)
+2026-07-07 08:08:11.092 INFO (MainThread) [ramses_rf.dispatcher] ||  01:150000 |  18:001234 | RP | unknown_000C     |  09  || {'zone_type': '04', 'zone_idx': '09', 'device_role': 'zone_sensor', 'devices': ['04:208990']}
+2026-07-07 08:08:11.092 ERROR (MainThread) [ramses_rf.legacy_trace] FILTER EXCEPTION: Device 04:208990 failed filter checks: Can't create 04:208990: it is unwanted or invalid
+2026-07-07 08:08:11.092 WARNING (MainThread) [ramses_rf.legacy_trace] SUPPRESSED in Zone 000C handler (sensor): Can't create 04:208990: it is unwanted or invalid. Packet dropped.
+2026-07-07 08:08:13.156 INFO (MainThread) [custom_components.ramses_cc.coordinator] Saving the client state cache (packets, schema)
+2026-07-07 08:08:13.156 INFO (MainThread) [custom_components.ramses_cc.coordinator] Saving state: discovery_manager=True, cached=False, discovery_devices=1
+2026-07-07 08:08:13.900 INFO (MainThread) [ramses_tx.transport.mqtt] mq Tx: {"msg": "RQ --- 18:001234 01:150000 --:------ 000C 002 0908"}
+2026-07-07 08:08:13.925 DEBUG (SyncWorker_0) [custom_components.ramses_extras.features.device_simulator.const] Simulator MQTT msg on RAMSES/GATEWAY_SIM/18:001234/tx: {"msg": "RQ --- 18:001234 01:150000 --:------ 000C 002 0908"}
+2026-07-07 08:08:13.925 DEBUG (SyncWorker_0) [custom_components.ramses_extras.features.device_simulator.const] Simulator received from ramses_rf: RQ --- 18:001234 01:150000 --:------ 000C 002 0908
+2026-07-07 08:08:13.925 DEBUG (SyncWorker_0) [custom_components.ramses_extras.features.device_simulator.const] Endpoint 136960468459472: dispatching frame to 2 handler(s)
+2026-07-07 08:08:13.925 DEBUG (SyncWorker_0) [custom_components.ramses_extras.features.device_simulator.const] Endpoint 136960468459472: scheduling handler 136960468145408 for frame: RQ --- 18:001234 01:150000 --:------ 000C 002 0908
