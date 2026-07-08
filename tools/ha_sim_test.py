@@ -1236,6 +1236,11 @@ async def main() -> None:
         main_tcs_after != "04:999999",
         f"main_tcs={main_tcs_after}",
     )
+    check(
+        "Invalid main_tcs persisted to config entry",
+        "04:999999" not in json.dumps(schema_after_sanitise),
+        "config entry still references 04:999999",
+    )
 
     # Verify no crash — ha-sim is running and responding
     entities_check = get_entities(token)
