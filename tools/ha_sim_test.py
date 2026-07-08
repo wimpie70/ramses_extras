@@ -188,6 +188,9 @@ EXPECTED_WARNINGS: list[str] = [
     # HA: via_device non-existing during reload (transient — device registry race)
     "non existing",
     "via_device",
+    # ramses_extras: command excluded by device_id filter (expected on sim
+    # when sending to devices not in the known_list, e.g. 32:153289)
+    "Command excluded by device_id filter",
 ]
 
 
@@ -423,25 +426,41 @@ def get_token() -> str:
 def call_service(
     token: str, domain: str, service: str, data: dict | None = None
 ) -> dict:
-    """Call a HA service and return the response."""
+    """Call a HA service and return the response.
+
+    Retries up to 3 times with 5s backoff for transient connection errors
+    (HA may be restarting after a profile reload).
+    """
     url = f"{HA_URL}/api/services/{domain}/{service}"
     body = json.dumps(data or {}).encode()
-    req = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        resp = urllib.request.urlopen(req)
-        content = resp.read()
-        return json.loads(content) if content else {}
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        raise RuntimeError(f"HTTP {e.code}: {body}") from e
+
+    for attempt in range(3):
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=30)
+            content = resp.read()
+            return json.loads(content) if content else {}
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode()
+            raise RuntimeError(f"HTTP {e.code}: {err_body}") from e
+        except urllib.error.URLError as e:
+            if attempt < 2:
+                print(
+                    f"  call_service: retry {attempt + 1}/3"
+                    f" (connection refused)"
+                )
+                time.sleep(5)
+                continue
+            raise RuntimeError(f"Connection failed after 3 retries: {e}") from e
+    return {}  # unreachable
 
 
 # ---------------------------------------------------------------------------
