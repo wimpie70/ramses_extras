@@ -510,10 +510,23 @@ async def _reload_ramses_cc(
 ) -> None:
     """Unload ramses_cc, reload it, and auto-start devices."""
 
+    from homeassistant.config_entries import ConfigEntryState
     from homeassistant.helpers import device_registry as dr
     from homeassistant.helpers.storage import Store as HaStore
 
-    await hass.config_entries.async_unload(entry_id)
+    # If the entry is in FAILED_UNLOAD state, we can't unload it normally.
+    # This happens when a previous unload failed (e.g. a platform was never
+    # loaded due to a setup error).  Force the state back to NOT_LOADED so
+    # we can set it up again.
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry and entry.state == ConfigEntryState.FAILED_UNLOAD:
+        LOGGER.warning("Profile load: entry is in FAILED_UNLOAD state, forcing reload")
+        entry._async_set_state(hass, ConfigEntryState.NOT_LOADED, None)
+    else:
+        try:
+            await hass.config_entries.async_unload(entry_id)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Profile load: async_unload failed: %s, continuing", err)
 
     if wipe_schema:
         dev_reg = dr.async_get(hass)
