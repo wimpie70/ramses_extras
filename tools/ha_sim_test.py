@@ -191,6 +191,9 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_extras: command excluded by device_id filter (expected on sim
     # when sending to devices not in the known_list, e.g. 32:153289)
     "Command excluded by device_id filter",
+    # ramses_rf: Packet idx mismatch for broadcast TRV traffic (simulator
+    # uses zone_idx as packet idx, ramses_rf expects 00)
+    "Packet idx is",
 ]
 
 
@@ -453,10 +456,7 @@ def call_service(
             raise RuntimeError(f"HTTP {e.code}: {err_body}") from e
         except urllib.error.URLError as e:
             if attempt < 2:
-                print(
-                    f"  call_service: retry {attempt + 1}/3"
-                    f" (connection refused)"
-                )
+                print(f"  call_service: retry {attempt + 1}/3 (connection refused)")
                 time.sleep(5)
                 continue
             raise RuntimeError(f"Connection failed after 3 retries: {e}") from e
@@ -1892,6 +1892,232 @@ async def main() -> None:
     # It does NOT add the REM to the FAN's remotes in the schema or create
     # a HA entity. Full implementation (binding + command forwarding) is
     # WIP for a future PR. Skipping automated test for now.
+
+    # =====================================================================
+    # RECIPE 19: Zone binding from broadcast traffic (passive scan) [A]
+    # =====================================================================
+    log_section("Recipe 19: Zone binding from broadcast TRV traffic")
+
+    # TRVs broadcast zone-binding codes (30C9, 3150, 2309) with dst=--:------.
+    # The scan engine captures zone_idx from the payload even for broadcasts.
+    # sync_learned_topology should then infer the CTL from main_tcs and add
+    # the TRV as a zone sensor.
+
+    # Load fresh_start profile for a clean state
+    print("  Loading fresh_start_allow_unknown_devices_fast_heartbeat...")
+    try:
+        await ws_send(
+            token,
+            {
+                "type": "ramses_extras/device_simulator/load_profile",
+                "profile": "fresh_start_allow_unknown_devices_fast_heartbeat",
+                "speed": 0.01,
+                "preload_schema": False,
+                "reload_ramses_cc": True,
+                "enable_auto_answer": True,
+            },
+        )
+        print("  fresh_start profile loaded")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {e}")
+    wait(15, "for ramses_cc reload with fresh_start")
+    token = get_token()
+    wait(5, "for ramses_cc to initialize")
+
+    # Inject 30C9 (temperature) broadcast packets from TRVs with zone_idx
+    # 30C9 payload: zone_idx(2 hex) + temperature(4 hex, *100)
+    # Use valid zone indices 02-0B (ramses_rf max 12 zones: 00-0B)
+    broadcast_trvs = [
+        ("04:200002", "02"),
+        ("04:200003", "03"),
+        ("04:200004", "04"),
+        ("04:200005", "05"),
+    ]
+    temp_hex = "0708"  # 18.00C
+
+    print(f"  Injecting 30C9 broadcast packets from {len(broadcast_trvs)} TRVs...")
+    for trv_id, zone_idx in broadcast_trvs:
+        payload = f"{zone_idx}{temp_hex}"
+        try:
+            call_service(
+                token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": trv_id,
+                    "code": "30C9",
+                    "payload": payload,
+                    "verb": "I",
+                },
+            )
+            print(f"    {trv_id} -> zone {zone_idx}: 30C9 payload={payload}")
+        except RuntimeError as e:
+            print(f"    {trv_id} -> zone {zone_idx}: FAILED - {str(e)[:80]}")
+        time.sleep(0.5)
+
+    # Also inject 3150 (heat demand) — another zone-binding code
+    print("  Injecting 3150 (heat demand) broadcast packets...")
+    for trv_id, zone_idx in broadcast_trvs:
+        payload = f"{zone_idx}00"
+        try:
+            call_service(
+                token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": trv_id,
+                    "code": "3150",
+                    "payload": payload,
+                    "verb": "I",
+                },
+            )
+        except RuntimeError as e:
+            print(f"    {trv_id} -> 3150: FAILED - {str(e)[:80]}")
+        time.sleep(0.5)
+
+    wait(10, "for scan engine to process packets")
+
+    # Trigger sync_topology to update the schema
+    print("  Triggering sync_topology...")
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError as e:
+        print(f"  sync_topology failed: {e}")
+    wait(10, "for sync_learned_topology to process")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save_client_state")
+
+    # Check that zones were created from broadcast traffic
+    schema_r19 = get_schema_retry()
+    ctl_r19 = schema_r19.get(CTL, {})
+    zones_r19 = ctl_r19.get("zones", {}) if isinstance(ctl_r19, dict) else {}
+    zone_ids_r19 = list(zones_r19.keys())
+    print(f"  Zones from broadcast: {zone_ids_r19}")
+
+    for trv_id, zone_idx in broadcast_trvs:
+        zone = zones_r19.get(zone_idx, {})
+        sensor = zone.get("sensor") if isinstance(zone, dict) else None
+        check(
+            f"TRV {trv_id} added as sensor for zone {zone_idx}",
+            sensor == trv_id,
+            f"zone_{zone_idx}={json.dumps(zone)[:100]}",
+        )
+
+    # Check that device_comments include zone info
+    comments_r19 = schema_r19.get("device_comments", {})
+    for trv_id, zone_idx in broadcast_trvs:
+        comment = comments_r19.get(trv_id, "")
+        check(
+            f"Comment for {trv_id} includes zone {zone_idx}",
+            f"zone {zone_idx}" in comment,
+            f"comment={comment[:100]}",
+        )
+
+    # =====================================================================
+    # RECIPE 19b: Invalid zone indices are rejected [A]
+    # =====================================================================
+    log_section("Recipe 19b: Invalid zone indices (>0B) are rejected")
+
+    # Inject a 30C9 packet with zone_idx 0C (invalid — max is 0B)
+    invalid_trv = "04:200006"
+    print(f"  Injecting 30C9 with invalid zone 0C from {invalid_trv}...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": invalid_trv,
+                "code": "30C9",
+                "payload": "0C0708",
+                "verb": "I",
+            },
+        )
+    except RuntimeError as e:
+        print(f"  Inject failed: {e}")
+
+    wait(5, "for scan engine to process")
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for sync_learned_topology")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save")
+
+    schema_r19b = get_schema_retry()
+    ctl_r19b = schema_r19b.get(CTL, {})
+    zones_r19b = ctl_r19b.get("zones", {}) if isinstance(ctl_r19b, dict) else {}
+    check(
+        "Invalid zone 0C not created in schema",
+        "0C" not in zones_r19b,
+        f"zones={list(zones_r19b.keys())}",
+    )
+
+    # =====================================================================
+    # RECIPE 19c: 18: (HGI) devices tracked but no zone bindings [A]
+    # =====================================================================
+    log_section("Recipe 19c: 18: (HGI) devices tracked but no zone bindings")
+
+    # Inject a 30C9 packet from an 18: device — the scan engine should
+    # track it (as HGI type) but NOT set zone_idx or bound_to.
+    hgi_dev = "18:999999"
+    print(f"  Injecting 30C9 from {hgi_dev} (should be tracked, no zone)...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": hgi_dev,
+                "code": "30C9",
+                "payload": "020708",
+                "verb": "I",
+            },
+        )
+    except RuntimeError as e:
+        print(f"  Inject failed: {e}")
+
+    wait(5, "for scan engine to process")
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for sync_learned_topology")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save")
+
+    schema_r19c = get_schema_retry()
+    ctl_r19c = schema_r19c.get(CTL, {})
+    zones_r19c = ctl_r19c.get("zones", {}) if isinstance(ctl_r19c, dict) else {}
+
+    # HGI should NOT be a zone sensor (18: is not a valid SEN prefix)
+    for zone in zones_r19c.values():
+        if isinstance(zone, dict):
+            check(
+                "18: device not a zone sensor",
+                zone.get("sensor") != hgi_dev,
+                f"sensor={zone.get('sensor')}",
+            )
+            break
+
+    # HGI should NOT have zones created under it in the schema
+    hgi_entry_r19c = schema_r19c.get(hgi_dev, {})
+    if isinstance(hgi_entry_r19c, dict):
+        check(
+            "18: device has no zones in schema",
+            "zones" not in hgi_entry_r19c,
+            f"keys={list(hgi_entry_r19c.keys())}",
+        )
 
     # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run
