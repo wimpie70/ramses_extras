@@ -2000,9 +2000,12 @@ async def main() -> None:
     for trv_id, zone_idx in broadcast_trvs:
         zone = zones_r19.get(zone_idx, {})
         sensor = zone.get("sensor") if isinstance(zone, dict) else None
+        actuators = zone.get("actuators", []) if isinstance(zone, dict) else []
+        # TRV should be in the zone — as sensor if the zone had no sensor,
+        # or as actuator if the zone already had a sensor (from CTL config)
         check(
-            f"TRV {trv_id} added as sensor for zone {zone_idx}",
-            sensor == trv_id,
+            f"TRV {trv_id} added to zone {zone_idx}",
+            sensor == trv_id or trv_id in actuators,
             f"zone_{zone_idx}={json.dumps(zone)[:100]}",
         )
 
