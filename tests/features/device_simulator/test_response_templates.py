@@ -147,8 +147,8 @@ class TestBuildDynamicResponseOtb:
                 "10E0",
                 "000001FF050BFFFFFFFF0E0907E2070307E1523838313041000000000000000000000000",  # noqa: E501
             ),
-            ("3EF0", "00"),
-            ("3220", "00401200F8"),
+            ("3EF0", "000010000000020A64"),
+            ("3220", "0040000200"),
             ("1FC9", "003EF00003EF1"),
             ("10A0", "0013880003E8"),
             ("10B0", "00FF00"),
@@ -156,6 +156,11 @@ class TestBuildDynamicResponseOtb:
             ("1290", "00FF00"),
             ("042F", "00000000"),
             ("3EF1", "00"),
+            ("1300", "000096"),
+            ("3210", "0001F4"),
+            ("2401", "00000100"),
+            ("1081", "00FF00"),
+            ("22D9", "0003E8"),
         ],
     )
     def test_otb_fallback_codes(self, code, expected):
@@ -164,6 +169,29 @@ class TestBuildDynamicResponseOtb:
 
     def test_otb_unknown_code(self):
         result = build_dynamic_response("OTB", "9999", "")
+        assert result is None
+
+
+class TestBuildDynamicResponseBdr:
+    """Tests for BDR (electrical relay) fallback responses."""
+
+    @pytest.mark.parametrize(
+        "code,expected",
+        [
+            ("0008", "0000"),
+            ("1100", "00180400007FFF01"),
+            ("3EF1", "00021C021C00FF"),
+            ("0418", "00FF00"),
+            ("1260", "00FF00"),
+            ("1290", "00FF00"),
+        ],
+    )
+    def test_bdr_fallback_codes(self, code, expected):
+        result = build_dynamic_response("BDR", code, "")
+        assert result == expected
+
+    def test_bdr_unknown_code(self):
+        result = build_dynamic_response("BDR", "9999", "")
         assert result is None
 
 

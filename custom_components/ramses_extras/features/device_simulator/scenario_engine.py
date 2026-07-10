@@ -1289,13 +1289,31 @@ class ScenarioEngine:
         # capture, which ramses_rf rejects when they're not in the known_list.
         if code == "000C" and rq_payload:
             if self._profile_schema is None:
-                # No schema available (e.g. after a reload that lost the engine
-                # state) — don't respond with recorded payloads that reference
-                # foreign device IDs.
+                # No schema available (e.g. fresh_start profile that only has
+                # a known_list).  Fall back to the dynamic response, which
+                # generates a synthetic 000C payload.  This avoids blocking
+                # the QoS queue with 20-second timeouts on every zone.
                 LOGGER.debug(
-                    "ScenarioEngine: 000C zone %s — no schema, not responding",
+                    "ScenarioEngine: 000C zone %s — no schema, using dynamic response",
                     rq_payload[:2],
                 )
+                payload = build_dynamic_response(slug, code, rq_payload)
+                if payload:
+                    delay_ms = resp.delay_ms if resp else 0
+                    if delay_ms > 0:
+                        await asyncio.sleep(delay_ms / 1000.0)
+                    packet = self._build_packet(dst, src, VERB_RP, code, payload)
+                    try:
+                        await self._endpoint.send_packet(packet)
+                        self._messages_sent += 1
+                        self._log_and_emit("outbound", packet, origin="auto_answer")
+                        LOGGER.debug(
+                            "Responded %s RP/%s → %s (dynamic)", dst, code, src
+                        )
+                    except Exception as err:
+                        LOGGER.warning(
+                            "Failed to send RP for %s/%s: %s", dst, code, err
+                        )
                 return
             schema_payload = build_schema_000c_response(
                 rq_payload, dst, self._profile_schema

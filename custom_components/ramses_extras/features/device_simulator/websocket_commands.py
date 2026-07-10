@@ -127,7 +127,13 @@ def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
     if not entries:
         return None
     cc_entry = entries[0]
-    return hass.data.get("ramses_cc", {}).get("coordinators", {}).get(cc_entry.entry_id)
+    # ramses_cc stores coordinators at hass.data["ramses_cc"][entry_id]
+    domain_data = hass.data.get("ramses_cc", {})
+    coordinator = domain_data.get(cc_entry.entry_id)
+    if coordinator is not None:
+        return coordinator
+    # Fallback for older layouts that used a "coordinators" sub-dict
+    return domain_data.get("coordinators", {}).get(cc_entry.entry_id)
 
 
 def _build_profile_zone_index(profile: SystemConfigProfile) -> list[dict[str, Any]]:
@@ -1514,6 +1520,11 @@ async def ws_start_scenario(
                 "message": f"Started profile devices ({len(started_ids)})",
             }
         elif engine.has_scenario_definition(scenario_id):
+            # Device playback should wait for ramses_cc's known_list to be
+            # populated before sending traffic — prevents FILTER EXCEPTIONS
+            # when a fresh_start profile hasn't finished its second reload.
+            if scenario_id == "device_playback":
+                params.setdefault("wait_for_known_list", True)
             if scenario_id == SCENARIO_DEVICE_UNAVAILABILITY and params.get("zone_id"):
                 config_store = _get_config_store(hass)
                 active_name = (

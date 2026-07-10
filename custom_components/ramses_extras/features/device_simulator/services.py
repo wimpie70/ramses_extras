@@ -310,6 +310,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             }
 
         if engine.has_scenario_definition(scenario_type):
+            if scenario_type == "device_playback":
+                params.setdefault("wait_for_known_list", True)
             return await engine.async_run_registered_scenario(scenario_type, params)
 
         return {"success": False, "error": f"Unknown scenario type: {scenario_type}"}

@@ -87,6 +87,20 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         )
     LOGGER.debug("device_map: %s", device_map)
 
+    # Wait for ramses_cc to have all conversation peers in its known_list.
+    # When a fresh_start profile loads, the known_list starts with only the
+    # HGI gateway.  The discovery scan populates the schema, which triggers
+    # a second reload with the full known_list.  If playback starts before
+    # that second reload, ramses_rf rejects the devices with FILTER EXCEPTIONS
+    # ("unwanted or invalid"), causing QoS timeouts and slow startup.
+    wait_for_known_list = params.get("wait_for_known_list", False)
+    if wait_for_known_list:
+        peer_ids = {did.upper() for did in device_map.values()}
+        # 63: devices are virtual test devices — never in known_list
+        peer_ids = {d for d in peer_ids if not d.startswith("63:")}
+        if peer_ids:
+            await _wait_for_known_list(context.hass, peer_ids)
+
     # Auto-activate devices from device_map if not already active
     auto_activate = params.get("auto_activate_devices", True)
     auto_start_emitter = params.get("auto_start_emitter", False)
@@ -259,6 +273,56 @@ def _infer_device_map(
         missing.append(slug)
 
     return mapping, missing
+
+
+async def _wait_for_known_list(
+    hass: Any, peer_ids: set[str], timeout: float = 60.0
+) -> None:
+    """Wait until ramses_cc's known_list contains all peer device IDs.
+
+    Polls the ramses_cc coordinator's known_list every 2 seconds.  If the
+    coordinator is not available or the known_list doesn't contain all peers
+    within *timeout* seconds, returns anyway (the playback will proceed and
+    some devices may get FILTER EXCEPTIONS, but this is better than blocking
+    forever).
+    """
+    from ..websocket_commands import _get_ramses_cc_coordinator
+
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        coordinator = _get_ramses_cc_coordinator(hass)
+        known_ids: set[str] = set()
+        if coordinator is not None:
+            known_list = coordinator.options.get("known_list", {})
+            if isinstance(known_list, dict):
+                known_ids = {str(k).upper() for k in known_list}
+            missing = peer_ids - known_ids
+            if not missing:
+                LOGGER.info(
+                    "device_playback: all %d peers are in ramses_cc known_list, "
+                    "starting playback",
+                    len(peer_ids),
+                )
+                return
+            LOGGER.debug(
+                "device_playback: waiting for %d peers to appear in known_list: %s",
+                len(missing),
+                sorted(missing),
+            )
+        else:
+            LOGGER.debug(
+                "device_playback: ramses_cc coordinator not available yet, waiting"
+            )
+
+        if asyncio.get_event_loop().time() >= deadline:
+            LOGGER.warning(
+                "device_playback: timed out after %.0fs waiting for known_list, "
+                "starting playback anyway (missing: %s)",
+                timeout,
+                sorted(peer_ids - known_ids) if known_ids else "all",
+            )
+            return
+        await asyncio.sleep(2)
 
 
 SCENARIO_DEFINITION = ScenarioDefinition(

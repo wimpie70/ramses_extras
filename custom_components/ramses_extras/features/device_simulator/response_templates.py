@@ -221,12 +221,13 @@ def build_dynamic_response(
             return "000001FF050BFFFFFFFF0E0907E2070307E1523838313041000000000000000000000000"  # noqa: E501
 
         if code_norm == "3EF0":
-            # OpenTherm status: minimal response
-            return "00"
+            # OpenTherm status: boiler idle, no CH/DHW, flame off
+            # Format: modulation(2) + flags(2) + ch_setpoint(2) + max_mod(2)
+            return "000010000000020A64"
 
         if code_norm == "3220":
-            # OpenTherm diagnostic: minimal response
-            return "00401200F8"
+            # OpenTherm diagnostic: minimal valid response
+            return "0040000200"
 
         if code_norm == "1FC9":
             # Multi-code response
@@ -255,6 +256,55 @@ def build_dynamic_response(
         if code_norm == "3EF1":
             # Extended OpenTherm: minimal response
             return "00"
+
+        if code_norm == "1300":
+            # CH pressure: ~1.5 bar (0x0096 = 150 = 1.50 bar)
+            return "000096"
+
+        if code_norm == "3210":
+            # Return water temperature: ~50°C (0x01F4 = 500 = 50.0°C)
+            return "0001F4"
+
+        if code_norm == "2401":
+            # Valve demand: 0% (boiler idle)
+            return "00000100"
+
+        if code_norm == "1081":
+            # Unknown OTB code: minimal response
+            return "00FF00"
+
+        if code_norm == "22D9":
+            # Unknown OTB code: minimal response
+            return "0003E8"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # BDR (Heat) responses - fallback when DB entry missing
+    # ─────────────────────────────────────────────────────────────────────────
+    if slug_norm == "BDR":
+        if code_norm == "0008":
+            # Relay demand: 0% demand
+            return "0000"
+
+        if code_norm == "1100":
+            # TPI params: minimal valid response
+            # Format: 0018 + cycle_rate(2) + min_on(2) + min_off(2) + flags(2)
+            return "00180400007FFF01"
+
+        if code_norm == "3EF1":
+            # Extended OpenTherm: actuator at 0%, countdown 540s
+            return "00021C021C00FF"
+
+        if code_norm == "0418":
+            # Device status: minimal response
+            return "00FF00"
+
+        if code_norm == "1260":
+            # DHW setpoint: minimal response
+            return "00FF00"
+
+        if code_norm == "1290":
+            # DHW mode: minimal response
+            return "00FF00"
 
     # ─────────────────────────────────────────────────────────────────────────
     # FAN (HVAC) responses - fallback when DB entry missing
