@@ -409,8 +409,12 @@ async def _update_known_list_and_reload(
 
     if schema is not None:
         new_options[CONF_SCHEMA] = deepcopy(schema)
-    # When schema is None (preload_schema=False), preserve the existing
-    # schema in the config entry instead of removing it
+    else:
+        # No schema to preload — remove any existing CONF_SCHEMA so the
+        # reload starts with a clean slate.  Without this, the in-memory
+        # config entry retains the old schema and ramses_cc recreates all
+        # stale devices on reload.
+        new_options.pop(CONF_SCHEMA, None)
 
     object.__setattr__(entry, "options", MappingProxyType(new_options))
 
