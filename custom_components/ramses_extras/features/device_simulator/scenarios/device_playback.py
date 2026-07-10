@@ -93,6 +93,10 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
     # a second reload with the full known_list.  If playback starts before
     # that second reload, ramses_rf rejects the devices with FILTER EXCEPTIONS
     # ("unwanted or invalid"), causing QoS timeouts and slow startup.
+    #
+    # If the profile has enforce_known_list=False (fresh_start), ramses_cc's
+    # passive scan override will force it to True with only HGI in the list,
+    # so the known_list will never grow — skip the wait in that case.
     wait_for_known_list = params.get("wait_for_known_list", False)
     if wait_for_known_list:
         peer_ids = {did.upper() for did in device_map.values()}
@@ -276,19 +280,19 @@ def _infer_device_map(
 
 
 async def _wait_for_known_list(
-    hass: Any, peer_ids: set[str], timeout: float = 60.0
+    hass: Any, peer_ids: set[str], timeout: float = 30.0
 ) -> None:
     """Wait until ramses_cc's known_list contains all peer device IDs.
 
     Polls the ramses_cc coordinator's known_list every 2 seconds.  If the
-    coordinator is not available or the known_list doesn't contain all peers
-    within *timeout* seconds, returns anyway (the playback will proceed and
-    some devices may get FILTER EXCEPTIONS, but this is better than blocking
-    forever).
+    coordinator is not available, the known_list is too small (fresh_start
+    profile with only HGI), or the known_list doesn't contain all peers
+    within *timeout* seconds, returns anyway.
     """
     from ..websocket_commands import _get_ramses_cc_coordinator
 
     deadline = asyncio.get_event_loop().time() + timeout
+    first_check = True
     while True:
         coordinator = _get_ramses_cc_coordinator(hass)
         known_ids: set[str] = set()
@@ -296,6 +300,21 @@ async def _wait_for_known_list(
             known_list = coordinator.options.get("known_list", {})
             if isinstance(known_list, dict):
                 known_ids = {str(k).upper() for k in known_list}
+
+            # Fresh_start profile: known_list has only the HGI (1 device).
+            # ramses_cc's passive scan override forces enforce_known_list=True,
+            # so the discovery scan can't add devices to the known_list.
+            # Skip the wait — playback will proceed and devices will get
+            # FILTER EXCEPTIONS, but the simulator's auto-answer will still
+            # respond to RQs.
+            if first_check and len(known_ids) <= 2:
+                LOGGER.info(
+                    "device_playback: known_list has only %d devices "
+                    "(fresh_start profile), skipping wait",
+                    len(known_ids),
+                )
+                return
+
             missing = peer_ids - known_ids
             if not missing:
                 LOGGER.info(
@@ -314,6 +333,7 @@ async def _wait_for_known_list(
                 "device_playback: ramses_cc coordinator not available yet, waiting"
             )
 
+        first_check = False
         if asyncio.get_event_loop().time() >= deadline:
             LOGGER.warning(
                 "device_playback: timed out after %.0fs waiting for known_list, "

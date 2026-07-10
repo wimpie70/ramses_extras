@@ -410,11 +410,23 @@ async def _update_known_list_and_reload(
     if schema is not None:
         new_options[CONF_SCHEMA] = deepcopy(schema)
     else:
-        # No schema to preload — remove any existing CONF_SCHEMA so the
-        # reload starts with a clean slate.  Without this, the in-memory
-        # config entry retains the old schema and ramses_cc recreates all
-        # stale devices on reload.
-        new_options.pop(CONF_SCHEMA, None)
+        # No schema to preload.  If the profile has enforce_known_list=False,
+        # it wants to discover devices from traffic — preserve any existing
+        # schema so _derive_known_list_from_schema can extract device IDs
+        # (ramses_cc's passive scan override will force enforce_known_list=True,
+        # which blocks discovery of devices not in the known_list).
+        # If enforce_known_list=True, the profile is a "clean slate" — remove
+        # the old schema so the reload starts fresh.
+        enforce = (
+            bool(enforce_cfg.get("enabled", False))
+            if isinstance(enforce_cfg, dict)
+            else bool(enforce_cfg)
+        )
+        if not enforce:
+            # Preserve existing schema — needed for known_list derivation
+            pass
+        else:
+            new_options.pop(CONF_SCHEMA, None)
 
     object.__setattr__(entry, "options", MappingProxyType(new_options))
 
