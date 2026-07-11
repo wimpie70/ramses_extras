@@ -1292,17 +1292,28 @@ And separately:
 ### Trait-by-trait analysis
 
 **IMPLEMENTED in PR 764** (stored as `_`-prefixed keys in schema,
-stripped by `_strip_schema_extensions` before ramses_rf sees them):
-- `_disabled` (bool): exclude from known_list / device creation
-- `_name` (str): human-friendly display name
-- `_alias` (str): alternate name (e.g. for entities)
+stripped by `_strip_schema_extensions` before ramses_rf sees them,
+extracted into known_list by `_derive_known_list_from_schema`):
+- `_disabled` (bool): exclude from entity creation (stays in known_list
+  to avoid DeviceNotFoundError log spam, entities suppressed in
+  `_discover_new_entities`)
+- `_name` (str): human-friendly display name (maps to `alias` in
+  known_list)
+- `_alias` (str): alternate name (e.g. for entities, maps to `alias`)
 - `_class` (str): override device class (CTL, TRV, DHW, ...)
-- `_comment` (str): free-form per-device comment
+- `_comment` (str): free-form per-device comment (display only)
+- `_owner` (str): owner name — devices matching root `_owner` are
+  "ours" (known_list), others are "foreign" (block_list)
+- `_faked` (bool): create a virtual/fake device (no RF traffic needed)
+- `_bound` (str): for FAN, the bound REM/DIS device ID for 2411
+  command routing
+- `_scheme` (str): FAN manufacturer scheme (orcon/itho/vasco/nuaire)
+  for 22F1 fan mode commands
 
-**PROPOSED** (not yet implemented, same `_` key pattern):
-- `_faked` (bool): fake sensor mode flag
-- `_scheme` (str): HVAC vendor scheme (itho, nuaire, ...)
-- `_bound` (str): FAN binding for faked REMs
+**PROPOSED** (not yet implemented):
+- `_skipped` (bool): user deferred decision — re-appears in discovery
+  review (implemented as a trait, but the review re-appearance logic
+  needs validation)
 
 ```
 TRAIT        | WHERE NOW           | CAN MOVE TO SCHEMA? | HOW
@@ -1323,23 +1334,29 @@ alias        | known_list          | YES — _name already | Zone: zones.03._nam
              |                     | _name when same     | _alias key natively
              |                     | device              | (ramses_cc strips it for now)
              |                     |                     |
-faked        | known_list          | YES — schema field  | "01:150003":
-             |                     |                     |   {_faked: true}
-             |                     |                     | ramses_rf needs to accept
-             |                     |                     | _faked key in schema validators
+faked        | known_list          | YES — implemented   | "01:150003":
+             |                     | in PR 764           |   {_faked: true}
+             |                     |                     | Extracted to known_list as
+             |                     |                     | faked=True; ramses_rf creates
+             |                     |                     | the fake device via
+             |                     |                     | load_schema() loop
              |                     |                     |
-scheme       | known_list (HVAC    | YES — schema field  | "30:160000":
-             | only)               |                     |   {_scheme: "itho",
+scheme       | known_list (HVAC    | YES — implemented   | "30:160000":
+             | only)               | in PR 764           |   {_scheme: "itho",
              |                     |                     |    remotes: [...]}
-             |                     |                     | ramses_rf needs to accept
-             |                     |                     | _scheme key in SCH_VCS_DATA
+             |                     |                     | Extracted to known_list as
+             |                     |                     | scheme="itho" for 22F1 cmds
              |                     |                     |
-bound        | known_list (FAN     | YES — schema field  | "32:153289": {
-             | only, for faked     | (FAN-specific)      |   _bound: "37:168270",
+bound        | known_list (FAN     | YES — implemented   | "32:153289": {
+             | only, for faked     | in PR 764           |   _bound: "37:168270",
              | REMs sending 2411)  |                     |   remotes: [...]
              |                     | NOT same as         | }
-             |                     | remotes[] (topology)| _bound = which faked REM
-             |                     |                     | can send 2411 params to FAN
+             | remotes[] (topology)| _bound = which REM  | Extracted to known_list as
+             |                     | can send 2411 params| bound="37:168270"
+             |                     | to FAN              | NOTE: fan_handler.py still
+             |                     |                     | reads from user known_list
+             |                     |                     | config — follow-up needed to
+             |                     |                     | also check schema _bound
              |                     |                     |
 _domain      | auto-detected       | NO — internal       | Stays internal to ramses_rf
              | (not user-set)      |                     |
