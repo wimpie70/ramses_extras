@@ -2042,6 +2042,10 @@ mitigated. Problems 2, 3, and 5 remain.
 │    Future upgrade: swap the 5-min polling loop for a         │
 │    StateUpdatedEvent listener when ramses_rf's CQRS events   │
 │    are live (confirmed sound by ramses_rf author).           │
+│    Note: entity-level SIGNAL_UPDATE is now emitted by the    │
+│    coordinator's _on_packet handler (issue 794, shipped in   │
+│    0.58.0), so this polling-loop upgrade is about topology   │
+│    sync only, not entity state updates.                      │
 │                                                             │
 │ 3. ZONE REASSIGNMENT (ramses_cc change)                     │
 │    When a device moves zones:                               │
@@ -3314,13 +3318,24 @@ The ramses_rf CQRS refactor (#530) is ongoing:
   per PWhite-Eng, not yet executed
 - Phase 3 (Strict DTO Boundaries, issue 714): not started
 - StateUpdatedEvent bus: confirmed by PWhite-Eng as the future
-  signal source for ramses_cc entity updates (Step 4)
+  signal source for ramses_cc entity updates (Step 4).  However,
+  issue 794 shipped an interim solution in 0.58.0: the coordinator
+  emits SIGNAL_UPDATE via an _on_packet raw handler with
+  asyncio.sleep(0) as the yield strategy.  This means Step 4 is
+  functionally done — StateUpdatedEvent remains a future upgrade
+  for deterministic ingestion-complete signalling, but it is no
+  longer a blocker.
 
 Our schema changes align as agreed:
 - Step 2 (Schema SSOT + Passive Scan, PR 764): in progress, parallel
 - Step 3 (Strict DTOs): after Phil's Phase 2.95 F5
-- Step 4 (Coordinator SIGNAL_UPDATE wiring): after Step 3, depends
-  on StateUpdatedEvent from CQRS StateProjector
+- Step 4 (Coordinator SIGNAL_UPDATE wiring): DONE (interim, issue 794).
+  The coordinator owns signal emission via _on_packet; event.py is
+  slimmed (no longer load-bearing); should_poll + async_update +
+  poll_codes add a poll-driven path for entities that opt in.
+  StateUpdatedEvent from CQRS StateProjector is no longer a blocker
+  — it remains a future upgrade to replace asyncio.sleep(0) with a
+  deterministic ingestion-complete hook.
 
 
 <a id="recommendations"></a>
