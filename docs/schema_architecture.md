@@ -311,6 +311,40 @@ significantly cheaper than Path 2.
 - Future: on_new_device callback (real-time, no polling) — this needs
   a new ramses_rf PR
 
+**Class mismatch detection (DiscoveryManager):**
+
+When `sync_with_schema` runs (every 5-min checkpoint), the
+DiscoveryManager compares each accepted device's `likely_type` (from
+the scan engine) with the schema's `_class` (user-authoritative).
+
+```
+  scan engine says:  37:169161 → FAN (RQ 31DA, accumulated codes)
+  schema says:       37:169161 → _class: DIS (user set this)
+
+  → MISMATCH detected
+  → WARNING logged (once, not every cycle)
+  → class_mismatch flag set on DeviceMetadata
+  → review_discovered step shows it to the user
+```
+
+Key design decisions:
+- **Schema is authoritative.** The scan engine's classification is
+  advisory — it never overwrites `_class`. The user decides.
+- **Normalization.** Schema `_class` values are normalized before
+  comparison (e.g., `ventilator` → `FAN`) so legacy slugs don't
+  trigger false mismatches.
+- **Warning frequency.** The top-level WARNING fires only once per
+  mismatch (tracked in `_warned_mismatches`). Subsequent checkpoints
+  log at DEBUG. When all mismatches resolve, an INFO message is
+  logged and the warned set is cleared.
+- **Why the scan engine can be wrong.** The scan engine is a passive
+  observer that guesses types from packet codes. A DIS sending
+  `RQ 31DA` (requesting fan status) can be misclassified as FAN
+  because 31DA maps to FAN for `I` and `RP` verbs. The verb-sensitive
+  classification fix (see Topology Changes section) mitigates this,
+  but other ambiguities may remain — the schema override is the
+  final authority.
+
 <a id="path-2-topology-builder-for-known-devices"></a>
 ### PATH 2: Topology Builder (for known devices)
 
@@ -819,12 +853,14 @@ Can be cleared without losing user config.
 │                                                             │
 │ schema_backups: ← incremental backups (last 5)              │
 │   [{timestamp, schema, known_list}, ...]                    │
+│   (also saved as YAML to <config_dir>/ramses_cc_backups/)    │
 │                                                             │
 │ remotes:    ← HVAC remote control commands                  │
 │   "32:153001": {command_name: "code_payload", ...}          │
 │                                                             │
 │ WHO WRITES: async_save_client_state (every 5 min + stop)    │
-│             async_save_backup (before migration)            │
+│             async_save_backup (before migration steps:      │
+│               SSOT Phase 1, Phase 2, review_discovered)     │
 │ WHO READS:  coordinator at startup                          │
 │             - schema merged with config via merge_schemas   │
 │             - packets restored for warm restart             │
@@ -1910,7 +1946,7 @@ STAYS IN CONFIG OPTIONS (not device traits):
 STAYS IN .storage/ramses_cc (storage mechanics):
   📋 cached packets → warm restart data
   📋 discovery state → observer catalog (Path 1)
-  📋 schema_backups → safety backups
+  📋 schema_backups → safety backups (also as YAML in ramses_cc_backups/)
 
 STAYS IN ramses.db:
   📋 packet history → message store (schedules, fan info, etc.)
@@ -1980,6 +2016,19 @@ Events that fire:
 - **zone sensor matching** — temperature matching heuristic [heat only]
 - **HVAC verb+code pairs** — class promotion only (22F1→REM, 1298→CO2,
   31D9/31DA→FAN, 12A0→HUM). NO binding events for HVAC.
+
+**Verb sensitivity (31DA fix):** The scan engine's `_classify` function
+checks the **current verb** when classifying from accumulated codes.
+This matters for 31DA:
+- `I|31DA` (broadcast) → FAN (the FAN broadcasts its own status)
+- `RP|31DA` (response) → FAN (the FAN replies to a request)
+- `RQ|31DA` (request) → NOT FAN (a DIS asks the FAN for status)
+
+Without this distinction, a DIS sending `RQ|31DA` to a FAN would be
+misclassified as FAN, because the accumulated-codes check tried all
+verbs and found `(I, 31DA) → FAN` even though the device never sent
+`I|31DA`. The fix: only check the current verb, so `RQ|31DA` does not
+match any VC pair and the device falls through to prefix fallback.
 
 These events mutate ramses_rf's in-memory device registry. The next
 `client.get_state()` → `gateway.schema()` reflects the changes, and
@@ -2697,8 +2746,14 @@ SCENARIO 4: config entry corrupted or deleted
 
   RECOVERY TIME: manual reconfiguration required
   MITIGATION: backup mechanism (store.py async_save_backup) saves
-  schema + known_list before migration. But this only runs on
-  migration, not periodically.
+  schema + known_list as human-readable YAML files to
+  <config_dir>/ramses_cc_backups/ before every migration step.
+  Backups are created before:
+  - SSOT Phase 1 (known_list-only devices → schema)
+  - SSOT Phase 2 (known_list traits → schema)
+  - review_discovered _class updates
+  Max 5 backups retained (oldest trimmed). User can copy/paste
+  from YAML to restore.
 
 
 SCENARIO 5: Both config entry AND cache lost
@@ -2769,7 +2824,10 @@ SCENARIO 5: Both config entry AND cache lost
 
 4. PERIODIC CONFIG BACKUP (ramses_cc, proposed)
    ────────────────────────────────────────────────────────────────
-   Today: backup only before migration (store.py async_save_backup)
+   Today: backups before every migration step (store.py async_save_backup)
+          → saved as human-readable YAML to <config_dir>/ramses_cc_backups/
+          → max 5 retained (oldest trimmed)
+          → created before SSOT Phase 1, Phase 2, and review_discovered _class updates
    Future: periodic backup of config entry to .storage/ramses_cc
 
    Impact on crash:
@@ -2996,8 +3054,10 @@ HA/HACS does NOT support downgrade:
     4. v1 code can't read v2 schema → broken
 
   Workarounds:
-  a) schema_backups: we already save backups before migration
-     → user can manually restore from .storage/ramses_cc[schema_backups]
+  a) schema_backups: we save backups as human-readable YAML files to
+     <config_dir>/ramses_cc_backups/ before every migration step
+     → user can copy/paste from YAML to restore
+     → max 5 backups retained (oldest trimmed)
   b) Forward-compatible code: v1 code ignores unknown _ keys
      → v2 schema with _alias keys works in v1 code (just ignores them)
   c) Version check: v1 code detects v2 format, logs warning, uses cache
@@ -3017,8 +3077,10 @@ HA/HACS does NOT support downgrade:
 
 2. Make v2 migration create a backup:
    - async_save_backup() already exists
-   - Save v1 schema + known_list before migrating to v2
-   - User can manually restore if needed
+   - Saves v1 schema + known_list as human-readable YAML to
+     <config_dir>/ramses_cc_backups/ before migrating to v2
+   - Max 5 backups retained (oldest trimmed)
+   - User can copy/paste from YAML to restore manually
 
 3. Don't support formal downgrade:
    - If user downgrades, v1 code reads v2 schema (forward-compatible)
@@ -3057,7 +3119,8 @@ PHASE 2 (traits in schema) — IMPLEMENTED in PR 764:
     # known_list stays as fallback container (Phase 4 removal deferred).
     # disabled_devices list already replaced by _disabled per-device trait.
 
-  BACKUP: save v1 schema + known_list + disabled_devices
+  BACKUP: save v1 schema + known_list + disabled_devices as YAML to
+          <config_dir>/ramses_cc_backups/ (max 5 retained)
 
   BACKWARD COMPAT: v1 code ignores _ keys, still reads topology
 
@@ -3073,7 +3136,8 @@ PHASE 3 (commands in schema):
     # Remove remotes from .storage
     # Remove commands from known_list
 
-  BACKUP: save v2 schema + remotes
+  BACKUP: save v2 schema + remotes as YAML to
+          <config_dir>/ramses_cc_backups/ (max 5 retained)
 
   BACKWARD COMPAT: v2 code ignores _commands, still reads remotes
                    from .storage (if still present)
@@ -3094,7 +3158,8 @@ PHASE 4 (known_list fully removed) — DEFERRED:
     # Remove known_list from config entry options
     # known_list is now 100% derived from schema at startup
 
-  BACKUP: save v3 config entry options (including known_list)
+  BACKUP: save v3 config entry options (including known_list) as YAML
+          to <config_dir>/ramses_cc_backups/ (max 5 retained)
 
   BACKWARD COMPAT: v3 code still has known_list in options (ignored)
 ```
