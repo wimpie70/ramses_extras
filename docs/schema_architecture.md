@@ -1869,9 +1869,27 @@ TRAITS (in schema with _ prefix, stripped before ramses_rf):
   ✅ implemented: _alias (device-level friendly name)
   ✅ implemented: _class (device class override)
   ✅ implemented: _comment (free-form per-device comment)
-  📋 proposed: _faked (fake sensor mode)
-  📋 proposed: _scheme (HVAC vendor scheme)
-  📋 proposed: _bound (FAN-specific: which faked REM can send 2411)
+  ✅ implemented: _faked (fake sensor mode — PR 764)
+  ✅ implemented: _scheme (HVAC vendor scheme — PR 764)
+  ✅ implemented: _bound (FAN-specific: which faked REM can send 2411 — PR 764)
+  ✅ implemented: _owner (device ownership: me / not-me — PR 764)
+
+PHASE 2 MIGRATION (known_list traits → schema _ traits):
+  ✅ implemented: _sync_known_list_traits_to_schema copies class, faked,
+     bound, scheme, alias from known_list into schema root entries
+     (PR 764, commit 3249178). Runs after sync_learned_topology backfill.
+     Schema is authoritative — known_list only fills gaps.
+  ✅ implemented: generate_schema_entry creates root entries for ALL device
+     types (PR 764, commit 8b025d7). Previously list-based devices (REM/CO2
+     in remotes[], TRV in zones[]) got no root entry — traits couldn't be set.
+  ✅ implemented: sync_learned_topology backfills root entries for pre-existing
+     list devices (PR 764, commit 8448cbd). One-time migration for devices
+     accepted before the generate_schema_entry fix.
+  ✅ implemented: strip_traits_for_validation prevents duplicates when a
+     device is in both a root entry and a list (PR 764, commit 485bba2).
+  ✅ implemented: order_schema for human-readable key ordering — root traits,
+     main_tcs, comments, orphans (at top), devices sorted by _owner then ID
+     (PR 764, commits bf02322, a013d00).
 
 WILL BECOME OBSOLETE (not in schema, not in config):
   ❌ enforce_known_list → always-on, then option removed
@@ -3014,30 +3032,30 @@ HA/HACS does NOT support downgrade:
 ### Migration steps for each phase
 
 ```
-PHASE 2 (traits in schema, ramses_rf PR needed):
+PHASE 2 (traits in schema) — IMPLEMENTED in PR 764:
 
-  WHEN: when ramses_rf accepts _alias, _class, _faked, _scheme, _bound
-        in its schema validators
+  STATUS: ✅ Done. No ramses_rf PR needed — strip_traits_for_validation
+  removes _ keys before ramses_rf sees the schema, and
+  _derive_known_list_from_schema extracts traits to the known_list
+  that ramses_rf reads as it always has.
 
-  MIGRATION v1 → v2:
+  MIGRATION v1 → v2 (implemented as _sync_known_list_traits_to_schema):
     for each device_id in known_list:
       traits = known_list[device_id]
-      if traits.get("alias"):
+      if traits.get("alias") and "_alias" not in schema[device_id]:
         schema[device_id]["_alias"] = traits["alias"]
-      if traits.get("class"):
+      if traits.get("class") and "_class" not in schema[device_id]:
         schema[device_id]["_class"] = traits["class"]
-      if traits.get("faked"):
+      if traits.get("faked") and "_faked" not in schema[device_id]:
         schema[device_id]["_faked"] = traits["faked"]
-      if traits.get("scheme"):
+      if traits.get("scheme") and "_scheme" not in schema[device_id]:
         schema[device_id]["_scheme"] = traits["scheme"]
-      if traits.get("bound"):
+      if traits.get("bound") and "_bound" not in schema[device_id]:
         schema[device_id]["_bound"] = traits["bound"]
 
-    for device_id in disabled_devices:  # migrate old list to per-device trait
-      schema[device_id]["_disabled"] = True
-
-    # Keep known_list for commands only (if any)
-    # Remove disabled_devices list (now per-device _disabled)
+    # Schema is authoritative — known_list only fills gaps.
+    # known_list stays as fallback container (Phase 4 removal deferred).
+    # disabled_devices list already replaced by _disabled per-device trait.
 
   BACKUP: save v1 schema + known_list + disabled_devices
 
