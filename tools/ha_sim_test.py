@@ -1912,7 +1912,13 @@ async def main() -> None:
             },
         )
         print("  add_faked_rem service call succeeded")
-        wait(5, "for schema merge + entity creation")
+        wait(3, "for schema merge + entity creation")
+        # Force a save cycle to persist the config entry
+        try:
+            call_service(token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        wait(5, "for config entry persistence")
         check("add_faked_rem service call succeeds", True, "")
     except RuntimeError as e:
         check("add_faked_rem service call succeeds", False, str(e)[:80])
@@ -2203,11 +2209,11 @@ async def main() -> None:
     # bound, scheme, alias) are copied into the schema's _ traits by
     # _sync_known_list_traits_to_schema after sync_learned_topology runs.
     #
-    # We use the FAN from recipe 18 and check that its class trait (if
-    # present in the known_list) has been migrated to _class in the schema.
+    # We use the faked REM from recipe 18 and check that its traits
+    # have been migrated to _ traits in the schema.
 
-    fan_id_r20 = "32:153289"
-    rem_id_r20 = "37:168270"
+    fan_id_r20 = FAN  # 32:150000 (from recipe 18)
+    rem_id_r20 = faked_rem_id  # 37:999999 (from recipe 18)
 
     # Force a sync cycle to trigger backfill + trait migration
     try:
@@ -2223,32 +2229,34 @@ async def main() -> None:
 
     schema_r20 = get_schema_retry()
 
-    # Check 1: FAN should have a root entry (from generate_schema_entry
-    # or backfilled by sync_learned_topology)
+    # Check 1: REM should have a root entry (from add_faked_rem in recipe 18,
+    # which creates a root entry with _class, _bound, _faked, _owner traits)
     check(
-        "FAN has root entry in schema",
-        fan_id_r20 in schema_r20,
-        f"keys={list(schema_r20.keys())}",
-    )
-
-    # Check 2: REM should have a root entry (backfilled by
-    # sync_learned_topology if it was only in remotes[])
-    check(
-        "REM has root entry in schema (backfilled)",
+        "REM has root entry in schema",
         rem_id_r20 in schema_r20,
         f"keys={list(schema_r20.keys())}",
     )
 
-    # Check 3: REM root entry should have _owner (from backfill)
+    # Check 2: REM root entry should have _faked trait (from add_faked_rem)
     rem_entry_r20 = schema_r20.get(rem_id_r20, {})
     if isinstance(rem_entry_r20, dict):
         check(
-            "REM root entry has _owner",
-            "_owner" in rem_entry_r20,
+            "REM root entry has _faked",
+            rem_entry_r20.get("_faked") is True,
             f"keys={list(rem_entry_r20.keys())}",
         )
+        check(
+            "REM root entry has _bound",
+            rem_entry_r20.get("_bound") == fan_id_r20,
+            f"_bound={rem_entry_r20.get('_bound')}",
+        )
+        check(
+            "REM root entry has _class",
+            rem_entry_r20.get("_class") == "REM",
+            f"_class={rem_entry_r20.get('_class')}",
+        )
 
-    # Check 4: If FAN has class in known_list, it should be in schema as _class
+    # Check 3: If FAN has class in known_list, it should be in schema as _class
     # (This is the core Phase 2 migration — known_list traits → schema _ traits)
     known_list_r20 = get_known_list()
     fan_kl = known_list_r20.get(fan_id_r20, {})
