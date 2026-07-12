@@ -2194,6 +2194,83 @@ async def main() -> None:
         )
 
     # =====================================================================
+    # RECIPE 20: SSOT Phase 2 migration — known_list traits to schema
+    # =====================================================================
+    log_section("Recipe 20: SSOT Phase 2 migration (known_list → schema)")
+
+    # This recipe verifies that traits from the known_list (class, faked,
+    # bound, scheme, alias) are copied into the schema's _ traits by
+    # _sync_known_list_traits_to_schema after sync_learned_topology runs.
+    #
+    # We use the FAN from recipe 18 and check that its class trait (if
+    # present in the known_list) has been migrated to _class in the schema.
+
+    fan_id_r20 = "32:153289"
+    rem_id_r20 = "37:168270"
+
+    # Force a sync cycle to trigger backfill + trait migration
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for sync_learned_topology + trait migration")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save")
+
+    schema_r20 = get_schema_retry()
+
+    # Check 1: FAN should have a root entry (from generate_schema_entry
+    # or backfilled by sync_learned_topology)
+    check(
+        "FAN has root entry in schema",
+        fan_id_r20 in schema_r20,
+        f"keys={list(schema_r20.keys())}",
+    )
+
+    # Check 2: REM should have a root entry (backfilled by
+    # sync_learned_topology if it was only in remotes[])
+    check(
+        "REM has root entry in schema (backfilled)",
+        rem_id_r20 in schema_r20,
+        f"keys={list(schema_r20.keys())}",
+    )
+
+    # Check 3: REM root entry should have _owner (from backfill)
+    rem_entry_r20 = schema_r20.get(rem_id_r20, {})
+    if isinstance(rem_entry_r20, dict):
+        check(
+            "REM root entry has _owner",
+            "_owner" in rem_entry_r20,
+            f"keys={list(rem_entry_r20.keys())}",
+        )
+
+    # Check 4: If FAN has class in known_list, it should be in schema as _class
+    # (This is the core Phase 2 migration — known_list traits → schema _ traits)
+    known_list_r20 = get_known_list()
+    fan_kl = known_list_r20.get(fan_id_r20, {})
+    if isinstance(fan_kl, dict) and "class" in fan_kl:
+        fan_entry_r20 = schema_r20.get(fan_id_r20, {})
+        if isinstance(fan_entry_r20, dict):
+            check(
+                "FAN _class migrated from known_list",
+                fan_entry_r20.get("_class") == fan_kl["class"],
+                f"schema _class={fan_entry_r20.get('_class')}, "
+                f"known_list class={fan_kl['class']}",
+            )
+
+    # Check 5: Schema should be ordered (root traits first, orphans at top)
+    schema_keys_r20 = list(schema_r20.keys())
+    if "_owner" in schema_keys_r20:
+        check(
+            "_owner is first key in schema",
+            schema_keys_r20[0] == "_owner",
+            f"first key={schema_keys_r20[0]}",
+        )
+
+    # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run
     # =====================================================================
     log_section("Log Report: ERROR/WARNING analysis")
