@@ -1940,36 +1940,19 @@ async def main() -> None:
     )
 
     # Verify the schema entry was persisted with _ prefix traits by
-    # reading the config entry options via the HA API.
-    try:
-        req = urllib.request.Request(
-            HA_URL + "/api/config/config_entries/entry",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        entries = json.loads(urllib.request.urlopen(req).read())
-        ramses_entry = None
-        for e in entries:
-            if e.get("domain") == "ramses_cc":
-                ramses_entry = e
-                break
-        if ramses_entry:
-            schema = ramses_entry.get("options", {}).get("schema", {})
-            # The faked REM should appear in the schema with _faked: true
-            entry_traits = schema.get(faked_rem_id, {})
-            check(
-                f"schema has {faked_rem_id} with _faked trait",
-                isinstance(entry_traits, dict) and entry_traits.get("_faked") is True,
-                f"got: {entry_traits}",
-            )
-            check(
-                f"schema has {faked_rem_id} with _bound to {FAN}",
-                isinstance(entry_traits, dict) and entry_traits.get("_bound") == FAN,
-                f"got: {entry_traits}",
-            )
-        else:
-            check("schema has faked REM entry", False, "no ramses_cc entry found")
-    except Exception as e:
-        check("schema has faked REM entry", False, str(e)[:80])
+    # reading the config entry from .storage (API may be stale).
+    schema_r18 = get_schema_retry()
+    entry_traits = schema_r18.get(faked_rem_id, {})
+    check(
+        f"schema has {faked_rem_id} with _faked trait",
+        isinstance(entry_traits, dict) and entry_traits.get("_faked") is True,
+        f"got: {entry_traits}",
+    )
+    check(
+        f"schema has {faked_rem_id} with _bound to {FAN}",
+        isinstance(entry_traits, dict) and entry_traits.get("_bound") == FAN,
+        f"got: {entry_traits}",
+    )
 
     # =====================================================================
     # RECIPE 19: Zone binding from broadcast traffic (passive scan) [A]
