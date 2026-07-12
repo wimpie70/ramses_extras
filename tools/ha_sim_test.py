@@ -1886,12 +1886,83 @@ async def main() -> None:
             check("remove_discovered_device succeeds", False, str(e)[:80])
 
     # =====================================================================
-    # RECIPE 18: add_faked_rem service [prepared — not fully implemented yet]
+    # RECIPE 18: add_faked_rem service — creates faked REM bound to FAN
     # =====================================================================
-    # add_faked_rem only registers a metadata entry in the discovery manager.
-    # It does NOT add the REM to the FAN's remotes in the schema or create
-    # a HA entity. Full implementation (binding + command forwarding) is
-    # WIP for a future PR. Skipping automated test for now.
+    log_section("Recipe 18: add_faked_rem service")
+
+    # add_faked_rem creates a virtual REM device bound to a FAN.
+    # It should:
+    #   1. Create a discovery metadata entry with _faked/_bound/_class traits
+    #   2. Merge the schema entry into the config entry schema (persisted)
+    #   3. Trigger discover_known_devices to create the HA entity
+    #
+    # We use a fresh device ID to avoid conflicts with existing REMs.
+
+    faked_rem_id = "37:999999"
+    print(f"  Adding faked REM {faked_rem_id} bound to {FAN}...")
+    try:
+        call_service(
+            token,
+            "ramses_cc",
+            "add_faked_rem",
+            {
+                "device_id": faked_rem_id,
+                "bound_to": FAN,
+                "alias": "Test Faked REM",
+            },
+        )
+        print("  add_faked_rem service call succeeded")
+        wait(5, "for schema merge + entity creation")
+        check("add_faked_rem service call succeeds", True, "")
+    except RuntimeError as e:
+        check("add_faked_rem service call succeeds", False, str(e)[:80])
+
+    # Verify the faked REM appears in the known_list (no DeviceNotFoundError
+    # log spam) by checking the HA log for errors about this device.
+    log_monitor.refresh()
+    faked_errors = [
+        line
+        for line in log_monitor.new_lines()
+        if faked_rem_id in line
+        and ("DeviceNotFoundError" in line or "excluded" in line)
+    ]
+    check(
+        f"no DeviceNotFoundError for {faked_rem_id}",
+        len(faked_errors) == 0,
+        f"{len(faked_errors)} error lines",
+    )
+
+    # Verify the schema entry was persisted with _ prefix traits by
+    # reading the config entry options via the HA API.
+    try:
+        req = urllib.request.Request(
+            HA_URL + "/api/config/config_entries/entry",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        entries = json.loads(urllib.request.urlopen(req).read())
+        ramses_entry = None
+        for e in entries:
+            if e.get("domain") == "ramses_cc":
+                ramses_entry = e
+                break
+        if ramses_entry:
+            schema = ramses_entry.get("options", {}).get("schema", {})
+            # The faked REM should appear in the schema with _faked: true
+            entry_traits = schema.get(faked_rem_id, {})
+            check(
+                f"schema has {faked_rem_id} with _faked trait",
+                isinstance(entry_traits, dict) and entry_traits.get("_faked") is True,
+                f"got: {entry_traits}",
+            )
+            check(
+                f"schema has {faked_rem_id} with _bound to {FAN}",
+                isinstance(entry_traits, dict) and entry_traits.get("_bound") == FAN,
+                f"got: {entry_traits}",
+            )
+        else:
+            check("schema has faked REM entry", False, "no ramses_cc entry found")
+    except Exception as e:
+        check("schema has faked REM entry", False, str(e)[:80])
 
     # =====================================================================
     # RECIPE 19: Zone binding from broadcast traffic (passive scan) [A]
