@@ -1919,10 +1919,11 @@ async def main() -> None:
 
     # Verify the faked REM appears in the known_list (no DeviceNotFoundError
     # log spam) by checking the HA log for errors about this device.
-    log_monitor.refresh()
+    log_data_r18 = log_monitor.collect()
+    all_log_lines = log_data_r18.get("errors", []) + log_data_r18.get("warnings", [])
     faked_errors = [
         line
-        for line in log_monitor.new_lines()
+        for line in all_log_lines
         if faked_rem_id in line
         and ("DeviceNotFoundError" in line or "excluded" in line)
     ]
