@@ -1954,6 +1954,17 @@ async def main() -> None:
         f"got: {entry_traits}",
     )
 
+    # Check that the REM was added to the FAN's remotes list
+    fan_entry_r18 = schema_r18.get(FAN, {})
+    fan_remotes = (
+        fan_entry_r18.get("remotes", []) if isinstance(fan_entry_r18, dict) else []
+    )
+    check(
+        f"REM {faked_rem_id} in FAN {FAN} remotes list",
+        faked_rem_id in fan_remotes,
+        f"remotes={fan_remotes}",
+    )
+
     # =====================================================================
     # RECIPE 19: Zone binding from broadcast traffic (passive scan) [A]
     # =====================================================================
