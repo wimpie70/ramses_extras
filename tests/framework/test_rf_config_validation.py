@@ -25,20 +25,60 @@ class TestCheckBoundRem:
     def test_empty_known_list(self) -> None:
         assert _check_bound_rem({"known_list": {}}) is False
 
-    def test_device_without_bound_to(self) -> None:
+    def test_device_without_bound(self) -> None:
         assert (
             _check_bound_rem({"known_list": {"32:153289": {"class": "FAN"}}}) is False
         )
 
-    def test_device_with_bound_to(self) -> None:
+    def test_device_with_bound(self) -> None:
         assert (
-            _check_bound_rem({"known_list": {"32:153289": {"bound_to": "29:176861"}}})
+            _check_bound_rem({"known_list": {"32:153289": {"bound": "29:176861"}}})
             is True
         )
 
-    def test_device_with_none_bound_to(self) -> None:
+    def test_device_with_none_bound(self) -> None:
+        assert _check_bound_rem({"known_list": {"32:153289": {"bound": None}}}) is False
+
+    def test_device_with_remotes_list(self) -> None:
         assert (
-            _check_bound_rem({"known_list": {"32:153289": {"bound_to": None}}}) is False
+            _check_bound_rem({"known_list": {"32:153289": {"remotes": ["37:168270"]}}})
+            is True
+        )
+
+    def test_device_with_empty_remotes_list(self) -> None:
+        assert _check_bound_rem({"known_list": {"32:153289": {"remotes": []}}}) is False
+
+    def test_schema_with_bound(self) -> None:
+        """Schema uses _bound (SZ_TR_BOUND), not bound."""
+        assert (
+            _check_bound_rem({"schema": {"32:153289": {"_bound": "37:168270"}}}) is True
+        )
+
+    def test_schema_without_bound(self) -> None:
+        assert _check_bound_rem({"schema": {"32:153289": {"_class": "FAN"}}}) is False
+
+    def test_known_list_bound_takes_precedence(self) -> None:
+        """Both known_list and schema present — known_list checked first."""
+        assert (
+            _check_bound_rem(
+                {
+                    "known_list": {"32:153289": {"bound": "29:176861"}},
+                    "schema": {"32:153289": {"_bound": "37:168270"}},
+                }
+            )
+            is True
+        )
+
+    def test_schema_bound_when_known_list_empty(self) -> None:
+        """Schema _bound detected even when known_list has no binding."""
+        assert (
+            _check_bound_rem(
+                {
+                    "known_list": {"32:153289": {"class": "FAN"}},
+                    "schema": {"32:153289": {"_bound": "37:168270"}},
+                }
+            )
+            is True
         )
 
     def test_known_list_not_dict(self) -> None:
@@ -153,7 +193,7 @@ class TestValidateRamsesCcConfig:
         hass = MagicMock()
         entry = MagicMock()
         entry.options = {
-            "known_list": {"32:153289": {"bound_to": "29:176861"}},
+            "known_list": {"32:153289": {"bound": "29:176861"}},
             "advanced_features": {
                 "message_events": "31DA|10D0",
                 "send_packet": True,
@@ -180,7 +220,7 @@ class TestValidateRamsesCcConfig:
         entry.options = {"advanced_features": {"send_packet": False}}
         coordinator = MagicMock()
         coordinator.options = {
-            "known_list": {"32:153289": {"bound_to": "29:176861"}},
+            "known_list": {"32:153289": {"bound": "29:176861"}},
             "advanced_features": {
                 "message_events": "31DA|10D0",
                 "send_packet": True,

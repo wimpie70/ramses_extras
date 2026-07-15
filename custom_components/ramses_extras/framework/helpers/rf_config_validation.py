@@ -31,8 +31,13 @@ _LOGGER = logging.getLogger(__name__)
 _CONF_ADVANCED_FEATURES = "advanced_features"
 _CONF_MESSAGE_EVENTS = "message_events"
 _CONF_SEND_PACKET = "send_packet"
+_CONF_SCHEMA = "schema"
 _SZ_KNOWN_LIST = "known_list"
-_SZ_BOUND_TO = "bound_to"
+# known_list uses "bound" (SZ_BOUND_TO in ramses_rf), schema uses "_bound"
+# (SZ_TR_BOUND in ramses_cc) — see fan_handler.setup_fan_bound_devices
+_SZ_BOUND = "bound"
+_SZ_TR_BOUND = "_bound"
+_SZ_REMOTES = "remotes"
 
 # Message codes that ramses_extras features rely on
 _REQUIRED_MSG_CODES = ("31DA", "10D0")
@@ -60,18 +65,34 @@ def _get_ramses_cc_options(hass: HomeAssistant) -> dict[str, Any] | None:
 
 
 def _check_bound_rem(options: dict[str, Any]) -> bool:
-    """Check if any FAN device in the known_list has a bound REM."""
+    """Check if any FAN device has a bound REM.
 
-    known_list = options.get(_SZ_KNOWN_LIST)
-    if not isinstance(known_list, dict):
+    Checks both the known_list (user override, key ``bound``) and the
+    schema (SSOT, key ``_bound``) — mirroring fan_handler.setup_fan_bound_devices.
+    Also recognises a non-empty ``remotes`` list on FAN entries.
+    """
+
+    def _entry_has_bound(device_config: Any) -> bool:
+        if not isinstance(device_config, dict):
+            return False
+        if device_config.get(_SZ_BOUND):
+            return True
+        remotes = device_config.get(_SZ_REMOTES)
+        if isinstance(remotes, list) and remotes:
+            return True
         return False
 
-    for _device_id, device_config in known_list.items():
-        if not isinstance(device_config, dict):
-            continue
-        bound_to = device_config.get(_SZ_BOUND_TO)
-        if bound_to:
-            return True
+    known_list = options.get(_SZ_KNOWN_LIST)
+    if isinstance(known_list, dict):
+        for _device_id, device_config in known_list.items():
+            if _entry_has_bound(device_config):
+                return True
+
+    schema = options.get(_CONF_SCHEMA)
+    if isinstance(schema, dict):
+        for _device_id, device_config in schema.items():
+            if isinstance(device_config, dict) and device_config.get(_SZ_TR_BOUND):
+                return True
 
     return False
 
