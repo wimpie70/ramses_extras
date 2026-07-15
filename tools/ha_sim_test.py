@@ -5,11 +5,13 @@ Uses the HA websocket API for profile loading (with 100x speed) and
 the REST API for service calls.  Runs in ~90 seconds instead of ~5 minutes.
 
 Usage:
-    python3 /tmp/ha_sim_test.py
+    python3 tools/ha_sim_test.py              # run all recipes
+    python3 tools/ha_sim_test.py --start 23   # start from recipe 23
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import subprocess
@@ -203,6 +205,10 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_extras: ramses_rf.const import warning when ramses_rf is
     # installed from a non-standard location (editable install / manual copy)
     "could not import ramses_rf.const for patching",
+    # ramses_rf: faked device send timeout (expected — the simulator
+    # doesn't echo RF commands back to faked devices, but the local
+    # state is already updated before the send)
+    "send failed (timeout), state already updated",
 ]
 
 
@@ -513,6 +519,8 @@ async def load_profile_yaml(
     speed: float = 0.01,
     preload_schema: bool = True,
     reload_ramses: bool = True,
+    reset_rf_cache: bool = False,
+    clear_discovery_state: bool = False,
 ) -> dict:
     """Load a custom YAML profile via the device_simulator scenario.
 
@@ -530,6 +538,8 @@ async def load_profile_yaml(
                 "speed": speed,
                 "preload_schema": preload_schema,
                 "reload_ramses": reload_ramses,
+                "reset_rf_cache": reset_rf_cache,
+                "clear_discovery_state": clear_discovery_state,
             },
         },
     )
@@ -670,73 +680,39 @@ def wait(seconds: int, msg: str = "") -> None:
 # ---------------------------------------------------------------------------
 # Main test runner
 # ---------------------------------------------------------------------------
-async def main() -> None:
-    print("Authenticating to ha-sim...")
-    token = get_token()
-    print(f"Token acquired: {token[:30]}...")
 
-    # Start log monitor — captures baseline for error/warning detection
-    log_monitor.start()
+# ---------------------------------------------------------------------------
+# CLI arguments — --start N skips recipes before N (Setup always runs)
+# ---------------------------------------------------------------------------
+_parser = argparse.ArgumentParser(
+    description="ha-sim end-to-end test runner for ramses_cc + ramses_extras",
+    usage="python3 tools/ha_sim_test.py [--start RECIPE]",
+)
+_parser.add_argument(
+    "--start",
+    type=str,
+    default=None,
+    help=(
+        "Start from a specific recipe (e.g. 23, R23, 18). "
+        "Setup always runs first as prerequisite. "
+        "Recipes before --start are skipped."
+    ),
+)
+CLI_ARGS = _parser.parse_args()
 
-    # =====================================================================
-    # SETUP: Load mixed profile with 100x speed via websocket API
-    # =====================================================================
-    log_section("Setup: Load mixed profile (100x speed, heat + HVAC)")
-    print("  Loading mixed profile via websocket...")
-    try:
-        result = await ws_send(
-            token,
-            {
-                "type": "ramses_extras/device_simulator/load_profile",
-                "profile": "mixed",
-                "speed": 0.01,  # 100x faster heartbeats
-                "preload_schema": True,
-                "reload_ramses_cc": True,  # Reload to pick up new known_list
-                "enable_auto_answer": True,
-            },
-        )
-        print(f"  Profile loaded: {result.get('actions', [])[:3]}")
-    except RuntimeError as e:
-        print(f"  Profile load failed: {e}")
-        # Fall back: the profile may already be loaded
 
-    wait(15, "for ramses_cc reload + init + config entry write")
-    token = get_token()  # re-auth after reload
-    wait(5, "for ramses_cc to initialize")
+class TestContext:
+    """Shared state across recipes."""
 
-    # Activate devices via websocket (faster — uses profile config)
-    for dev_id, name in [
-        (CTL, "CTL"),
-        (TRV, "TRV"),
-        (FAN, "FAN"),
-        (REM, "REM"),
-        (CO2, "CO2"),
-    ]:
-        print(f"  Activating {name} {dev_id}...")
-        try:
-            await ws_send(
-                token,
-                {
-                    "type": "ramses_extras/device_simulator/activate_profile_device",
-                    "device_id": dev_id,
-                },
-            )
-            print(f"    {name} activated")
-        except RuntimeError as e:
-            # already_active is fine
-            if "already_active" in str(e):
-                print(f"    {name} already active")
-            else:
-                print(f"    {name} activate failed: {str(e)[:80]}")
+    def __init__(self) -> None:
+        self.token: str = ""
+        self.log_monitor: LogMonitor = None  # type: ignore[assignment]
+        self.faked_rem_id: str = "37:999999"  # set by R18, used by R20
 
-    wait(10, "for fast heartbeats + schema population (100x speed)")
 
-    # Check schema is populated (retry — profile reload may still be writing)
-    schema = get_schema_retry()
-    kl = get_known_list()
-    print(f"  Schema keys: {list(schema.keys())}")
-    print(f"  Known_list: {list(kl.keys())[:15]}")
-
+async def recipe_r06(ctx: TestContext) -> None:
+    """Recipe 6."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 6/14: Zone binding via inject_message
     # =====================================================================
@@ -822,6 +798,10 @@ async def main() -> None:
             f"zone_{target_zone}={json.dumps(zone_09)[:200]}",
         )
 
+
+async def recipe_r03(ctx: TestContext) -> None:
+    """Recipe 3."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 3: remove_device — HGI rejection
     # =====================================================================
@@ -832,6 +812,10 @@ async def main() -> None:
     except RuntimeError as e:
         check("HGI removal raises error", True, str(e)[:80])
 
+
+async def recipe_r02(ctx: TestContext) -> None:
+    """Recipe 2."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 2: remove_device — remove a TRV
     # =====================================================================
@@ -885,6 +869,10 @@ async def main() -> None:
     else:
         print(f"  SKIP: TRV {TRV} not in schema")
 
+
+async def recipe_r04(ctx: TestContext) -> None:
+    """Recipe 4."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 4: remove_device — CTL (main_tcs) removal
     # =====================================================================
@@ -917,6 +905,9 @@ async def main() -> None:
     else:
         print(f"  SKIP: CTL {CTL} not in schema")
 
+
+async def recipe_r15(ctx: TestContext) -> None:
+    """Recipe 15."""
     # =====================================================================
     # RECIPE 15: Verify .storage/ramses_cc has hvac_schema key
     # =====================================================================
@@ -932,6 +923,10 @@ async def main() -> None:
     hvac_schema = storage.get("hvac_schema", {})
     print(f"  hvac_schema: {json.dumps(hvac_schema)[:200]}")
 
+
+async def recipe_r07(ctx: TestContext) -> None:
+    """Recipe 7."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 7: HVAC schema caching — verify FAN in schema + cache
     # =====================================================================
@@ -968,6 +963,10 @@ async def main() -> None:
         f"hvac_schema={json.dumps(hvac_schema)[:200]}",
     )
 
+
+async def recipe_r7b(ctx: TestContext) -> None:
+    """Recipe 7b."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 7b: Restart and verify HVAC survives
     # =====================================================================
@@ -1042,6 +1041,10 @@ async def main() -> None:
         f"hvac_schema={json.dumps(hvac_after)[:200]}",
     )
 
+
+async def recipe_r05(ctx: TestContext) -> None:
+    """Recipe 5."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 5: No resurrection after restart
     # =====================================================================
@@ -1090,6 +1093,10 @@ async def main() -> None:
     # device is not in the known_list, ramses_cc won't create new entities
     # for it on the next reload.
 
+
+async def recipe_r11(ctx: TestContext) -> None:
+    """Recipe 11."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 11: Full lifecycle — discover → accept → remove
     # =====================================================================
@@ -1252,6 +1259,10 @@ async def main() -> None:
     except RuntimeError as e:
         print(f"  Mixed profile reload failed: {e}")
 
+
+async def recipe_r10(ctx: TestContext) -> None:
+    """Recipe 10."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 10: Invalid main_tcs safety net
     # =====================================================================
@@ -1320,6 +1331,10 @@ async def main() -> None:
         "API not responding",
     )
 
+
+async def recipe_r08(ctx: TestContext) -> None:
+    """Recipe 8."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 8: HVAC schema caching — merge union on reload
     # =====================================================================
@@ -1363,6 +1378,10 @@ async def main() -> None:
         f"remotes={remotes_r8}",
     )
 
+
+async def recipe_r09(ctx: TestContext) -> None:
+    """Recipe 9."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 9: User schema edits survive sync — _alias
     # =====================================================================
@@ -1429,6 +1448,10 @@ async def main() -> None:
         f"zone_03={json.dumps(zone_03_r9)[:200]}",
     )
 
+
+async def recipe_r12(ctx: TestContext) -> None:
+    """Recipe 12."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 12: HVAC device loss scenario
     # =====================================================================
@@ -1522,6 +1545,10 @@ async def main() -> None:
     except RuntimeError:
         pass
 
+
+async def recipe_r16(ctx: TestContext) -> None:
+    """Recipe 16."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 16: Concurrency/stress test — rapid add/remove + inject
     # =====================================================================
@@ -1643,6 +1670,10 @@ async def main() -> None:
         "ERROR logs found" if real_errors else "clean",
     )
 
+
+async def recipe_r01(ctx: TestContext) -> None:
+    """Recipe 1."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 1: Activate heat profile → verify schema + entities [A]
     # =====================================================================
@@ -1717,6 +1748,10 @@ async def main() -> None:
     dhw_entity = find_entity_for_device(entities_r1, DHW, prefix="dhw_")
     check("DHW entity created", dhw_entity is not None, "no dhw_ entity for 07:150000")
 
+
+async def recipe_r14(ctx: TestContext) -> None:
+    """Recipe 14."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 14: Inject raw packet — zone binding change [A]
     # =====================================================================
@@ -1779,6 +1814,10 @@ async def main() -> None:
         f"zones={zone_ids_r14}",
     )
 
+
+async def recipe_r17(ctx: TestContext) -> None:
+    """Recipe 17."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 17: Discovery service lifecycle [A]
     # =====================================================================
@@ -1968,6 +2007,10 @@ async def main() -> None:
         except RuntimeError as e:
             check("remove_discovered_device succeeds", False, str(e)[:80])
 
+
+async def recipe_r18(ctx: TestContext) -> None:
+    """Recipe 18."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 18: add_faked_rem service — creates faked REM bound to FAN
     # =====================================================================
@@ -1981,7 +2024,8 @@ async def main() -> None:
     #
     # We use a fresh device ID to avoid conflicts with existing REMs.
 
-    faked_rem_id = "37:999999"
+    ctx.faked_rem_id = "37:999999"
+    faked_rem_id = ctx.faked_rem_id
     print(f"  Adding faked REM {faked_rem_id} bound to {FAN}...")
     try:
         call_service(
@@ -2048,6 +2092,10 @@ async def main() -> None:
         f"remotes={fan_remotes}",
     )
 
+
+async def recipe_r19(ctx: TestContext) -> None:
+    """Recipe 19."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 19: Zone binding from broadcast traffic (passive scan) [A]
     # =====================================================================
@@ -2206,6 +2254,10 @@ async def main() -> None:
             f"comment={comment[:100]}",
         )
 
+
+async def recipe_r19b(ctx: TestContext) -> None:
+    """Recipe 19b."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 19b: Invalid zone indices are rejected [A]
     # =====================================================================
@@ -2250,6 +2302,10 @@ async def main() -> None:
         f"zones={list(zones_r19b.keys())}",
     )
 
+
+async def recipe_r19c(ctx: TestContext) -> None:
+    """Recipe 19c."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 19c: 18: (HGI) devices tracked but no zone bindings [A]
     # =====================================================================
@@ -2309,6 +2365,10 @@ async def main() -> None:
             f"keys={list(hgi_entry_r19c.keys())}",
         )
 
+
+async def recipe_r21(ctx: TestContext) -> None:
+    """Recipe 21."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 21: CTL (01:) does not get zone_idx from 000A packets
     # =====================================================================
@@ -2416,6 +2476,10 @@ async def main() -> None:
                 f"sensor={zone.get('sensor')}",
             )
 
+
+async def recipe_r22(ctx: TestContext) -> None:
+    """Recipe 22."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 22: THM (22:) zone binding via 000A
     # =====================================================================
@@ -2516,6 +2580,10 @@ async def main() -> None:
         f"comment={thm_comment_r22[:120]}",
     )
 
+
+async def recipe_r20(ctx: TestContext) -> None:
+    """Recipe 20."""
+    token = ctx.token
     # =====================================================================
     # RECIPE 20: SSOT Phase 2 migration — known_list traits to schema
     # =====================================================================
@@ -2529,7 +2597,7 @@ async def main() -> None:
     # the faked REM from recipe 18.  We re-add it here to test trait migration.
 
     fan_id_r20 = FAN  # 32:150000
-    rem_id_r20 = faked_rem_id  # 37:999999
+    rem_id_r20 = ctx.faked_rem_id  # 37:999999
 
     # Re-add the faked REM (wiped by profile reloads in recipes 19/22)
     print(f"  Re-adding faked REM {rem_id_r20} (wiped by profile reloads)...")
@@ -2612,15 +2680,485 @@ async def main() -> None:
             f"first key={schema_keys_r20[0]}",
         )
 
+
+async def recipe_r23(ctx: TestContext) -> None:
+    """Recipe 23: fake_zone_temp (issue 608 regression test)."""
+    token = ctx.token
+    # Issue 608: temperature sensor faking broke in ramses_cc 0.56.1 when
+    # ramses_rf refactored `temperature` from a sync property (with setter)
+    # to an async method.  ramses_cc's `async_fake_zone_temp` still does
+    # `sensor.temperature = value`, which silently overwrites the async
+    # method with a float instead of calling `set_temperature()`.
+    #
+    # This recipe loads a heat profile with a faked THM (22:) as a zone
+    # sensor, activates the CTL to create the zone entity, then calls
+    # `fake_zone_temp` and checks whether the climate entity's
+    # `current_temperature` actually changes.
+
+    token = ctx.token
+    fake_thm_id = "22:012299"
+    fake_kl = {
+        HGI: {"class": "HGI"},
+        CTL: {"class": "CTL"},
+        "04:150000": {"class": "TRV"},
+        fake_thm_id: {"class": "THM", "faked": True},
+    }
+    fake_schema = {
+        CTL: {
+            "zones": {"01": {"sensor": fake_thm_id, "actuators": ["04:150000"]}},
+        },
+    }
+    import yaml as _yaml_fake
+
+    fake_profile = {
+        "known_list": fake_kl,
+        "_enforce_known_list": {"enabled": True},
+        "_schema": fake_schema,
+    }
+    fake_yaml_text = _yaml_fake.dump(
+        fake_profile, default_flow_style=False, sort_keys=False
+    )
+    try:
+        await load_profile_yaml(
+            token,
+            fake_yaml_text,
+            reload_ramses=True,
+            reset_rf_cache=True,
+            clear_discovery_state=True,
+        )
+        print("  Faked-THM profile loaded (cache cleared)")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {str(e)[:80]}")
+    wait(20, "for ramses_cc reload with faked-THM profile (cache cleared)")
+    ctx.token = get_token()
+    token = ctx.token
+    wait(5, "for ramses_cc to initialize")
+
+    # Activate CTL + TRV so the zone entity is created.
+    for dev, slug in [(CTL, "CTL"), ("04:150000", "TRV"), (fake_thm_id, "THM")]:
+        try:
+            await ws_send(
+                token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_device",
+                    "device_id": dev,
+                    "slug": slug,
+                },
+            )
+            print(f"    {slug} {dev} activated")
+        except RuntimeError:
+            pass
+    wait(10, "for heartbeats + zone entity creation (100x speed)")
+
+    # Verify the faked THM is in the schema with _faked trait
+    schema_r23 = get_schema_retry()
+    thm_entry_r23 = schema_r23.get(fake_thm_id, {})
+    check(
+        f"Faked THM {fake_thm_id} in schema",
+        isinstance(thm_entry_r23, dict) and len(thm_entry_r23) > 0,
+        f"entry={thm_entry_r23}",
+    )
+
+    # Find the zone climate entity for zone 01.
+    # Zone unique_id is "{ctl_id}_{zone_idx}" -> entity_id is slugified.
+    # We must EXCLUDE the CTL controller entity (climate.ctl_01_150000)
+    # and the FAN entity (climate.fan_32_150000).
+    entities_r23 = get_entities(token)
+    ctl_normalized = CTL.replace(":", "_")
+
+    climate_entities_r23 = [
+        s["entity_id"] for s in entities_r23 if s["entity_id"].startswith("climate.")
+    ]
+    print(f"  Climate entities: {climate_entities_r23}")
+
+    # Primary: entity_id ends with "_01" and contains CTL ID,
+    # but is NOT the CTL controller or FAN
+    zone_entity = None
+    for s in entities_r23:
+        eid = s["entity_id"]
+        if (
+            eid.startswith("climate.")
+            and ctl_normalized in eid
+            and eid.endswith("_01")
+            and not eid.startswith("climate.ctl_")
+            and not eid.startswith("climate.fan_")
+        ):
+            zone_entity = s
+            break
+
+    # Fallback: search entity registry by unique_id
+    if not zone_entity:
+        zone_unique_id = f"{CTL}_01"
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "ha-sim",
+                "cat",
+                "/config/.storage/core.entity_registry",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            er_data = json.loads(result.stdout)
+            for ent in er_data.get("data", {}).get("entities", []):
+                if (
+                    ent.get("unique_id") == zone_unique_id
+                    and ent.get("platform") == "ramses_cc"
+                    and ent.get("disabled_by") is None
+                ):
+                    zone_eid_found = ent.get("entity_id")
+                    if zone_eid_found:
+                        for s in entities_r23:
+                            if s["entity_id"] == zone_eid_found:
+                                zone_entity = s
+                                break
+                        if zone_entity:
+                            break
+
+    # Fallback: any zone entity that is NOT CTL/FAN
+    if not zone_entity:
+        for s in entities_r23:
+            eid = s["entity_id"]
+            if (
+                eid.startswith("climate.")
+                and ctl_normalized in eid
+                and not eid.startswith("climate.ctl_")
+                and not eid.startswith("climate.fan_")
+            ):
+                zone_entity = s
+                print(f"  [fallback] Using zone entity: {eid}")
+                break
+
+    check(
+        "Zone climate entity exists with faked THM sensor",
+        zone_entity is not None,
+        f"no climate entity for zone 01 with CTL {CTL}",
+    )
+
+    if zone_entity:
+        zone_eid = zone_entity["entity_id"]
+        attrs_before = zone_entity.get("attributes", {})
+        temp_before = attrs_before.get("current_temperature")
+        print(f"  Zone entity: {zone_eid}")
+        print(f"  current_temperature before fake: {temp_before}")
+
+        fake_temp = 21.5
+        try:
+            call_service(
+                token,
+                "ramses_cc",
+                "fake_zone_temp",
+                {"entity_id": zone_eid, "temperature": fake_temp},
+            )
+            print(f"  fake_zone_temp({fake_temp}) called")
+            check("fake_zone_temp service call succeeds", True, "")
+        except RuntimeError as e:
+            check("fake_zone_temp service call succeeds", False, str(e)[:120])
+
+        wait(5, "for temperature propagation")
+
+        entities_r23b = get_entities(token)
+        zone_entity_after = None
+        for s in entities_r23b:
+            if s["entity_id"] == zone_eid:
+                zone_entity_after = s
+                break
+
+        if zone_entity_after:
+            attrs_after = zone_entity_after.get("attributes", {})
+            temp_after = attrs_after.get("current_temperature")
+            print(f"  current_temperature after fake: {temp_after}")
+            check(
+                f"fake_zone_temp set temperature to {fake_temp}",
+                temp_after == fake_temp,
+                f"expected {fake_temp}, got {temp_after}"
+                " (issue 608: async refactor broke faking)",
+            )
+        else:
+            check(
+                f"fake_zone_temp set temperature to {fake_temp}",
+                False,
+                "zone entity disappeared after fake",
+            )
+    else:
+        check("fake_zone_temp service call succeeds", False, "no zone entity")
+        check(
+            "fake_zone_temp set temperature to 21.5",
+            False,
+            "no zone entity to test",
+        )
+
+
+async def main() -> None:
+    ctx = TestContext()
+    print("Authenticating to ha-sim...")
+    ctx.token = get_token()
+    print(f"Token acquired: {ctx.token[:30]}...")
+
+    # Use the module-level log_monitor (recipes reference it directly)
+    ctx.log_monitor = log_monitor
+    log_monitor.start()
+
+    # Start log monitor — captures baseline for error/warning detection
+
+    # =====================================================================
+    # SETUP: Load mixed profile with 100x speed via websocket API
+    # =====================================================================
+    log_section("Setup: Load mixed profile (100x speed, heat + HVAC)")
+    print("  Loading mixed profile via websocket...")
+    try:
+        result = await ws_send(
+            ctx.token,
+            {
+                "type": "ramses_extras/device_simulator/load_profile",
+                "profile": "mixed",
+                "speed": 0.01,  # 100x faster heartbeats
+                "preload_schema": True,
+                "reload_ramses_cc": True,  # Reload to pick up new known_list
+                "enable_auto_answer": True,
+            },
+        )
+        print(f"  Profile loaded: {result.get('actions', [])[:3]}")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {e}")
+        # Fall back: the profile may already be loaded
+
+    wait(15, "for ramses_cc reload + init + config entry write")
+    wait(5, "for ramses_cc to initialize")
+
+    # Activate devices via websocket (faster — uses profile config)
+    for dev_id, name in [
+        (CTL, "CTL"),
+        (TRV, "TRV"),
+        (FAN, "FAN"),
+        (REM, "REM"),
+        (CO2, "CO2"),
+    ]:
+        print(f"  Activating {name} {dev_id}...")
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": dev_id,
+                },
+            )
+            print(f"    {name} activated")
+        except RuntimeError as e:
+            # already_active is fine
+            if "already_active" in str(e):
+                print(f"    {name} already active")
+            else:
+                print(f"    {name} activate failed: {str(e)[:80]}")
+
+    wait(10, "for fast heartbeats + schema population (100x speed)")
+
+    # Check schema is populated (retry — profile reload may still be writing)
+    schema = get_schema_retry()
+    kl = get_known_list()
+    print(f"  Schema keys: {list(schema.keys())}")
+    print(f"  Known_list: {list(kl.keys())[:15]}")
+
+    # =====================================================================
+    # RECIPE SEQUENCER
+    # =====================================================================
+    # Each recipe is an async method that takes ctx. --start skips recipes
+    # before the given recipe ID. Setup always runs as prerequisite.
+
+    start_recipe = None
+    if CLI_ARGS.start:
+        start_recipe = CLI_ARGS.start.lstrip("Rr").strip() or None
+        if start_recipe:
+            print(f"  --start {start_recipe}: skipping recipes before R{start_recipe}")
+
+    recipe_active = start_recipe is None
+
+    if recipe_active or "6" == start_recipe:
+        recipe_active = True
+        await recipe_r06(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 6")
+
+    if recipe_active or "3" == start_recipe:
+        recipe_active = True
+        await recipe_r03(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 3")
+
+    if recipe_active or "2" == start_recipe:
+        recipe_active = True
+        await recipe_r02(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 2")
+
+    if recipe_active or "4" == start_recipe:
+        recipe_active = True
+        await recipe_r04(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 4")
+
+    if recipe_active or "15" == start_recipe:
+        recipe_active = True
+        await recipe_r15(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 15")
+
+    if recipe_active or "7" == start_recipe:
+        recipe_active = True
+        await recipe_r07(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 7")
+
+    if recipe_active or "7b" == start_recipe:
+        recipe_active = True
+        await recipe_r7b(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 7b")
+
+    if recipe_active or "5" == start_recipe:
+        recipe_active = True
+        await recipe_r05(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 5")
+
+    if recipe_active or "11" == start_recipe:
+        recipe_active = True
+        await recipe_r11(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 11")
+
+    if recipe_active or "10" == start_recipe:
+        recipe_active = True
+        await recipe_r10(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 10")
+
+    if recipe_active or "8" == start_recipe:
+        recipe_active = True
+        await recipe_r08(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 8")
+
+    if recipe_active or "9" == start_recipe:
+        recipe_active = True
+        await recipe_r09(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 9")
+
+    if recipe_active or "12" == start_recipe:
+        recipe_active = True
+        await recipe_r12(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 12")
+
+    if recipe_active or "16" == start_recipe:
+        recipe_active = True
+        await recipe_r16(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 16")
+
+    if recipe_active or "1" == start_recipe:
+        recipe_active = True
+        await recipe_r01(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 1")
+
+    if recipe_active or "14" == start_recipe:
+        recipe_active = True
+        await recipe_r14(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 14")
+
+    if recipe_active or "17" == start_recipe:
+        recipe_active = True
+        await recipe_r17(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 17")
+
+    if recipe_active or "18" == start_recipe:
+        recipe_active = True
+        await recipe_r18(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 18")
+
+    if recipe_active or "19" == start_recipe:
+        recipe_active = True
+        await recipe_r19(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 19")
+
+    if recipe_active or "19b" == start_recipe:
+        recipe_active = True
+        await recipe_r19b(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 19b")
+
+    if recipe_active or "19c" == start_recipe:
+        recipe_active = True
+        await recipe_r19c(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 19c")
+
+    if recipe_active or "21" == start_recipe:
+        recipe_active = True
+        await recipe_r21(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 21")
+
+    if recipe_active or "22" == start_recipe:
+        recipe_active = True
+        await recipe_r22(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 22")
+
+    if recipe_active or "20" == start_recipe:
+        recipe_active = True
+        await recipe_r20(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 20")
+
+    if recipe_active or "23" == start_recipe:
+        recipe_active = True
+        await recipe_r23(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 23")
+
     # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run
     # =====================================================================
     log_section("Log Report: ERROR/WARNING analysis")
     print("  Collecting logs since baseline...")
-    log_data = log_monitor.collect()
+    log_data = ctx.log_monitor.collect()
 
     report_path = "/tmp/ha_sim_test_log_report.txt"
-    log_monitor.write_report(report_path, log_data)
+    ctx.log_monitor.write_report(report_path, log_data)
     print(f"  Report written to: {report_path}")
 
     n_errors = len(log_data["errors"])
@@ -2656,9 +3194,7 @@ async def main() -> None:
         f"{n_warnings} unexpected warnings (see {report_path})",
     )
 
-    # =====================================================================
     # SUMMARY
-    # =====================================================================
     log_section("SUMMARY")
     print(f"\n  Passed: {passed}")
     print(f"  Failed: {failed}")
