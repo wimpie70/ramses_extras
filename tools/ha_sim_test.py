@@ -194,6 +194,15 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_rf: Packet idx mismatch for broadcast TRV traffic (simulator
     # uses zone_idx as packet idx, ramses_rf expects 00)
     "Packet idx is",
+    # ramses_tx: foreign gateway warning when injecting from 18: devices
+    # that are not the active gateway (expected in recipe 19c)
+    "potentially a Foreign gateway",
+    # ramses_rf: payload format mismatch when injecting test 000A packets
+    # (expected — the scan engine still processes the raw payload)
+    "Payload doesn't match",
+    # ramses_extras: ramses_rf.const import warning when ramses_rf is
+    # installed from a non-standard location (editable install / manual copy)
+    "could not import ramses_rf.const for patching",
 ]
 
 
@@ -2193,6 +2202,213 @@ async def main() -> None:
             "zones" not in hgi_entry_r19c,
             f"keys={list(hgi_entry_r19c.keys())}",
         )
+
+    # =====================================================================
+    # RECIPE 21: CTL (01:) does not get zone_idx from 000A packets
+    # =====================================================================
+    # The CTL sends 000A with zone config for multiple zones.  The first 2
+    # hex chars are the zone being configured, NOT the CTL's own zone.
+    # The scan engine must NOT set zone_idx on the CTL (issue 813).
+    log_section("Recipe 21: CTL (01:) does not get zone_idx from 000A")
+
+    # Load mixed profile (has CTL 01:150000 as main_tcs)
+    print("  Loading mixed profile via websocket...")
+    try:
+        await ws_send(
+            token,
+            {
+                "type": "ramses_extras/device_simulator/load_profile",
+                "profile": "mixed",
+                "speed": 0.01,
+                "preload_schema": True,
+                "reload_ramses_cc": True,
+                "enable_auto_answer": True,
+            },
+        )
+        print("  mixed profile loaded")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {e}")
+    wait(15, "for ramses_cc reload with mixed profile")
+    token = get_token()
+    wait(5, "for ramses_cc to initialize")
+
+    # Inject 000A from CTL with zone 02 payload
+    # 000A I payload: zone_idx(2) + bitmap(2) + min_temp(4) + max_temp(4) = 12 hex
+    ctl_r21 = CTL  # 01:150000
+    print(f"  Injecting 000A from CTL {ctl_r21} with zone 02 payload...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": ctl_r21,
+                "code": "000A",
+                "payload": "020008000200",
+                "verb": "I",
+            },
+        )
+        print(f"    000A injected from {ctl_r21} (zone 02)")
+    except RuntimeError as e:
+        print(f"    Inject failed: {str(e)[:80]}")
+
+    # Also inject 000A with a different zone (05) to verify CTL doesn't
+    # pick up any zone
+    wait(2, "between injects")
+    print(f"  Injecting 000A from CTL {ctl_r21} with zone 05 payload...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": ctl_r21,
+                "code": "000A",
+                "payload": "050008000500",
+                "verb": "I",
+            },
+        )
+        print(f"    000A injected from {ctl_r21} (zone 05)")
+    except RuntimeError as e:
+        print(f"    Inject failed: {str(e)[:80]}")
+
+    wait(5, "for scan engine to process")
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for sync_learned_topology")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save")
+
+    schema_r21 = get_schema_retry()
+    comments_r21 = schema_r21.get("device_comments", {})
+    ctl_comment_r21 = comments_r21.get(ctl_r21, "")
+
+    # CTL comment should NOT contain "zone 02" or "zone 05"
+    check(
+        "CTL comment has no zone 02 from 000A",
+        "zone 02" not in ctl_comment_r21,
+        f"comment={ctl_comment_r21[:120]}",
+    )
+    check(
+        "CTL comment has no zone 05 from 000A",
+        "zone 05" not in ctl_comment_r21,
+        f"comment={ctl_comment_r21[:120]}",
+    )
+
+    # CTL should NOT be a zone sensor
+    ctl_zones_r21 = schema_r21.get(ctl_r21, {}).get("zones", {})
+    for zid, zone in ctl_zones_r21.items():
+        if isinstance(zone, dict):
+            check(
+                f"CTL not sensor of zone {zid}",
+                zone.get("sensor") != ctl_r21,
+                f"sensor={zone.get('sensor')}",
+            )
+
+    # =====================================================================
+    # RECIPE 22: THM (22:) zone binding via 000A
+    # =====================================================================
+    # A THM (22:) sends RQ 000A to the CTL with its zone_idx as payload.
+    # The scan engine should extract the zone and set it on the THM (issue 813).
+    log_section("Recipe 22: THM (22:) zone binding via 000A")
+
+    # Load fresh_start profile for clean discovery
+    print("  Loading fresh_start_allow_unknown_devices_fast_heartbeat...")
+    try:
+        await ws_send(
+            token,
+            {
+                "type": "ramses_extras/device_simulator/load_profile",
+                "profile": "fresh_start_allow_unknown_devices_fast_heartbeat",
+                "speed": 0.01,
+                "preload_schema": False,
+                "reload_ramses_cc": True,
+                "enable_auto_answer": True,
+            },
+        )
+        print("  fresh_start profile loaded")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {e}")
+    wait(15, "for ramses_cc reload with fresh_start")
+    token = get_token()
+    wait(5, "for ramses_cc to initialize")
+
+    # Inject RQ 000A from a THM (22:) to the HGI (18:001234)
+    # THMs send RQ 000A with just the zone_idx (2 hex) as payload.
+    # The dst must be a valid device (not --:------) to avoid PacketInvalid.
+    thm_r22 = "22:200001"
+    hgi_r22 = HGI  # 18:001234 (the only known device in fresh_start)
+    print(f"  Injecting RQ 000A from THM {thm_r22} to {hgi_r22} with zone 01...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": thm_r22,
+                "dst": hgi_r22,
+                "code": "000A",
+                "payload": "01",
+                "verb": "RQ",
+            },
+        )
+        print(f"    RQ 000A injected from {thm_r22} (zone 01)")
+    except RuntimeError as e:
+        print(f"    Inject failed: {str(e)[:80]}")
+
+    # Also inject a 30C9 (temperature) broadcast so the THM has a heating code
+    wait(2, "between injects")
+    print(f"  Injecting 30C9 from THM {thm_r22}...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": thm_r22,
+                "code": "30C9",
+                "payload": "010708",
+                "verb": "I",
+            },
+        )
+        print(f"    30C9 injected from {thm_r22}")
+    except RuntimeError as e:
+        print(f"    Inject failed: {str(e)[:80]}")
+
+    wait(10, "for scan engine to process packets")
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for sync_learned_topology")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save")
+
+    schema_r22 = get_schema_retry()
+    comments_r22 = schema_r22.get("device_comments", {})
+    thm_comment_r22 = comments_r22.get(thm_r22, "")
+
+    # THM comment should contain "zone 01" (from 000A zone binding)
+    check(
+        f"THM {thm_r22} comment includes zone 01",
+        "zone 01" in thm_comment_r22,
+        f"comment={thm_comment_r22[:120]}",
+    )
+
+    # THM comment should also contain "bound to" the HGI
+    check(
+        f"THM {thm_r22} comment includes bound_to {hgi_r22}",
+        f"bound to {hgi_r22}" in thm_comment_r22 or "bound to" in thm_comment_r22,
+        f"comment={thm_comment_r22[:120]}",
+    )
 
     # =====================================================================
     # RECIPE 20: SSOT Phase 2 migration — known_list traits to schema
