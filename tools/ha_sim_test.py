@@ -3519,15 +3519,20 @@ async def recipe_r26(ctx: TestContext) -> None:
     )
     # The command may be in _remotes (in-memory) but not yet persisted to
     # the config entry on disk due to a race with the save cycle.  Check
-    # the entity's attributes (which reflect _remotes) as a fallback.
+    # the entity's attributes (which reflect _commands) as a fallback.
     if test_cmd not in fan_commands:
         # Re-fetch entity attributes (reflects coordinator._remotes)
         for s in get_entities(token):
             if s.get("entity_id") == fan_eid:
                 fan_commands = s.get("attributes", {}).get("commands", {})
                 break
+    # Also check .storage[remotes] as a last resort
+    if test_cmd not in fan_commands:
+        storage = get_ramses_storage()
+        remotes = storage.get("remotes", {})
+        fan_commands = remotes.get(fan_id, {})
     check(
-        f"schema has _commands for FAN {fan_id}",
+        f"FAN {fan_id} has {test_cmd} in commands (schema/entity/storage)",
         isinstance(fan_commands, dict) and test_cmd in fan_commands,
         f"_commands={fan_commands}",
     )
@@ -3549,6 +3554,17 @@ async def recipe_r26(ctx: TestContext) -> None:
                 and cmd_val.get("payload") == "000030",
                 f"got: {cmd_val}",
             )
+    else:
+        check(
+            f"_commands[{test_cmd}] is a dict template",
+            False,
+            "command not found in fan_commands",
+        )
+        check(
+            "dict template has verb=RQ, code=22F1, payload=000030",
+            False,
+            "command not found",
+        )
 
     # --- Check 4: send_command on FAN entity ---
     print(f"  Calling remote.send_command({test_cmd}) on FAN entity...")
