@@ -539,6 +539,7 @@ Phase 3c extends this to surface the mismatch in the UI.
 
 ```
 STORAGE_VERSION: 1  (unchanged — no version bump in Phase 3a)
+max_readable_version: 2  (can read v2 files from the briefly-released v2 code)
 ```
 
 **Why no version bump:** HA's `Store._async_load_data` raises
@@ -548,6 +549,15 @@ Since 0.58.0/0.58.1 have `STORAGE_VERSION = 1` and don't set
 `max_readable_version`, they **cannot read v2 data**. Bumping to v2
 would break the downgrade path — the integration would fail to start
 on downgrade to 0.58.0/0.58.1.
+
+**v2 recovery (`max_readable_version = 2`):** The v2 code was briefly
+released, so some users have `.storage/ramses_cc` files with
+`version: 2`. Setting `max_readable_version = 2` on the store allows
+the current code (v1) to read these files: HA's `Store` sees
+`v2 != v1` but `v2 <= max_readable_version`, so it calls
+`_async_migrate_func(2, 1, data)` (no-op identity — v2 format is
+identical to v1) and saves the data back as v1. After the first load,
+the file is v1 and downgrade to 0.58.0/0.58.1 works normally.
 
 **How migration works instead:** The Phase 3a command migration
 (remotes → schema `_commands`) is handled at **runtime** by the
