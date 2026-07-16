@@ -1,7 +1,7 @@
 # Phase 3b Design: Commands on FAN
 
 **Created:** Jul 2026
-**Status:** Design proposal — Phase 3a complete, Phase 3b implementation plan below
+**Status:** Implemented — Phase 3a complete (PR 811), Phase 3b complete (branch `feature/phase3b-commands-on-fan`)
 **Depends on:** Phase 3a (complete), ramses_rf issue 547, ramses_rf PR 546
 **Does NOT depend on:** ramses_rf issue 530 (Builder Pattern — that's
 future work that would eventually shrink `_commands`, not a blocker)
@@ -22,7 +22,7 @@ future work that would eventually shrink `_commands`, not a blocker)
 
 - [Overview](#overview)
 - [Two command layers](#two-command-layers)
-- [Current state (Phase 3a)](#current-state-phase-3a)
+- [Current state (after Phase 3a — complete)](#current-state-after-phase-3a--complete)
 - [Phase 3b design](#phase-3b-design)
   - [Schema format](#schema-format)
   - [Packet template](#packet-template)
@@ -36,14 +36,15 @@ future work that would eventually shrink `_commands`, not a blocker)
   - [ramses_cc](#ramses_cc)
   - [ramses_rf](#ramses_rf)
   - [CLI testing (outside HA)](#cli-testing-outside-ha)
-- [Migration (v2 → v3)](#migration-v2--v3)
+- [Migration (runtime — no store version bump)](#migration-runtime--no-store-version-bump)
 - [Backward compatibility](#backward-compatibility)
 - [Alignment with ramses_rf](#alignment-with-ramses_rf)
   - [Issue 530: master plan](#issue-530-master-plan)
   - [Discussion 191: consensus](#discussion-191-consensus)
   - [Boundaries](#boundaries)
-  - [What we can do now (Phase 3a changes)](#what-we-can-do-now-phase-3a-changes)
+  - [What we can do now (Phase 3a + 3b)](#what-we-can-do-now-phase-3a-changes--all-done-phase-3b--all-done)
 - [Open questions](#open-questions)
+- [Implementation Plan (Phase 3b)](#implementation-plan-phase-3b)
 - [References](#references)
 
 ---
@@ -275,8 +276,9 @@ Automation:
   data: {command: "bypass_on"}
 
 remote.py:
-  1. Listen for 22F7/22B0/22F1/22F3 from ANY bound REM
-     - filter: src in self._bound AND code in ("22F7", "22B0", "22F1", "22F3")
+  1. Listen for 22F1/22F3/22F7/22B0 from ANY bound REM
+     - filter: src in self._bound_rem_ids AND code in _LEARN_CODES
+     - _LEARN_CODES = ("22F1", "22F3", "22F7", "22B0")
   2. Capture packet:
      "W --- 32:153001 30:160000 --:------ 22F7 003 0000EF"
   3. Extract: verb="W", code="22F7", payload="0000EF"
@@ -315,7 +317,9 @@ REM to the FAN. The binding is already defined by `_bound` on the FAN
 and `_fan_bound_to_remote` in `fan_handler` — no extra attributes needed.
 
 What changes on the REM entity:
-- `commands` attribute: **removed** (commands are on the FAN)
+- `commands` attribute: **kept** (packet strings, backward compat — existing
+  automations targeting `remote.32_153001` keep working)
+- `bound_to_fan` attribute: stays (Phase 3a)
 - Everything else stays the same
 
 The FAN entity (`climate.30_160000` + `remote.30_160000`) is the
@@ -343,25 +347,25 @@ action:
 
 ### ramses_cc
 
-| Component | Phase 3a (before) | Phase 3a (DONE) | Phase 3b |
-|-----------|-------------------|-----------------|----------|
-| `remote.py` entity | On REM (`HvacRemote`) | No change | On FAN (`HvacVentilator`) |
+| Component | Phase 3a (before) | Phase 3a (DONE) | Phase 3b (DONE) |
+|-----------|-------------------|-----------------|-----------------|
+| `remote.py` entity | On REM (`HvacRemote`) | No change | On REM **and** FAN (`HvacRemote` + `HvacVentilator`) |
 | `_commands` content | Full packet string | No change | `{verb, code, payload}` dict (both accepted at runtime) |
 | `_commands` location | REM entry in schema | No change | FAN entry in schema (REM entries kept for downgrade) |
 | `_commands` scope | All commands (standard + non-standard) | No change | Non-standard only (standard via `set_fan_mode`) |
 | `_bound` type | `str` (single REM) | `str \| list[str]` DONE | `str \| list[str]` (no change) |
-| `learn_command` | Listens to one REM src | No change | Listens to all bound REM srcs |
-| `send_command` | Uses hardcoded packet | No change | Builds packet from template + picked REM |
-| `climate.set_fan_mode` | Not implemented (NotImplementedError) | Calls `device.set_fan_mode()` DONE | Same (no change) |
-| `_derive_remotes_from_schema` | Reads REM entries | No change | Reads FAN entries, falls back to REM |
-| `_remotes` dict | Keyed by REM ID | No change | Keyed by FAN ID (REM keys kept for fallback) |
+| `learn_command` | Listens to one REM src | No change | FAN: listens to all bound REM srcs; REM: one src (backward compat) |
+| `send_command` | Uses hardcoded packet | No change | FAN: builds from template; REM: uses packet string (backward compat) |
+| `climate.set_fan_mode` | Not implemented (NotImplementedError) | Calls `device.set_fan_mode()` DONE | Also checks FAN dict templates first, then REM strings |
+| `_remotes` dict | Keyed by REM ID | No change | Mixed keys: FAN IDs → dicts, REM IDs → strings (both coexist) |
 | `fan_handler.setup_fan_bound_devices` | Binds one REM, returns | Loops over all bound REMs DONE | Same (no change) |
 | `fan_handler` bound device check | REM or DIS only | REM, DIS, CO2 (`_class: REM`) DONE | Same (no change) |
-| `extra_state_attributes` | `commands` only | Add `bound_to_fan` DONE | Add `bound_rems` (list) on FAN entity |
+| `extra_state_attributes` | `commands` only | Add `bound_to_fan` DONE | FAN: add `bound_rems` (list); REM: `bound_to_fan` stays |
 | `_strip_schema_extensions` | Does all 3 stages inline | Delegates stage 1 to ramses_rf `strip_traits` DONE | Same (no change) |
 | `_derive_known_list_from_schema` | Inline `_bound`→`bound` mapping | Uses ramses_rf `strip_and_map_traits` DONE | Same (no change) |
-| Store migration | v1 only | `max_readable_version=2`, v2→v1 identity DONE | v3: migrate REM `_commands` → FAN dicts |
-| Startup load | `.storage[remotes]` only | Schema `_commands` → `_remotes` (SSOT) DONE | Also load FAN `_commands` (dicts) |
+| Store migration | v1 only | `max_readable_version=2`, v2→v1 identity DONE | Runtime migration (no version bump) — `_migrate_rem_commands_to_fan` |
+| Startup load | `.storage[remotes]` only | Schema `_commands` → `_remotes` (SSOT) DONE | Same — loads all schema `_commands` (FAN dicts + REM strings) |
+| `_discover_new_entities` | REMs to remote platform | No change | REMs **and** FANs to remote platform |
 
 ### ramses_rf
 
@@ -395,6 +399,12 @@ action:
 - 993 ramses_cc unit tests (31 new for Phase 3a)
 - 17 ha_sim integration tests (R24-R25)
 - 17 ramses_rf strip_and_map tests
+- All passing, ruff/mypy clean
+
+**Phase 3b test coverage:**
+
+- 1026 ramses_cc unit tests (33 new: 23 remote, 9 coordinator migration, 1 climate)
+- 28 ha_sim integration checks (R24: 10, R25: 6, R26: 12)
 - All passing, ruff/mypy clean
 
 ### CLI testing (outside HA)
@@ -522,49 +532,67 @@ line to the existing map.
 
 ---
 
-## Migration (v2 → v3)
+## Migration (runtime — no store version bump)
+
+Phase 3b uses **runtime migration** (same pattern as Phase 3a), not a store
+version bump. The migration runs in `_migrate_rem_commands_to_fan` during
+`async_save_client_state`, on every save cycle.
+
+`STORAGE_VERSION` stays at 1. The migration is idempotent — it only copies
+commands that are NOT already on the FAN entry (FAN is authoritative).
 
 ```python
-def migrate_v2_to_v3(data):
-    """Move _commands from REM entries to FAN entries, parse to template format."""
-    schema = data[CLIENT_STATE][SCHEMA]
+@staticmethod
+def _migrate_rem_commands_to_fan(schema: dict[str, Any]) -> dict[str, Any]:
+    """Migrate _commands from REM entries to FAN entries (Phase 3b).
 
+    For each FAN entry with _bound, copies _commands from the bound REM
+    entries to the FAN entry as {verb, code, payload} dict templates.
+    REM _commands (packet strings) are NOT deleted — kept for backward
+    compatibility (downgrade path: v2 code ignores FAN _commands, reads
+    REM _commands).
+    """
     for fan_id, entry in schema.items():
         if not isinstance(entry, dict) or entry.get("_class") != "FAN":
             continue
-        bound_rems = entry.get("_bound", [])
-        if isinstance(bound_rems, str):
-            bound_rems = [bound_rems]
+        bound = entry.get("_bound", [])
+        if isinstance(bound, str):
+            bound_rems = [bound]
+        elif isinstance(bound, list):
+            bound_rems = bound
+        else:
+            continue
 
-        commands = {}
+        # Collect commands from bound REMs
+        rem_commands = {}
         for rem_id in bound_rems:
             rem_entry = schema.get(rem_id, {})
-            for cmd_name, packet_str in rem_entry.get("_commands", {}).items():
-                if cmd_name not in commands:
-                    # Parse: "I --- 32:153001 30:160000 --:------ 22F1 003 000030"
-                    parts = packet_str.split()
-                    verb = parts[0]          # "I"
-                    code = parts[5]          # "22F1"
-                    payload = parts[7]       # "000030"
-                    commands[cmd_name] = {
-                        "verb": verb,
-                        "code": code,
-                        "payload": payload,
-                    }
-        if commands:
-            entry["_commands"] = commands
-
-        # Remove _commands from REM entries
-        for rem_id in bound_rems:
-            rem_entry = schema.get(rem_id)
             if isinstance(rem_entry, dict):
-                rem_entry.pop("_commands", None)
+                rem_cmds = rem_entry.get("_commands", {})
+                for cmd_name, cmd_val in rem_cmds.items():
+                    if cmd_name not in rem_commands:
+                        rem_commands[cmd_name] = str(cmd_val)
 
-    # Bump _bound from str to list where needed
-    for entry in schema.values():
-        if isinstance(entry, dict) and isinstance(entry.get("_bound"), str):
-            entry["_bound"] = [entry["_bound"]]
+        # Parse packet strings to dict templates, merge into FAN
+        fan_commands = entry.get("_commands", {})
+        for cmd_name, packet_str in rem_commands.items():
+            if cmd_name in fan_commands:
+                continue  # FAN is authoritative
+            parts = packet_str.split()
+            fan_commands[cmd_name] = {
+                "verb": parts[0],    # "I"
+                "code": parts[5],    # "22F1"
+                "payload": parts[7], # "000030"
+            }
+        entry["_commands"] = fan_commands
+
+    # REM _commands are NOT deleted — downgrade safety
 ```
+
+Called in all 3 branches of `async_save_client_state`:
+1. When topology is richer (enriched path)
+2. When only comments refreshed (else-if path)
+3. When no topology changes (else path)
 
 ## Backward compatibility
 
@@ -572,7 +600,10 @@ def migrate_v2_to_v3(data):
 - v2 code still reads `_commands` on REM entries (if not yet migrated)
 - v3 code reads `_commands` from FAN first, falls back to REM entries
 - If user downgrades v3 → v2: `_commands` on FAN ignored, REM entries
-  still have `_commands` (not deleted during v2, only during v3 migration)
+  still have `_commands` (NOT deleted during migration — downgrade safety)
+- No store version bump — migration is runtime, same as Phase 3a
+- REM `remote` entities stay (existing automations targeting
+  `remote.32_153001` keep working)
 
 ---
 
@@ -680,7 +711,7 @@ object (already typed), so this is compatible.
 - **Don't remove `known_list`** — it's the "Seeding Mechanism" for the
   future Builder. Our schema `_commands` is an overlay, not a replacement.
 
-### What we can do now (Phase 3a changes — ALL DONE)
+### What we can do now (Phase 3a changes — ALL DONE, Phase 3b — ALL DONE)
 
 These were small changes to PR 811 that aligned with Phase 3b.
 All completed and tested:
@@ -802,12 +833,23 @@ def _build_packet_from_template(
     verb = cmd_def["verb"]
     code = cmd_def["code"]
     payload = cmd_def["payload"]
-    src = cmd_def.get("src") or str(fan_device.get_bound_rem() or "")
+    # src resolution: explicit src > bound REM > HGI fallback
+    src = cmd_def.get("src")
+    if not src:
+        src = str(fan_device.get_bound_rem() or "")
     if not src:
         # Fallback to HGI gateway ID
-        src = str(coordinator.client._engine._transport._hgi_id)
+        client = coordinator.client
+        if client:
+            hgi = getattr(client, "_gwy", None)
+            if hgi:
+                hgi_dev = getattr(hgi, "_hgi", None) or getattr(hgi, "hgi", None)
+                if hgi_dev:
+                    src = str(hgi_dev.id)
     if not src:
-        raise HomeAssistantError("No bound REM or HGI available to send command")
+        raise HomeAssistantError(
+            "No bound REM or HGI available to send command — set _bound on the FAN"
+        )
     dst = fan_device.id
     brd = "--:------"
     length = f"{len(payload) // 2:03d}"
@@ -821,7 +863,7 @@ def _build_packet_from_template(
 
 **Files:** `remote.py`, `climate.py` (or `fan_handler.py`)
 
-- `remote.py` `async_setup_platform`: Currently filters `isinstance(device, HvacRemote)`.
+- `remote.py` `async_setup_entry`: Currently filters `isinstance(device, HvacRemote)`.
   Add `isinstance(device, HvacVentilator)` — FAN devices also get a
   `remote` entity.
 - `RamsesRemote.__init__`: Accept `HvacVentilator` as well as `HvacRemote`.
@@ -875,22 +917,23 @@ is kept for backward compatibility (existing automations target
   if `commands[fan_mode]` is a dict, build via
   `_build_packet_from_template()`. If string, use directly.
 
-#### Item 7: Store migration v2→v3
+#### Item 7: Runtime migration REM → FAN dict templates
 
-**Files:** `store.py`, `coordinator.py`
+**Files:** `coordinator.py` (no `store.py` changes needed)
 
-- `store.py`: Bump `STORAGE_VERSION` to 3, set `max_readable_version=3`.
-- `_async_migrate_func`: v2→v3 migration:
+- `coordinator.py`: Add `_migrate_rem_commands_to_fan` static method.
   - For each FAN entry in schema with `_bound`:
     - Normalize `_bound` to list (if string)
     - For each bound REM, copy its `_commands` (packet strings) to the
       FAN entry as dicts (parse via `_parse_packet_to_template`)
     - Do NOT delete REM `_commands` (downgrade safety)
-  - v1→v3 and v2→v3: same migration (v1 and v2 are identical for
-    ramses_cc storage)
+    - Only copy commands NOT already on the FAN (FAN is authoritative)
+  - Called in all 3 branches of `async_save_client_state`
+- **No store version bump** — `STORAGE_VERSION` stays at 1.
+  Migration is runtime (same pattern as Phase 3a's `_sync_remotes_to_schema`).
 - Downgrade safety:
   - v3→v2: v2 code ignores FAN `_commands` (stripped), reads REM
-    `_commands` (still present as packet strings)
+    `_commands` (still present as packet strings — NOT deleted)
   - v2→v1: identity (already handled)
 
 #### Item 8: Config flow `_commands` on FAN
@@ -906,33 +949,52 @@ is kept for backward compatibility (existing automations target
 
 ### Test plan
 
-#### Unit tests (ramses_cc)
+#### Unit tests (ramses_cc) — 33 new, 1026 total
 
 1. `_build_packet_from_template` — builds correct packet from dict
-2. `_parse_packet_to_template` — extracts verb/code/payload from packet
-3. `send_command` with dict format — builds + sends
-4. `send_command` with string format (v2) — backward compat
-5. `learn_command` on FAN — listens to all bound REMs
-6. `learn_command` on REM — still listens to one src (backward compat)
-7. `fan_modes` includes FAN `_commands` (dicts) + REM `_commands` (strings)
-8. `set_fan_mode` intercept with dict format — builds + sends
-9. `set_fan_mode` intercept with string format — backward compat
-10. Store migration v2→v3 — copies REM commands to FAN as dicts
-11. Store migration keeps REM `_commands` (downgrade safety)
-12. Startup load reads both FAN dicts and REM strings
-13. `remote` entity created on FAN (`isinstance(device, HvacVentilator)`)
-14. `extra_state_attributes` on FAN: `commands` (dicts) + `bound_rems`
-15. `extra_state_attributes` on REM: `commands` (strings) + `bound_to_fan`
+2. `_build_packet_from_template` — explicit src override
+3. `_build_packet_from_template` — HGI fallback when no bound REM
+4. `_build_packet_from_template` — raises when no src resolvable
+5. `_build_packet_from_template` — length calculated from payload
+6. `_parse_packet_to_template` — extracts verb/code/payload from packet
+7. `_parse_packet_to_template` — handles 22F7 (bypass) packets
+8. `_parse_packet_to_template` — raises ValueError for short packets
+9. `_is_command_dict` — True for valid dict templates
+10. `_is_command_dict` — False for packet strings
+11. `_is_command_dict` — False for incomplete dicts
+12. FAN entity `is_fan_entity` — True for HvacVentilator
+13. REM entity `is_fan_entity` — False for HvacRemote
+14. FAN entity `_bound_rem_ids` — reads _bound from schema
+15. FAN entity loads own `_commands` (dicts) from coordinator._remotes
+16. FAN entity loads bound REM's `_commands` (strings) as fallback
+17. FAN entity `extra_state_attributes` — includes `bound_rems`
+18. REM entity `extra_state_attributes` — includes `bound_to_fan`
+19. FAN `send_command` with dict template — builds + sends
+20. FAN `send_command` with REM string fallback — uses packet string
+21. FAN `add_command` — parses to dict template
+22. REM `add_command` — stores packet string (backward compat)
+23. `_migrate_rem_commands_to_fan` — no FAN → no change
+24. `_migrate_rem_commands_to_fan` — FAN no _bound → no change
+25. `_migrate_rem_commands_to_fan` — bound REM no _commands → no change
+26. `_migrate_rem_commands_to_fan` — REM commands copied as dicts
+27. `_migrate_rem_commands_to_fan` — REM commands NOT deleted (downgrade)
+28. `_migrate_rem_commands_to_fan` — FAN commands authoritative
+29. `_migrate_rem_commands_to_fan` — multi-REM all copied
+30. `_migrate_rem_commands_to_fan` — _bound as str normalized
+31. `_migrate_rem_commands_to_fan` — invalid packet skipped, no crash
 
-#### Integration tests (ha_sim)
+#### Integration tests (ha_sim) — Recipe 26, 12 checks
 
-16. Add command to FAN via `add_command` — stores as dict on FAN entry
-17. `send_command` on FAN entity — builds packet, sends
-18. `learn_command` on FAN entity — listens to bound REM, captures, stores dict
-19. `set_fan_mode` with custom command from FAN `_commands` — intercepts
-20. Command persists after reload (FAN dicts survive restart)
-21. Migration: REM `_commands` copied to FAN as dicts on restart
-22. Downgrade: REM `_commands` still present after migration
+32. FAN remote entity exists (`remote.fan_32_150000`)
+33. FAN `bound_rems` attribute includes bound REM
+34. `add_command` on FAN — stores dict template in schema
+35. Dict template has correct verb/code/payload
+36. `send_command` on FAN entity — succeeds
+37. `fan_modes` includes FAN `_commands`
+38. REM `_commands` migrated to FAN as dict templates
+39. REM `_commands` not deleted after migration (downgrade safety)
+
+**Backward compat:** R24 (10 checks) + R25 (6 checks) still pass.
 
 ### Implementation decisions (resolved)
 
@@ -964,7 +1026,9 @@ is kept for backward compatibility (existing automations target
    If a user binds a REM to 2 FANs, warn. Each REM is bound to exactly
    one FAN.
 
+---
 
+## References
 
 - **Discussion 191** (ramses_rf): "Untangling the Organic Code Knot" —
   the big architectural discussion. 34 comments. Key consensus: commands
