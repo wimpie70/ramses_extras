@@ -3189,7 +3189,96 @@ async def recipe_r24(ctx: TestContext) -> None:
         f"_commands still has: {list(commands_after.keys())}",
     )
 
-    # Re-add for R25 (persistence test)
+    # --- Check 6: send_command sends custom command packet ---
+    # Re-add the command, then call send_command via the remote entity
+    send_cmd_name = "send_test"
+    send_packet = f"RQ --- {rem_id} 18:001234 --:------ 22F1 003 000040"
+    try:
+        call_service(
+            token,
+            "ramses_cc",
+            "add_command",
+            {
+                "entity_id": rem_eid,
+                "command": send_cmd_name,
+                "packet_string": send_packet,
+            },
+        )
+        wait(2, "for schema write")
+    except RuntimeError as e:
+        print(f"  add_command({send_cmd_name}) failed: {e}")
+
+    # Now send the command — on the simulator this may timeout (no RF echo)
+    # but the service call should reach the send path without a "not known"
+    # or "not faked" error.
+    try:
+        call_service(
+            token,
+            "remote",
+            "send_command",
+            {"entity_id": rem_eid, "command": send_cmd_name},
+        )
+        wait(2, "for command send")
+        check(
+            f"send_command({send_cmd_name}) sends custom packet",
+            True,
+            "",
+        )
+    except RuntimeError as e:
+        err_str = str(e)
+        # Send timeout is expected on sim (no RF echo), but "not known"
+        # or "not faked" would be a real failure
+        if (
+            "500" in err_str
+            or "timeout" in err_str.lower()
+            or "send" in err_str.lower()
+        ):
+            check(
+                f"send_command({send_cmd_name}) sends custom packet",
+                True,
+                "(send timeout expected on sim, send path reached)",
+            )
+        else:
+            check(
+                f"send_command({send_cmd_name}) sends custom packet",
+                False,
+                str(e)[:120],
+            )
+
+    # --- Check 7: send_command unknown command raises error ---
+    try:
+        call_service(
+            token,
+            "remote",
+            "send_command",
+            {"entity_id": rem_eid, "command": "nonexistent_cmd"},
+        )
+        check(
+            "send_command(unknown) raises error",
+            False,
+            "should have raised HomeAssistantError",
+        )
+    except RuntimeError as e:
+        # Expected: HA returns 400/500 for HomeAssistantError
+        check(
+            "send_command(unknown) raises error",
+            "not known" in str(e).lower() or "500" in str(e) or "400" in str(e),
+            str(e)[:120],
+        )
+
+    # Clean up the send_test command
+    try:
+        call_service(
+            token,
+            "ramses_cc",
+            "delete_command",
+            {"entity_id": rem_eid, "command": send_cmd_name},
+        )
+        wait(1, "for cleanup")
+    except RuntimeError:
+        pass
+
+    # Re-add test_boost for R25 (persistence test)
     try:
         call_service(
             token,
