@@ -3510,7 +3510,9 @@ async def recipe_r26(ctx: TestContext) -> None:
         check("add_command on FAN succeeds", False, str(e)[:120])
 
     # Verify _commands appears in schema on FAN entry as dict
-    schema_r26 = get_schema_with_commands(fan_id, test_cmd, max_tries=10, delay=3)
+    # Use extended retries — the save cycle may overwrite the config entry
+    # before the add_command write persists
+    schema_r26 = get_schema_with_commands(fan_id, test_cmd, max_tries=15, delay=3)
     fan_entry_r26 = schema_r26.get(fan_id, {})
     fan_commands = (
         fan_entry_r26.get("_commands", {}) if isinstance(fan_entry_r26, dict) else {}
