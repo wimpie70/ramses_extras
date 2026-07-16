@@ -708,25 +708,43 @@ All completed and tested:
 2. **22F7 (bypass) and 22B0 (calendar) builders?** When ramses_rf gets
    builders for these, the commands move from `_commands` to native
    method calls. Same pattern as 22F1 → issue 547.
+   **Status:** Not sure yet — depends on ramses_rf Builder Pattern
+   (issue 530 Phase 3). For now, `_commands` is the only way to send
+   these. When builders arrive, commands move from `_commands` to
+   native method calls.
 
 3. **2411 parameter commands?** Separate from `_commands` (they go
    through `fan_handler` + `add_bound_device`). This design doesn't
    change 2411 routing — `_bound` still tells `fan_handler` which REM
    to use for 2411 RQ/W.
+   **Status:** Keep separate for now. Some fans can handle 2411, not
+   all. This will be a builder thing in the future (issue 530 Phase 3).
+   `_commands` does not touch 2411 routing.
 
 4. **What if a FAN has no `_bound`?** No REMs to send through.
    `send_command` raises an error. `learn_command` can't capture
    anything. User must set `_bound` first.
+   **Resolved:** Give a warning (rate-limited, not spamming). The user
+   must set `_bound` and bind a faked REM. The warning guides them to
+   the fix without flooding the log.
 
 5. **Multiple FANs sharing a REM?** A REM could be bound to 2 FANs
    (unusual but possible). The `_bound` list is per-FAN, so the same
    REM ID could appear in multiple FAN entries. No conflict — each
    FAN sends its own commands with its own dst address.
+   **Resolved:** A REM should never control more than 1 FAN. This is
+   a constraint we enforce — if a user tries to bind a REM to 2 FANs,
+   warn or reject. In practice, each REM is bound to exactly one FAN.
 
 6. **Should standard modes also be in `_commands`?** No — that would
    duplicate what ramses_rf already knows via `_scheme`. But a user
    could override a standard mode with a custom payload in `_commands`
    if their device needs a non-standard format (edge case).
+   **Status:** Agreed — standard modes go through `set_fan_mode()` +
+   `_scheme`. The Builder Pattern (issue 530 Phase 3) will make this
+   more diverse: each strategy/manufacturer will define its own
+   standard modes. `_commands` stays as the user override layer for
+   non-standard commands that have no builder.
 
 ---
 
@@ -916,30 +934,35 @@ is kept for backward compatibility (existing automations target
 21. Migration: REM `_commands` copied to FAN as dicts on restart
 22. Downgrade: REM `_commands` still present after migration
 
-### Open items to resolve before coding
+### Implementation decisions (resolved)
 
-1. **`_remotes` dict keying** — Currently keyed by REM ID. With FAN
-   `_commands`, we need FAN IDs too. Options:
-   - a) Key by FAN ID for dicts, REM ID for strings (mixed keys)
-   - b) Separate `_fan_commands` dict for FAN dicts
-   - **Recommendation: (a)** — simpler, `_remotes` becomes a unified
-     dict where the value type (dict vs str) indicates the format
+1. **`_remotes` dict keying** — Mixed keys in a single `_remotes` dict.
+   FAN IDs map to dict values (`{verb, code, payload}`), REM IDs map to
+   string values (packet strings). The value type indicates the format.
+   Simpler than a separate `_fan_commands` dict — no new state to manage.
 
-2. **`remote` entity on FAN** — Should the FAN's `remote` entity replace
-   the REM's, or coexist?
-   - **Recommendation: coexist** — REM entity stays for backward compat.
-     FAN entity is new. Automations can target either.
+2. **`remote` entity coexistence** — Both REM and FAN get `remote` entities.
+   REM entity (`remote.32_153001`) stays for backward compat — existing
+   automations keep working. FAN entity (`remote.30_160000`) is new and
+   becomes the primary target for 3b features.
 
-3. **`add_command` service** — Currently targets a REM entity. For 3b,
-     should it also accept a FAN entity as target?
-   - **Recommendation: yes** — `add_command` on `remote.30_160000`
-     (FAN) stores a dict on the FAN entry. `add_command` on
-     `remote.32_153001` (REM) stores a string on the REM entry.
+3. **`add_command` service target** — Accepts both REM and FAN entities.
+   `add_command` on a FAN stores a `{verb, code, payload}` dict on the
+   FAN's schema entry. `add_command` on a REM stores a packet string on
+   the REM's schema entry (backward compat).
 
 4. **`get_bound_rem()` with list `_bound`** — **Resolved:** ramses_rf's
    `get_bound_rem()` iterates over `_bound_devices` dict (populated by
    `fan_handler.setup_fan_bound_devices` which loops over all bound REMs)
    and returns the first REM/DIS. Works with multi-REM. No change needed.
+
+5. **No `_bound` warning** — If a FAN has no `_bound`, `send_command` and
+   `learn_command` emit a rate-limited warning (not spamming). The user
+   must set `_bound` and bind a faked REM.
+
+6. **REM-to-FAN constraint** — A REM should never control more than 1 FAN.
+   If a user binds a REM to 2 FANs, warn. Each REM is bound to exactly
+   one FAN.
 
 
 
