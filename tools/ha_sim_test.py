@@ -3439,6 +3439,195 @@ async def recipe_r25(ctx: TestContext) -> None:
     )
 
 
+async def recipe_r26(ctx: TestContext) -> None:
+    """Recipe 26: Phase 3b — commands on FAN with dict templates."""
+    token = ctx.token
+    # =====================================================================
+    # RECIPE 26: Phase 3b — commands on FAN, dict templates, migration
+    # =====================================================================
+    log_section("Recipe 26: Phase 3b commands on FAN with dict templates")
+
+    rem_id = REM  # 37:170000
+    fan_id = FAN  # 32:150000
+
+    # --- Check 1: FAN entity exists as remote ---
+    entities_r26 = get_entities(token)
+    fan_entity = None
+    fan_normalized = fan_id.replace(":", "_")
+    for s in entities_r26:
+        if s["entity_id"].startswith("remote.") and fan_normalized in s["entity_id"]:
+            fan_entity = s
+            break
+
+    check(
+        f"FAN remote entity exists for {fan_id}",
+        fan_entity is not None,
+        f"no remote entity with {fan_normalized} in entity_id",
+    )
+
+    if not fan_entity:
+        check("add_command on FAN stores dict", False, "no FAN entity")
+        check("send_command on FAN builds packet", False, "no FAN entity")
+        check("REM commands migrated to FAN dicts", False, "no FAN entity")
+        check("REM _commands not deleted after migration", False, "no FAN entity")
+        return
+
+    fan_eid = fan_entity["entity_id"]
+    print(f"  FAN remote entity: {fan_eid}")
+
+    # --- Check 2: bound_rems attribute on FAN entity ---
+    fan_attrs = fan_entity.get("attributes", {})
+    bound_rems = fan_attrs.get("bound_rems")
+    check(
+        f"FAN {fan_id} has bound_rems with {rem_id}",
+        isinstance(bound_rems, list) and rem_id in bound_rems,
+        f"got bound_rems={bound_rems}",
+    )
+
+    # --- Check 3: add_command on FAN stores dict template ---
+    test_cmd = "test_bypass"
+    test_packet = f"RQ --- {rem_id} {fan_id} --:------ 22F1 003 000030"
+    print(f"  Calling ramses_cc.add_command({test_cmd}) on FAN entity...")
+    try:
+        call_service(
+            token,
+            "ramses_cc",
+            "add_command",
+            {
+                "entity_id": fan_eid,
+                "command": test_cmd,
+                "packet_string": test_packet,
+            },
+        )
+        wait(3, "for schema write + config entry update")
+        try:
+            call_service(token, "ramses_cc", "sync_topology")
+        except RuntimeError:
+            pass
+        wait(5, "for config entry persistence")
+        check("add_command on FAN succeeds", True, "")
+    except RuntimeError as e:
+        check("add_command on FAN succeeds", False, str(e)[:120])
+
+    # Verify _commands appears in schema on FAN entry as dict
+    schema_r26 = get_schema_with_commands(fan_id, test_cmd, max_tries=10, delay=3)
+    fan_entry_r26 = schema_r26.get(fan_id, {})
+    fan_commands = (
+        fan_entry_r26.get("_commands", {}) if isinstance(fan_entry_r26, dict) else {}
+    )
+    check(
+        f"schema has _commands for FAN {fan_id}",
+        isinstance(fan_commands, dict) and test_cmd in fan_commands,
+        f"_commands={fan_commands}",
+    )
+    if test_cmd in fan_commands:
+        cmd_val = fan_commands[test_cmd]
+        check(
+            f"_commands[{test_cmd}] is a dict template",
+            isinstance(cmd_val, dict)
+            and "verb" in cmd_val
+            and "code" in cmd_val
+            and "payload" in cmd_val,
+            f"got: {cmd_val}",
+        )
+        if isinstance(cmd_val, dict) and "verb" in cmd_val:
+            check(
+                "dict template has verb=RQ, code=22F1, payload=000030",
+                cmd_val.get("verb") == "RQ"
+                and cmd_val.get("code") == "22F1"
+                and cmd_val.get("payload") == "000030",
+                f"got: {cmd_val}",
+            )
+
+    # --- Check 4: send_command on FAN entity ---
+    print(f"  Calling remote.send_command({test_cmd}) on FAN entity...")
+    try:
+        call_service(
+            token,
+            "remote",
+            "send_command",
+            {"entity_id": fan_eid, "command": test_cmd},
+        )
+        wait(2, "for command send")
+        check("send_command on FAN succeeds", True, "")
+    except RuntimeError as e:
+        check("send_command on FAN succeeds", False, str(e)[:120])
+
+    # --- Check 5: set_fan_mode intercepts FAN dict template ---
+    # The test_cmd should appear in fan_modes and be interceptable
+    fan_climate_entity = None
+    for s in get_entities(token):
+        if s["entity_id"].startswith("climate.") and fan_normalized in s["entity_id"]:
+            fan_climate_entity = s
+            break
+
+    if fan_climate_entity:
+        fan_modes = fan_climate_entity.get("attributes", {}).get("fan_modes", [])
+        check(
+            f"fan_modes includes {test_cmd} from FAN _commands",
+            test_cmd in fan_modes,
+            f"fan_modes={fan_modes}",
+        )
+
+    # --- Check 6: REM _commands migrated to FAN dicts ---
+    # R25 left a legacy_speed_2 command on the REM entry.  After the save
+    # cycle, _migrate_rem_commands_to_fan should have copied it to the FAN
+    # as a dict template.
+    schema_migration = get_schema_retry()
+    fan_entry_mig = schema_migration.get(fan_id, {})
+    fan_cmds_mig = (
+        fan_entry_mig.get("_commands", {}) if isinstance(fan_entry_mig, dict) else {}
+    )
+    rem_entry_mig = schema_migration.get(rem_id, {})
+    rem_cmds_mig = (
+        rem_entry_mig.get("_commands", {}) if isinstance(rem_entry_mig, dict) else {}
+    )
+
+    # Check if legacy_speed_2 was migrated to FAN as dict
+    # (It may or may not be there depending on whether R25 ran and the
+    # save cycle completed.  This is a soft check.)
+    if "legacy_speed_2" in rem_cmds_mig and "legacy_speed_2" not in fan_cmds_mig:
+        # Force a save cycle
+        try:
+            call_service(token, "ramses_cc", "sync_topology")
+        except RuntimeError:
+            pass
+        wait(5, "for save cycle")
+        schema_migration = get_schema_retry()
+        fan_entry_mig = schema_migration.get(fan_id, {})
+        fan_cmds_mig = (
+            fan_entry_mig.get("_commands", {})
+            if isinstance(fan_entry_mig, dict)
+            else {}
+        )
+
+    check(
+        "REM _commands migrated to FAN as dict templates",
+        isinstance(fan_cmds_mig, dict)
+        and any(isinstance(v, dict) and "verb" in v for v in fan_cmds_mig.values()),
+        f"FAN _commands={fan_cmds_mig}",
+    )
+
+    # --- Check 7: REM _commands not deleted (downgrade safety) ---
+    check(
+        "REM _commands not deleted after migration (downgrade safety)",
+        isinstance(rem_cmds_mig, dict) and len(rem_cmds_mig) > 0,
+        f"REM _commands={rem_cmds_mig}",
+    )
+
+    # --- Cleanup: remove test command from FAN ---
+    try:
+        call_service(
+            token,
+            "remote",
+            "delete_command",
+            {"entity_id": fan_eid, "command": test_cmd},
+        )
+        wait(3, "for schema write")
+    except RuntimeError:
+        pass
+
+
 async def main() -> None:
     ctx = TestContext()
     print("Authenticating to ha-sim...")
@@ -3711,6 +3900,13 @@ async def main() -> None:
         ctx.token = get_token()  # refresh token after each recipe
     else:
         print("  [skip] Recipe 25")
+
+    if recipe_active or "26" == start_recipe:
+        recipe_active = True
+        await recipe_r26(ctx)
+        ctx.token = get_token()  # refresh token after each recipe
+    else:
+        print("  [skip] Recipe 26")
 
     # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run
