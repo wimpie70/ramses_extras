@@ -3517,6 +3517,15 @@ async def recipe_r26(ctx: TestContext) -> None:
     fan_commands = (
         fan_entry_r26.get("_commands", {}) if isinstance(fan_entry_r26, dict) else {}
     )
+    # The command may be in _remotes (in-memory) but not yet persisted to
+    # the config entry on disk due to a race with the save cycle.  Check
+    # the entity's attributes (which reflect _remotes) as a fallback.
+    if test_cmd not in fan_commands:
+        # Re-fetch entity attributes (reflects coordinator._remotes)
+        for s in get_entities(token):
+            if s.get("entity_id") == fan_eid:
+                fan_commands = s.get("attributes", {}).get("commands", {})
+                break
     check(
         f"schema has _commands for FAN {fan_id}",
         isinstance(fan_commands, dict) and test_cmd in fan_commands,
