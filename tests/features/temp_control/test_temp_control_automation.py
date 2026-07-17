@@ -356,6 +356,96 @@ class TestTempControlMinInterval:
         assert automation_manager._mode["32:153289"] == "cooling"
 
     @pytest.mark.asyncio
+    async def test_min_interval_does_not_block_transition_to_idle(
+        self, automation_manager
+    ):
+        """Transitions from cooling/heating_retention to idle are never
+        suppressed, even within the min interval.
+
+        Suppressing cooling→idle keeps temp_control in an active forcing
+        mode with a stale command timestamp.  When the device then
+        legitimately moves the bypass on its own (conditions changed),
+        the bypass safety net falsely detects a manual override and turns
+        temp_control off — see issue 106.
+        """
+        import time
+
+        automation_manager._mode["32:153289"] = "cooling"
+        automation_manager._last_bypass_change["32:153289"] = (
+            time.time() - 10  # only 10s ago, well within 180s
+        )
+
+        # Conditions no longer warrant cooling: outdoor warmer than indoor
+        states = make_entity_states(
+            indoor_temp=22.0,
+            outdoor_temp=24.0,  # outdoor warmer → no free cooling
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        # Should transition to idle immediately (not suppressed)
+        assert automation_manager._mode["32:153289"] == "idle"
+        # Should send fan_bypass_auto to release bypass control
+        automation_manager.ramses_commands.send_command.assert_called_with(
+            "32:153289", "fan_bypass_auto"
+        )
+
+    @pytest.mark.asyncio
+    async def test_min_interval_does_not_block_transition_from_idle(
+        self, automation_manager
+    ):
+        """Transitions from idle to cooling/heating_retention are not
+        suppressed (entering an active mode is a new decision, not a
+        reversal of a recent one)."""
+        import time
+
+        automation_manager._mode["32:153289"] = "idle"
+        automation_manager._last_bypass_change["32:153289"] = (
+            time.time() - 10  # only 10s ago
+        )
+
+        # Conditions now warrant cooling
+        states = make_entity_states(
+            indoor_temp=24.0,
+            outdoor_temp=18.0,
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        assert automation_manager._mode["32:153289"] == "cooling"
+
+    @pytest.mark.asyncio
+    async def test_min_interval_refreshes_command_time_when_suppressing(
+        self, automation_manager
+    ):
+        """When an active→active transition is suppressed, the command
+        timestamp is refreshed so the bypass safety net does not falsely
+        trigger on legitimate device-initiated bypass movements."""
+        import time
+
+        automation_manager._mode["32:153289"] = "cooling"
+        automation_manager._last_bypass_change["32:153289"] = (
+            time.time() - 10  # only 10s ago, within 180s
+        )
+        automation_manager._last_bypass_command_time["32:153289"] = (
+            time.time() - 60  # stale command timestamp
+        )
+
+        # Conditions now warrant heating_retention (indoor dropped)
+        states = make_entity_states(
+            indoor_temp=18.0,
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        # Mode should stay cooling (suppressed)
+        assert automation_manager._mode["32:153289"] == "cooling"
+        # Command timestamp should be refreshed (not stale anymore)
+        assert (
+            time.time() - automation_manager._last_bypass_command_time["32:153289"] < 5
+        )
+
+    @pytest.mark.asyncio
     async def test_min_interval_allows_after_elapsed(self, automation_manager):
         """When min interval has elapsed, mode change is allowed."""
         import time
@@ -627,6 +717,53 @@ class TestTempControlBypassSafetyNet:
             )
 
         mock_super.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_suppressed_mode_does_not_cause_false_safety_net(
+        self, automation_manager
+    ):
+        """Regression test for issue 106: when a cooling→heating_retention
+        transition is suppressed by min_bypass_mode_interval_seconds, the
+        command timestamp is refreshed so a subsequent bypass position
+        change does not falsely trigger the safety net and turn
+        temp_control off.
+
+        Before the fix, the suppression kept temp_control in cooling mode
+        with a stale _last_bypass_command_time.  When the device moved the
+        bypass on its own, the safety net (10s window) fired and turned
+        temp_control off — "Temp control turned off after cooling".
+        """
+        import time
+
+        hass = automation_manager.hass
+        switch_state = MagicMock()
+        switch_state.state = "on"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+
+        # Simulate: temp_control in cooling, suppression just happened
+        # (command timestamp was refreshed by the suppression logic)
+        automation_manager._mode["32:153289"] = "cooling"
+        automation_manager._last_bypass_command_time["32:153289"] = (
+            time.time() - 2  # recent — refreshed by suppression
+        )
+
+        old_state = MagicMock()
+        new_state = MagicMock()
+
+        with patch.object(
+            type(automation_manager).__mro__[1],
+            "_async_handle_state_change",
+            new_callable=AsyncMock,
+        ):
+            await automation_manager._async_handle_state_change(
+                "binary_sensor.32_153289_bypass_position",
+                old_state,
+                new_state,
+            )
+
+        # Safety net must NOT fire because command timestamp is recent
+        hass.services.async_call.assert_not_called()
 
 
 class TestTempControlPerAreaEvaluation:
