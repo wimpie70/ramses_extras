@@ -56,7 +56,18 @@ for _i in range(3, 9):
 
 MIXED_SCHEMA = {
     CTL: {"zones": dict(_MIXED_ZONES), "stored_hotwater": {"sensor": DHW}},
-    FAN: {"remotes": [REM], "sensors": [CO2]},
+    FAN: {
+        "remotes": [REM],
+        "sensors": [CO2],
+        "_commands": {
+            "_comment": "Target the FAN for automations, not the REM",
+        },
+    },
+    REM: {
+        "_commands": {
+            "_comment": "Deprecated — commands moved to FAN",
+        },
+    },
 }
 
 
