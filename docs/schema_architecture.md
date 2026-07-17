@@ -15,8 +15,11 @@
 >   from schema. `DeviceRole` composition scrapped. Deprecate `__class__`
 >   mutations.
 >
-> **Key shift (Jul 17 2026):** Builder/Strategy pattern scrapped in favor
-> of "init and go" from schema. `_commands` stays as user override layer.
+> **Key shift (Jul 17 2026):** Device identity Builder (`DeviceRole`,
+> `supported_commands()`) scrapped in favor of "init and go" from schema
+> `_class`. TX generation builders (native 22F7/22B0, HVAC strategy
+> profiles) still planned in Phase 3/3.25. `_commands` stays as user
+> override layer. `_class` NOT deprecated.
 
 <a id="chapters"></a>
 ## Chapters

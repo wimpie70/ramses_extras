@@ -14,22 +14,46 @@
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — **TX Generation
 >   Parity + Transport Layer Decoupling**. Moves command-building and
 >   payload validation out of `ramses_tx` to L7 inside `ramses_rf`.
->   In progress. Will update `SCH_TRAITS_HVAC` to accept `str | list[str]`
->   for binding arrays (our `_bound` as list) and expose
->   `strip_and_map_traits()` as a pre-validation pipeline stage.
+>   In progress. Will bring:
+>   - Native TX builders for 22F7/22B0 (defaults; `_commands` overrides)
+>   - Per-manufacturer HVAC strategy profiles (for TX generation, NOT
+>     device identity)
+>   - `SCH_TRAITS_HVAC` accepts `str | list[str]` for binding arrays
+>   - `strip_and_map_traits()` as pre-validation pipeline (so CLI can
+>     use `_commands` too — currently CLI can't because `_commands` is
+>     stripped by ramses_cc before ramses_rf sees it)
 > - **ramses_rf Phase 3.75** (PWhite-Eng, issue 639) — **Identity
 >   Composition**. Was originally "Builder Pattern" (issue 530), now
 >   reframed as "init and go": devices instantiate with correct, final
 >   roles from schema traits — no runtime `__class__` mutation.
->   `DeviceRole` composition pattern **scrapped** in favor of schema-driven
->   instantiation. Focus is on deprecating `__class__` mutations and
->   routing `1FC9` discoveries into `TopologyChangedEvent`.
 >
-> **Key shift (Jul 17 2026):** PWhite-Eng has scrapped the Builder/Strategy
-> pattern (`DeviceRole`, `supported_commands()`) in favor of "init and go"
-> from schema. This aligns perfectly with our schema-as-SSOT approach.
-> Our `_commands` stays as the user override layer — native TX builders
-> (22F7/22B0) will be defaults, `_commands` overrides them.
+> **Key shift (Jul 17 2026):** PWhite-Eng scrapped the **device identity**
+> part of the Builder pattern (`DeviceRole` composition, active discovery
+> FSM, `supported_commands()` as a strategy method) in favor of "init and
+> go" from schema. The **TX generation** part (native builders for
+> 22F7/22B0, per-manufacturer HVAC strategy profiles) is **still planned**
+> in Phase 3/3.25. These are two different things:
+>
+> | Aspect | Status | Where |
+> |---|---|---|
+> | Device identity (`DeviceRole`, `__class__` replacement) | **Scrapped** — "init and go" from `_class` | Phase 3.75 |
+> | TX generation (native builders, HVAC strategy profiles) | **Still planned** | Phase 3/3.25 |
+> | `supported_commands()` as strategy method | **Scrapped** | — |
+> | `strip_and_map_traits()` in ramses_rf | **Still planned** | Phase 3/3.25 |
+> | `_commands` as user override | **Confirmed** | ramses_cc (now), ramses_rf (Phase 3d) |
+>
+> **`_commands` location:** Currently `_commands` lives in ramses_cc's
+> config entry schema only. ramses_cc strips `_`-prefixed keys before
+> passing the schema to ramses_rf. The CLI (which uses ramses_rf directly)
+> cannot use `_commands` today. Phase 3d will move the strip+map logic to
+> ramses_rf's `strip_and_map_traits()` pipeline so the CLI can also
+> benefit. `_commands` maps to `commands` (no underscore) inside ramses_rf.
+>
+> **`_class` deprecation:** `_class` is **NOT deprecated**. PWhite-Eng's
+> "init and go" approach *uses* `_class` from the schema to instantiate
+> devices with the correct class. silverailscolo's longer-term vision
+> (manufacturer+model+revision from 10E0) is a future enhancement, not a
+> replacement.
 
 ---
 
@@ -189,12 +213,12 @@ in `known_list` (which is being deprecated).
 <a id="pwhite-engs-ramses_rf-phase-3"></a>
 ## PWhite-Eng's ramses_rf Phase 3 (TX Generation + Identity Composition)
 
-> **Updated Jul 17 2026:** The Builder/Strategy pattern (issue 530) has
-> been **scrapped**. PWhite-Eng confirmed in ramses_rf issue 836 that
-> the `DeviceRole` composition pattern and active discovery FSM are no
-> longer planned. Instead, "init and go" — devices instantiate with
-> correct, final roles from schema traits. This aligns perfectly with
-> our schema-as-SSOT approach.
+> **Updated Jul 17 2026:** PWhite-Eng scrapped the **device identity**
+> part of the Builder pattern (`DeviceRole` composition, active discovery
+> FSM, `supported_commands()` as a strategy method) in favor of "init and
+> go" from schema. The **TX generation** part (native builders for
+> 22F7/22B0, per-manufacturer HVAC strategy profiles) is **still planned**
+> in Phase 3/3.25. These are two different things — don't conflate them.
 
 From ramses_rf issue 639 (master roadmap), issue 836, and ramses_cc issue 809:
 
@@ -204,28 +228,41 @@ Moves the entire command-building and payload validation stack out of
 `ramses_tx` and elevates it to L7 inside `ramses_rf`. This is where
 native builders for `22F7` (bypass), `22B0` (calendar), etc. will live.
 
+**What's still planned (TX generation side):**
+- Native TX builders for standard codes (22F7 bypass, 22B0 calendar)
+  → these become **defaults**; `_commands` overrides them
+- Per-manufacturer HVAC strategy profiles (how to build packets for
+  specific manufacturers) — NOT device identity, just TX generation
+- `SCH_TRAITS_HVAC` accepts `str | list[str]` for binding arrays
+  → our `_bound` as list works without strip+map workaround
+- `strip_and_map_traits()` as pre-validation pipeline in ramses_rf
+  → CLI can use `_commands` too (currently can't — stripped by ramses_cc)
+
 **Relevance to ramses_cc:**
 - Native TX builders become the **default** write pathway for standard
   commands. Our `_commands` stays as the **authoritative user override**
   layer — if a user defines `bypass_open` in `_commands`, it overrides
   the native builder.
-- PWhite-Eng will update `SCH_TRAITS_HVAC` to natively accept `str | list[str]`
-  for binding arrays — this means our `_bound` as list will work without
-  the strip+map workaround.
-- PWhite-Eng will expose `strip_and_map_traits()` as a pre-validation
-  pipeline stage inside ramses_rf — this is our Option B! The CLI will
-  benefit immediately, and ramses_cc can eventually stop stripping `_`
-  keys itself.
+- `_commands` currently lives in ramses_cc only (stripped before
+  ramses_rf sees it). Phase 3d moves strip+map to ramses_rf so CLI
+  can also use `_commands` (mapped to `commands` without underscore).
+- `_class` is **NOT deprecated** — "init and go" uses `_class` from
+  schema to instantiate devices with the correct class.
 
 ### ramses_rf Phase 3.75: Identity Composition (was "Builder Pattern")
 
 Originally issue 530 proposed a Builder/Strategy pattern with
-`DeviceRole` composition and `supported_commands()`. This has been
-**scrapped** (Jul 17 2026).
+`DeviceRole` composition and `supported_commands()`. The **device
+identity** part has been **scrapped** (Jul 17 2026).
+
+**What's scrapped (device identity side):**
+- `DeviceRole` composition pattern (replacing `__class__` mutation)
+- Active discovery FSM (probing to discover device type)
+- `supported_commands()` as a strategy method
 
 **New approach — "init and go":**
 - Devices instantiate with their correct, final roles derived directly
-  from the schema traits — no runtime `__class__` mutation.
+  from the schema traits (`_class`) — no runtime `__class__` mutation.
 - Legacy `__class__` mutations will be deprecated and removed.
 - Newly discovered passive bounds (like `1FC9` payloads) are routed
   directly into a `TopologyChangedEvent` so the consumer (ramses_cc)
@@ -234,12 +271,13 @@ Originally issue 530 proposed a Builder/Strategy pattern with
 **Relevance to ramses_cc:**
 - Our schema-as-SSOT approach already delivers this: when the schema
   changes, we tear down and rebuild with correct classes from `_class`.
-- No `_class` deprecation needed — `_class` stays as the schema-driven
-  identity trait. The future "manufacturer+model+revision+options"
-  idea (silverailscolo) is a longer-term enhancement, not a replacement.
-- `_commands` does NOT move to `supported_commands()` on strategies —
-  that concept is gone. `_commands` stays as the user override layer
-  on schema entries.
+- `_class` stays as the schema-driven identity trait — NOT deprecated.
+  silverailscolo's longer-term vision (manufacturer+model+revision from
+  10E0) is a future enhancement, not a replacement.
+- `_commands` stays as the user override layer on schema entries —
+  it does NOT move to `supported_commands()` on strategies (that
+  concept is gone). But native TX builders (Phase 3/3.25) will provide
+  defaults for standard codes.
 
 ### silverailscolo's question (issue 836, Jul 17 2026)
 
@@ -582,17 +620,17 @@ until native TX builders land. See `phase3b_fan_commands_design.md` for full des
 
 These items were originally part of Phase 3b in the initial plan, but were
 split out because they depend on ramses_rf changes. Phase 3b (commands on
-FAN) shipped without them. The Builder/Strategy pattern dependency is gone
-— these items now depend on the TX generation and `strip_and_map_traits`
-work in ramses_rf Phase 3/3.25.
+FAN) shipped without them. The device identity Builder (`DeviceRole`) is
+scrapped, but TX generation builders (native 22F7/22B0, HVAC strategy
+profiles) and `strip_and_map_traits()` are still planned in Phase 3/3.25.
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 3d.1 | ~~Coordinate strategy key names~~ — Builder/Strategy scrapped, no strategy keys needed | N/A |
-| 3d.2 | ~~Map `_class` to Builder strategy names~~ — `_class` stays as schema identity trait | N/A |
+| 3d.1 | Coordinate TX strategy profile key names with PWhite-Eng (per-manufacturer TX profiles, NOT device identity) | TODO |
+| 3d.2 | `_class` stays as schema identity trait — no mapping to strategy names needed (DeviceRole scrapped) | N/A |
 | 3d.3 | Stop stripping `_` keys when ramses_rf accepts them natively (via `strip_and_map_traits()` pipeline) | TODO |
 | 3d.4 | Verify `_bound` as `str \| list[str]` works with updated `SCH_TRAITS_HVAC` | TODO |
-| 3d.5 | Move strip+map pipeline to ramses_rf (so CLI also benefits) | TODO |
+| 3d.5 | Move strip+map pipeline to ramses_rf (so CLI can also use `_commands` → `commands`) | TODO |
 | 3d.6 | Verify native TX builders (22F7/22B0) work as defaults, `_commands` overrides them | TODO |
 
 ### Phase 3c: Flagging mismatches (silverailscolo's concern)
@@ -808,10 +846,12 @@ Before runtime migration, save state as YAML to
 | Jul 2026 | Phase 3b: both REM and FAN get `remote` entities | REM entity (`remote.32_153001`) kept for backward compat — existing automations keep working. FAN entity (`remote.30_160000`) is the new primary. |
 | Jul 2026 | Phase 3b: runtime migration, no store version bump (same as 3a) | `_migrate_rem_commands_to_fan` copies REM `_commands` to FAN as dict templates on every save cycle. REM entries NOT deleted (downgrade safety). |
 | Jul 2026 | Phase 3b: split Builder alignment items to Phase 3d | Original 3b items 3b.1/3b.2/3b.4/3b.5 (strategy keys, `_class` mapping, stop stripping `_` keys, Builder testing) depend on issue 530 — deferred to Phase 3d. |
-| Jul 17 2026 | Builder/Strategy pattern scrapped (PWhite-Eng, issue 836) | `DeviceRole` composition and active discovery FSM scrapped in favor of "init and go" from schema. Devices instantiate with correct roles from schema traits — no runtime `__class__` mutation. Aligns with our schema-as-SSOT approach. |
-| Jul 17 2026 | ramses_rf Phase 3 terminology updated | Was "issue 530 Phase 3 (Builder Pattern)", now: Phase 3/3.25 = TX Generation Parity + Transport Decoupling; Phase 3.75 = Identity Composition (deprecate `__class__`). PWhite-Eng will update `SCH_TRAITS_HVAC` for `str \| list[str]` bindings and expose `strip_and_map_traits()` pipeline. |
-| Jul 17 2026 | Phase 3d re-scoped | Items 3d.1 (strategy key names) and 3d.2 (`_class` → strategy mapping) marked N/A — Builder/Strategy scrapped. New items: 3d.4 (`_bound` as list in `SCH_TRAITS_HVAC`), 3d.6 (verify native TX builders as defaults). |
-| Jul 17 2026 | `_commands` confirmed as user override layer | PWhite-Eng confirmed: native TX builders (22F7/22B0) = defaults, `_commands` = authoritative user override. No `supported_commands()` on strategies — that concept is gone. |
+| Jul 17 2026 | Device identity Builder scrapped (PWhite-Eng, issue 836) | `DeviceRole` composition and active discovery FSM scrapped in favor of "init and go" from schema. Devices instantiate with correct roles from `_class` trait — no runtime `__class__` mutation. TX generation builders (native 22F7/22B0, HVAC strategy profiles) still planned in Phase 3/3.25. |
+| Jul 17 2026 | ramses_rf Phase 3 terminology updated | Was "issue 530 Phase 3 (Builder Pattern)", now: Phase 3/3.25 = TX Generation Parity (still planned); Phase 3.75 = Identity Composition ("init and go", deprecate `__class__`). |
+| Jul 17 2026 | Phase 3d re-scoped | 3d.2 (`_class` → strategy mapping) marked N/A — DeviceRole scrapped, `_class` stays. 3d.1 re-scoped to TX strategy profile key names (still planned). New: 3d.4, 3d.6. |
+| Jul 17 2026 | `_commands` confirmed as user override layer | PWhite-Eng confirmed: native TX builders (22F7/22B0) = defaults, `_commands` = authoritative user override. `supported_commands()` as strategy method scrapped, but native TX builders still planned. |
+| Jul 17 2026 | `_commands` currently ramses_cc-only | `_commands` stripped by ramses_cc before ramses_rf sees it. CLI can't use it today. Phase 3d: `strip_and_map_traits()` in ramses_rf maps `_commands` → `commands` so CLI benefits too. |
+| Jul 17 2026 | `_class` NOT deprecated | "init and go" uses `_class` from schema to instantiate devices. silverailscolo's manufacturer+model+revision idea is a future enhancement, not a replacement. |
 
 ---
 
