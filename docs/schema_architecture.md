@@ -1,6 +1,16 @@
 <a id="schema-as-source-of-truth-architecture"></a>
 # Schema-as-Source-of-Truth Architecture
 
+> **Naming note:** There are two "Phase 3"s that are easy to confuse:
+> - **ramses_cc Phase 3** — commands in schema, our work.
+>   Split into **3a** (commands on REM, PR 811, DONE) and **3b**
+>   (commands on FAN + strip+map pipeline, design stage).
+>   See `phase3b_fan_commands_design.md`.
+> - **ramses_rf issue 530 Phase 3** (PWhite-Eng) — Builder Pattern,
+>   `supported_commands()`, dynamic strategies. NOT started. NOT a
+>   dependency for our 3b. When it lands, it shrinks `_commands`
+>   (22F7/22B0 get native builders) but `_commands` stays as override.
+
 <a id="chapters"></a>
 ## Chapters
 
@@ -70,7 +80,7 @@
   - [Alignment with ramses_rf Roadmap](#alignment-with-ramsesrf-roadmap)
     - [The "Big Knot" — Discussion #191](#the-big-knot-discussion-191)
     - [Issue #530 (Architectural Refactor — umbrella issue)](#issue-530-architectural-refactor-umbrella-issue)
-    - [Verification status (checked Feb 2027)](#verification-status-checked-feb-2027)
+    - [Verification status (checked Jul 2026)](#verification-status-checked-jul-2026)
     - [Alignment Matrix](#alignment-matrix)
     - [Key Conflicts & Bottlenecks](#key-conflicts-bottlenecks)
     - [Recommendations](#recommendations)
@@ -121,7 +131,7 @@
               │               │   - device_comments
               │               │   - None values (main_tcs: null)
               │               │   - removes _disabled from orphan lists
-              │               │   - injects remotes: [] for HVAC (30:)
+              │               │   - moves HVAC without remotes/sensors to orphans_hvac
               └───────┬───────┘
                       |
                       | clean schema for ramses_rf
@@ -229,15 +239,15 @@ at ramses_rf, it goes through TWO completely separate paths:
          |
          |  for each device_id in packet (src, dst, addr3):
          |    _is_known(dev_id)?
-         |      → check device_registry (dict lookup)
          |      → check known_list (dict lookup)
          |      → check schema keys (dict lookup)
+         |      (device_registry is NOT consulted)
          |
          |    YES → skip immediately (already tracked by Path 2)
          |    NO  → classify and add/update _devices dict
          |
          |  Classification is lightweight:
-         |    - prefix lookup (04: = TRV, 01: = CTL, 30: = FAN/PIV, etc.)
+         |    - prefix lookup (04: = TRV, 01: = CTL, 32: = FAN, 30: = RFG, etc.)
          |    - code list check (is it a binding code?)
          |    - zone_idx extraction from payload (if binding code)
          |    - verb+code pair for HVAC class (22F1 = REM, 1298 = CO2)
@@ -279,8 +289,8 @@ at ramses_rf, it goes through TWO completely separate paths:
   │  - Service: discard_discovered_device   │
   │                                         │
   │  Accept  → schema + known_list, real    │
-  │  Decline → _disabled: true, rejected  │
-  │  Skip    → stays NEW, re-appears later  │
+  │  Decline → _owner: not-me, rejected     │
+  │  Skip    → _skipped: true, re-appears   │
   │                                         │
   │  Device does NOT exist in ramses_rf     │
   │  No entities created                    │
@@ -294,8 +304,9 @@ traffic, classifies devices, and waits. It never creates devices in
 ramses_rf, never creates HA entities, never learns topology. It just
 catalogs what's out there.
 
-**Speed:** `_process_packet` does 3 dict lookups per device ID
-(_is_known check). If known → skip (no work). If unknown → classify
+**Speed:** `_process_packet` does 2 dict lookups per device ID
+(_is_known check: known_list + schema keys, NOT device_registry).
+If known → skip (no work). If unknown → classify
 (prefix lookup + code list check) + dict update. No disk I/O, no
 deep parsing, no state mutation in ramses_rf. The observer is
 significantly cheaper than Path 2.
@@ -394,6 +405,7 @@ Key design decisions:
   │  Emits TopologyChangedEvent:            │
   │    BIND_DEVICE (zone assignment)        │
   │    PROMOTE_CLASS (TRV → THM)            │
+  │    UPDATE_TRAITS (alias/class/etc)      │
   │    CREATE_CONTROLLER (new CTL)          │
   │    CREATE_CIRCUIT (UFH circuit)         │
   │                                         │
@@ -525,9 +537,9 @@ the learned topology.
 
   Path 1 (raw handler, DiscoveryScan):
     _is_known(dev_id):
-      dev_id in device_registry?     → skip
       dev_id in known_list?          → skip
       dev_id in schema keys?         → skip
+      (device_registry NOT consulted)
     → if unknown: classify, add to _devices dict
 
   SUMMARY:
@@ -609,16 +621,16 @@ the learned topology.
 
 **The three user decisions:**
 
-| Decision | What happens | Device in schema? | In known_list? | In disabled? | Re-notified? |
-|----------|--------------|-------------------|----------------|--------------|--------------|
-| **Accept** | Device becomes real | YES (schema_entry merged) | YES (derived) | NO | NO (status=ACCEPTED) |
-| **Decline** | Device permanently rejected | NO | NO | YES | NO (status=DISCARDED) |
-| **Skip** | Defer decision | NO | NO | NO | YES (stays NEW, re-appears next review) |
+| Decision | What happens | Device in schema? | In known_list? | Mechanism | Re-notified? |
+|----------|--------------|-------------------|----------------|-----------|--------------|
+| **Accept** | Device becomes real | YES (schema_entry merged) | YES (derived) | — | NO (status=ACCEPTED) |
+| **Decline** | Device permanently rejected | YES (`_owner: not-me`) | NO (goes to block_list) | `_owner` trait | NO (status=DISCARDED) |
+| **Skip** | Defer decision | YES (`_skipped: true`) | NO (excluded) | `_skipped` trait | YES (stays NEW, re-appears next review) |
 
 **Skip semantics:**
 - Device stays in DiscoveryScan's `_devices` dict (still cataloged)
 - Metadata status remains `NEW`
-- Not added to schema, not marked _disabled
+- Added to schema with `_skipped: true` trait (excluded from known_list)
 - Will re-appear in the next "review discovered devices" flow
 - User can also accept/decline later via service call (skip = defer)
 - Use case: user isn't sure yet, wants more traffic to accumulate
@@ -751,15 +763,21 @@ CURRENT (v1.5, IMPLEMENTED in PR 764):
   _strip_schema_extensions strips _ keys before passing to ramses_rf
   known_list overrides still work for backward compat
 
-NEXT (v2, when ramses_rf accepts _ keys natively):
+NEXT (v2, strip+map pipeline moves to ramses_rf):
   config entry has: schema (with _alias, _class, _faked, _scheme, _bound)
-  _strip_schema_extensions no longer needed for _ keys
+  ramses_rf owns stages 1+2: strip _ keys + map _bound→bound, _scheme→scheme
+  ramses_cc keeps stage 3 only: orphan routing, HGI dropping, disabled/skipped
+  _strip_schema_extensions becomes a thin wrapper calling ramses_rf's pipeline
   known_list still in config entry but deprecated
   coordinator derives: known_list from schema (reads _ keys)
   known_list overrides still work for backward compat
+  Also: SCH_TRAITS_HVAC bound accepts str | list[str] (multi-REM)
 
-LATER (v3, commands in schema):
+LATER (v3, commands in schema — Phase 3a DONE, Phase 3b in design):
   config entry has: schema (with _commands too)
+  Phase 3a (DONE, PR 811): _commands on REM entries, full packet strings
+  Phase 3b (design): _commands moves to FAN entries, {verb, code, payload} dicts
+  Phase 3b: _bound accepts list[str], fan_handler loops over bound REMs
   known_list only for commands (if not yet in schema)
 
 ENDGOAL (v4):
@@ -774,14 +792,23 @@ validator (`SCH_TCS_ZONES_ZON`) uses `PREVENT_EXTRA` — it rejects
 unknown keys. The endgoal is to move them to schema as `_`-prefixed
 keys (see "Role of known_list" and "Trait Analysis" sections below).
 
-**WORKAROUND (IMPLEMENTED in PR 764):** ramses_cc stores `_`-prefixed
-traits in the config entry schema and strips them via
-`_strip_schema_extensions` before passing the schema to ramses_rf.
-This means ramses_cc can use `_disabled`, `_name`, `_alias`, `_class`,
-`_comment` today, without waiting for ramses_rf to relax its validators.
-The `_` prefix is the convention: any key starting with `_` is a
-ramses_cc extension that is recursively stripped before ramses_rf sees
-the schema.
+**WORKAROUND (IMPLEMENTED in PR 764, being refactored in Phase 3a):**
+ramses_cc stores `_`-prefixed traits in the config entry schema and
+strips them via `_strip_schema_extensions` before passing the schema
+to ramses_rf. This means ramses_cc can use `_disabled`, `_name`,
+`_alias`, `_class`, `_comment` today, without waiting for ramses_rf to
+relax its validators. The `_` prefix is the convention: any key
+starting with `_` is a ramses_cc extension that is recursively stripped
+before ramses_rf sees the schema.
+
+**Phase 3a refactor (planned):** The stripping logic moves to ramses_rf
+as a 3-stage pipeline (see `phase3b_fan_commands_design.md`):
+- Stage 1 (ramses_rf): strip `_` keys ramses_rf doesn't need
+- Stage 2 (ramses_rf): map `_bound`→`bound`, `_scheme`→`scheme`
+- Stage 3 (ramses_cc): orchestration (orphans, HGI, disabled/skipped)
+
+This avoids a duplicate stripper — both the CLI (`ramses_cli -monitor`)
+and ramses_cc call ramses_rf's stage 1+2. ramses_cc keeps stage 3 only.
 
 
 <a id="2-storageramsescc-ha-store"></a>
@@ -897,12 +924,16 @@ architecture per ramses_rf #530 Phase 2 (write-behind, WAL mode).
 │ ramses.db (SQLite)                                          │
 │                                                             │
 │ messages table:                                             │
-│   dtm: "2026-07-02T20:47:45.551031"                         │
-│   device_id: "04:056053"                                    │
-│   code: "30C9"                                              │
-│   verb: "I"                                                 │
-│   payload: "000682"                                         │
-│   ...                                                       │
+│   dtm:    "2026-07-02T20:47:45.551031"  (PRIMARY KEY)       │
+│   verb:   "I"                            (TEXT(2))          │
+│   src:    "04:056053"                    (TEXT(12))         │
+│   dst:    "01:150000"                    (TEXT(12))         │
+│   code:   "30C9"                          (TEXT(4))          │
+│   ctx:    null                           (TEXT, nullable)   │
+│   hdr:    "..."                           (TEXT, UNIQUE)     │
+│   plk:    "..."                           (TEXT)             │
+│   payload_blob: "000682"                 (BLOB)             │
+│   frame:  "..."                           (TEXT)             │
 │                                                             │
 │ WHO WRITES: ramses_rf MessageStore (every packet)           │
 │ WHO READS:  ramses_rf for:                                  │
@@ -1170,8 +1201,13 @@ config entry:                   config entry:
      before passing to ramses_rf (IMPLEMENTED in PR 764). The traits
      `_disabled`, `_name`, `_alias`, `_class`, `_comment` are already
      stored in the schema and stripped before ramses_rf sees them.
-     This step is about making ramses_rf natively accept them so the
-     stripping workaround is no longer needed.
+   - **Phase 3a plan:** move strip+map to ramses_rf as a pipeline
+     (stages 1+2 in ramses_rf, stage 3 in ramses_cc). See
+     `phase3b_fan_commands_design.md` "CLI testing" section. This also
+     fixes the CLI (`ramses_cli -monitor` loads config.json directly,
+     no stripping today — `_commands` would reject the schema).
+   - **Also needed:** `SCH_TRAITS_HVAC` `bound` must accept
+     `str | list[str]` (multi-REM binding).
 
 2. ramses_cc `_derive_known_list_from_schema` reads `_` keys
    from schema and produces the known_list dict that ramses_rf
@@ -1205,10 +1241,10 @@ change, not a full schema rewrite), all traits can live in the schema
 without the ramses_cc stripping workaround.
 
 **Current status:** ramses_cc already stores `_`-prefixed traits in the
-schema and strips them before passing to ramses_rf (PR 764). The
-following traits are IMPLEMENTED: `_disabled`, `_name`, `_alias`,
-`_class`, `_comment`. The following are PROPOSED (not yet implemented):
-`_faked`, `_scheme`, `_bound`.
+schema and strips them before passing to ramses_rf (PR 764). All
+planned traits are now IMPLEMENTED: `_disabled`, `_name`, `_alias`,
+`_class`, `_comment`, `_owner`, `_faked`, `_bound`, `_scheme`,
+`_skipped`.
 
 **enforce_known_list future:**
 
@@ -1341,15 +1377,17 @@ extracted into known_list by `_derive_known_list_from_schema`):
 - `_owner` (str): owner name — devices matching root `_owner` are
   "ours" (known_list), others are "foreign" (block_list)
 - `_faked` (bool): create a virtual/fake device (no RF traffic needed)
-- `_bound` (str): for FAN, the bound REM/DIS device ID for 2411
-  command routing
+- `_bound` (str | list[str]): for FAN, the bound REM/DIS device ID(s)
+  for 2411 command routing. Phase 3a: accepts list (multi-REM binding).
+  ramses_rf's `HvacVentilator._bound_devices` is already a dict and
+  `add_bound_device()` can be called multiple times — the limitation
+  was only in `SCH_TRAITS_HVAC` (single string) and `fan_handler`
+  (one call, `isinstance(str)` check).
 - `_scheme` (str): FAN manufacturer scheme (orcon/itho/vasco/nuaire)
   for 22F1 fan mode commands
 
 **PROPOSED** (not yet implemented):
-- `_skipped` (bool): user deferred decision — re-appears in discovery
-  review (implemented as a trait, but the review re-appearance logic
-  needs validation)
+- None currently — all planned traits are implemented (see trait table below)
 
 ```
 TRAIT        | WHERE NOW           | CAN MOVE TO SCHEMA? | HOW
@@ -1384,29 +1422,30 @@ scheme       | known_list (HVAC    | YES — implemented   | "30:160000":
              |                     |                     | scheme="itho" for 22F1 cmds
              |                     |                     |
 bound        | known_list (FAN     | YES — implemented   | "32:153289": {
-             | only, for faked     | in PR 764           |   _bound: "37:168270",
-             | REMs sending 2411)  |                     |   remotes: [...]
-             |                     | NOT same as         | }
-             | remotes[] (topology)| _bound = which REM  | Extracted to known_list as
-             |                     | can send 2411 params| bound="37:168270"
-             |                     | to FAN              | NOTE: fan_handler.py still
-             |                     |                     | reads from user known_list
-             |                     |                     | config — follow-up needed to
-             |                     |                     | also check schema _bound
+             | only, for faked     | in PR 764           |   _bound: ["37:168270", "32:153001"],
+             | REMs sending 2411)  | Phase 3a: list[str] |   remotes: [...]
+             |                     |                     | }
+             | remotes[] (topology)| NOT same as         | Extracted to known_list as
+             |                     | _bound = which REM  | bound=["37:168270", "32:153001"]
+             |                     | can send 2411 params| fan_handler.py loops over list
+             |                     | to FAN              | (Phase 3a: was single string,
+             |                     |                     | isinstance(str) check removed)
              |                     |                     |
 _domain      | auto-detected       | NO — internal       | Stays internal to ramses_rf
              | (not user-set)      |                     |
              |                     |                     |
-commands     | _remotes in         | YES — as _commands  | "32:153001": {
-             | .storage/ramses_cc  | key in schema       |   _commands: {
-             | + known_list        | (then derived to    |     "turn_on": "22F100...",
-             |                     | known_list if       |     "speed_1": "22F101..."
-             |                     | ramses_rf needs)    |   }
+commands     | _remotes in         | YES — Phase 3a DONE | Phase 3a (PR 811): on REM entry
+             | .storage/ramses_cc  | (PR 811, on REM)    | "32:153001": {
+             | + known_list        | Phase 3b: on FAN    |   _commands: {
+             |                     | (design)            |     "turn_on": "I --- 32:153001 ...",
+             |                     |                     |     "speed_1": "I --- 32:153001 ..."
+             |                     |                     |   }
              |                     |                     | }
-             |                     |                     | Stays in known_list for now
-             |                     |                     | (needs UI/service to write
-             |                     |                     |  to schema, then ramses_rf
-             |                     |                     |  accepts _commands key)
+             |                     |                     | Phase 3b: moves to FAN entry as
+             |                     |                     |   {verb, code, payload} dicts
+             |                     |                     |   (see phase3b_fan_commands_design.md)
+             |                     |                     | ramses_rf doesn't need _commands
+             |                     |                     | today — stripped by pipeline
 ```
 
 <a id="what-ramsesrf-already-puts-in-the-schema-learned-from-traffic"></a>
@@ -1447,9 +1486,9 @@ the schema. The traits that CAN'T be learned from traffic are:
 ### Extended schema with traits
 
 **IMPLEMENTED traits** (`_disabled`, `_name`, `_alias`, `_class`,
-`_comment`) are stored in the schema and stripped before ramses_rf
-sees them. **PROPOSED traits** (`_faked`, `_scheme`, `_bound`) will
-follow the same pattern.
+`_comment`, `_owner`, `_faked`, `_bound`, `_scheme`, `_skipped`) are
+stored in the schema and stripped before ramses_rf sees them. All
+planned traits are now implemented (PR 764).
 
 ```
 CURRENT schema (ramses_rf SCH_TCS):
@@ -1495,19 +1534,19 @@ IMPLEMENTED extended schema (PR 764, _ keys stripped before ramses_rf):
     _name: "Lounge sensor"        ←   display name
   }
 
-PROPOSED (not yet implemented, same _ key pattern):
+ALSO IMPLEMENTED (PR 764, same _ key pattern):
   "01:150000": {
-    _faked: false,                ← PROPOSED: faked flag (was known_list)
+    _faked: false,                ← IMPL: faked flag (was known_list)
   }
 
   "30:160000": {
-    _scheme: "itho",              ← PROPOSED: HVAC scheme (was known_list)
+    _scheme: "itho",              ← IMPL: HVAC scheme (was known_list)
     remotes: ["32:150001"],       ← NOTE: ramses_rf accepts this in
     sensors: []                   ← SCH_VCS_DATA but load_fan is a
   }                               ←   STUB — doesn't process it yet
 
   "32:153289": {
-    _bound: "37:168270",          ← PROPOSED: which faked REM can send 2411
+    _bound: "37:168270",          ← IMPL: which faked REM can send 2411
   }
 ```
 
@@ -1808,9 +1847,9 @@ FUTURE (in schema):
 
 **Why it can move:** Commands are per-device data, just like alias
 and faked. They're stored in `.storage/ramses_cc` today because
-ramses_rf's schema validator doesn't accept a `commands` key. If
-ramses_rf accepts `_commands` in the schema (or a separate device
-config section), they can live there.
+ramses_rf's schema validator doesn't accept a `commands` key. The
+`_` prefix convention + strip+map pipeline (Phase 3a) means ramses_rf
+never sees `_commands` — it's stripped before validation.
 
 **Why "for now" stays in known_list/remotes:** Commands are edited
 via the HA UI (learn command flow) and need to be persistent + editable.
@@ -1819,13 +1858,23 @@ command editing, or a service writes them to the schema. That's a
 UI/UX change, not just a schema change.
 
 **Migration path:**
-1. Now: commands in `.storage/ramses_cc[remotes]` + known_list
-2. Next: commands in schema as `_commands` key (ramses_rf accepts it)
-3. Later: commands move to ramses_rf level (RF protocol config, not
+1. ~~Now: commands in `.storage/ramses_cc[remotes]` + known_list~~
+2. ~~Next: commands in schema as `_commands` key (ramses_rf accepts it)~~
+   **DONE (Phase 3a, PR 811):** `_commands` on REM entries in schema,
+   full packet strings. Services write to schema. Migration from
+   `.storage[remotes]` + `known_list[commands]` implemented.
+3. **Phase 3b (design):** `_commands` moves from REM entries to FAN
+   entries. Format changes from full packet strings to
+   `{verb, code, payload}` dicts. `_bound` accepts `list[str]`.
+   See `phase3b_fan_commands_design.md`.
+4. Later: commands move to ramses_rf level (RF protocol config, not
    HA config) — ramses_rf manages its own command database via the
-   Builder pattern / strategy lookup (see ramses_rf #530 Phase 3).
+   Builder pattern / strategy lookup (see ramses_rf issue 530 Phase 3).
    This is part of the architectural refactor where device behavior
    is defined by Builder strategies rather than HA-side config.
+   **Note:** issue 530 Phase 3 is NOT started and NOT a dependency
+   for our Phase 3b. When it lands, 22F7/22B0 get native builders and
+   move out of `_commands`. `_commands` stays as the user override.
 
    **However:** even when ramses_rf manages its own command database,
    the schema must still be able to **overrule** it. A user may need
@@ -1864,25 +1913,38 @@ PHASE 1.5 (implemented, testing in progress — PR 764, ramses_cc workaround):
   _get_saved_packets: src/dst fallback for ramses_rf PR 780 (addr1/2/3 in PR 782)
   known_list still in config entry for faked/scheme/bound overrides
 
-PHASE 2 (ramses_rf PR — accept trait keys in schema natively):
-  schema = topology + traits (no stripping needed)
+PHASE 2 (ramses_rf PR — strip+map pipeline moves to ramses_rf):
+  schema = topology + traits (stages 1+2 in ramses_rf, stage 3 in ramses_cc)
   "01:150003": {_alias: "Lounge sensor", _class: "SEN"}
-  _strip_schema_extensions no longer needed for _ keys
+  _strip_schema_extensions = thin wrapper calling ramses_rf pipeline + stage 3
+  SCH_TRAITS_HVAC bound accepts str | list[str]
   known_list = only for backward compat / overrides not yet in schema
   _derive_known_list_from_schema → reads _alias, _class, _faked, _scheme
-    from schema entries
+    from schema entries (mapping done by ramses_rf pipeline)
 
-PHASE 3 (ramses_cc — write remaining traits to schema):
+PHASE 3a (ramses_cc — commands in schema on REM, DONE PR 811):
+  _commands on REM entries, full packet strings
   _faked, _scheme, _bound traits implemented (same _ key pattern)
   accept_discovered_device → writes _alias, _class to schema
   config flow → user edits traits in schema editor
   known_list deprecated for most users
 
-PHASE 4 (ramses_rf — commands move to RF level):
+PHASE 3b (ramses_cc — commands move to FAN, design stage):
+  _commands moves from REM entries to FAN entries
+  format: {verb, code, payload} dicts (not full packet strings)
+  _bound accepts list[str] (multi-REM)
+  fan_handler loops over bound REMs
+  climate.set_fan_mode reads from schema _commands on FAN
+  See phase3b_fan_commands_design.md
+  Does NOT depend on ramses_rf issue 530 (Builder Pattern)
+
+PHASE 4 (ramses_rf issue 530 Phase 3 — commands move to RF level):
   _remotes moves to ramses_rf Builder strategies
   commands stored per-device in ramses_rf config
   schema _commands stays as OVERRIDE (user wins over Builder)
   known_list fully removed (or only for legacy compat)
+  NOTE: issue 530 Phase 3 is NOT started. When it lands, 22F7/22B0
+  get native builders and move out of _commands.
 ```
 
 <a id="summary-what-goes-where"></a>
@@ -1908,7 +1970,10 @@ TRAITS (in schema with _ prefix, stripped before ramses_rf):
   ✅ implemented: _faked (fake sensor mode — PR 764)
   ✅ implemented: _scheme (HVAC vendor scheme — PR 764)
   ✅ implemented: _bound (FAN-specific: which faked REM can send 2411 — PR 764)
+     Phase 3a: accepts str | list[str] (multi-REM)
   ✅ implemented: _owner (device ownership: me / not-me — PR 764)
+  ✅ implemented: _commands (Phase 3a, PR 811 — on REM entries, full packets)
+     Phase 3b: moves to FAN entries, {verb, code, payload} dicts
 
 PHASE 2 MIGRATION (known_list traits → schema _ traits):
   ✅ implemented: _sync_known_list_traits_to_schema copies class, faked,
@@ -1934,10 +1999,10 @@ WILL BECOME OBSOLETE (not in schema, not in config):
   ✅ disabled_devices → _disabled: true per-device trait (DONE, PR 764)
 
 STAYS IN known_list (for now):
-  📋 commands → persistent + editable per device
-                 can move to schema as _commands key
-                 then derived to known_list if ramses_rf needs it
-                 eventually moves to ramses_rf Builder strategies
+  📋 commands → Phase 3a DONE: _commands on REM entries in schema (PR 811)
+                 Phase 3b: _commands moves to FAN entries as {verb,code,payload}
+                 ramses_rf doesn't need _commands today (stripped by pipeline)
+                 eventually moves to ramses_rf Builder strategies (issue 530 Phase 3)
                  schema _commands stays as OVERRIDE (user wins)
 
 STAYS IN CONFIG OPTIONS (not device traits):
@@ -2003,8 +2068,11 @@ Traffic → TopologyBuilder rules → TopologyChangedEvent
                                    |
                    ┌───────────────┼───────────────┐
                    |               |               |
-              BIND_DEVICE     PROMOTE_CLASS   CREATE_CONTROLLER
-              (zone assign)   (TRV→THM etc)   (new CTL detected)
+              BIND_DEVICE     PROMOTE_CLASS   UPDATE_TRAITS
+              (zone assign)   (TRV→THM etc)   (alias/class/etc)
+
+              CREATE_CONTROLLER   CREATE_CIRCUIT
+              (new CTL detected)  (UFH circuit)
 
 HVAC: only PROMOTE_CLASS (no BIND_DEVICE for HVAC — see HVAC section)
 ```
@@ -2279,7 +2347,7 @@ implemented. This means:
       sensors: ["37:153002", "37:153003"]
     }
            |
-           | _strip_schema_extensions (injects remotes: [] if missing)
+           | _strip_schema_extensions (moves HVAC without remotes/sensors to orphans_hvac)
            v
   ramses_rf load_schema:
     load_fan("32:153289", {remotes: [...], sensors: [...]})
@@ -2450,14 +2518,13 @@ PREFIX  | DEVICE TYPES              | AMBIGUITY
 18:     | HGI / FAN                 | Medium — some FANs use 18: (BRDG-02A55)
 ```
 
-ramses_rf's DiscoveryScan has `_UNAMBIGUOUS_HVAC_PREFIXES = {"32"}`
-— only 32: is considered unambiguous (always FAN). All others need
-verb+code pairs to classify.
+ramses_rf's DiscoveryScan has `_UNAMBIGUOUS_HVAC_PREFIXES = {"18", "32"}`
+— only 18: (HGI) and 32: (FAN) are considered unambiguous. All others
+need verb+code pairs to classify.
 
 Note: 30: is RFG/PIV (Positive Input Ventilation), which is a FAN
-variant. ramses_cc's `_strip_schema_extensions` injects `remotes: []`
-for 30: devices, treating them as FAN. This may need review — 30:
-could be an RFG gateway, not a FAN.
+variant. ramses_cc's `_strip_schema_extensions` moves HVAC devices
+without remotes/sensors to `orphans_hvac` (both 30: and 32: prefixes).
 
 <a id="hvac-binding-uses-1fc9-not-000c"></a>
 ### HVAC binding uses 1FC9, not 000C
@@ -2512,8 +2579,9 @@ for sensor_id in value.get(SZ_SENSORS, []):
     device_ids.add(sensor_id)
 ```
 
-ramses_cc's `_strip_schema_extensions` (coordinator.py:474-503)
-correctly injects `remotes: []` for 30: devices missing it.
+ramses_cc's `_strip_schema_extensions` (coordinator.py:871-980)
+moves HVAC devices (30: and 32: prefixes) without remotes/sensors
+to `orphans_hvac`.
 
 ramses_cc's `fan_handler.py` correctly handles the `bound` trait
 for 2411 parameter messages (which REM can send params to which FAN).
@@ -2563,8 +2631,8 @@ FAN topology.
      FAN/REM/CO2 first.
 
 6. CLARIFY 30: prefix handling
-   - Is 30: always FAN/PIV, or can it be an RFG gateway?
-   - _strip_schema_extensions injects remotes: [] for 30: — verify
+   - 30: is RFG (relay gateway), 32: is FAN — both treated as HVAC
+   - _strip_schema_extensions moves both to orphans_hvac if no remotes/sensors
 ```
 
 <a id="what-needs-to-change-in-ramsescc"></a>
@@ -2954,11 +3022,16 @@ TWO separate version tracks:
    - Current v1→v2: removed deprecated packet_log keys, database keys
 
 2. STORAGE version (HA's Store system):
-   - const.py: STORAGE_VERSION = 1
+   - const.py: STORAGE_VERSION = 1 (unchanged — no bump in Phase 3a)
    - Store(hass, STORAGE_VERSION, STORAGE_KEY)
    - HA's Store has built-in migration via async_migrate_func
    - Used for: .storage/ramses_cc data format changes
-   - Currently NO migration function registered (version 1, never changed)
+   - RamsesCcStore subclass registers _async_migrate_func (PR 810)
+   - Phase 3a: NO version bump — runtime migration via
+     _sync_remotes_to_schema handles remotes → _commands.
+     Bumping would break downgrade (HA raises
+     UnsupportedStorageVersionError when stored version >
+     max_readable_version, which defaults to code's version).
 ```
 
 <a id="what-migrations-are-needed"></a>
@@ -2967,7 +3040,7 @@ TWO separate version tracks:
 ```
 SCHEMA FORMAT VERSIONS (stored in .storage/ramses_cc):
 
-v1 (current):
+v1 (pre-Phase 3a):
   schema: {
     main_tcs: "01:...",
     "01:...": {},
@@ -2979,7 +3052,7 @@ v1 (current):
   known_list: {device_id: {class, alias, faked, scheme, bound}}
   remotes: {device_id: {command_name: payload}}
 
-v2 (all traits in schema, ramses_rf accepts _ keys natively):
+v1 (commands in schema — IMPLEMENTED, PR 811, no version bump):
   schema: {
     main_tcs: "01:...",
     "01:...": {
@@ -2998,16 +3071,21 @@ v2 (all traits in schema, ramses_rf accepts _ keys natively):
       _bound: "37:168270",         ← was known_list bound
       remotes: [...]
     },
+    "32:153001": {
+      _commands: {turn_on: "22F1..."},  ← was remotes/known_list (PR 811)
+      _class: "REM",
+      _faked: true
+    },
     orphans_heat: [...],
     # _disabled stays as per-device trait (no change from v1)
   }
-  known_list: {device_id: {commands: {...}}}  ← only commands remain
-  remotes: (merged into schema _commands or kept separate)
+  known_list: {device_id: {class, alias, ...}}  ← kept as fallback
+  remotes: {device_id: {command_name: payload}}  ← kept as cache
 
-v3 (commands in schema):
+v3 (known_list removed, fully derived from schema — future):
   schema: {
     "32:153001": {
-      _commands: {turn_on: "22F1..."},  ← was remotes/known_list
+      _commands: {turn_on: "22F1..."},
       _class: "REM",
       _faked: true
     }
@@ -3022,18 +3100,16 @@ v3 (commands in schema):
 ```
 WHEN: At the moment we change the schema format, BEFORE releasing it.
 
-  1. Bump STORAGE_VERSION in const.py (v1 → v2)
-  2. Register async_migrate_func in store.py:
-     - load old format
-     - transform: move known_list traits to schema _ keys
-     - move disabled_devices list to _disabled: true per device
-     - save in new format
+  1. ~~Bump STORAGE_VERSION in const.py (v1 → v2)~~ — REVERTED: no bump
+     (see "Backward migration" below for why)
+  2. Runtime migration via _sync_remotes_to_schema in coordinator.py
+     (DONE — runs on every save cycle, copies remotes → schema _commands)
   3. Bump config_flow VERSION if config entry options change too
   4. Add async_migrate_entry() branch in __init__.py for new version
 
-  The migration runs ONCE, automatically, on first startup after
-  the user updates ramses_cc. HA's Store system calls the migrate
-  function when the stored version < STORAGE_VERSION.
+  The runtime migration runs on every save cycle after the user
+  updates ramses_cc. It copies remotes → schema _commands (only
+  if _commands not already present). No storage version bump needed.
 ```
 
 <a id="backward-migration-the-problem"></a>
@@ -3048,42 +3124,58 @@ HA/HACS does NOT support downgrade:
   - Git: user can checkout old code, but storage format may have changed
 
   So if a user:
-    1. Updates ramses_cc (v2 schema format)
-    2. Schema migrated to v2 (traits as _ keys)
-    3. Downgrades ramses_cc (v1 code)
-    4. v1 code can't read v2 schema → broken
+    1. Updates ramses_cc (Phase 3a — _commands added to schema)
+    2. Runtime migration copies remotes → schema _commands
+    3. Downgrades ramses_cc (0.58.0/0.58.1 code)
+    4. 0.58.0 code strips _commands (via _strip_traits), reads remotes
+       from .storage (kept as cache) → WORKS, no data loss
 
-  Workarounds:
+  Why no storage version bump (lesson learned):
+    HA's Store._async_load_data checks:
+      if data["version"] > self._max_readable_version:
+          raise UnsupportedStorageVersionError(...)
+    _max_readable_version defaults to the code's STORAGE_VERSION.
+    Since 0.58.0/0.58.1 have STORAGE_VERSION=1 and don't set
+    max_readable_version, they CANNOT read v2 data. Bumping to v2
+    would make the integration fail to start on downgrade.
+
+    Fix: STORAGE_VERSION stays at 1. The Phase 3a command migration
+    is handled at runtime by _sync_remotes_to_schema, which is
+    redundant with a storage migration anyway.
+
+  Workarounds (still available if needed in future):
   a) schema_backups: we save backups as human-readable YAML files to
      <config_dir>/ramses_cc_backups/ before every migration step
      → user can copy/paste from YAML to restore
      → max 5 backups retained (oldest trimmed)
   b) Forward-compatible code: v1 code ignores unknown _ keys
-     → v2 schema with _alias keys works in v1 code (just ignores them)
-  c) Version check: v1 code detects v2 format, logs warning, uses cache
-     → degraded mode but not broken
+     → schema with _alias/_commands keys works in v1 code (just ignores them)
+  c) Set max_readable_version in Store constructor if a future bump
+     is truly needed (allows older code to read newer data)
 ```
 
 **The pragmatic approach:**
 
 ```
-1. Make v2 schema BACKWARD-READABLE by v1 code:
-   - v1 code already strips unknown keys via _strip_schema_extensions
+1. Make schema BACKWARD-READABLE by older code (no version bump):
+   - Old code already strips unknown keys via _strip_schema_extensions
    - _alias, _class, _faked, _scheme, _bound, _commands are unknown
      keys → stripped before passing to ramses_rf
-   - v1 code still reads topology keys (zones, sensor, actuators)
-   - v1 code still reads known_list (if present, as overrides)
-   - So: v2 schema works in v1 code, just without the trait features
+   - Old code still reads topology keys (zones, sensor, actuators)
+   - Old code still reads known_list (if present, as overrides)
+   - Old code still reads remotes from .storage (kept as cache)
+   - So: Phase 3a schema works in 0.58.0 code, just without _commands
 
-2. Make v2 migration create a backup:
+2. Make runtime migration create a backup:
    - async_save_backup() already exists
    - Saves v1 schema + known_list as human-readable YAML to
      <config_dir>/ramses_cc_backups/ before migrating to v2
    - Max 5 backups retained (oldest trimmed)
    - User can copy/paste from YAML to restore manually
 
-3. Don't support formal downgrade:
-   - If user downgrades, v1 code reads v2 schema (forward-compatible)
+3. Don't support formal downgrade (but it works anyway):
+   - If user downgrades, old code reads schema (forward-compatible)
+   - _commands is stripped (ignored), remotes still in .storage
    - Traits are lost (ignored), topology still works
    - known_list is empty (traits moved to schema), but derivation
      still works from topology
@@ -3101,7 +3193,7 @@ PHASE 2 (traits in schema) — IMPLEMENTED in PR 764:
   _derive_known_list_from_schema extracts traits to the known_list
   that ramses_rf reads as it always has.
 
-  MIGRATION v1 → v2 (implemented as _sync_known_list_traits_to_schema):
+  MIGRATION (implemented as _sync_known_list_traits_to_schema):
     for each device_id in known_list:
       traits = known_list[device_id]
       if traits.get("alias") and "_alias" not in schema[device_id]:
@@ -3118,6 +3210,7 @@ PHASE 2 (traits in schema) — IMPLEMENTED in PR 764:
     # Schema is authoritative — known_list only fills gaps.
     # known_list stays as fallback container (Phase 4 removal deferred).
     # disabled_devices list already replaced by _disabled per-device trait.
+    # No STORAGE_VERSION bump — _ keys are additive, old code strips them.
 
   BACKUP: save v1 schema + known_list + disabled_devices as YAML to
           <config_dir>/ramses_cc_backups/ (max 5 retained)
@@ -3125,22 +3218,29 @@ PHASE 2 (traits in schema) — IMPLEMENTED in PR 764:
   BACKWARD COMPAT: v1 code ignores _ keys, still reads topology
 
 
-PHASE 3 (commands in schema):
+PHASE 3a (commands in schema) — IMPLEMENTED in PR 811:
 
-  WHEN: when ramses_rf accepts _commands key, and UI writes to schema
+  STATUS: Done. No ramses_rf PR needed — _strip_schema_extensions
+  removes _commands before ramses_rf sees the schema. learn_command /
+  add_command / delete_command now write to schema via
+  _async_update_schema_commands. Startup merges schema _commands into
+  _remotes (highest precedence).
 
-  MIGRATION v2 → v3:
+  MIGRATION (runtime, no storage version bump — implemented as
+  _sync_remotes_to_schema in coordinator.py):
     for device_id, commands in remotes.items():
-      schema[device_id]["_commands"] = commands
+      if "_commands" not in schema[device_id]:
+        schema[device_id]["_commands"] = commands
 
-    # Remove remotes from .storage
-    # Remove commands from known_list
+    # remotes kept in .storage as cache (not deleted)
+    # known_list[dev][commands] kept as fallback (runtime merge at startup)
+    # NO STORAGE_VERSION bump — would break downgrade to 0.58.0/0.58.1
 
-  BACKUP: save v2 schema + remotes as YAML to
-          <config_dir>/ramses_cc_backups/ (max 5 retained)
+  BACKUP: save schema + known_list as YAML to
+          <config_dir>/ramses_cc_backups/ (reason="ssot_phase3a")
 
-  BACKWARD COMPAT: v2 code ignores _commands, still reads remotes
-                   from .storage (if still present)
+  BACKWARD COMPAT: old code ignores _commands (stripped by _ keys),
+                   still reads remotes from .storage (kept as cache)
 
 
 PHASE 4 (known_list fully removed) — DEFERRED:
@@ -3168,7 +3268,7 @@ PHASE 4 (known_list fully removed) — DEFERRED:
 ### When to create the migration code
 
 ```
-NOW (scaffolding)
+NOW (scaffolding) — DONE (Phase 2.5, PR 810)
   - Register async_migrate_func in store.py NOW, even as a no-op
     identity migration for v1 → v1, so the hook exists and the
     version label is in place.
@@ -3178,19 +3278,27 @@ NOW (scaffolding)
   - Bump STORAGE_VERSION only when the format actually changes.
   - Track each step (v1→v2 traits, v2→v3 commands, v3→v4 known_list
     removal) as checkboxes in a SMALL issue, not a giant umbrella.
+  - IMPLEMENTED: RamsesCcStore subclass in store.py overrides
+    _async_migrate_func as identity (v1 → v1). Tests in
+    tests/tests_new/test_store.py verify data is returned unchanged.
+
+WHEN commands move to schema — DONE (Phase 3a, PR 811):
+  1. ~~Bump STORAGE_VERSION to 2~~ — REVERTED: no bump, would break
+     downgrade (HA raises UnsupportedStorageVersionError when stored
+     version > max_readable_version, which defaults to code's version)
+  2. Runtime migration via _sync_remotes_to_schema in coordinator.py
+     (runs on every save cycle, copies remotes → schema _commands)
+  3. Test backward compat (v1 data loads, runtime migration copies
+     remotes to _commands, code reads _commands from schema first,
+     falls back to remotes)
 
 WHEN ramses_rf PR is ready (accepts _ keys):
-  1. Bump STORAGE_VERSION to 2
-  2. Flesh out async_migrate_func in store.py (v1 → v2)
+  1. Bump STORAGE_VERSION to 3
+  2. Flesh out async_migrate_func in store.py (v2 → v3)
   3. Bump config_flow VERSION to 3 (if config entry changes)
   4. Write async_migrate_entry branch in __init__.py
-  5. Test: load v1 .storage, verify migration to v2, verify v2 works
-  6. Test: load v2 .storage in v1 code (forward compat)
-
-WHEN commands move to schema:
-  1. Bump STORAGE_VERSION to 3
-  2. Write migration v2 → v3 (remotes → _commands)
-  3. Test backward compat
+  5. Test: load v2 .storage, verify migration to v3, verify v3 works
+  6. Test: load v3 .storage in v2 code (forward compat)
 
 The scaffolding is created NOW; the real per-version migration logic
 is created AT FORMAT-CHANGE TIME. But the schema format should be
@@ -3248,7 +3356,7 @@ plan: known_list seeds the Builder at startup. Our plan: schema is
 SSOT, known_list is derived from schema. These are complementary —
 the derived known_list IS the seed for the Builder.
 
-Full phase details (verified against the issue, Feb 2027):
+Full phase details (verified against the issue, Jul 2026):
 - 1.1-1.3: packet log paths, midnight rotation, write buffering
 - 2.1-2.5: "Fat" SQLite MessageStore (orjson payloads), strategy
   lookup table for composite keys, RAM-first write-behind cache,
@@ -3264,8 +3372,8 @@ topology/device schema this document is about. Unrelated to our plan
 (but a reminder to always prefix issue numbers with the repo).
 
 
-<a id="verification-status-checked-feb-2027"></a>
-### Verification status (checked Feb 2027)
+<a id="verification-status-checked-jul-2026"></a>
+### Verification status (checked Jul 2026)
 
 ```
 REFERENCE                    STATE    NOTES
@@ -3420,19 +3528,22 @@ The ramses_rf CQRS refactor (#530) is ongoing:
 - StateUpdatedEvent bus: confirmed by PWhite-Eng as the future
   signal source for ramses_cc entity updates (Step 4).  However,
   issue 794 shipped an interim solution in 0.58.0: the coordinator
-  emits SIGNAL_UPDATE via an _on_packet raw handler with
+  emits SIGNAL_UPDATE via an _on_packet msg handler with
   asyncio.sleep(0) as the yield strategy.  This means Step 4 is
   functionally done — StateUpdatedEvent remains a future upgrade
   for deterministic ingestion-complete signalling, but it is no
   longer a blocker.
 
 Our schema changes align as agreed:
-- Step 2 (Schema SSOT + Passive Scan, PR 764): in progress, parallel
+- Step 2 (Schema SSOT + Passive Scan, PR 764): DONE
+- Step 2.5 (Migration scaffolding, PR 810): DONE
+- Step 3a (Commands in schema, PR 811): DONE, awaiting review
 - Step 3 (Strict DTOs): after Phil's Phase 2.95 F5
 - Step 4 (Coordinator SIGNAL_UPDATE wiring): DONE (interim, issue 794).
-  The coordinator owns signal emission via _on_packet; event.py is
-  slimmed (no longer load-bearing); should_poll + async_update +
-  poll_codes add a poll-driven path for entities that opt in.
+  The coordinator owns signal emission via _on_packet (registered with
+  add_msg_handler); event.py is slimmed (no longer load-bearing);
+  should_poll + async_update + poll_codes add a poll-driven path for
+  entities that opt in.
   StateUpdatedEvent from CQRS StateProjector is no longer a blocker
   — it remains a future upgrade to replace asyncio.sleep(0) with a
   deterministic ingestion-complete hook.
@@ -3482,9 +3593,9 @@ Our schema changes align as agreed:
    - Workaround in ramses_cc: cache HVAC schema separately
 
 8. CLARIFY 30: prefix — is it always FAN/PIV?
-   - ramses_cc injects remotes: [] for 30: in _strip_schema_extensions
-   - 30: could be RFG (gateway), not a FAN
-   - Verify before assuming all 30: are HVAC controllers
+   - 30: is RFG (relay gateway) in ramses_rf, 32: is FAN
+   - _strip_schema_extensions moves both to orphans_hvac if no remotes/sensors
+   - Both are treated as HVAC controllers by ramses_cc
 ```
 
 

@@ -1,0 +1,57 @@
+Implements Phase 3a from issue https://github.com/ramses-rf/ramses_cc/issues/809
+Depends on ramses_rf PR: strip_and_map_traits() + list bound in SCH_TRAITS_HVAC
+
+
+## Summary
+
+- Move learned RF commands from `.storage[remotes]` and `known_list[dev][commands]` into the schema as `_commands` per-device trait (SSOT)
+- `.storage[remotes]` kept as cache/fallback, `known_list[dev][commands]` kept as legacy fallback
+- **No storage version bump** — runtime migration via `_sync_remotes_to_schema` (bumping would break downgrade to 0.58.0/0.58.1: HA raises `UnsupportedStorageVersionError` when stored version > `max_readable_version`)
+- `climate.set_fan_mode` reads custom commands from schema `_commands` (via `coordinator._remotes`) first, falls back to `known_list[commands]` (legacy)
+- `fan_handler.setup_fan_bound_devices` accepts `str | list[str]` for `_bound` (multi-REM binding)
+- `_derive_known_list_from_schema` uses ramses_rf's `strip_and_map_traits()` as base for trait extraction
+- REM entity exposes `bound_to_fan` state attribute (derived from `fan_handler._fan_bound_to_remote`)
+
+### ramses_rf dependency
+
+This PR requires ramses_rf PR (feature/strip-and-map-pipeline) which adds:
+- `strip_and_map_traits()` / `strip_and_map_schema()` — two-stage pipeline (strip `_` keys ramses_rf doesn't need, map `_bound`→`bound` etc.)
+- `SCH_TRAITS_HVAC` `bound` accepts `str | list[str]` (multi-REM binding)
+
+Both the HA integration (ramses_cc) and the CLI (ramses_cli) call the same ramses_rf function — no duplicate stripper. The CLI loads `config.json` directly into ramses_rf, so without this function `_`-prefixed keys like `_commands` would reject the entire schema (`PREVENT_EXTRA`).
+
+### Changes
+
+| File | What |
+|------|------|
+| const.py | `SZ_TR_COMMANDS = "_commands"` constant |
+| coordinator.py | `_sync_remotes_to_schema`: copies remotes → schema `_commands` (after `sync_learned_topology`) |
+| coordinator.py | `_async_update_schema_commands`: writes `_commands` to config entry (called by remote.py) |
+| coordinator.py | Startup: merge schema `_commands` into `_remotes` (highest precedence) |
+| coordinator.py | Backup before remotes migration (`reason="ssot_phase3a"`) |
+| coordinator.py | `_derive_known_list_from_schema` uses ramses_rf's `strip_and_map_traits()` as base |
+| remote.py | `learn_command`/`add_command`/`delete_command` now persist to schema |
+| remote.py | `extra_state_attributes` exposes `bound_to_fan` (from `fan_handler._fan_bound_to_remote`) |
+| climate.py | `async_set_fan_mode` reads from `coordinator._remotes` (schema `_commands`) first, falls back to `known_list[commands]` |
+| fan_handler.py | `setup_fan_bound_devices` accepts `str | list[str]` for `_bound`, loops over bound REMs |
+| store.py | `STORAGE_VERSION` stays at 1 (no bump), `_async_migrate_func` stays no-op identity — runtime migration via coordinator's `_sync_remotes_to_schema` |
+| tests | tests: no-op identity migration, `_sync_remotes_to_schema`, strip `_commands`, `bound_to_fan` attr, `set_fan_mode` reads from `_remotes`, fan_handler list `_bound` |
+
+### Precedence (highest wins)
+1. Schema `_commands` (SSOT — user edits, `learn_command` writes here)
+2. `.storage[remotes]` (cache — synced to schema on 5-min cycle)
+3. `known_list[dev][commands]` (DEPRECATED legacy fallback)
+
+### Config flow
+`async_step_schema` already supports editing `_commands` — it strips `_` keys before validation, so no UI change needed.
+
+#### Test plan
+- [x] 956 tests pass (`pytest tests/tests_new/`)
+- [x] mypy clean (19 source files, 0 errors)
+- [x] ruff check + format pass
+- [ ] ramses_rf PR merged (strip_and_map_traits + list bound): https://github.com/ramses-rf/ramses_rf/pull/820
+- [ ] Manual: learn a command, verify it appears in schema `_commands`
+- [ ] Manual: reload, verify command persists from schema
+- [ ] Manual: verify runtime migration copies remotes → schema _commands on upgrade
+- [ ] Manual: verify `bound_to_fan` attribute on REM entity
+- [ ] Manual: verify `set_fan_mode` intercepts custom command from schema
