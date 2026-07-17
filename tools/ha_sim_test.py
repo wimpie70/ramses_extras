@@ -2814,10 +2814,11 @@ async def main() -> None:
     wait(3, "for save")
 
     # Check 1: FAN entity should have class_mismatch attribute
-    fan_attrs = get_entity_attributes(token, FAN, prefix="fan_")
+    # The remote entity (remote.32_150000) inherits from RamsesEntity
+    # which surfaces mismatch flags. The sensor entity may not.
+    fan_attrs = get_entity_attributes(token, FAN, prefix="remote_")
     if not fan_attrs:
-        # FAN entity might be under a different prefix
-        fan_attrs = get_entity_attributes(token, FAN, prefix="remote_")
+        fan_attrs = get_entity_attributes(token, FAN, prefix="fan_")
     check(
         "FAN entity has class_mismatch attribute",
         "class_mismatch" in fan_attrs,
@@ -2867,9 +2868,9 @@ async def main() -> None:
     wait(3, "for save")
 
     # Check 1: FAN entity should NOT have class_mismatch attribute
-    fan_attrs_fixed = get_entity_attributes(token, FAN, prefix="fan_")
+    fan_attrs_fixed = get_entity_attributes(token, FAN, prefix="remote_")
     if not fan_attrs_fixed:
-        fan_attrs_fixed = get_entity_attributes(token, FAN, prefix="remote_")
+        fan_attrs_fixed = get_entity_attributes(token, FAN, prefix="fan_")
     check(
         "FAN entity has no class_mismatch after fix",
         "class_mismatch" not in fan_attrs_fixed,
@@ -2920,9 +2921,9 @@ async def main() -> None:
     wait(3, "for save")
 
     # Check: FAN entity should have missing_class attribute
-    fan_attrs_nc = get_entity_attributes(token, FAN, prefix="fan_")
+    fan_attrs_nc = get_entity_attributes(token, FAN, prefix="remote_")
     if not fan_attrs_nc:
-        fan_attrs_nc = get_entity_attributes(token, FAN, prefix="remote_")
+        fan_attrs_nc = get_entity_attributes(token, FAN, prefix="fan_")
     # Note: this may not trigger if the scan engine hasn't classified
     # the FAN yet — log what we got for debugging
     check(
