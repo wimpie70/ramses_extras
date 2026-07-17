@@ -635,18 +635,55 @@ profiles) and `strip_and_map_traits()` are still planned in Phase 3/3.25.
 
 ### Phase 3c: Flagging mismatches (silverailscolo's concern)
 
-**Can ship independently.**
+**Can ship independently. ramses_cc-only — no ramses_rf dependency.**
 
-Class mismatch detection already exists at `coordinator.py:722-725` via
-`discovery_manager.check_class_mismatches(schema)` — it logs warnings
-when the user's `_class` override differs from what discovery detected.
-Phase 3c extends this to surface the mismatch in the UI.
+Phase 3c extends the existing class mismatch detection to surface
+mismatches proactively in the UI, and adds three new mismatch types.
+
+#### What was already done (before Phase 3c branch)
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 3c.1 | Log warning when user `_class` override differs from detected | DONE (coordinator.py:722-725) |
-| 3c.2 | Show mismatch flag in config flow review step | TODO |
+| 3c.1 | Log warning when user `_class` override differs from detected | DONE |
+| 3c.2 | Show class mismatch in config flow review step (with Update/Keep) | DONE |
 | 3c.3 | Still apply override (don't leave device broken) | DONE (schema is authoritative) |
+
+#### New in Phase 3c branch (`feature/phase3c-flagging`)
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 3c.4 | Persistent notification for all mismatch types | DONE |
+| 3c.5 | Diagnostic entity attributes (`class_mismatch`, `bound_mismatch`, `missing_class`, `orphaned`) | DONE |
+| 3c.6 | `_bound` mismatch detection (schema `_bound` vs scan `bound_to`) | DONE |
+| 3c.7 | Missing `_class` detection (scan has `likely_type` but schema has no `_class`) | DONE |
+| 3c.8 | Orphaned device detection (in schema but not seen by scan for N days) | DONE |
+| 3c.9 | Unified `check_all_mismatches()` called from coordinator checkpoint | DONE |
+| 3c.10 | Unit tests: 22 new (6 bound, 5 missing_class, 7 orphaned, 4 unified) | DONE |
+
+#### Implementation details
+
+**Persistent notification** (`discovery.py`):
+- Separate notification ID: `ramses_cc_discovery_mismatches`
+- Shows counts + per-device details for each mismatch type
+- Auto-dismissed when all mismatches are resolved
+- Called from `check_all_mismatches()` during the periodic checkpoint
+
+**Entity attributes** (`entity.py`):
+- `RamsesEntity.extra_state_attributes` checks `discovery_manager._metadata`
+- Only adds attributes when the value is a non-empty string (defensive)
+- Visible in Developer Tools → States for any entity whose device has a flag
+
+**New `DeviceMetadata` fields**:
+- `bound_mismatch: str | None` — "schema=X, discovery=Y"
+- `missing_class: str | None` — "discovery=FAN" (scan has a type, schema doesn't)
+- `orphaned: str | None` — "not seen by scan" or "last seen {date} (>N days)"
+- All serialized/deserialized in `to_dict()` / `from_dict()`
+
+**Orphaned detection**:
+- Uses `LOST_DEVICE_THRESHOLD_DAYS` (default 7) — same as lost device detection
+- Skips HGI (18:), structural keys (`main_tcs`, `_owner`), and NEW devices
+- Checks `last_seen` from scan engine if device is in scan
+- If device is in schema but not in scan at all, flags as orphaned
 
 ---
 
