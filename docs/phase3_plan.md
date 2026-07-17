@@ -1,20 +1,35 @@
-# Phase 3 Plan: Commands in Schema + ramses_rf Builder Alignment
+# Phase 3 Plan: Commands in Schema + ramses_rf Alignment
 
 **Created:** Jul 2026
-**Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (branch `feature/phase3b-commands-on-fan`) — Phase 3c/3d TODO
+**Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c/3d TODO
 **Depends on:** Phase 2 (DONE, PR 764), Phase 2.5 (DONE, PR 810, migration scaffolding)
-**Does NOT depend on:** ramses_rf issue 530 Phase 3 (Builder Pattern — not started, future work that would shrink `_commands`)
+**Does NOT depend on:** ramses_rf Phase 3/3.25 (TX Generation Parity — in progress by PWhite-Eng)
 
-> **Naming note:** There are two "Phase 3"s that are easy to confuse:
+> **Naming note (updated Jul 17 2026):** There are several "Phase 3"s:
 > - **ramses_cc Phase 3** (this doc) — commands in schema, our work.
 >   Split into **3a** (commands on REM, PR 811, DONE), **3b**
->   (commands on FAN with packet templates, DONE), **3c** (flagging,
->   partial), and **3d** (Builder alignment, TODO — after issue 530).
+>   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
+>   partial), and **3d** (ramses_rf alignment, TODO).
 >   See `phase3b_fan_commands_design.md`.
-> - **ramses_rf issue 530 Phase 3** (PWhite-Eng) — Builder Pattern,
->   `supported_commands()`, dynamic strategies. NOT started. NOT a
->   dependency for our 3b. When it lands, it shrinks `_commands`
->   (22F7/22B0 get native builders) but `_commands` stays as override.
+> - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — **TX Generation
+>   Parity + Transport Layer Decoupling**. Moves command-building and
+>   payload validation out of `ramses_tx` to L7 inside `ramses_rf`.
+>   In progress. Will update `SCH_TRAITS_HVAC` to accept `str | list[str]`
+>   for binding arrays (our `_bound` as list) and expose
+>   `strip_and_map_traits()` as a pre-validation pipeline stage.
+> - **ramses_rf Phase 3.75** (PWhite-Eng, issue 639) — **Identity
+>   Composition**. Was originally "Builder Pattern" (issue 530), now
+>   reframed as "init and go": devices instantiate with correct, final
+>   roles from schema traits — no runtime `__class__` mutation.
+>   `DeviceRole` composition pattern **scrapped** in favor of schema-driven
+>   instantiation. Focus is on deprecating `__class__` mutations and
+>   routing `1FC9` discoveries into `TopologyChangedEvent`.
+>
+> **Key shift (Jul 17 2026):** PWhite-Eng has scrapped the Builder/Strategy
+> pattern (`DeviceRole`, `supported_commands()`) in favor of "init and go"
+> from schema. This aligns perfectly with our schema-as-SSOT approach.
+> Our `_commands` stays as the user override layer — native TX builders
+> (22F7/22B0) will be defaults, `_commands` overrides them.
 
 ---
 
@@ -24,7 +39,7 @@
 - [Two Phase 3s — Don't Confuse Them](#two-phase-3s--dont-confuse-them)
 - [Current State](#current-state)
 - [Goals](#goals)
-- [PWhite-Eng's ramses_rf Phase 3 (Builder Pattern)](#pwhite-engs-ramses_rf-phase-3-builder-pattern)
+- [PWhite-Eng's ramses_rf Phase 3 (TX Generation + Identity Composition)](#pwhite-engs-ramses_rf-phase-3)
 - [ramses_cc Phase 3 (Commands in Schema)](#ramses_cc-phase-3-commands-in-schema)
 - [Alignment Points](#alignment-points)
 - [Implementation Plan](#implementation-plan)
@@ -53,34 +68,37 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
 <a id="two-phase-3s--dont-confuse-them"></a>
 ## Two Phase 3s — Don't Confuse Them
 
-| | ramses_cc Phase 3 | ramses_rf Phase 3 (issue 530) |
+| | ramses_cc Phase 3 | ramses_rf Phase 3/3.25 + 3.75 (issue 639) |
 |---|---|---|
-| **What** | Commands move to schema as `_commands` | Device classes → Builder strategies |
+| **What** | Commands move to schema as `_commands` | 3/3.25: TX Generation Parity + Transport Decoupling. 3.75: Identity Composition (deprecate `__class__`, "init and go") |
 | **Who** | wimpie70 / ramses_cc | PWhite-Eng / ramses_rf |
 | **Repo** | ramses_cc | ramses_rf |
-| **Status** | 3a DONE (PR 811), 3b DONE (branch `feature/phase3b`), 3c partial, 3d TODO | Not started (Phase 2.95 merged) |
-| **Depends on** | 3a: strip workaround (DONE). 3b: no ramses_rf PR needed (packet templates). 3d: issue 530 Phase 3 | Phase 2 complete (SQLite + RAM cache) |
-| **Blocks?** | No — 3a and 3b shipped independently. 3d needs issue 530 | No — can ship without ramses_cc's `_commands` |
+| **Status** | 3a DONE (PR 811), 3b DONE (merged), 3c partial, 3d TODO | 3/3.25 in progress. 3.75 planned (Builder/Strategy scrapped) |
+| **Depends on** | 3a: strip workaround (DONE). 3b: no ramses_rf PR needed (packet templates). 3d: ramses_rf Phase 3/3.25 | Phase 2 complete (SQLite + RAM cache) |
+| **Blocks?** | No — 3a and 3b shipped independently. 3d benefits from ramses_rf 3/3.25 | No — can ship without ramses_cc's `_commands` |
+| **Key change** | — | Builder/Strategy pattern **scrapped** (Jul 17 2026). Replaced by "init and go" from schema. `DeviceRole` composition scrapped. |
 
 **ramses_cc Phase 3 split:**
 - **Phase 3a (DONE, PR 811):** `_commands` on REM entries in schema,
   full packet strings. Services write to schema. Migration from
   `.storage[remotes]` + `known_list[commands]`.
-- **Phase 3b (DONE, branch `feature/phase3b-commands-on-fan`):** `_commands`
+- **Phase 3b (DONE, merged):** `_commands`
   moves to FAN entries as `{verb, code, payload}` dicts. Packet template
   builder fills addresses at send time. `remote.py` entity on FAN.
   Runtime migration REM → FAN (no store version bump). See
   `phase3b_fan_commands_design.md`.
 - **Phase 3c (partial):** Flagging mismatches in UI (detection DONE,
   UI TODO).
-- **Phase 3d (TODO):** Builder alignment — coordinate strategy key names,
-  map `_class` to Builder strategies, stop stripping `_` keys when
-  ramses_rf accepts them natively. Depends on issue 530 Phase 3.
+- **Phase 3d (TODO):** ramses_rf alignment — stop stripping `_` keys when
+  ramses_rf accepts them natively, move strip+map to ramses_rf
+  `strip_and_map_traits()` pipeline, verify `_bound` as `str | list[str]`
+  works with updated `SCH_TRAITS_HVAC`. Depends on ramses_rf Phase 3/3.25.
 
 **Key insight:** ramses_cc's Phase 3a shipped using the same
 `_strip_schema_extensions` workaround as Phase 2. Phase 3b moved commands
-to FAN using packet templates — no ramses_rf PR needed. Phase 3d (Builder
-alignment) will move the strip+map logic to ramses_rf when issue 530 lands.
+to FAN using packet templates — no ramses_rf PR needed. Phase 3d will
+move the strip+map logic to ramses_rf when PWhite-Eng's
+`strip_and_map_traits()` pipeline lands (ramses_rf Phase 3/3.25).
 
 ---
 
@@ -168,79 +186,106 @@ in `known_list` (which is being deprecated).
 
 ---
 
-<a id="pwhite-engs-ramses_rf-phase-3-builder-pattern"></a>
-## PWhite-Eng's ramses_rf Phase 3 (Builder Pattern)
+<a id="pwhite-engs-ramses_rf-phase-3"></a>
+## PWhite-Eng's ramses_rf Phase 3 (TX Generation + Identity Composition)
 
-From ramses_rf issue 530 and Discussion 191:
+> **Updated Jul 17 2026:** The Builder/Strategy pattern (issue 530) has
+> been **scrapped**. PWhite-Eng confirmed in ramses_rf issue 836 that
+> the `DeviceRole` composition pattern and active discovery FSM are no
+> longer planned. Instead, "init and go" — devices instantiate with
+> correct, final roles from schema traits. This aligns perfectly with
+> our schema-as-SSOT approach.
 
-### 3.1 Dynamic Strategy Implementation
+From ramses_rf issue 639 (master roadmap), issue 836, and ramses_cc issue 809:
 
-Replace static device classes with an immutable Device "shell" holding a
-mutable Strategy object. Devices start with `GenericStrategy` and upgrade
-to specialized strategies (e.g. `HoneywellTRVStrategy`) as RF evidence
-is gathered.
+### ramses_rf Phase 3/3.25: TX Generation Parity + Transport Decoupling
 
-```
-Device shell (immutable ID, mutable strategy)
-  └── GenericStrategy → HoneywellTRVStrategy (on first 30C9)
-```
+Moves the entire command-building and payload validation stack out of
+`ramses_tx` and elevates it to L7 inside `ramses_rf`. This is where
+native builders for `22F7` (bypass), `22B0` (calendar), etc. will live.
 
-**Relevance to ramses_cc:** ramses_cc's `_class` trait is a temporary override for edge
-cases. When the Builder is ready, `_class` will be deprecated in favor of
-`_profile` or `_strategy` keys that map to Builder strategies.
+**Relevance to ramses_cc:**
+- Native TX builders become the **default** write pathway for standard
+  commands. Our `_commands` stays as the **authoritative user override**
+  layer — if a user defines `bypass_open` in `_commands`, it overrides
+  the native builder.
+- PWhite-Eng will update `SCH_TRAITS_HVAC` to natively accept `str | list[str]`
+  for binding arrays — this means our `_bound` as list will work without
+  the strip+map workaround.
+- PWhite-Eng will expose `strip_and_map_traits()` as a pre-validation
+  pipeline stage inside ramses_rf — this is our Option B! The CLI will
+  benefit immediately, and ramses_cc can eventually stop stripping `_`
+  keys itself.
 
-### 3.2 Event Sourcing for Replay
+### ramses_rf Phase 3.75: Identity Composition (was "Builder Pattern")
 
-Store raw hex packets in SQLite so newly promoted strategies can
-retroactively re-parse historical device states.
+Originally issue 530 proposed a Builder/Strategy pattern with
+`DeviceRole` composition and `supported_commands()`. This has been
+**scrapped** (Jul 17 2026).
 
-**Relevance to ramses_cc:** This is ramses_rf-internal. ramses_cc's schema doesn't need
-to change for this. But it means ramses_rf will have its own command
-database (Builder strategies define `supported_commands()`).
+**New approach — "init and go":**
+- Devices instantiate with their correct, final roles derived directly
+  from the schema traits — no runtime `__class__` mutation.
+- Legacy `__class__` mutations will be deprecated and removed.
+- Newly discovered passive bounds (like `1FC9` payloads) are routed
+  directly into a `TopologyChangedEvent` so the consumer (ramses_cc)
+  can update the schema.
 
-### 3.3 Known-List Seeding (Hydration)
+**Relevance to ramses_cc:**
+- Our schema-as-SSOT approach already delivers this: when the schema
+  changes, we tear down and rebuild with correct classes from `_class`.
+- No `_class` deprecation needed — `_class` stays as the schema-driven
+  identity trait. The future "manufacturer+model+revision+options"
+  idea (silverailscolo) is a longer-term enhancement, not a replacement.
+- `_commands` does NOT move to `supported_commands()` on strategies —
+  that concept is gone. `_commands` stays as the user override layer
+  on schema entries.
 
-The key alignment point. PWhite-Eng proposes:
+### silverailscolo's question (issue 836, Jul 17 2026)
 
-> "Instead of the `known_list` just being a passive filter (Allow/Block),
-> it becomes the **Long-Term Memory** for the Detective."
+> "If we reset upon every (user initiated) change to the schema, do we
+> need class promotion _during running_? Just take the role as in the
+> schema, init and go."
 
-Workflow:
-1. Startup: Gateway passes `known_list` to Builder
-2. Builder iterates: for each entry, instantiates Device + calls
-   `set_strategy(SpecializedStrategy)` immediately
-3. Result: entity is fully functional at t=0, no waiting for RF traffic
+**Answer: YES, ramses_cc's config schema can deliver this.**
 
-**Enriched Entry** proposal:
-```json
-"13:123456": {
-  "alias": "Living Room",
-  "traits": ["RelayStrategy", "SensorStrategy"]
-}
-```
+Current behavior in ramses_cc (with eavesdrop disabled, schema as SSOT):
+1. User changes schema → `async_update_entry` → coordinator reload
+2. Old gateway torn down → new gateway created
+3. New gateway reads schema → creates devices with correct `_class` from
+   the start — no `__class__` mutation needed
+4. Devices are fully functional at t=0
 
-**Conflict resolution:** User config > Detective logic. If the Builder
-detects "Generic Relay" but known_list says "Pump Controller", known_list
-wins. (silverailscolo prefers flagging over winning — see Open Questions.)
+The gap: ramses_rf still has `__class__` mutation code for eavesdrop
+mode. But in schema-SSOT mode, it's not exercised. PWhite-Eng's
+Phase 3.75 will deprecate that code path entirely.
 
-### silverailscolo's concerns
+**What's still needed for full "tear down and rebuild via packet replays":**
+- ramses_rf's SQLite store (Phase 2.95) can replay historical packets
+  through new device instances to populate their state — this is the
+  "packet replay" part that silverailscolo mentions.
+- ramses_cc doesn't currently trigger packet replays on schema update,
+  but the infrastructure is there (SQLite store exists). This could be
+  a future enhancement.
 
-- "class" will be **ignored** in the future — replaced by
-  manufacturer+model+revision+options
-- Users can enter incorrect stuff — prefer **flagging** over "winning"
-- Manual YAML won't work — need pick list or 10E0 codes
+### silverailscolo's concerns (still valid)
+
+- Users can enter incorrect `_class` — prefer **flagging** over silent
+  override (Phase 3c addresses this)
+- Manual YAML won't work for complex configs — need pick list or 10E0
+  codes (config flow UI handles this)
 - Commands should be on the **device that handles them** (FAN, ...),
-  not on the faked REM (wimpie70 agreed in Discussion 191)
+  not on the faked REM — **DONE in Phase 3b**
 
 ### wimpie70's input (Discussion 191, Feb 7 2026)
 
 > "Currently commands are configured on the (faked) REM devices. I think
 > it would be better to provide them on the device that will handle that
-> command: the FAN, or the heater. So, yes... define them on
-> supported_commands() and/or on strategies()."
+> command: the FAN, or the heater."
 
-This is a significant design decision: **commands should move from REM
-to FAN** in the long term. ramses_cc's Phase 3 should account for this.
+**Status:** DONE in Phase 3b. Commands are now on FAN entries as
+`{verb, code, payload}` dict templates. REM entries kept for backward
+compat (downgrade safety).
 
 ---
 
@@ -374,15 +419,16 @@ Only non-standard commands (22F7 bypass, 22B0 calendar) stay in
 `_commands`. Packet template builder fills src/dst/length at send
 time — no hardcoded REM address. See `phase3b_fan_commands_design.md`.
 
-**Long term (after ramses_rf issue 530 Phase 3):** Builder's
-`supported_commands()` is on the FAN strategy. 22F7/22B0 get native
-builders and move out of `_commands`. The faked REM just sends what
-the FAN strategy tells it to. `_commands` stays as user override.
+**Long term (after ramses_rf Phase 3/3.25):** Native TX builders for
+22F7/22B0 become defaults. `_commands` stays as the authoritative user
+override — if a user defines `bypass_open` in `_commands`, it overrides
+the native builder. The faked REM just sends what the FAN entity tells
+it to.
 
 **Migration path:** Phase 3a → 3b runtime migration copies `_commands`
 from REM entries to FAN entries as dict templates (REM entries kept
-for downgrade safety). This did NOT wait for issue 530 — packet
-templates bridge the gap until the Builder lands.
+for downgrade safety). This did NOT wait for ramses_rf Phase 3/3.25 —
+packet templates bridge the gap until native TX builders land.
 
 ### 3. `_class` deprecation
 
@@ -513,8 +559,8 @@ self._store = RamsesCcStore(hass, STORAGE_VERSION, STORAGE_KEY)
 
 ### Phase 3b: Commands on FAN with packet templates (DONE — no ramses_rf PR needed)
 
-**Does NOT depend on ramses_rf issue 530.** Packet templates bridge the gap
-until the Builder lands. See `phase3b_fan_commands_design.md` for full design.
+**Does NOT depend on ramses_rf Phase 3/3.25.** Packet templates bridge the gap
+until native TX builders land. See `phase3b_fan_commands_design.md` for full design.
 
 | Step | Description | Status |
 |------|-------------|--------|
@@ -530,21 +576,24 @@ until the Builder lands. See `phase3b_fan_commands_design.md` for full design.
 | 3b.10 | Unit tests: 33 new (23 remote, 9 coordinator migration, 1 climate) — 1026 total | DONE |
 | 3b.11 | ha_sim integration tests: R26 (12 checks) + R24/R25 backward compat (16 checks) | DONE |
 
-### Phase 3d: ramses_rf Builder alignment (after ramses_rf Phase 3 ships)
+### Phase 3d: ramses_rf alignment (after ramses_rf Phase 3/3.25 ships)
 
-**Depends on ramses_rf issue 530 Phase 3 landing.**
+**Depends on ramses_rf Phase 3/3.25 (TX Generation Parity) landing.**
 
 These items were originally part of Phase 3b in the initial plan, but were
-split out because they depend on the Builder Pattern (issue 530 Phase 3),
-which is not started. Phase 3b (commands on FAN) shipped without them.
+split out because they depend on ramses_rf changes. Phase 3b (commands on
+FAN) shipped without them. The Builder/Strategy pattern dependency is gone
+— these items now depend on the TX generation and `strip_and_map_traits`
+work in ramses_rf Phase 3/3.25.
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 3d.1 | Coordinate with PWhite-Eng on strategy key names | TODO |
-| 3d.2 | Map `_class` to Builder strategy names (or deprecate) | TODO |
-| 3d.3 | Stop stripping `_` keys when ramses_rf accepts them natively | TODO |
-| 3d.4 | Test with Builder: verify seeding from derived known_list | TODO |
+| 3d.1 | ~~Coordinate strategy key names~~ — Builder/Strategy scrapped, no strategy keys needed | N/A |
+| 3d.2 | ~~Map `_class` to Builder strategy names~~ — `_class` stays as schema identity trait | N/A |
+| 3d.3 | Stop stripping `_` keys when ramses_rf accepts them natively (via `strip_and_map_traits()` pipeline) | TODO |
+| 3d.4 | Verify `_bound` as `str \| list[str]` works with updated `SCH_TRAITS_HVAC` | TODO |
 | 3d.5 | Move strip+map pipeline to ramses_rf (so CLI also benefits) | TODO |
+| 3d.6 | Verify native TX builders (22F7/22B0) work as defaults, `_commands` overrides them | TODO |
 
 ### Phase 3c: Flagging mismatches (silverailscolo's concern)
 
@@ -724,10 +773,9 @@ Before runtime migration, save state as YAML to
    before Phase 3, so the hook exists.
 
 4. **Builder strategy key name:** PWhite-Eng proposed `"traits"` (list
-   of strategy names). ramses_cc uses `_` prefixed keys for traits. Should
-   Builder strategies be `_strategies: [...]` or `_profile: "..."`?
-   **Recommendation:** Coordinate with PWhite-Eng. Don't decide until
-   Phase 3d (Builder alignment).
+   of strategy names). ramses_cc uses `_` prefixed keys for traits.
+   **Resolved (Jul 17 2026):** Builder/Strategy pattern scrapped. No
+   strategy key names needed. `_class` stays as the schema identity trait.
 
 5. **Flagging UX:** silverailscolo wants mismatches flagged, not
    silently overridden. How to show this in HA UI? **Recommendation:**
@@ -760,6 +808,10 @@ Before runtime migration, save state as YAML to
 | Jul 2026 | Phase 3b: both REM and FAN get `remote` entities | REM entity (`remote.32_153001`) kept for backward compat — existing automations keep working. FAN entity (`remote.30_160000`) is the new primary. |
 | Jul 2026 | Phase 3b: runtime migration, no store version bump (same as 3a) | `_migrate_rem_commands_to_fan` copies REM `_commands` to FAN as dict templates on every save cycle. REM entries NOT deleted (downgrade safety). |
 | Jul 2026 | Phase 3b: split Builder alignment items to Phase 3d | Original 3b items 3b.1/3b.2/3b.4/3b.5 (strategy keys, `_class` mapping, stop stripping `_` keys, Builder testing) depend on issue 530 — deferred to Phase 3d. |
+| Jul 17 2026 | Builder/Strategy pattern scrapped (PWhite-Eng, issue 836) | `DeviceRole` composition and active discovery FSM scrapped in favor of "init and go" from schema. Devices instantiate with correct roles from schema traits — no runtime `__class__` mutation. Aligns with our schema-as-SSOT approach. |
+| Jul 17 2026 | ramses_rf Phase 3 terminology updated | Was "issue 530 Phase 3 (Builder Pattern)", now: Phase 3/3.25 = TX Generation Parity + Transport Decoupling; Phase 3.75 = Identity Composition (deprecate `__class__`). PWhite-Eng will update `SCH_TRAITS_HVAC` for `str \| list[str]` bindings and expose `strip_and_map_traits()` pipeline. |
+| Jul 17 2026 | Phase 3d re-scoped | Items 3d.1 (strategy key names) and 3d.2 (`_class` → strategy mapping) marked N/A — Builder/Strategy scrapped. New items: 3d.4 (`_bound` as list in `SCH_TRAITS_HVAC`), 3d.6 (verify native TX builders as defaults). |
+| Jul 17 2026 | `_commands` confirmed as user override layer | PWhite-Eng confirmed: native TX builders (22F7/22B0) = defaults, `_commands` = authoritative user override. No `supported_commands()` on strategies — that concept is gone. |
 
 ---
 

@@ -2528,6 +2528,128 @@ async def main() -> None:
     )
 
     # =====================================================================
+    # RECIPE 23: 0004 zone_name propagation (parser_0004 zone_idx fix)
+    # =====================================================================
+    # parser_0004 must include zone_idx in the returned dict so that the
+    # TCS _handle_msg, CQRS StateProjector, and dispatcher routing can all
+    # route 0004 packets to the correct zone.  Without zone_idx, zone names
+    # are never populated in the schema (issue 822).
+    log_section("Recipe 23: 0004 zone_name propagation (zone_idx in payload)")
+
+    # Load mixed profile (CTL 01:150000 with zones 03-08)
+    print("  Loading mixed profile via websocket...")
+    try:
+        await ws_send(
+            token,
+            {
+                "type": "ramses_extras/device_simulator/load_profile",
+                "profile": "mixed",
+                "speed": 0.01,
+                "preload_schema": True,
+                "reload_ramses_cc": True,
+                "enable_auto_answer": True,
+            },
+        )
+        print("  mixed profile loaded")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {e}")
+    wait(15, "for ramses_cc reload with mixed profile")
+    token = get_token()
+    wait(5, "for ramses_cc to initialize")
+
+    # 0004 payload format: zone_idx(2) + "00"(2) + name_hex(40, 20 bytes
+    # ASCII padded with 00).  Total = 44 hex chars (22 bytes, length 022).
+    # Inject "Living Room" for zone 03.
+    zone_r23 = "03"
+    name_r23 = "Living Room"
+    name_hex = name_r23.encode().hex().upper()
+    name_padded = name_hex + "0" * (40 - len(name_hex))
+    payload_r23 = f"{zone_r23}00{name_padded}"
+    ctl_r23 = CTL  # 01:150000
+
+    print(f"  Injecting 0004 from CTL {ctl_r23} for zone {zone_r23}...")
+    print(f"    payload: {payload_r23}")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": ctl_r23,
+                "code": "0004",
+                "payload": payload_r23,
+                "verb": "I",
+            },
+        )
+        print(f"    0004 injected (zone {zone_r23}, name '{name_r23}')")
+    except RuntimeError as e:
+        print(f"    Inject failed: {str(e)[:80]}")
+
+    # Also inject a second zone name to verify multiple zones work
+    wait(2, "between injects")
+    zone_r23b = "05"
+    name_r23b = "Kitchen"
+    name_hex_b = name_r23b.encode().hex().upper()
+    name_padded_b = name_hex_b + "0" * (40 - len(name_hex_b))
+    payload_r23b = f"{zone_r23b}00{name_padded_b}"
+
+    print(f"  Injecting 0004 from CTL {ctl_r23} for zone {zone_r23b}...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": ctl_r23,
+                "code": "0004",
+                "payload": payload_r23b,
+                "verb": "I",
+            },
+        )
+        print(f"    0004 injected (zone {zone_r23b}, name '{name_r23b}')")
+    except RuntimeError as e:
+        print(f"    Inject failed: {str(e)[:80]}")
+
+    wait(5, "for scan engine to process 0004 packets")
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for sync_learned_topology")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save")
+
+    schema_r23 = get_schema_retry()
+    ctl_zones_r23 = schema_r23.get(ctl_r23, {}).get("zones", {})
+
+    # Check 1: zone 03 should have _name = "Living Room"
+    zone_03_r23 = ctl_zones_r23.get(zone_r23, {})
+    check(
+        f"Zone {zone_r23} has _name from 0004",
+        isinstance(zone_03_r23, dict) and zone_03_r23.get("_name") == name_r23,
+        f"_name={zone_03_r23.get('_name') if isinstance(zone_03_r23, dict) else None}",
+    )
+
+    # Check 2: zone 05 should have _name = "Kitchen"
+    zone_05_r23 = ctl_zones_r23.get(zone_r23b, {})
+    check(
+        f"Zone {zone_r23b} has _name from 0004",
+        isinstance(zone_05_r23, dict) and zone_05_r23.get("_name") == name_r23b,
+        f"_name={zone_05_r23.get('_name') if isinstance(zone_05_r23, dict) else None}",
+    )
+
+    # Check 3: zones that did NOT receive a 0004 should still have _name=None
+    zone_04_r23 = ctl_zones_r23.get("04", {})
+    check(
+        "Zone 04 has _name=None (no 0004 injected)",
+        isinstance(zone_04_r23, dict) and zone_04_r23.get("_name") is None,
+        f"_name={zone_04_r23.get('_name') if isinstance(zone_04_r23, dict) else None}",
+    )
+
+    # =====================================================================
     # RECIPE 20: SSOT Phase 2 migration — known_list traits to schema
     # =====================================================================
     log_section("Recipe 20: SSOT Phase 2 migration (known_list → schema)")

@@ -1,15 +1,22 @@
 <a id="schema-as-source-of-truth-architecture"></a>
 # Schema-as-Source-of-Truth Architecture
 
-> **Naming note:** There are two "Phase 3"s that are easy to confuse:
+> **Naming note (updated Jul 17 2026):** There are several "Phase 3"s:
 > - **ramses_cc Phase 3** — commands in schema, our work.
->   Split into **3a** (commands on REM, PR 811, DONE) and **3b**
->   (commands on FAN + strip+map pipeline, design stage).
+>   Split into **3a** (commands on REM, PR 811, DONE), **3b**
+>   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
+>   partial), and **3d** (ramses_rf alignment, TODO).
 >   See `phase3b_fan_commands_design.md`.
-> - **ramses_rf issue 530 Phase 3** (PWhite-Eng) — Builder Pattern,
->   `supported_commands()`, dynamic strategies. NOT started. NOT a
->   dependency for our 3b. When it lands, it shrinks `_commands`
->   (22F7/22B0 get native builders) but `_commands` stays as override.
+> - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — TX Generation
+>   Parity + Transport Decoupling. In progress. Will update `SCH_TRAITS_HVAC`
+>   for `str | list[str]` bindings and expose `strip_and_map_traits()`.
+> - **ramses_rf Phase 3.75** (PWhite-Eng, issue 639) — Identity
+>   Composition. Was "Builder Pattern" (issue 530), now "init and go"
+>   from schema. `DeviceRole` composition scrapped. Deprecate `__class__`
+>   mutations.
+>
+> **Key shift (Jul 17 2026):** Builder/Strategy pattern scrapped in favor
+> of "init and go" from schema. `_commands` stays as user override layer.
 
 <a id="chapters"></a>
 ## Chapters
@@ -1863,29 +1870,28 @@ UI/UX change, not just a schema change.
    **DONE (Phase 3a, PR 811):** `_commands` on REM entries in schema,
    full packet strings. Services write to schema. Migration from
    `.storage[remotes]` + `known_list[commands]` implemented.
-3. **Phase 3b (design):** `_commands` moves from REM entries to FAN
+3. **Phase 3b (DONE, merged):** `_commands` moves from REM entries to FAN
    entries. Format changes from full packet strings to
    `{verb, code, payload}` dicts. `_bound` accepts `list[str]`.
    See `phase3b_fan_commands_design.md`.
-4. Later: commands move to ramses_rf level (RF protocol config, not
-   HA config) — ramses_rf manages its own command database via the
-   Builder pattern / strategy lookup (see ramses_rf issue 530 Phase 3).
-   This is part of the architectural refactor where device behavior
-   is defined by Builder strategies rather than HA-side config.
-   **Note:** issue 530 Phase 3 is NOT started and NOT a dependency
-   for our Phase 3b. When it lands, 22F7/22B0 get native builders and
-   move out of `_commands`. `_commands` stays as the user override.
+4. Later: native TX builders in ramses_rf Phase 3/3.25 (issue 639) —
+   ramses_rf manages its own command generation for standard codes
+   (22F7 bypass, 22B0 calendar, etc.). These become the **defaults**.
+   `_commands` in the schema stays as the **authoritative user override**.
+   **Note:** ramses_rf Phase 3/3.25 is in progress. The Builder/Strategy
+   pattern (issue 530) has been scrapped in favor of "init and go" from
+   schema (Jul 17 2026).
 
-   **However:** even when ramses_rf manages its own command database,
-   the schema must still be able to **overrule** it. A user may need
+   **However:** even when ramses_rf has native TX builders,
+   the schema must still be able to **overrule** them. A user may need
    to override a learned/automatic command with a custom one (e.g.,
    a non-standard remote, a modified payload, a device that sends
    unexpected codes). So `_commands` in the schema stays as an
    override mechanism:
 
    ```
-   ramses_rf Builder strategies → default commands (learned/auto)
-   schema _commands             → user override (wins over Builder)
+   ramses_rf native TX builders → default commands (learned/auto)
+   schema _commands             → user override (wins over native)
    ```
 
    This follows the same precedence pattern as other traits:
@@ -1936,15 +1942,16 @@ PHASE 3b (ramses_cc — commands move to FAN, design stage):
   fan_handler loops over bound REMs
   climate.set_fan_mode reads from schema _commands on FAN
   See phase3b_fan_commands_design.md
-  Does NOT depend on ramses_rf issue 530 (Builder Pattern)
+  Does NOT depend on ramses_rf Phase 3/3.25
 
-PHASE 4 (ramses_rf issue 530 Phase 3 — commands move to RF level):
-  _remotes moves to ramses_rf Builder strategies
-  commands stored per-device in ramses_rf config
-  schema _commands stays as OVERRIDE (user wins over Builder)
+PHASE 4 (ramses_rf Phase 3/3.25 — native TX builders):
+  ramses_rf gets native TX builders for 22F7/22B0 (defaults)
+  schema _commands stays as OVERRIDE (user wins over native)
+  strip_and_map_traits() pipeline in ramses_rf (CLI benefits too)
+  SCH_TRAITS_HVAC accepts str | list[str] for bindings
   known_list fully removed (or only for legacy compat)
-  NOTE: issue 530 Phase 3 is NOT started. When it lands, 22F7/22B0
-  get native builders and move out of _commands.
+  NOTE: ramses_rf Phase 3/3.25 is in progress. Builder/Strategy
+  pattern scrapped (Jul 17 2026) — no supported_commands() on strategies.
 ```
 
 <a id="summary-what-goes-where"></a>
@@ -2002,7 +2009,7 @@ STAYS IN known_list (for now):
   📋 commands → Phase 3a DONE: _commands on REM entries in schema (PR 811)
                  Phase 3b: _commands moves to FAN entries as {verb,code,payload}
                  ramses_rf doesn't need _commands today (stripped by pipeline)
-                 eventually moves to ramses_rf Builder strategies (issue 530 Phase 3)
+                 eventually: ramses_rf native TX builders (Phase 3/3.25) as defaults
                  schema _commands stays as OVERRIDE (user wins)
 
 STAYS IN CONFIG OPTIONS (not device traits):
@@ -2225,8 +2232,9 @@ mitigated. Problems 2, 3, and 5 remain.
 │    Model FAN as a Climate entity (HA's preferred shape),    │
 │      not a HA FAN integration object; place HVAC at the      │
 │      same schema level as main_tcs (peer, "level with HEAT")│
-│    Compose strategies via the Builder pattern (issue 530    │
-│      Phase 3) rather than a hand-built HVAC wrapper class    │
+│    "Init and go" from schema (ramses_rf Phase 3.75) —      │
+│      devices get correct class from _class trait, no       │
+│      runtime __class__ mutation                            │
 │    Add HVAC binding rules to TopologyBuilder                │
 │    Fix gateway.schema() to output HVAC structure             │
 │    Dual-role devices: deferred to Builder (see HVAC section)│
@@ -2483,9 +2491,9 @@ This means:
 ramses_cc issue 186 acknowledges this: "There is currently no
 support for this scenario - there should be."
 
-**Chosen solution (deferred to ramses_rf Builder, issue 530 Phase 3):**
-- Use the Builder pattern to dynamically add strategies (CO2 strategy
-  + REM strategy) to the same device shell.
+**Chosen solution (deferred to ramses_rf Phase 3.75, "init and go"):**
+- Devices instantiate with correct role from schema `_class` trait.
+- No runtime `__class__` mutation or strategy composition needed.
 - Composite classes (`HvacCarbonDioxideRemote`) and multiple class
   promotions are rejected — users have managed faking these remotes
   for years, and ramses_cc must not block HVAC work on dual-role.
@@ -2498,8 +2506,8 @@ support for this scenario - there should be."
 - This stops CO2 sensors from going to `orphans_heat` (the previous
   default fallback — wrong domain).
 - The `sensors[]` list under a FAN is reserved for the future when
-  `load_fan` is implemented and the Builder pattern can distinguish
-  dual-role devices (CO2 sensor + REM in the same physical device).
+  `load_fan` is implemented and ramses_rf can distinguish dual-role
+  devices (CO2 sensor + REM in the same physical device).
 - The scan engine's `_classify` flips `37:` between `CO2` and `REM`
   depending on which packet arrived last; merging them into one branch
   avoids the device "jumping" between `sensors[]` and `remotes[]` as
@@ -2601,15 +2609,14 @@ FAN topology.
      schema level as main_tcs (peer, "level with HEAT", per @PWhite-
      Eng's work in ramses_rf).
 
-2. COMPOSE FAN STRATEGIES VIA THE BUILDER PATTERN
+2. FAN DEVICE STRUCTURE (ramses_rf Phase 3.75 — "init and go")
    - Do NOT make HvacVentilator inherit from Parent, and do NOT build
      a hand-built HVAC wrapper class purely for TCS/Evohome symmetry.
-   - Use the Builder pattern (issue 530 Phase 3) to compose the FAN
-     strategies (ventilation, remotes, sensors) on a shared device
-     shell.
-   - The shell still needs child management (_add_child, child_by_id)
+   - Devices instantiate with correct class from schema `_class` trait.
+     No runtime `__class__` mutation or strategy composition.
+   - The device still needs child management (_add_child, child_by_id)
      and a schema() that outputs remotes and sensors — but supplied
-     by the Builder, not by inheriting Parent.
+     by the class itself, not by a Builder or strategy composition.
 
 3. ADD HVAC topology binding rules to TopologyBuilder
    - Rule: directed 22F1/22F3 from REM → FAN → BIND_DEVICE
@@ -2622,9 +2629,9 @@ FAN topology.
    - Output: "32:153289": {remotes: [...], sensors: [...]}
    - Only truly unbound HVAC devices go to orphans_hvac
 
-5. DUAL-ROLE DEVICES (CO2 + REM) — DEFERRED TO BUILDER
-   - The only supported path is the Builder pattern with multiple
-     strategies on the same shell (CO2 strategy + REM strategy).
+5. DUAL-ROLE DEVICES (CO2 + REM) — DEFERRED TO ramses_rf
+   - Requires ramses_rf to support dual-role devices (CO2 sensor +
+     REM in the same physical device) via schema-driven instantiation.
    - Composite classes (HvacCarbonDioxideRemote) and multi-promotion
      are rejected.
    - ramses_cc must NOT block HVAC work on dual-role; ship single-role
@@ -2662,7 +2669,7 @@ FAN topology.
    - No composite-class, no multi-promotion, no user-override UI in
      ramses_cc.
    - Ship single-role FAN/REM/CO2 first; dual-role is a ramses_rf
-     Builder (issue 530 Phase 3) concern, not a ramses_cc concern.
+     concern (Phase 3.75), not a ramses_cc concern.
 ```
 
 [top](#schema-as-source-of-truth-architecture)
@@ -3320,13 +3327,12 @@ in April 2025. Key points:
 
 **zxdavb's original concerns:**
 1. Packet cache (dictionaries) → migrate to SQLite database
-2. Device classes (static) → refactor to Builder pattern
+2. Device classes (static) → "init and go" from schema (Phase 3.75)
 
-**PWhite-Eng's Phase 3 proposal (known_list as "Seeding Mechanism"):**
-- known_list becomes "Long-Term Memory" for the Builder/Detective
-- On startup, Builder reads known_list and pre-creates devices
-- "Enriched Entry": extend known_list schema to allow "Hints" or
-  "Profiles" (e.g., class, alias)
+**PWhite-Eng's Phase 3.75 proposal (schema as "Seeding Mechanism"):**
+- Schema becomes the source of truth for device identity
+- On startup, devices instantiate with correct class from `_class` trait
+- "Enriched Entry": schema entries carry traits (class, alias, bound, etc.)
 - User config > Detective logic (known_list wins over auto-detection)
 - Proposed `traits` as list of strategy names:
   `"traits": ["RelayStrategy", "SensorStrategy"]`
@@ -3344,11 +3350,10 @@ in April 2025. Key points:
 4 phases:
 1. Rotating Packet Logs & Write Buffer (Flight Recorder)
 2. Database & State Architecture (SQLite + RAM-First Cache)
-3. **Device Identity & Discovery (Builder Pattern)**
-   - 3.1 Dynamic Strategy Implementation
-   - 3.2 Event Sourcing for Replay
-   - 3.3 **Known-List Seeding (Hydration)** — integrate known_list
-        with Builder
+3. **Device Identity & Discovery (Phase 3.75 — "init and go")**
+   - 3.1 Schema-driven instantiation (no `__class__` mutation)
+   - 3.2 Event Sourcing for Replay (SQLite packet replay)
+   - 3.3 **Schema Seeding** — schema traits seed device creation
 4. Isolated Routing Logic
 
 **Phase 3.3 is directly relevant to our schema-as-SSOT plan.** Their
@@ -3379,8 +3384,9 @@ topology/device schema this document is about. Unrelated to our plan
 REFERENCE                    STATE    NOTES
 ──────────────────────────────────────────────────────────────────
 ramses_rf discussion 191     open     started by zxdavb, 19 Apr 2025
-ramses_rf issue 530          open     4 phases as documented;
-                                      Phase 2 implemented (per 595)
+ramses_rf issue 530          closed   Builder/Strategy pattern scrapped (Jul 17 2026)
+ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX, 3.75 Identity)
+ramses_rf issue 836          closed   Dynamic class promotion → "init and go"
 ramses_rf issue 87           open     Itho fan states / manufacturer
 ramses_rf issue 627          open     CODES_SCHEMA reloc (unrelated)
 ramses_cc issue 677          CLOSED   fixed in 0.57.6 (Jun 2026)
@@ -3464,12 +3470,11 @@ silverailscolo explicitly stated in Discussion #191:
 > entries in config will be ignored in the future."
 
 Our plan has `_class` as a trait in the schema. This conflicts with
-silverailscolo's direction. The resolution:
-- Our `_class` is a *temporary override* for edge cases
-- The long-term plan is the Builder pattern with strategy names
+silverailscolo's direction. The resolution (updated Jul 17 2026):
+- Our `_class` is the schema identity trait — NOT temporary
+- Builder/Strategy pattern scrapped; `_class` stays as-is
 - Our `_scheme` (HVAC vendor) is closer to what silverailscolo wants
-- We should plan for `_class` to be deprecated when the Builder is
-  ready, replaced by `_profile` or `_strategy` keys
+- No `_profile` or `_strategy` keys needed — "init and go" from `_class`
 
 **2. User overrides: "winning" vs "flagging"**
 
@@ -3485,14 +3490,14 @@ This is a UX difference, not a technical conflict. We could:
 
 **3. "traits" name collision**
 
-PWhite-Eng proposed `"traits": ["RelayStrategy", "SensorStrategy"]`
-— a list of Builder strategy names. Our plan uses "traits" for
-device properties (class, alias, faked, scheme, bound). These are
-different concepts with the same name.
+PWhite-Eng originally proposed `"traits": ["RelayStrategy", "SensorStrategy"]`
+— a list of Builder strategy names. **This concept has been scrapped**
+(Jul 17 2026). Our plan uses "traits" for device properties (class,
+alias, faked, scheme, bound). No conflict — the Builder strategy names
+are no longer planned.
 
-Resolution: use different key names. Our traits stay as `_class`,
-`_alias`, etc. Their Builder strategies would be `_strategies` or
-`_profile` when implemented.
+Resolution: our traits stay as `_class`, `_alias`, etc. No
+`_strategies` or `_profile` keys needed.
 
 **4. enforce_known_list bugs (ramses_cc issue 677) — CLOSED**
 
@@ -3555,17 +3560,18 @@ Our schema changes align as agreed:
 ```
 1. COORDINATE with ramses_rf maintainers (silverailscolo, PWhite-Eng)
    - Share our schema_architecture.md
-   - Ask about Phase 3 timeline
-   - Align trait key names with their Builder strategy names
+   - ramses_rf Phase 3/3.25 in progress (TX Generation Parity)
+   - ramses_rf Phase 3.75 planned (Identity Composition, "init and go")
 
 2. VERIFY enforce_known_list fix BEFORE making it always-on
    - ramses_cc issue 677 closed (fixed in 0.57.6)
    - Test with real Evohome systems to confirm fix holds
 
-3. PLAN for _class deprecation
-   - _class is temporary, replaced by Builder strategies
+3. _class STAYS (no deprecation needed)
+   - Builder/Strategy pattern scrapped (Jul 17 2026)
+   - _class is the schema identity trait — "init and go"
    - _scheme (HVAC vendor) is the model for future traits
-   - Consider _profile or _strategy key for Builder integration
+   - No _profile or _strategy key needed
 
 4. IMPLEMENT flagging, not just winning
    - When user override differs from detected: log warning
