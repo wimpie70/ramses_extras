@@ -37,6 +37,24 @@ _SZ_BOUND_TO = "bound_to"
 # Message codes that ramses_extras features rely on
 _REQUIRED_MSG_CODES = ("31DA", "10D0")
 
+# Log-once key for the missing-bound-REM warning.  Used by the caller
+# (framework/setup/validation.py) with the LogOnce helper so that the
+# warning is emitted only once across restarts.  Some FAN devices do
+# not support a bound REM at all (manufacturer intentional), so the
+# warning is not actionable for those users and should not repeat.
+BOUND_REM_WARNED_KEY = "bound_rem_missing"
+
+# The warning message text.  Exposed as a constant so the caller can
+# pass it to LogOnce.log() without duplicating the wording.
+BOUND_REM_WARNED_MSG = (
+    "No bound REM configured in ramses_cc known_list — "
+    "remote_binding and FAN command relay will not work. "
+    "If your FAN device supports a bound REM, configure one "
+    "for it in ramses_cc configuration under Known Devices. "
+    "(This warning is emitted only once; it will not repeat "
+    "on subsequent restarts.)"
+)
+
 
 def _get_ramses_cc_options(hass: HomeAssistant) -> dict[str, Any] | None:
     """Return the ramses_cc config entry options, or None if not loaded."""
@@ -162,6 +180,15 @@ def log_validation_results(results: dict[str, bool]) -> None:
 
     Called after validation to inform the user of any settings that
     need to be adjusted in ramses_cc for ramses_extras to work correctly.
+
+    .. note::
+
+        The missing-bound-REM warning is **not** logged here.  It uses
+        the :class:`~..log_once.LogOnce` helper (strategy
+        ``LogWhen.INSTALL``) so that it is emitted only once across
+        restarts.  The caller (``validate_rf_config``) handles it
+        separately because some FAN devices do not support a bound REM
+        at all, making the warning non-actionable for those users.
     """
 
     if not results.get("ramses_cc_loaded"):
@@ -191,14 +218,6 @@ def log_validation_results(results: dict[str, bool]) -> None:
             "receive real-time FAN status updates. Update the regex in "
             "ramses_cc configuration under Advanced Features to include "
             "'31DA|10D0'."
-        )
-
-    if not results.get("has_bound_rem"):
-        _LOGGER.warning(
-            "No bound REM configured in ramses_cc known_list — "
-            "remote_binding and FAN command relay will not work. "
-            "Configure a bound REM for your FAN device in ramses_cc "
-            "configuration under Known Devices."
         )
 
     if not results.get("recorder_loaded"):

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from custom_components.ramses_extras.framework.helpers.rf_config_validation import (
+    BOUND_REM_WARNED_KEY,
+    BOUND_REM_WARNED_MSG,
     _check_bound_rem,
     _check_message_events,
     _check_recorder,
@@ -197,7 +199,13 @@ class TestValidateRamsesCcConfig:
 
 
 class TestLogValidationResults:
-    """Tests for log_validation_results."""
+    """Tests for log_validation_results.
+
+    Note: the bound-REM warning is NOT logged by log_validation_results
+    anymore — it is handled by the caller via the LogOnce helper.
+    These tests verify the remaining warnings (send_packet,
+    message_events, recorder).
+    """
 
     def test_ramses_cc_not_loaded_skips_warnings(self) -> None:
         # Should not log additional warnings when ramses_cc not loaded
@@ -264,7 +272,10 @@ class TestLogValidationResults:
         )
         assert "31DA|10D0" in caplog.text
 
-    def test_no_bound_rem_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_no_bound_rem_does_not_warn_here(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """bound-REM warning is NOT in log_validation_results anymore."""
         caplog.set_level("WARNING")
         log_validation_results(
             {
@@ -276,7 +287,8 @@ class TestLogValidationResults:
                 "recorder_loaded": True,
             }
         )
-        assert "bound REM" in caplog.text
+        # The bound-REM warning is handled by the caller via LogOnce.
+        assert "bound REM" not in caplog.text
 
     def test_recorder_not_loaded_warning(
         self, caplog: pytest.LogCaptureFixture
@@ -293,3 +305,17 @@ class TestLogValidationResults:
             }
         )
         assert "recorder" in caplog.text.lower()
+
+
+class TestBoundRemWarningConstants:
+    """Verify the exposed constants used by the caller."""
+
+    def test_key_is_nonempty_string(self) -> None:
+        assert isinstance(BOUND_REM_WARNED_KEY, str)
+        assert BOUND_REM_WARNED_KEY
+
+    def test_msg_contains_if_supported(self) -> None:
+        assert "If your FAN device supports a bound REM" in BOUND_REM_WARNED_MSG
+
+    def test_msg_mentions_once_only(self) -> None:
+        assert "only once" in BOUND_REM_WARNED_MSG
