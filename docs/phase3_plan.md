@@ -20,10 +20,15 @@
 >     `hvac.py`, `heat.py`, `schedules.py`, `faultlog.py`, `opentherm.py`)
 >   - `SCH_TRAITS_HVAC` accepts `str | list[str]` for binding arrays
 >   - `strip_and_map_traits()` / `strip_and_map_schema()` as pre-validation
->     pipeline (so CLI can use `_commands` too — CLI previously couldn't
->     because `_commands` is stripped by ramses_cc before ramses_rf sees it)
+>     pipeline — the **functions** live in ramses_rf now, but nothing in
+>     ramses_rf calls them yet (verified 0.58.3: no callers in `gateway.py`
+>     or `ramses_cli`). CLI support for `_`-prefixed keys still needs
+>     ramses_rf-side wiring.
 >   - **Not yet implemented:** 22B0 (calendar) builder, per-manufacturer
->     HVAC strategy profiles. These may come in a later ramses_rf release.
+>     HVAC strategy profiles, CLI wiring of the strip+map pipeline, a
+>     `commands` trait in `SCH_TRAITS` (`_commands` is *stripped*, not
+>     mapped — see correction below). These may come in a later
+>     ramses_rf release.
 > - **ramses_rf Phase 3.75** (PWhite-Eng, issue 639) — **Identity
 >   Composition**. Was originally "Builder Pattern" (issue 530), now
 >   reframed as "init and go": devices instantiate with correct, final
@@ -44,15 +49,21 @@
 > | Per-manufacturer HVAC strategy profiles | **Not yet** | Future ramses_rf |
 > | `supported_commands()` as strategy method | **Scrapped** | — |
 > | `strip_and_map_traits()` in ramses_rf | **DONE** — shipped 0.58.2 | Phase 3/3.25 |
-> | `_commands` as user override | **Confirmed** | ramses_cc (now), ramses_rf (Phase 3d) |
+> | `_commands` as user override | **Confirmed** | ramses_cc only (ramses_rf strips it; CLI support blocked on ramses_rf wiring) |
 >
-> **`_commands` location:** Currently `_commands` lives in ramses_cc's
-> config entry schema only. ramses_cc strips `_`-prefixed keys before
-> passing the schema to ramses_rf. The CLI (which uses ramses_rf directly)
-> cannot use `_commands` today. Phase 3d will replace the local stripper
-> with ramses_rf's `strip_and_map_schema()` (available in 0.58.2+), so
-> the CLI can also benefit. `_commands` maps to `commands` (no underscore)
-> inside ramses_rf.
+> **`_commands` location (corrected Jul 18 2026):** Currently `_commands`
+> lives in ramses_cc's config entry schema only. ramses_cc strips
+> `_`-prefixed keys before passing the schema to ramses_rf. The CLI
+> (which uses ramses_rf directly) cannot use `_commands` today — and
+> **still can't in 0.58.3**: `strip_and_map_schema()` exists in ramses_rf
+> but nothing in ramses_rf (Gateway or CLI) calls it. Also, contrary to
+> earlier versions of this note, `_commands` does **NOT** map to
+> `commands` inside ramses_rf — `_TRAIT_KEY_MAP` only maps
+> `_bound/_scheme/_alias/_faked/_class`; `_commands` is stripped (stage 1),
+> and `SCH_TRAITS_*` (PREVENT_EXTRA) has no `commands` key. CLI support
+> for `_commands` needs two ramses_rf-side changes: (a) wire the pipeline
+> into CLI/Gateway config loading, (b) accept a `commands` trait (or keep
+> `_commands` ramses_cc-only). Coordinate with PWhite-Eng.
 >
 > **`_class` deprecation:** `_class` is **NOT deprecated**. PWhite-Eng's
 > "init and go" approach *uses* `_class` from the schema to instantiate
@@ -120,18 +131,22 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
   notification, entity attributes, bound/missing_class/orphaned detection,
   unified `check_all_mismatches()`. 6 bug fixes for owner handling and
   schema safeguard included.
-- **Phase 3d (TODO, unblocked):** ramses_rf alignment — replace
-  `_strip_schema_extensions` with ramses_rf's `strip_and_map_schema()`,
-  verify `_bound` as `str | list[str]` works with updated
-  `SCH_TRAITS_HVAC`, verify CQRS Intent builders. ramses_rf 0.58.3
-  shipped the dependencies (`strip_and_map_traits()` + CQRS
-  `CommandDispatcher`).
+- **Phase 3d (TODO, unblocked):** ramses_rf alignment — consolidate the
+  duplicated stage-3 strip logic (`strip_traits_for_validation` vs
+  `_strip_schema_extensions`), pass `_bound` as `str | list[str]` to
+  ramses_rf (currently list is dropped in
+  `_derive_known_list_from_schema`), verify CQRS Intent builders +
+  `_commands` override precedence. ramses_rf 0.58.3 shipped the
+  dependencies (`strip_and_map_traits()` + CQRS `CommandDispatcher`);
+  CLI wiring of the pipeline is NOT shipped (blocked, ramses_rf-side).
 
 **Key insight:** ramses_cc's Phase 3a shipped using the same
 `_strip_schema_extensions` workaround as Phase 2. Phase 3b moved commands
-to FAN using packet templates — no ramses_rf PR needed. Phase 3d will
-replace the local strip+map with ramses_rf's `strip_and_map_schema()`
-(now available in 0.58.2+).
+to FAN using packet templates — no ramses_rf PR needed. The coordinator
+already delegates stage 1 to ramses_rf's `strip_traits` and uses
+`strip_and_map_traits` for known_list derivation (with a local fallback
+for older ramses_rf). Phase 3d finishes the consolidation on the
+ramses_cc side; CLI-side wiring stays with PWhite-Eng.
 
 ---
 
@@ -247,13 +262,17 @@ native builders for `22F7` (bypass), `22B0` (calendar), etc. live.
 - `SCH_TRAITS_HVAC` accepts `str | list[str]` for binding arrays
   → our `_bound` as list works without strip+map workaround
 - `strip_and_map_traits()` / `strip_and_map_schema()` as pre-validation
-  pipeline in ramses_rf → CLI can use `_commands` too (currently can't —
-  stripped by ramses_cc)
+  pipeline in ramses_rf → the functions exist, but **nothing in
+  ramses_rf calls them yet** (no callers in Gateway or CLI, verified
+  0.58.3). CLI can NOT use `_commands`/`_bound` in config.json yet.
 
 **Not yet shipped (future ramses_rf):**
 - 22B0 (calendar) builder — no builder exists yet
 - Per-manufacturer HVAC strategy profiles — no strategy/profile concept
   in the code yet
+- CLI/Gateway wiring of `strip_and_map_schema()` — functions exist but
+  have no callers inside ramses_rf
+- `commands` trait in `SCH_TRAITS` — `_commands` is stripped, not mapped
 
 **Relevance to ramses_cc:**
 - Native TX builders are the **default** write pathway for standard
@@ -261,9 +280,10 @@ native builders for `22F7` (bypass), `22B0` (calendar), etc. live.
   layer — if a user defines `bypass_open` in `_commands`, it overrides
   the native builder.
 - `_commands` currently lives in ramses_cc only (stripped before
-  ramses_rf sees it). Phase 3d replaces the local stripper with
-  `strip_and_map_schema()` so CLI can also use `_commands` (mapped to
-  `commands` without underscore).
+  ramses_rf sees it) — and stays that way for now: ramses_rf strips
+  `_commands` (it's not in `_TRAIT_KEY_MAP`) and has no `commands`
+  trait in `SCH_TRAITS`. CLI support needs ramses_rf-side wiring +
+  a `commands` trait (coordinate with PWhite-Eng).
 - `_class` is **NOT deprecated** — "init and go" uses `_class` from
   schema to instantiate devices with the correct class.
 
@@ -672,29 +692,46 @@ scrapped, but TX generation CQRS builders (22F1, 22F7, etc.) and
 | 3d.0 | Bump ramses_rf dependency to 0.58.3 | DONE — manifest already pins `ramses-rf==0.58.3` (commit `00bdaca`) |
 | 3d.1 | Coordinate TX strategy profile key names with PWhite-Eng (per-manufacturer TX profiles, NOT device identity) | N/A — strategy profiles not yet implemented in ramses_rf |
 | 3d.2 | `_class` stays as schema identity trait — no mapping to strategy names needed (DeviceRole scrapped) | N/A |
-| 3d.3 | Replace `strip_traits_for_validation()` with ramses_rf's `strip_and_map_schema()` | TODO — both functions exist in ramses_rf 0.58.2+ |
-| 3d.4 | Verify `_bound` as `str \| list[str]` works with updated `SCH_TRAITS_HVAC` | TODO — `SCH_TRAITS_HVAC` accepts `str \| list[str]` in 0.58.2+ (verified config.py:89-93) |
-| 3d.5 | Move strip+map pipeline to ramses_rf (so CLI can also use `_commands` → `commands`) | TODO — `strip_and_map_schema()` available, ramses_cc needs to call it instead of local stripper |
-| 3d.6 | Verify CQRS TX builders (22F1, 22F7, 2411) work as defaults, `_commands` overrides them | TODO — builders available in 0.58.3, ramses_cc `services.py` already uses `build_dto()` for fan params |
+| 3d.3 | Consolidate stage-1 stripping: `strip_traits_for_validation()` (schemas.py) still has an inline `_strip_traits` duplicate — delegate to ramses_rf's `strip_traits()` like the coordinator already does. **NOT** `strip_and_map_schema()` — `SCH_GLOBAL_SCHEMAS` rejects mapped trait names (`class`, `bound`, `alias`); those belong in the known_list, not the schema | TODO — coordinator side already delegates (stage 1 via `strip_traits`, mapping via `strip_and_map_traits` in `_derive_known_list_from_schema`) |
+| 3d.3b | Consolidate duplicated stage-3 logic: `strip_traits_for_validation()` and `_strip_schema_extensions()` both do orphan routing / trait-only drop but have drifted (coordinator also handles disabled/skipped/foreign owner, HGI dropping, `None` values). Single shared function + single `_HEAT_PREFIXES` definition (currently 3 prefix sets across the two files) | TODO — validation-passing schemas must match what the gateway receives |
+| 3d.4 | Pass `_bound` as `str \| list[str]` to ramses_rf — **code change, not just verification**: `_derive_known_list_from_schema` currently drops list-valued `bound` (coordinator.py ~1370-1380). Also re-check the "remove `bound` if no `class`" sanitizer (~1420-1429) — `SCH_TRAITS_HVAC` now defaults `class` to `HVC` | TODO — `SCH_TRAITS_HVAC` accepts `str \| list[str]` in 0.58.2+ (verified config.py:89-93) |
+| 3d.5 | CLI can use `_commands`/`_bound` in config.json | BLOCKED (ramses_rf-side) — `strip_and_map_schema()` exists but has NO callers inside ramses_rf (Gateway or CLI); `_commands` is stripped, not mapped; no `commands` trait in `SCH_TRAITS`. Coordinate with PWhite-Eng |
+| 3d.6 | Verify CQRS TX builders (22F1, 22F7, 2411) work as defaults, `_commands` overrides them. Add an end-to-end precedence test (`set_fan_mode` with and without `_commands` override) — the precedence lives in ramses_cc and is untested against the new builders | TODO — builders available in 0.58.3, ramses_cc `services.py` already uses `build_dto()` for fan params |
 | 3d.7 | 22B0 (calendar) builder — wait for ramses_rf | BLOCKED — no builder exists yet in 0.58.3 |
+| 3d.8 | Cleanup: remove the `ImportError` fallback for `strip_and_map_traits`/`strip_traits` in coordinator.py (~40 lines, comment says "< 0.59.0" but functions shipped in 0.58.2; manifest pins `==0.58.3`) | TODO |
 
 #### Phase 3d implementation plan
 
 1. ~~**Bump ramses_rf pin** to `>=0.58.3`~~ — DONE (manifest already pins 0.58.3).
-2. **Replace `strip_traits_for_validation()`** in `schemas.py` with a call to
-   `ramses_rf.schemas.strip_and_map_schema()`.  Keep the ramses_cc-only
-   stage 3 logic (orphan routing, HGI dropping, disabled/skipped filtering,
-   foreign-owner handling) — that orchestration stays in ramses_cc.
-3. **Test `_bound` as list** — verify that a FAN with `_bound: ["37:170000",
-   "37:170001"]` survives the `strip_and_map_schema()` pipeline and reaches
+2. **Consolidate stripping** — make `strip_traits_for_validation()` in
+   `schemas.py` delegate stage 1 to `ramses_rf.schemas.strip_traits()`
+   (the coordinator's `_strip_schema_extensions` already does this).
+   Do **NOT** use `strip_and_map_schema()` here — the result is fed to
+   `SCH_GLOBAL_SCHEMAS`, which rejects mapped trait names (`class`,
+   `bound`, `alias`); mapping is only for known_list derivation
+   (already done via `strip_and_map_traits` in
+   `_derive_known_list_from_schema`).  Then unify the drifted stage 3
+   logic (orphan routing, HGI dropping, disabled/skipped filtering,
+   foreign-owner handling, `_HEAT_PREFIXES`) into one shared function —
+   that orchestration stays in ramses_cc.
+3. **Pass `_bound` as list** — remove the str-only restriction in
+   `_derive_known_list_from_schema` (currently drops list-valued
+   `bound`), re-check the "`bound` requires `class`" sanitizer, and test
+   that a FAN with `_bound: ["37:170000", "37:170001"]` reaches
    ramses_rf as `bound: ["37:170000", "37:170001"]`.
 4. **Verify CQRS Intent builders** — ramses_cc's `services.py` already uses
    `build_dto()` for GET_FAN_PARAM and SET_FAN_PARAM.  Verify that HVAC
    commands (set_fan_mode, boost, bypass) work end-to-end with the new
-   builders.  Note: 22B0 (calendar) has no builder yet.
-5. **CLI compatibility** — verify that `ramses_cli -monitor` can load a
-   config.json with `_commands` and `_bound` keys without rejection
-   (previously rejected by `PREVENT_EXTRA`).
+   builders, and add a precedence test: `_commands` override wins over
+   the native builder.  Note: 22B0 (calendar) has no builder yet.
+5. ~~**CLI compatibility**~~ — BLOCKED on ramses_rf: `strip_and_map_schema()`
+   has no callers inside ramses_rf, so `ramses_cli -monitor` still
+   rejects config.json with `_commands`/`_bound` keys (`PREVENT_EXTRA`).
+   Needs ramses_rf-side wiring (+ a `commands` trait if `_commands`
+   should survive into ramses_rf) — raise with PWhite-Eng.
+6. **Cleanup** — drop the `ImportError` fallback for
+   `strip_and_map_traits`/`strip_traits` in coordinator.py (dead code
+   with the `==0.58.3` pin; comment wrongly says "< 0.59.0").
 
 #### What ramses_rf 0.58.3 provides (verified)
 
@@ -709,6 +746,14 @@ from ramses_rf.schemas import strip_and_map_traits, strip_and_map_schema
 #             _faked→faked, _class→class)
 
 # strip_and_map_schema: apply strip+map to every device entry in a schema
+
+# CAVEATS (verified against 0.58.3 source):
+#   - Defined in ramses_rf/config.py, re-exported from ramses_rf.schemas
+#   - NO callers inside ramses_rf itself (not Gateway, not ramses_cli) —
+#     only ramses_cc and ramses_rf's own unit tests use them
+#   - _commands is STRIPPED (not in _TRAIT_KEY_MAP), and SCH_TRAITS_*
+#     (PREVENT_EXTRA) has no 'commands' key — _commands cannot reach
+#     ramses_rf even through this pipeline
 
 # SCH_TRAITS_HVAC bound now accepts: str | list[str] | None
 #   (verified: ramses_rf/src/ramses_rf/config.py:89-93)
@@ -725,6 +770,41 @@ from ramses_rf.schemas import strip_and_map_traits, strip_and_map_schema
 #
 # NOT yet available: 22B0 (calendar), per-manufacturer strategy profiles
 ```
+
+#### Open ramses_rf PRs & revised roadmap (checked Jul 18 2026)
+
+PWhite-Eng's in-flight PRs (Strangler Fig purge of legacy L3 builders):
+
+| PR | What | Relevance to us |
+|---|---|---|
+| [849](https://github.com/ramses-rf/ramses_rf/pull/849) (ready) | Purge legacy `Command.set_fan_mode` / `set_bypass_position` etc. from `ramses_tx/command/hvac.py`, remove `HvacMixins` + `CODE_API_MAP` HVAC routing | ramses_cc does NOT call `Command.set_*` classmethods directly (verified), but climate/water_heater call **device-level** setters (`device.set_fan_mode`, `set_mode`, `set_config`, `set_boost_mode`) — those were cut over to CQRS in PR 847. Our `==0.58.3` pin shields us; retest all device setters when bumping past 0.58.3 |
+| [850](https://github.com/ramses-rf/ramses_rf/pull/850)–[852](https://github.com/ramses-rf/ramses_rf/pull/852) (stacked, draft) | Zone parity tests, discovery cut-over to `CommandDTO` + `LegacyCommandShim`, purge legacy zone builders | Internal to ramses_rf; discovery `src` reverted to `HGI_DEV_ADDR` |
+| [853](https://github.com/ramses-rf/ramses_rf/pull/853)–[854](https://github.com/ramses-rf/ramses_rf/pull/854) (stacked, draft) | DHW builder parity tests + DHW discovery/ingestion to L7 CQRS | Same — internal cut-over |
+| [855](https://github.com/ramses-rf/ramses_rf/pull/855) (ours) | Foreign-HGI exception before block_list check | Already on ramses_rf master |
+
+Revised ramses_rf roadmap (issue 639 blueprint update, Jul 16 2026) —
+phases that fill gaps relevant to us:
+
+- **Phase 3.5 (planned): `1FC9` interception** — `_evaluate_rf_bind_rules`
+  in `TopologyBuilder` emits a `TopologyChangedEvent` for unmapped
+  bindings so the consumer (ramses_cc) can update the schema. This is
+  the ramses_rf-side hook our schema-SSOT + Phase 3c flagging can
+  subscribe to — watch for it, it replaces polling-based `bound_to`
+  detection for new bindings.
+- **Phase 3.75 (planned): purge `__class__` mutations** — deletes
+  `_handle_promote_class` / `_post_class_promote()`. Confirms "init and
+  go" from `_class`; no ramses_cc change needed (we already tear down
+  and rebuild on schema change).
+- **Phase 4 (planned): FSM conversational parity + passive ingestion** —
+  deprecates active discovery probing in favour of a Passive Device
+  Scan engine. Aligns with our passive DiscoveryScan; verify our scan
+  engine against theirs when it lands.
+- **NOT in any open PR or roadmap step:** CLI wiring of
+  `strip_and_map_schema()`, a `commands` trait, 22B0 builder,
+  per-manufacturer strategy profiles. These remain open gaps — raise
+  with PWhite-Eng (the blueprint's Phase 3.25 Step 6 shows CLI
+  validation of `_bound` arrays is on their radar, but `_commands`
+  is not mentioned).
 
 ### Phase 3c: Flagging mismatches (silverailscolo's concern)
 
@@ -1002,13 +1082,15 @@ Before runtime migration, save state as YAML to
 | Jul 17 2026 | ramses_rf Phase 3 terminology updated | Was "issue 530 Phase 3 (Builder Pattern)", now: Phase 3/3.25 = TX Generation Parity (DONE, shipped 0.58.3); Phase 3.75 = Identity Composition ("init and go", deprecate `__class__`). |
 | Jul 17 2026 | Phase 3d re-scoped | 3d.2 (`_class` → strategy mapping) marked N/A — DeviceRole scrapped, `_class` stays. 3d.1 re-scoped to TX strategy profile key names (not yet implemented in ramses_rf). New: 3d.4, 3d.6, 3d.7. |
 | Jul 17 2026 | `_commands` confirmed as user override layer | PWhite-Eng confirmed: CQRS TX builders = defaults, `_commands` = authoritative user override. `supported_commands()` as strategy method scrapped. Builders shipped in 0.58.3 (22F1, 22F7, 2411, 31DA). 22B0 not yet. |
-| Jul 17 2026 | `_commands` currently ramses_cc-only | `_commands` stripped by ramses_cc before ramses_rf sees it. CLI can't use it today. Phase 3d: `strip_and_map_traits()` in ramses_rf maps `_commands` → `commands` so CLI benefits too. |
+| Jul 17 2026 | `_commands` currently ramses_cc-only | `_commands` stripped by ramses_cc before ramses_rf sees it. CLI can't use it today. ~~Phase 3d: `strip_and_map_traits()` maps `_commands` → `commands`~~ **CORRECTED Jul 18: `_commands` is stripped, not mapped — see below.** |
 | Jul 17 2026 | `_class` NOT deprecated | "init and go" uses `_class` from schema to instantiate devices. silverailscolo's manufacturer+model+revision idea is a future enhancement, not a replacement. |
 | Jul 16 2026 | ramses_rf PR 820 merged — `strip_and_map_traits()` pipeline | Two-stage pipeline (strip + map) now in ramses_rf. `SCH_TRAITS_HVAC` bound accepts `str \| list[str]`. Released in 0.58.2. |
 | Jul 16 2026 | ramses_rf PR 832 merged — recursive `strip_and_map_traits()` | `strip_traits()` added, `strip_and_map_traits()` made recursive. Released in 0.58.2. |
 | Jul 17 2026 | ramses_rf PRs 842-847 merged — CQRS CommandDispatcher + Intent builders | L7 domain intent builders for zones, DHW, HVAC, schedules, fault log, OpenTherm. Released in 0.58.3. ramses_cc `services.py` already uses CQRS Intents (merged from master). |
 | Jul 19 2026 | Phase 3c DONE (PR 831) | All 10 items (3c.1-3c.10) implemented + 6 bug fixes for owner handling and schema safeguard. 1077 tests pass. ha_sim_test Recipe 27 verifies safeguard. |
-| Jul 19 2026 | Phase 3d unblocked | ramses_rf 0.58.3 shipped all dependencies: `strip_and_map_schema()`, `SCH_TRAITS_HVAC` list bound, CQRS Intent builders. ramses_cc currently pins 0.57.9 — bump is first step. |
+| Jul 19 2026 | Phase 3d unblocked | ramses_rf 0.58.3 shipped all dependencies: `strip_and_map_schema()`, `SCH_TRAITS_HVAC` list bound, CQRS Intent builders. Manifest already pins `ramses-rf==0.58.3`. |
+| Jul 18 2026 | Pre-3d review corrections (verified against 0.58.3 source) | (1) `strip_and_map_schema()` has NO callers inside ramses_rf — CLI support for `_` keys is still blocked (3d.5). (2) `_commands` does NOT map to `commands` — it's stripped; no `commands` trait in `SCH_TRAITS`. (3) 3d.3 must use `strip_traits()` for validation, not `strip_and_map_schema()` — `SCH_GLOBAL_SCHEMAS` rejects mapped names. (4) 3d.4 is a code change: `_derive_known_list_from_schema` drops list-valued `bound`. |
+| Jul 18 2026 | Checked open ramses_rf PRs 849-855 | Legacy builder purge continues (849 ready, 850-854 stacked drafts). No open PR wires the CLI pipeline, adds a `commands` trait, or adds 22B0 — those gaps remain. Roadmap Phase 3.5 (`1FC9` → `TopologyChangedEvent`) will give us a schema-update hook for new bindings. `==0.58.3` pin shields us from the purge; retest device setters on next bump. |
 
 ---
 

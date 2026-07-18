@@ -13,8 +13,9 @@
 >   (Jul 16-17 2026).** Brought CQRS `CommandDispatcher` + domain builders
 >   (22F1, 22F7, 2411, 31DA, etc.), `SCH_TRAITS_HVAC` accepts `str | list[str]`
 >   for bindings, and `strip_and_map_traits()` / `strip_and_map_schema()`
->   pre-validation pipeline. **Not yet:** 22B0 (calendar) builder,
->   per-manufacturer strategy profiles.
+>   pre-validation pipeline (functions only — not yet called by
+>   Gateway/CLI inside ramses_rf). **Not yet:** 22B0 (calendar) builder,
+>   per-manufacturer strategy profiles, CLI wiring of the pipeline.
 > - **ramses_rf Phase 3.75** (PWhite-Eng, issue 639) — Identity
 >   Composition. Was "Builder Pattern" (issue 530), now "init and go"
 >   from schema. `DeviceRole` composition scrapped. Deprecate `__class__`
@@ -826,6 +827,16 @@ as a 3-stage pipeline (see `phase3b_fan_commands_design.md`):
 This avoids a duplicate stripper — both the CLI (`ramses_cli -monitor`)
 and ramses_cc call ramses_rf's stage 1+2. ramses_cc keeps stage 3 only.
 
+**Status (verified Jul 18 2026, ramses_rf 0.58.3):** stages 1+2 exist in
+ramses_rf (`strip_traits`, `strip_and_map_traits`/`strip_and_map_schema`)
+and ramses_cc's coordinator already delegates to them — but **nothing in
+ramses_rf itself calls them** (not the Gateway, not `ramses_cli`), so the
+CLI still rejects `_`-prefixed keys. The CLI wiring is a remaining
+ramses_rf-side gap (no open PR covers it). Note also that stage 2 mapping
+output (`class`, `bound`, …) is only valid for the **known_list** —
+`SCH_GLOBAL_SCHEMAS` (the schema validator) rejects mapped trait names,
+so validation stripping must use stage 1 (`strip_traits`) only.
+
 
 <a id="2-storageramsescc-ha-store"></a>
 ### 2. `.storage/ramses_cc` (HA Store)
@@ -1219,11 +1230,16 @@ config entry:                   config entry:
      stored in the schema and stripped before ramses_rf sees them.
    - **Phase 3a plan:** move strip+map to ramses_rf as a pipeline
      (stages 1+2 in ramses_rf, stage 3 in ramses_cc). See
-     `phase3b_fan_commands_design.md` "CLI testing" section. This also
-     fixes the CLI (`ramses_cli -monitor` loads config.json directly,
-     no stripping today — `_commands` would reject the schema).
-   - **Also needed:** `SCH_TRAITS_HVAC` `bound` must accept
-     `str | list[str]` (multi-REM binding).
+     `phase3b_fan_commands_design.md` "CLI testing" section.
+     **Update (Jul 18 2026):** stages 1+2 shipped in ramses_rf 0.58.2+
+     and ramses_cc delegates to them, but the CLI is NOT fixed yet —
+     ramses_rf never calls the pipeline itself (`ramses_cli -monitor`
+     still rejects `_commands`/`_bound` via `PREVENT_EXTRA`). CLI
+     wiring is a remaining ramses_rf-side gap.
+   - ~~**Also needed:** `SCH_TRAITS_HVAC` `bound` must accept
+     `str | list[str]` (multi-REM binding).~~ DONE in 0.58.2 — but
+     ramses_cc's `_derive_known_list_from_schema` still drops
+     list-valued `bound` (Phase 3d code change).
 
 2. ramses_cc `_derive_known_list_from_schema` reads `_` keys
    from schema and produces the known_list dict that ramses_rf
@@ -1961,13 +1977,16 @@ PHASE 4 (ramses_rf Phase 3/3.25 — DONE, shipped 0.58.3):
   TX builders: 22F1, 22F7, 2411, 31DA, 1298, 12A0 (defaults)
   NOT yet: 22B0 (calendar), per-manufacturer strategy profiles
   schema _commands stays as OVERRIDE (user wins over native)
-  strip_and_map_traits() pipeline in ramses_rf (CLI benefits too)
+  strip_and_map_traits() pipeline in ramses_rf (functions only —
+    NOT called by Gateway/CLI yet, so CLI does NOT benefit yet)
   SCH_TRAITS_HVAC accepts str | list[str] for bindings
   known_list fully removed (or only for legacy compat)
   NOTE: ramses_rf 0.58.3 shipped Jul 17 2026. Builder/Strategy
   pattern scrapped (Jul 17 2026) — no supported_commands() on strategies.
-  ramses_cc Phase 3d = align with this (pin already 0.58.3, replace
-  local stripper with strip_and_map_schema()).
+  ramses_cc Phase 3d = align with this (pin already 0.58.3; consolidate
+  local stage-1/stage-3 stripping — validation must use strip_traits(),
+  NOT strip_and_map_schema(), since SCH_GLOBAL_SCHEMAS rejects mapped
+  trait names; pass _bound lists through to known_list).
 ```
 
 <a id="summary-what-goes-where"></a>
@@ -2024,10 +2043,12 @@ WILL BECOME OBSOLETE (not in schema, not in config):
 STAYS IN known_list (for now):
   📋 commands → Phase 3a DONE: _commands on REM entries in schema (PR 811)
                  Phase 3b: _commands moves to FAN entries as {verb,code,payload}
-                 ramses_rf doesn't need _commands today (stripped by pipeline)
+                 ramses_rf doesn't need _commands today (stripped by pipeline
+                 — NOT mapped to 'commands': no such trait in SCH_TRAITS)
                  ramses_rf 0.58.3: CQRS Intent builders available as defaults
                  schema _commands stays as OVERRIDE (user wins)
-                 Phase 3d: replace local stripper with strip_and_map_schema()
+                 Phase 3d: consolidate strippers (strip_traits for validation;
+                 strip_and_map_traits for known_list — already wired)
 
 STAYS IN CONFIG OPTIONS (not device traits):
   📋 packet_log → logging config (path, prefix, retention)
