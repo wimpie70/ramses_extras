@@ -2795,12 +2795,9 @@ async def main() -> None:
         call_service(token, "ramses_cc", "sync_topology")
     except RuntimeError:
         pass
-    wait(5, "for missing_class detection")
-    try:
-        call_service(token, "ramses_cc", "force_update")
-    except RuntimeError:
-        pass
-    wait(3, "for save")
+    wait(5, "for missing_class detection + notification")
+    # Do NOT call force_update here — it triggers another check_all_mismatches
+    # which may dismiss the notification if the TRVs have left the scan engine.
 
     # Check: persistent notification should mention missing _class
     notifications_nc = await get_persistent_notifications(token)
