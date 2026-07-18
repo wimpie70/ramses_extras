@@ -684,18 +684,18 @@ def wait(seconds: int, msg: str = "") -> None:
 
 
 def get_persistent_notifications(token: str) -> list:
-    """Get all persistent notifications from the HA API.
+    """Get all persistent notifications from the HA websocket API.
 
     Returns a list of notification dicts (notification_id, title, message).
+    Uses the websocket API because the REST /api/states endpoint does not
+    expose persistent notifications in recent HA versions.
     """
-    req = urllib.request.Request(
-        HA_URL + "/api/states",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    states = json.loads(urllib.request.urlopen(req).read())
-    # Persistent notifications appear as states with entity_id starting
-    # with "persistent_notification."
-    return [s for s in states if s["entity_id"].startswith("persistent_notification.")]
+    import asyncio
+
+    async def _get() -> list:
+        return await ws_send(token, {"type": "persistent_notification/get"})
+
+    return asyncio.run(_get())
 
 
 def get_entity_attributes(token: str, device_id: str, prefix: str = "") -> dict:
@@ -2813,14 +2813,19 @@ async def main() -> None:
         pass
     wait(3, "for save")
 
-    # Check 1: FAN entity should have class_mismatch attribute
-    # The remote entity (remote.32_150000) inherits from RamsesEntity
-    # which surfaces mismatch flags. The sensor entity may not.
-    fan_attrs = get_entity_attributes(token, FAN, prefix="remote_")
-    if not fan_attrs:
-        fan_attrs = get_entity_attributes(token, FAN, prefix="fan_")
+    # Check 1: FAN remote entity should have class_mismatch attribute
+    # The remote entity (remote.fan_32_150000) inherits from RamsesEntity
+    # which surfaces mismatch flags. Search by device_id only.
+    entities = get_entities(token)
+    fan_remote = None
+    for e in entities:
+        eid = e.get("entity_id", "")
+        if "32_150000" in eid and eid.startswith("remote."):
+            fan_remote = e
+            break
+    fan_attrs = fan_remote.get("attributes", {}) if fan_remote else {}
     check(
-        "FAN entity has class_mismatch attribute",
+        "FAN remote entity has class_mismatch attribute",
         "class_mismatch" in fan_attrs,
         f"attrs keys={list(fan_attrs.keys())[:15]}",
     )
@@ -2837,13 +2842,13 @@ async def main() -> None:
     mismatch_notif = [
         n
         for n in notifications
-        if "mismatch" in n.get("attributes", {}).get("title", "").lower()
-        or "mismatch" in n.get("state", "").lower()
+        if "mismatch" in n.get("title", "").lower()
+        or "mismatch" in n.get("notification_id", "").lower()
     ]
     check(
         "Persistent notification for mismatches exists",
         len(mismatch_notif) > 0,
-        f"notifications={[n.get('entity_id') for n in notifications]}",
+        f"notifications={[n.get('notification_id') for n in notifications]}",
     )
 
     # =====================================================================
@@ -2867,12 +2872,17 @@ async def main() -> None:
         pass
     wait(3, "for save")
 
-    # Check 1: FAN entity should NOT have class_mismatch attribute
-    fan_attrs_fixed = get_entity_attributes(token, FAN, prefix="remote_")
-    if not fan_attrs_fixed:
-        fan_attrs_fixed = get_entity_attributes(token, FAN, prefix="fan_")
+    # Check 1: FAN remote entity should NOT have class_mismatch attribute
+    entities_fixed = get_entities(token)
+    fan_remote_fixed = None
+    for e in entities_fixed:
+        eid = e.get("entity_id", "")
+        if "32_150000" in eid and eid.startswith("remote."):
+            fan_remote_fixed = e
+            break
+    fan_attrs_fixed = fan_remote_fixed.get("attributes", {}) if fan_remote_fixed else {}
     check(
-        "FAN entity has no class_mismatch after fix",
+        "FAN remote entity has no class_mismatch after fix",
         "class_mismatch" not in fan_attrs_fixed,
         f"class_mismatch={fan_attrs_fixed.get('class_mismatch')}",
     )
@@ -2882,13 +2892,13 @@ async def main() -> None:
     mismatch_notif_after = [
         n
         for n in notifications_after
-        if "mismatch" in n.get("attributes", {}).get("title", "").lower()
-        or "mismatch" in n.get("state", "").lower()
+        if "mismatch" in n.get("title", "").lower()
+        or "mismatch" in n.get("notification_id", "").lower()
     ]
     check(
         "Mismatch notification dismissed after fix",
         len(mismatch_notif_after) == 0,
-        f"remaining={[n.get('entity_id') for n in mismatch_notif_after]}",
+        f"remaining={[n.get('notification_id') for n in mismatch_notif_after]}",
     )
 
     # =====================================================================
@@ -2920,10 +2930,15 @@ async def main() -> None:
         pass
     wait(3, "for save")
 
-    # Check: FAN entity should have missing_class attribute
-    fan_attrs_nc = get_entity_attributes(token, FAN, prefix="remote_")
-    if not fan_attrs_nc:
-        fan_attrs_nc = get_entity_attributes(token, FAN, prefix="fan_")
+    # Check: FAN remote entity should have missing_class attribute
+    entities_nc = get_entities(token)
+    fan_remote_nc = None
+    for e in entities_nc:
+        eid = e.get("entity_id", "")
+        if "32_150000" in eid and eid.startswith("remote."):
+            fan_remote_nc = e
+            break
+    fan_attrs_nc = fan_remote_nc.get("attributes", {}) if fan_remote_nc else {}
     # Note: this may not trigger if the scan engine hasn't classified
     # the FAN yet — log what we got for debugging
     check(
