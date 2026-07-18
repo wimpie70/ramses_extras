@@ -683,19 +683,14 @@ def wait(seconds: int, msg: str = "") -> None:
     print(" done")
 
 
-def get_persistent_notifications(token: str) -> list:
+async def get_persistent_notifications(token: str) -> list:
     """Get all persistent notifications from the HA websocket API.
 
     Returns a list of notification dicts (notification_id, title, message).
     Uses the websocket API because the REST /api/states endpoint does not
     expose persistent notifications in recent HA versions.
     """
-    import asyncio
-
-    async def _get() -> list:
-        return await ws_send(token, {"type": "persistent_notification/get"})
-
-    return asyncio.run(_get())
+    return await ws_send(token, {"type": "persistent_notification/get"})
 
 
 def get_entity_attributes(token: str, device_id: str, prefix: str = "") -> dict:
@@ -2838,7 +2833,7 @@ async def main() -> None:
         )
 
     # Check 2: Persistent notification should exist
-    notifications = get_persistent_notifications(token)
+    notifications = await get_persistent_notifications(token)
     mismatch_notif = [
         n
         for n in notifications
@@ -2888,7 +2883,7 @@ async def main() -> None:
     )
 
     # Check 2: Mismatch notification should be dismissed
-    notifications_after = get_persistent_notifications(token)
+    notifications_after = await get_persistent_notifications(token)
     mismatch_notif_after = [
         n
         for n in notifications_after
