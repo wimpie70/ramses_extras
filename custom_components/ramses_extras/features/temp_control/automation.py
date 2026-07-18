@@ -611,10 +611,26 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             len(area_results),
         )
 
-        # Enforce minimum interval between bypass mode changes
+        # Enforce minimum interval between bypass mode changes.
+        # Only suppress transitions between *active* forcing modes
+        # (cooling↔heating_retention) to prevent the bypass damper from
+        # rapidly oscillating open/close.  Transitions to/from idle must
+        # always be allowed:
+        #   - cooling/heating_retention → idle releases bypass control
+        #     back to the device (fan_bypass_auto); this is not oscillation.
+        #   - idle → cooling/heating_retention is a new decision, not a
+        #     reversal of a recent one.
+        # Suppressing cooling→idle is especially harmful: it keeps
+        # temp_control in an active forcing mode with a stale command
+        # timestamp, so when the device legitimately moves the bypass on
+        # its own (conditions changed), the bypass safety net falsely
+        # detects a "manual override" and turns temp_control off.
+        active_modes = {"cooling", "heating_retention"}
         last_change = self._last_bypass_change.get(device_id, 0.0)
         if (
             desired_mode != prev_mode
+            and desired_mode in active_modes
+            and prev_mode in active_modes
             and (now - last_change) < settings.min_bypass_mode_interval_seconds
         ):
             _LOGGER.debug(
@@ -625,6 +641,12 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 settings.min_bypass_mode_interval_seconds,
             )
             desired_mode = prev_mode
+            # Refresh the command timestamp so the bypass safety net
+            # (which allows a 10s window after our commands) does not
+            # falsely trigger while we hold the previous mode.  Without
+            # this, the stale timestamp + a legitimate device-initiated
+            # bypass movement would turn temp_control off.
+            self._last_bypass_command_time[device_id] = now
 
         bypass_cmd = {
             "cooling": "fan_bypass_open",

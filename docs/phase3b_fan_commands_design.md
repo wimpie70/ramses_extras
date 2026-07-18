@@ -16,10 +16,11 @@
 >   Composition. Was "Builder Pattern" (issue 530), now "init and go"
 >   from schema. `DeviceRole` and `supported_commands()` scrapped.
 >
-> **Key shift (Jul 17 2026):** Builder/Strategy pattern scrapped. No
-> `supported_commands()` on strategies. `_commands` stays as user override
-> layer. Native TX builders (when they land in Phase 3/3.25) become
-> defaults; `_commands` overrides them.
+> **Key shift (Jul 17 2026):** Device identity Builder scrapped
+> (`DeviceRole`, `supported_commands()` as strategy method). "init and go"
+> from schema `_class`. TX generation builders (native 22F7/22B0, HVAC
+> strategy profiles) still planned in Phase 3/3.25. `_commands` stays as
+> user override layer. `_class` NOT deprecated.
 
 ## Contents
 
@@ -613,12 +614,12 @@ Called in all 3 branches of `async_save_client_state`:
 
 ## Alignment with ramses_rf
 
-> **Updated Jul 17 2026:** The Builder/Strategy pattern (issue 530) has
-> been **scrapped**. PWhite-Eng confirmed in ramses_rf issue 836 that
-> `DeviceRole` composition, `supported_commands()`, and dynamic
-> strategies are no longer planned. Instead, "init and go" — devices
-> instantiate with correct roles from schema traits. This aligns
-> perfectly with our schema-as-SSOT approach.
+> **Updated Jul 17 2026:** PWhite-Eng scrapped the **device identity**
+> part of the Builder pattern (`DeviceRole`, `supported_commands()` as
+> strategy method, active discovery FSM). "init and go" — devices
+> instantiate with correct roles from schema `_class`. The **TX
+> generation** part (native builders for 22F7/22B0, per-manufacturer
+> HVAC strategy profiles) is **still planned** in Phase 3/3.25.
 
 This design aligns with PWhite-Eng's architectural refactor (issue 639)
 and the Discussion 191 consensus. Our Phase 3b is ramses_cc-only and does

@@ -185,6 +185,11 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_cc: migration warning for known_list devices not in schema
     # (expected after profile reload)
     "known_list devices not in schema",
+    # ramses_cc: Phase 3c mismatch warnings (expected in recipe 24/26)
+    "class mismatches between discovery and schema",
+    "bound mismatches between discovery and schema",
+    "have no _class but discovery has a suggestion",
+    "appear orphaned",
     # ramses_cc: bound device not found during early init (FAN not yet active)
     "Bound device",
     "not found for FAN",
@@ -676,6 +681,35 @@ def wait(seconds: int, msg: str = "") -> None:
     print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
     time.sleep(seconds)
     print(" done")
+
+
+def get_persistent_notifications(token: str) -> list:
+    """Get all persistent notifications from the HA API.
+
+    Returns a list of notification dicts (notification_id, title, message).
+    """
+    req = urllib.request.Request(
+        HA_URL + "/api/states",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    states = json.loads(urllib.request.urlopen(req).read())
+    # Persistent notifications appear as states with entity_id starting
+    # with "persistent_notification."
+    return [s for s in states if s["entity_id"].startswith("persistent_notification.")]
+
+
+def get_entity_attributes(token: str, device_id: str, prefix: str = "") -> dict:
+    """Get the state attributes for an entity associated with a device.
+
+    :param device_id: The ramses device ID (e.g. "32:150000")
+    :param prefix: Optional entity-type prefix (e.g. "fan_", "remote_")
+    :return: The attributes dict, or empty dict if entity not found.
+    """
+    entities = get_entities(token)
+    entity = find_entity_for_device(entities, device_id, prefix=prefix)
+    if entity is None:
+        return {}
+    return entity.get("attributes", {})
 
 
 # ---------------------------------------------------------------------------
@@ -2744,6 +2778,159 @@ async def main() -> None:
             schema_keys_r20[0] == "_owner",
             f"first key={schema_keys_r20[0]}",
         )
+
+    # =====================================================================
+    # RECIPE 24: Phase 3c — class mismatch flagging
+    # =====================================================================
+    log_section("Recipe 24: Phase 3c — class mismatch flagging")
+
+    # This recipe tests that when the schema has a wrong _class for a
+    # device, the mismatch is detected and surfaced as:
+    # 1. A persistent notification
+    # 2. An entity attribute (class_mismatch)
+    #
+    # We load a profile where the FAN (32:150000) has _class="DIS"
+    # instead of "FAN", then check that the mismatch is flagged.
+
+    mismatch_schema = dict(MIXED_SCHEMA)
+    mismatch_schema[FAN] = {
+        **mismatch_schema.get(FAN, {}),
+        "_class": "DIS",  # wrong class — should be FAN
+    }
+    mismatch_yaml = _mixed_yaml(mismatch_schema)
+    await load_profile_yaml(token, mismatch_yaml, speed=0.01)
+    wait(5, "for profile reload + entity creation")
+
+    # Force a sync cycle to trigger mismatch detection
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for mismatch detection")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(3, "for save")
+
+    # Check 1: FAN entity should have class_mismatch attribute
+    # The remote entity (remote.32_150000) inherits from RamsesEntity
+    # which surfaces mismatch flags. The sensor entity may not.
+    fan_attrs = get_entity_attributes(token, FAN, prefix="remote_")
+    if not fan_attrs:
+        fan_attrs = get_entity_attributes(token, FAN, prefix="fan_")
+    check(
+        "FAN entity has class_mismatch attribute",
+        "class_mismatch" in fan_attrs,
+        f"attrs keys={list(fan_attrs.keys())[:15]}",
+    )
+    if "class_mismatch" in fan_attrs:
+        check(
+            "class_mismatch shows schema=DIS, discovery=FAN",
+            "DIS" in fan_attrs["class_mismatch"]
+            and "FAN" in fan_attrs["class_mismatch"],
+            f"class_mismatch={fan_attrs['class_mismatch']}",
+        )
+
+    # Check 2: Persistent notification should exist
+    notifications = get_persistent_notifications(token)
+    mismatch_notif = [
+        n
+        for n in notifications
+        if "mismatch" in n.get("attributes", {}).get("title", "").lower()
+        or "mismatch" in n.get("state", "").lower()
+    ]
+    check(
+        "Persistent notification for mismatches exists",
+        len(mismatch_notif) > 0,
+        f"notifications={[n.get('entity_id') for n in notifications]}",
+    )
+
+    # =====================================================================
+    # RECIPE 25: Phase 3c — fix mismatch, notification dismissed
+    # =====================================================================
+    log_section("Recipe 25: Phase 3c — fix mismatch, notification dismissed")
+
+    # Reload with correct _class — mismatch should clear
+    fixed_yaml = _mixed_yaml()  # default MIXED_SCHEMA has no _class override
+    await load_profile_yaml(token, fixed_yaml, speed=0.01)
+    wait(5, "for profile reload")
+
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for mismatch recheck")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(3, "for save")
+
+    # Check 1: FAN entity should NOT have class_mismatch attribute
+    fan_attrs_fixed = get_entity_attributes(token, FAN, prefix="remote_")
+    if not fan_attrs_fixed:
+        fan_attrs_fixed = get_entity_attributes(token, FAN, prefix="fan_")
+    check(
+        "FAN entity has no class_mismatch after fix",
+        "class_mismatch" not in fan_attrs_fixed,
+        f"class_mismatch={fan_attrs_fixed.get('class_mismatch')}",
+    )
+
+    # Check 2: Mismatch notification should be dismissed
+    notifications_after = get_persistent_notifications(token)
+    mismatch_notif_after = [
+        n
+        for n in notifications_after
+        if "mismatch" in n.get("attributes", {}).get("title", "").lower()
+        or "mismatch" in n.get("state", "").lower()
+    ]
+    check(
+        "Mismatch notification dismissed after fix",
+        len(mismatch_notif_after) == 0,
+        f"remaining={[n.get('entity_id') for n in mismatch_notif_after]}",
+    )
+
+    # =====================================================================
+    # RECIPE 26: Phase 3c — missing _class detection
+    # =====================================================================
+    log_section("Recipe 26: Phase 3c — missing _class detection")
+
+    # Load a profile where the FAN has no _class at all — the scan engine
+    # knows it's a FAN (from 31D9 packets) but the schema has no _class.
+    # This should trigger a missing_class flag.
+    no_class_schema = dict(MIXED_SCHEMA)
+    # Ensure FAN entry exists but has no _class
+    no_class_schema[FAN] = {
+        "remotes": [REM],
+        "sensors": [CO2],
+    }
+    no_class_yaml = _mixed_yaml(no_class_schema)
+    await load_profile_yaml(token, no_class_yaml, speed=0.01)
+    wait(5, "for profile reload")
+
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for missing_class detection")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(3, "for save")
+
+    # Check: FAN entity should have missing_class attribute
+    fan_attrs_nc = get_entity_attributes(token, FAN, prefix="remote_")
+    if not fan_attrs_nc:
+        fan_attrs_nc = get_entity_attributes(token, FAN, prefix="fan_")
+    # Note: this may not trigger if the scan engine hasn't classified
+    # the FAN yet — log what we got for debugging
+    check(
+        "FAN entity has missing_class attribute",
+        "missing_class" in fan_attrs_nc,
+        f"attrs keys={list(fan_attrs_nc.keys())[:15]}",
+    )
 
     # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run
