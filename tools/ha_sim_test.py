@@ -2791,10 +2791,26 @@ async def main() -> None:
     # The missing_class check flags devices where the scan engine has a
     # likely_type but the schema entry has no _class.  From R19, TRVs
     # 04:200002-005 were accepted from discovery and added to the schema
-    # without _class.  The scan engine classifies them as TRV.
-    #
-    # We check this BEFORE R24 reloads the profile (which would wipe
-    # these TRVs from the scan engine).
+    # without _class.  However, subsequent profile reloads (R22, R23)
+    # wiped them from the scan engine, so we re-inject a 30C9 packet
+    # to get 04:200002 back into the scan engine before checking.
+
+    print("  Re-injecting 30C9 from 04:200002 to re-populate scan engine...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": "04:200002",
+                "code": "30C9",
+                "payload": "020708",
+                "verb": "I",
+            },
+        )
+    except RuntimeError as e:
+        print(f"    Inject failed: {str(e)[:80]}")
+    wait(5, "for scan engine to process 30C9")
 
     try:
         call_service(token, "ramses_cc", "sync_topology")
