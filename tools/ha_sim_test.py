@@ -2874,21 +2874,26 @@ async def main() -> None:
         pass
     wait(3, "for save")
 
-    # Check: a TRV entity should have missing_class attribute
-    # Look for any entity associated with 04:200002 (a TRV from R19)
-    entities_nc = get_entities(token)
-    trv_entity_nc = None
-    for e in entities_nc:
-        eid = e.get("entity_id", "")
-        if "04_200002" in eid:
-            trv_entity_nc = e
-            break
-    trv_attrs_nc = trv_entity_nc.get("attributes", {}) if trv_entity_nc else {}
-    check(
-        "TRV 04:200002 entity has missing_class attribute",
-        "missing_class" in trv_attrs_nc,
-        f"attrs keys={list(trv_attrs_nc.keys())[:15]}",
-    )
+    # Check: persistent notification should mention missing _class
+    notifications_nc = await get_persistent_notifications(token)
+    missing_class_notif = [
+        n
+        for n in notifications_nc
+        if "mismatch" in n.get("notification_id", "").lower()
+    ]
+    if missing_class_notif:
+        notif_msg = missing_class_notif[0].get("message", "")
+        check(
+            "Notification mentions missing _class",
+            "missing _class" in notif_msg.lower(),
+            f"message={notif_msg[:200]}",
+        )
+    else:
+        check(
+            "Mismatch notification exists for missing_class",
+            False,
+            "no mismatch notification found",
+        )
 
     # =====================================================================
     # RECIPE 25: Phase 3c — fix mismatch, notification dismissed
