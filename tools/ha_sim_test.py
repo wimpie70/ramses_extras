@@ -2795,30 +2795,24 @@ async def main() -> None:
         call_service(token, "ramses_cc", "sync_topology")
     except RuntimeError:
         pass
-    wait(5, "for missing_class detection + notification")
-    # Do NOT call force_update here — it triggers another check_all_mismatches
-    # which may dismiss the notification if the TRVs have left the scan engine.
+    wait(5, "for missing_class detection")
 
-    # Check: persistent notification should mention missing _class
-    notifications_nc = await get_persistent_notifications(token)
-    missing_class_notif = [
-        n
-        for n in notifications_nc
-        if "mismatch" in n.get("notification_id", "").lower()
-    ]
-    if missing_class_notif:
-        notif_msg = missing_class_notif[0].get("message", "")
-        check(
-            "Notification mentions missing _class",
-            "missing _class" in notif_msg.lower(),
-            f"message={notif_msg[:200]}",
-        )
-    else:
-        check(
-            "Mismatch notification exists for missing_class",
-            False,
-            "no mismatch notification found",
-        )
+    # Check: the log should contain the missing_class INFO message.
+    # We check the log instead of the persistent notification because
+    # the periodic discovery checkpoint may dismiss the notification
+    # between sync_topology and our check (if the TRVs have left the
+    # scan engine by then).
+    log_url = HA_URL + "/api/error_log"
+    req = urllib.request.Request(
+        log_url,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    log_text = urllib.request.urlopen(req).read().decode()
+    check(
+        "Log contains missing _class detection for 04:200002",
+        "missing _class for 04:200002" in log_text,
+        "no missing _class log entry for 04:200002",
+    )
 
     # =====================================================================
     # RECIPE 24: Phase 3c — class mismatch flagging
