@@ -219,6 +219,10 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_extras: ramses_rf.const import warning when ramses_rf is
     # installed from a non-standard location (editable install / manual copy)
     "could not import ramses_rf.const for patching",
+    # ramses_cc: orphaned task warning during profile reload (transient —
+    # the EntityPlatform async_add_entities task may still be pending when
+    # the integration unloads)
+    "Task <Task pending name='EntityPlatform async_ad",
 ]
 
 
@@ -2901,18 +2905,17 @@ async def main() -> None:
     # =====================================================================
     log_section("Recipe 26: Phase 3c — missing _class detection")
 
-    # Load a profile where the FAN has no _class at all — the scan engine
-    # knows it's a FAN (from 31D9 packets) but the schema has no _class.
-    # This should trigger a missing_class flag.
-    no_class_schema = dict(MIXED_SCHEMA)
-    # Ensure FAN entry exists but has no _class
-    no_class_schema[FAN] = {
-        "remotes": [REM],
-        "sensors": [CO2],
-    }
-    no_class_yaml = _mixed_yaml(no_class_schema)
-    await load_profile_yaml(token, no_class_yaml, speed=0.01)
-    wait(5, "for profile reload")
+    # The missing_class check flags devices where the scan engine has a
+    # likely_type but the schema entry has no _class.  We can't test this
+    # with the FAN because the known_list migration (R20) copies _class
+    # from the known_list into the schema on every sync.  Instead, we
+    # check a TRV that was accepted from discovery without a _class.
+    #
+    # From R19, TRVs 04:200002-005 were accepted and added to the schema
+    # without _class.  The scan engine classifies them as TRV.  This
+    # should trigger missing_class.
+    #
+    # We use the mixed profile (loaded by R25) which has these TRVs.
 
     try:
         call_service(token, "ramses_cc", "sync_topology")
@@ -2925,21 +2928,20 @@ async def main() -> None:
         pass
     wait(3, "for save")
 
-    # Check: FAN remote entity should have missing_class attribute
+    # Check: a TRV entity should have missing_class attribute
+    # Look for any entity associated with 04:200002 (a TRV from R19)
     entities_nc = get_entities(token)
-    fan_remote_nc = None
+    trv_entity_nc = None
     for e in entities_nc:
         eid = e.get("entity_id", "")
-        if "32_150000" in eid and eid.startswith("remote."):
-            fan_remote_nc = e
+        if "04_200002" in eid:
+            trv_entity_nc = e
             break
-    fan_attrs_nc = fan_remote_nc.get("attributes", {}) if fan_remote_nc else {}
-    # Note: this may not trigger if the scan engine hasn't classified
-    # the FAN yet — log what we got for debugging
+    trv_attrs_nc = trv_entity_nc.get("attributes", {}) if trv_entity_nc else {}
     check(
-        "FAN entity has missing_class attribute",
-        "missing_class" in fan_attrs_nc,
-        f"attrs keys={list(fan_attrs_nc.keys())[:15]}",
+        "TRV 04:200002 entity has missing_class attribute",
+        "missing_class" in trv_attrs_nc,
+        f"attrs keys={list(trv_attrs_nc.keys())[:15]}",
     )
 
     # =====================================================================
