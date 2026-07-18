@@ -2851,6 +2851,46 @@ async def main() -> None:
     )
 
     # =====================================================================
+    # RECIPE 26: Phase 3c — missing _class detection
+    # =====================================================================
+    log_section("Recipe 26: Phase 3c — missing _class detection")
+
+    # The missing_class check flags devices where the scan engine has a
+    # likely_type but the schema entry has no _class.  From R19, TRVs
+    # 04:200002-005 were accepted from discovery and added to the schema
+    # without _class.  The scan engine classifies them as TRV.
+    #
+    # We check this BEFORE R25 reloads the profile (which would wipe
+    # these TRVs from the scan engine).
+
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for missing_class detection")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(3, "for save")
+
+    # Check: a TRV entity should have missing_class attribute
+    # Look for any entity associated with 04:200002 (a TRV from R19)
+    entities_nc = get_entities(token)
+    trv_entity_nc = None
+    for e in entities_nc:
+        eid = e.get("entity_id", "")
+        if "04_200002" in eid:
+            trv_entity_nc = e
+            break
+    trv_attrs_nc = trv_entity_nc.get("attributes", {}) if trv_entity_nc else {}
+    check(
+        "TRV 04:200002 entity has missing_class attribute",
+        "missing_class" in trv_attrs_nc,
+        f"attrs keys={list(trv_attrs_nc.keys())[:15]}",
+    )
+
+    # =====================================================================
     # RECIPE 25: Phase 3c — fix mismatch, notification dismissed
     # =====================================================================
     log_section("Recipe 25: Phase 3c — fix mismatch, notification dismissed")
@@ -2898,50 +2938,6 @@ async def main() -> None:
         "Mismatch notification dismissed after fix",
         len(mismatch_notif_after) == 0,
         f"remaining={[n.get('notification_id') for n in mismatch_notif_after]}",
-    )
-
-    # =====================================================================
-    # RECIPE 26: Phase 3c — missing _class detection
-    # =====================================================================
-    log_section("Recipe 26: Phase 3c — missing _class detection")
-
-    # The missing_class check flags devices where the scan engine has a
-    # likely_type but the schema entry has no _class.  We can't test this
-    # with the FAN because the known_list migration (R20) copies _class
-    # from the known_list into the schema on every sync.  Instead, we
-    # check a TRV that was accepted from discovery without a _class.
-    #
-    # From R19, TRVs 04:200002-005 were accepted and added to the schema
-    # without _class.  The scan engine classifies them as TRV.  This
-    # should trigger missing_class.
-    #
-    # We use the mixed profile (loaded by R25) which has these TRVs.
-
-    try:
-        call_service(token, "ramses_cc", "sync_topology")
-    except RuntimeError:
-        pass
-    wait(5, "for missing_class detection")
-    try:
-        call_service(token, "ramses_cc", "force_update")
-    except RuntimeError:
-        pass
-    wait(3, "for save")
-
-    # Check: a TRV entity should have missing_class attribute
-    # Look for any entity associated with 04:200002 (a TRV from R19)
-    entities_nc = get_entities(token)
-    trv_entity_nc = None
-    for e in entities_nc:
-        eid = e.get("entity_id", "")
-        if "04_200002" in eid:
-            trv_entity_nc = e
-            break
-    trv_attrs_nc = trv_entity_nc.get("attributes", {}) if trv_entity_nc else {}
-    check(
-        "TRV 04:200002 entity has missing_class attribute",
-        "missing_class" in trv_attrs_nc,
-        f"attrs keys={list(trv_attrs_nc.keys())[:15]}",
     )
 
     # =====================================================================
