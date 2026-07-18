@@ -2779,6 +2779,51 @@ async def main() -> None:
         )
 
     # =====================================================================
+    # RECIPE 26: Phase 3c — missing _class detection
+    # =====================================================================
+    log_section("Recipe 26: Phase 3c — missing _class detection")
+
+    # The missing_class check flags devices where the scan engine has a
+    # likely_type but the schema entry has no _class.  From R19, TRVs
+    # 04:200002-005 were accepted from discovery and added to the schema
+    # without _class.  The scan engine classifies them as TRV.
+    #
+    # We check this BEFORE R24 reloads the profile (which would wipe
+    # these TRVs from the scan engine).
+
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError:
+        pass
+    wait(5, "for missing_class detection")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(3, "for save")
+
+    # Check: persistent notification should mention missing _class
+    notifications_nc = await get_persistent_notifications(token)
+    missing_class_notif = [
+        n
+        for n in notifications_nc
+        if "mismatch" in n.get("notification_id", "").lower()
+    ]
+    if missing_class_notif:
+        notif_msg = missing_class_notif[0].get("message", "")
+        check(
+            "Notification mentions missing _class",
+            "missing _class" in notif_msg.lower(),
+            f"message={notif_msg[:200]}",
+        )
+    else:
+        check(
+            "Mismatch notification exists for missing_class",
+            False,
+            "no mismatch notification found",
+        )
+
+    # =====================================================================
     # RECIPE 24: Phase 3c — class mismatch flagging
     # =====================================================================
     log_section("Recipe 24: Phase 3c — class mismatch flagging")
@@ -2849,51 +2894,6 @@ async def main() -> None:
         len(mismatch_notif) > 0,
         f"notifications={[n.get('notification_id') for n in notifications]}",
     )
-
-    # =====================================================================
-    # RECIPE 26: Phase 3c — missing _class detection
-    # =====================================================================
-    log_section("Recipe 26: Phase 3c — missing _class detection")
-
-    # The missing_class check flags devices where the scan engine has a
-    # likely_type but the schema entry has no _class.  From R19, TRVs
-    # 04:200002-005 were accepted from discovery and added to the schema
-    # without _class.  The scan engine classifies them as TRV.
-    #
-    # We check this BEFORE R25 reloads the profile (which would wipe
-    # these TRVs from the scan engine).
-
-    try:
-        call_service(token, "ramses_cc", "sync_topology")
-    except RuntimeError:
-        pass
-    wait(5, "for missing_class detection")
-    try:
-        call_service(token, "ramses_cc", "force_update")
-    except RuntimeError:
-        pass
-    wait(3, "for save")
-
-    # Check: persistent notification should mention missing _class
-    notifications_nc = await get_persistent_notifications(token)
-    missing_class_notif = [
-        n
-        for n in notifications_nc
-        if "mismatch" in n.get("notification_id", "").lower()
-    ]
-    if missing_class_notif:
-        notif_msg = missing_class_notif[0].get("message", "")
-        check(
-            "Notification mentions missing _class",
-            "missing _class" in notif_msg.lower(),
-            f"message={notif_msg[:200]}",
-        )
-    else:
-        check(
-            "Mismatch notification exists for missing_class",
-            False,
-            "no mismatch notification found",
-        )
 
     # =====================================================================
     # RECIPE 25: Phase 3c — fix mismatch, notification dismissed
