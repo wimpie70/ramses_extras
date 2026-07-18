@@ -10,19 +10,22 @@
 >   See `phase3b_fan_commands_design.md`.
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — TX Generation
 >   Parity + Transport Decoupling. **DONE — shipped in 0.58.2/0.58.3
->   (Jul 16-17 2026).** Brought CQRS `CommandDispatcher` + domain builders,
->   `SCH_TRAITS_HVAC` accepts `str | list[str]` for bindings, and
->   `strip_and_map_traits()` / `strip_and_map_schema()` pre-validation pipeline.
+>   (Jul 16-17 2026).** Brought CQRS `CommandDispatcher` + domain builders
+>   (22F1, 22F7, 2411, 31DA, etc.), `SCH_TRAITS_HVAC` accepts `str | list[str]`
+>   for bindings, and `strip_and_map_traits()` / `strip_and_map_schema()`
+>   pre-validation pipeline. **Not yet:** 22B0 (calendar) builder,
+>   per-manufacturer strategy profiles.
 > - **ramses_rf Phase 3.75** (PWhite-Eng, issue 639) — Identity
 >   Composition. Was "Builder Pattern" (issue 530), now "init and go"
 >   from schema. `DeviceRole` composition scrapped. Deprecate `__class__`
 >   mutations.
 >
-> **Key shift (Jul 17 2026):** Device identity Builder (`DeviceRole`,
-> `supported_commands()`) scrapped in favor of "init and go" from schema
-> `_class`. TX generation builders (native 22F7/22B0, HVAC strategy
-> profiles) shipped in 0.58.3. `_commands` stays as user override layer.
-> `_class` NOT deprecated.
+> **Key shift (Jul 17 2026, updated Jul 19):** Device identity Builder
+> (`DeviceRole`, `supported_commands()`) scrapped in favor of "init and go"
+> from schema `_class`. CQRS TX builders (22F1, 22F7, 2411, 31DA, etc.)
+> shipped in 0.58.3. 22B0 (calendar) and per-manufacturer strategy profiles
+> not yet implemented. `_commands` stays as user override layer. `_class`
+> NOT deprecated.
 
 <a id="chapters"></a>
 ## Chapters
@@ -1880,16 +1883,17 @@ UI/UX change, not just a schema change.
    entries. Format changes from full packet strings to
    `{verb, code, payload}` dicts. `_bound` accepts `list[str]`.
    See `phase3b_fan_commands_design.md`.
-4. Later: native TX builders in ramses_rf Phase 3/3.25 (issue 639) —
+4. ramses_rf 0.58.3 CQRS builders (issue 639, shipped Jul 17 2026) —
    ramses_rf manages its own command generation for standard codes
-   (22F7 bypass, 22B0 calendar, etc.). These become the **defaults**.
-   `_commands` in the schema stays as the **authoritative user override**.
-   **Note:** ramses_rf Phase 3/3.25 shipped in 0.58.3 (Jul 17 2026).
-   CQRS `CommandDispatcher` + domain builders available. The Builder/Strategy
-   pattern (issue 530) was scrapped in favor of "init and go" from
-   schema (Jul 17 2026). ramses_cc Phase 3d = align with 0.58.3.
+   (22F1 fan mode, 22F7 bypass, 2411 fan param, 31DA fan info, etc.).
+   These become the **defaults**. `_commands` in the schema stays as the
+   **authoritative user override**.
+   **Note:** 22B0 (calendar) builder not yet implemented. Per-manufacturer
+   strategy profiles not yet implemented. The Builder/Strategy pattern
+   (issue 530) was scrapped in favor of "init and go" from schema
+   (Jul 17 2026). ramses_cc Phase 3d = align with 0.58.3.
 
-   **However:** even when ramses_rf has native TX builders,
+   **However:** even with CQRS TX builders,
    the schema must still be able to **overrule** them. A user may need
    to override a learned/automatic command with a custom one (e.g.,
    a non-standard remote, a modified payload, a device that sends
@@ -1897,8 +1901,8 @@ UI/UX change, not just a schema change.
    override mechanism:
 
    ```
-   ramses_rf native TX builders → default commands (learned/auto)
-   schema _commands             → user override (wins over native)
+   ramses_rf CQRS TX builders  → default commands (learned/auto)
+   schema _commands            → user override (wins over native)
    ```
 
    This follows the same precedence pattern as other traits:
@@ -1913,7 +1917,7 @@ PHASE 1 (DONE):
   known_list = {device_id: {class, alias, faked, scheme, bound}}
   _derive_known_list_from_schema → {device_id: {}} + user overrides
 
-PHASE 1.5 (implemented, testing in progress — PR 764, ramses_cc workaround):
+PHASE 1.5 (DONE — PR 764, ramses_cc workaround):
   schema = topology + _ traits (stripped before ramses_rf sees them)
   "01:150003": {_alias: "Lounge sensor", _class: "SEN", _disabled: false}
   _disabled, _skipped, _name, _alias, _class, _comment IMPLEMENTED
@@ -1952,15 +1956,18 @@ PHASE 3b (ramses_cc — commands move to FAN, design stage):
   Does NOT depend on ramses_rf Phase 3/3.25
 
 PHASE 4 (ramses_rf Phase 3/3.25 — DONE, shipped 0.58.3):
-  CQRS CommandDispatcher + domain builders for zones/DHW/HVAC
-  Native TX builders for 22F7/22B0 (defaults)
+  CQRS CommandDispatcher + domain builders for zones/DHW/HVAC/heat/
+  schedules/faultlog/opentherm
+  TX builders: 22F1, 22F7, 2411, 31DA, 1298, 12A0 (defaults)
+  NOT yet: 22B0 (calendar), per-manufacturer strategy profiles
   schema _commands stays as OVERRIDE (user wins over native)
   strip_and_map_traits() pipeline in ramses_rf (CLI benefits too)
   SCH_TRAITS_HVAC accepts str | list[str] for bindings
   known_list fully removed (or only for legacy compat)
   NOTE: ramses_rf 0.58.3 shipped Jul 17 2026. Builder/Strategy
   pattern scrapped (Jul 17 2026) — no supported_commands() on strategies.
-  ramses_cc Phase 3d = align with this (bump pin, replace local stripper).
+  ramses_cc Phase 3d = align with this (pin already 0.58.3, replace
+  local stripper with strip_and_map_schema()).
 ```
 
 <a id="summary-what-goes-where"></a>
