@@ -29,9 +29,9 @@ Consolidates duplicated schema-stripping logic, passes list-valued `_bound` thro
 **3d.6 — Precedence tests** (`test_climate.py`, test-only)
 - Added 4 tests verifying the `async_set_fan_mode` precedence chain: FAN `_commands` (dict template) > REM `_commands` (packet string) > `known_list` (legacy) > native `set_fan_mode` (ramses_rf CQRS builder)
 
-### Blocked (not in this PR)
-- **3d.5** (CLI compatibility) — ramses_rf has no callers for `strip_and_map_schema`; Gateway/CLI still use `PREVENT_EXTRA`. Needs ramses_rf-side wiring.
-- **3d.7** (22B0 calendar builder) — no builder exists in ramses_rf 0.58.3.
+### Moved to Phase 3e (blocked on ramses_rf, not in this PR)
+- **3e.1** (was 3d.5 — CLI compatibility) — ramses_rf has no callers for `strip_and_map_schema`; Gateway/CLI still use `PREVENT_EXTRA`. Needs ramses_rf-side wiring. Does not affect ramses_cc.
+- **3e.2** (was 3d.7 — 22B0 calendar builder) — no builder exists in ramses_rf 0.58.3. Future ramses_rf feature. Does not affect ramses_cc.
 
 ### Test plan
 - [x] `pytest tests/tests_new/` — 1103 passed, 10 skipped
