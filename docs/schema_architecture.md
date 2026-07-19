@@ -5,8 +5,8 @@
 > - **ramses_cc Phase 3** — commands in schema, our work.
 >   Split into **3a** (commands on REM, PR 811, DONE), **3b**
 >   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
->   DONE, PR 831 ready for review), and **3d** (ramses_rf alignment, TODO —
->   unblocked now that ramses_rf 0.58.3 landed).
+>   DONE, PR 831 ready for review), and **3d** (ramses_rf alignment, DESIGN —
+>   see `phase3d_design.md`; unblocked now that ramses_rf 0.58.3 landed).
 >   See `phase3b_fan_commands_design.md`.
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — TX Generation
 >   Parity + Transport Decoupling. **DONE — shipped in 0.58.2/0.58.3
@@ -836,6 +836,32 @@ ramses_rf-side gap (no open PR covers it). Note also that stage 2 mapping
 output (`class`, `bound`, …) is only valid for the **known_list** —
 `SCH_GLOBAL_SCHEMAS` (the schema validator) rejects mapped trait names,
 so validation stripping must use stage 1 (`strip_traits`) only.
+
+**Phase 3d (DESIGN — see `phase3d_design.md`):** ramses_cc alignment with
+ramses_rf 0.58.3. Five actionable steps (2 blocked on ramses_rf):
+- **3d.8** — remove dead `ImportError` fallback for `strip_traits` /
+  `strip_and_map_traits` in coordinator.py (manifest pins `==0.58.3`,
+  functions shipped in 0.58.2; ~40 lines of dead code)
+- **3d.3** — `strip_traits_for_validation()` in schemas.py still has an
+  inline `_strip_traits` duplicate; delegate to ramses_rf's `strip_traits`
+  like the coordinator already does
+- **3d.3b** — consolidate drifted stage-3 orchestration between
+  `strip_traits_for_validation()` (schemas.py) and
+  `_strip_schema_extensions()` (coordinator.py) into one shared function.
+  The two have drifted: the coordinator handles disabled/skipped/foreign
+  filtering, HGI dropping, `None` stripping, `device_comments` removal —
+  the schemas.py version does not. Also unify 3 separate
+  `_HEAT_PREFIXES` definitions (8/8/12 prefixes)
+- **3d.4** — remove `isinstance(bound, str)` guard in
+  `_derive_known_list_from_schema`; ramses_rf 0.58.2+ accepts
+  `str | list[str]` for `bound` (verified config.py:89-93)
+- **3d.6** — add precedence tests: `_commands` override wins over native
+  CQRS builder. No code change, test-only
+- ~~3d.5~~ CLI compatibility — BLOCKED (ramses_rf has no callers for
+  `strip_and_map_schema`; Gateway/CLI still use `PREVENT_EXTRA`)
+- ~~3d.7~~ 22B0 calendar builder — BLOCKED (no builder in ramses_rf 0.58.3)
+
+Implementation order: 3d.8 → 3d.3 → 3d.3b → 3d.4 → 3d.6
 
 
 <a id="2-storageramsescc-ha-store"></a>
@@ -1987,6 +2013,21 @@ PHASE 4 (ramses_rf Phase 3/3.25 — DONE, shipped 0.58.3):
   local stage-1/stage-3 stripping — validation must use strip_traits(),
   NOT strip_and_map_schema(), since SCH_GLOBAL_SCHEMAS rejects mapped
   trait names; pass _bound lists through to known_list).
+
+PHASE 3d (ramses_cc — DESIGN, see phase3d_design.md):
+  Align ramses_cc with ramses_rf 0.58.3. No new features — consolidation
+  and cleanup only:
+  3d.8: remove ImportError fallback (dead code, manifest pins 0.58.3)
+  3d.3: strip_traits_for_validation delegates stage 1 to ramses_rf
+  3d.3b: consolidate stage-3 orchestration (orphan routing, disabled/
+         skipped/foreign filtering, HGI dropping) into one shared
+         function — currently duplicated & drifted between schemas.py
+         and coordinator.py. Unify _HEAT_PREFIXES (3 definitions today)
+  3d.4: pass _bound as str | list[str] to ramses_rf (remove str-only
+         guard in _derive_known_list_from_schema)
+  3d.6: precedence tests — _commands override wins over CQRS builder
+  BLOCKED: 3d.5 (CLI compat — ramses_rf has no strip_and_map_schema
+           callers), 3d.7 (22B0 calendar builder — not in 0.58.3)
 ```
 
 <a id="summary-what-goes-where"></a>
@@ -2048,7 +2089,9 @@ STAYS IN known_list (for now):
                  ramses_rf 0.58.3: CQRS Intent builders available as defaults
                  schema _commands stays as OVERRIDE (user wins)
                  Phase 3d: consolidate strippers (strip_traits for validation;
-                 strip_and_map_traits for known_list — already wired)
+                 strip_and_map_traits for known_list — already wired);
+                 remove ImportError fallback (dead code);
+                 pass _bound as str | list[str] (remove str-only guard)
 
 STAYS IN CONFIG OPTIONS (not device traits):
   📋 packet_log → logging config (path, prefix, retention)
