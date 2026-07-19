@@ -13,7 +13,7 @@ HA_CONTAINER ?= homeassistant
 SOURCE_DIR ?= .
 
 # Known targets - catch typos like "make install ha-sim" (should be "make install-sim")
-KNOWN_TARGETS := help install install-sim install-deps restart-ha clean status check-ha \
+KNOWN_TARGETS := help all install install-sim install-deps restart-ha clean status check-ha \
 	dev-install full-setup env env-test env-full lint type-check type-check-clean \
 	format fix-imports qa ruff-version ruff-install local-ci test-python test-frontend \
 	test-all build-device-db source
@@ -23,10 +23,12 @@ ifneq ($(UNKNOWN_TARGETS),)
 $(error Unknown target(s): $(UNKNOWN_TARGETS). Did you mean: install-sim, restart-ha? Run 'make help' for available targets)
 endif
 
-.PHONY: help install install-sim install-deps restart-ha clean status check-ha dev-install full-setup env env-test env-full lint type-check type-check-clean format fix-imports qa
+.PHONY: help all install install-sim install-deps restart-ha clean status check-ha dev-install full-setup env env-test env-full lint type-check type-check-clean format fix-imports qa
 
 help:
 	@echo "Available targets:"
+	@echo "  all          - Deploy everything (extras + cc + rf) to both hass and ha-sim,"
+	@echo "                 then restart both containers. Sudo is invoked as needed."
 	@echo "  install      - Install the ramses_extras integration to HA config"
 	@echo "  install-sim  - Install integration to simulator HA (ha-sim on port 8124)"
 	@echo "  install-deps - Install Python dependencies (if any)"
@@ -54,6 +56,19 @@ help:
 	@echo "  test-python  - Run Python tests only"
 	@echo "  test-frontend- Run JavaScript tests only"
 	@echo "  test-all     - Run all tests (Python + JavaScript)"
+
+# Deploy everything to both hass and ha-sim, then restart both containers.
+# Calls the ramses_cc and ramses_rf Makefiles so a single `make all` from this
+# repo deploys all three integrations. Sudo is invoked as needed by the
+# individual install targets and the docker restart below.
+all: install install-sim
+	@echo "Deploying ramses_cc to both hass and ha-sim..."
+	@$(MAKE) --no-print-directory -C /home/willem/dev/ramses_cc install install-sim
+	@echo "Deploying ramses_rf packages to both hass and ha-sim..."
+	@$(MAKE) --no-print-directory -C /home/willem/dev/ramses_rf install_rf install_rf-sim
+	@echo "Restarting both HA containers (ha-sim, hass)..."
+	@sudo docker restart ha-sim hass
+	@echo "✅ All integrations deployed and both containers restarted"
 
 install:
 	@echo "Installing ramses_extras integration to $(HA_CONFIG_DIR)..."
