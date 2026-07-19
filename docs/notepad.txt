@@ -204,3 +204,135 @@ Traceback (most recent call last):
     raise TypeError("Either a port_name or an input_file must be specified")
 TypeError: Either a port_name or an input_file must be specified
 2026-05-05 16:04:23.891 INFO (MainThread) [homeassistant.config_entries] Config entry 'RAMSES RF' for ramses_cc integration not ready yet: Setup failed: Either a port_name or an input_file must be specified; Retrying in 5 seconds
+
+---
+## PREP: Recipe 32 — Battery (1060) cache restore regression (issue 840)
+
+**Status**: DESIGN ONLY — do NOT edit ha_sim_test.py yet (another thread is working on it).
+**Tracked at**: https://github.com/ramses-rf/ramses_cc/issues/840
+              ("0.58.3 - Evohome battery states not restoring from cache")
+**Originally reported in**: https://github.com/ramses-rf/ramses_cc/issues/822#issuecomment-5011291025
+              (peternash: "battery sensors not being cached (or at least only a small
+              percentage) and going Unknown again after a period of time")
+**Evidence attached to 840**: before/after screenshots + ramses_cc.zip +
+              ramses.db.zip from immediately before the restart, plus HA +
+              packet logs from after. Confirms: battery states populated
+              before restart → Unknown after → up to 24h to recover.
+
+### Root cause (CONFIRMED — same pattern as the 0004/HGI fix already landed)
+
+1. `Code._1060` (device_battery) is in `HIGH_VOLUME_STATUS_CODES`
+   (ramses_rf `src/ramses_rf/const.py:165`).
+2. 1060 is sent by battery-powered devices only once per day
+   (`"lifespan": td(days=1)` in `protocol_schema.py:191`).
+3. `_restore_cached_packets` (ramses_rf `lifecycle.py:285-315`) skips any
+   cached packet older than 1h that is in `HIGH_VOLUME_STATUS_CODES`
+   (`cutoff_dtm = now - 1h`; `if is_match: continue`).
+4. ramses_cc keeps cached packets for 24h (`coordinator.py:279`
+   `if dt_obj <= now - td(days=1): continue`), so a 2-24h-old 1060 survives
+   in the ramses_cc cache but is then dropped by ramses_rf on restore.
+5. Result: on restart, the only cached 1060 is almost always >1h old →
+   skipped → message_store has no 1060 → `RamsesBatteryBinarySensor`
+   state = Unknown. Only devices that happened to send a 1060 within the
+   last hour before restart keep their battery reading ("small percentage").
+
+### Fix (mirrors the 0004 fix already in const.py:159-163)
+Remove `Code._1060` from `HIGH_VOLUME_STATUS_CODES` in
+`/home/willem/dev/ramses_rf/src/ramses_rf/const.py`. 1060 is low-volume
+(1/day) and carries semi-static state — exactly the same mis-classification
+that caused the 0004 zone-name regression.
+
+### Recipe 32 design (to be appended after Recipe 31 in ha_sim_test.py)
+
+Goal: prove the bug, then prove the fix, by simulating the real-world
+"cached 1060 is >1h old on restart" condition. The ha-sim TRV emits 1060
+every 13.5s (TRV.yaml), so the bug does NOT manifest naturally — we must
+age the cached 1060 timestamps in `.storage/ramses_cc` before restarting.
+
+    # RECIPE 32: Battery (1060) cache restore — stale 1060 must survive
+    # =====================================================================
+    # Same regression class as issue 822 / 0004 zone names: 1060 is in
+    # HIGH_VOLUME_STATUS_CODES but is sent only 1/day, so a cached 1060
+    # older than 1h is skipped by _restore_cached_packets on restart and
+    # the battery binary sensor goes Unknown.  Tracked in issue 840
+    # (with before/after screenshots + ramses_cc.zip from before restart).
+    # We force the real-world condition by ageing the 1060 timestamps in
+    # .storage/ramses_cc to >1h ago, then restart ha-sim and check the
+    # battery entity.
+    log_section("Recipe 32: Battery 1060 cache restore (stale >1h, issue 840)")
+
+    # 1. Load mixed profile + activate CTL/TRV/DHW for heartbeats
+    await load_profile_yaml(token, _mixed_yaml(), speed=0.01)
+    wait(15, "for ramses_cc reload"); token = get_token(); wait(5, "init")
+    for dev_id, name in [(CTL,"CTL"),(TRV,"TRV"),(DHW,"DHW")]:
+        await ws_send(token, {"type":"ramses_extras/device_simulator/activate_profile_device","device_id":dev_id})
+    wait(15, "for 1060 battery packets to populate message_store")
+
+    # 2. Force a fresh 1060 I from TRV (battery 100%, low=0) — payload 006400
+    #    schema: ^0[0-9A-F](FF|[0-9A-F]{2})0[01]$  (idx, level, low_flag)
+    call_service(token, "ramses_extras", "device_simulator_inject_message",
+        {"source_id": TRV, "code": "1060", "payload": "006400", "verb": "I"})
+    wait(5, "for 1060 to process")
+    call_service(token, "ramses_cc", "force_update")
+    wait(5, "for entity state write")
+
+    # 3. Verify the TRV battery binary sensor is ON (battery_ok) before restart
+    entities = get_entities(token)
+    bat = find_entity_for_device(entities, TRV, prefix="battery_")
+    bat_state_before = bat.get("state") if bat else None
+    check("TRV battery binary sensor has state before restart",
+          bat is not None and bat_state_before in ("on","off"),
+          f"state={bat_state_before!r} entity={bat.get('entity_id') if bat else None}")
+
+    # 4. Age every cached 1060 packet to 2h ago in .storage/ramses_cc.
+    #    Must stop ha-sim first (HA storage is not safe to write while up):
+    #    docker stop ha-sim → rewrite .storage/ramses_cc → docker start ha-sim
+    aged_ts = (dt_util.now() - td(hours=2)).isoformat(timespec="microseconds")
+    storage = get_ramses_storage()
+    packets = storage.get("client_state", {}).get("packets", {})
+    n_1060 = sum(1 for p in packets.values() if isinstance(p, dict) and p.get("code")=="1060")
+    check("Cached 1060 packets exist to age", n_1060 > 0, f"found {n_1060} 1060 in cache")
+    new_packets = {}
+    for ts, pkt in packets.items():
+        if isinstance(pkt, dict) and pkt.get("code") == "1060":
+            new_packets[aged_ts] = pkt   # collapse all 1060 to one aged ts
+        else:
+            new_packets[ts] = pkt
+    storage["client_state"]["packets"] = new_packets
+    # stop, write, start
+    subprocess.run(["docker","stop","ha-sim"], capture_output=True)
+    _write_ramses_storage(storage)  # helper to add: docker cp temp file → /config/.storage/ramses_cc
+    subprocess.run(["docker","start","ha-sim"], capture_output=True)
+    wait(20, "for ha-sim startup"); log_monitor.reset_baseline(); token = get_token()
+    wait(10, "for ramses_cc to restore cached packets + create entities")
+
+    # 5. WITHOUT FIX: battery entity = Unknown (1060 >1h skipped)
+    #    WITH FIX (1060 removed from HIGH_VOLUME_STATUS_CODES): state retained
+    entities = get_entities(token)
+    bat_after = find_entity_for_device(entities, TRV, prefix="battery_")
+    bat_state_after = bat_after.get("state") if bat_after else None
+    check("TRV battery binary sensor retained state after restart (stale 1060)",
+          bat_after is not None and bat_state_after in ("on","off"),
+          f"state={bat_state_after!r} (Unknown/None = bug present)")
+    # Expected: FAIL on ramses_rf master (bug), PASS after the const.py fix.
+
+### Open implementation notes (resolve when adding the recipe)
+- `_write_ramses_storage()` helper: HA `.storage/ramses_cc` is a JSON file
+  on disk in ha-sim dev. Pattern: write temp file locally →
+  `docker cp /tmp/ramses_cc.json ha-sim:/config/.storage/ramses_cc` while
+  container is stopped. Must `docker stop` before writing (step 4 already
+  does this) so HA doesn't overwrite our edit on shutdown.
+- `find_entity_for_device(..., prefix="battery_")` — confirm the real slug
+  by inspecting `get_entities(token)` once. `RamsesBatteryBinarySensor` is
+  registered at `binary_sensor.py:390` with device_class BATTERY; slug is
+  likely `binary_sensor.<class>_<id>_battery_low` or `..._battery`.
+- Add a stale-restore debug line to EXPECTED_WARNINGS only if ramses_rf
+  starts logging it (currently the skip is silent — `continue`).
+- This recipe is a regression test gated on the ramses_rf fix; until then
+  it is EXPECTED to fail on master (note in the check comment, same style
+  as Recipe 28's pre-fix notes).
+
+### Files to touch (when the other thread releases ha_sim_test.py)
+- tools/ha_sim_test.py — append Recipe 32 after Recipe 31 (line ~3645)
+- ramses_rf: src/ramses_rf/const.py — remove `Code._1060,` from
+  HIGH_VOLUME_STATUS_CODES (the actual fix; separate PR, references 840)

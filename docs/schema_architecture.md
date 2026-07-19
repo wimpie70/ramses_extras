@@ -5,8 +5,9 @@
 > - **ramses_cc Phase 3** — commands in schema, our work.
 >   Split into **3a** (commands on REM, PR 811, DONE), **3b**
 >   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
->   DONE, PR 831 ready for review), and **3d** (ramses_rf alignment, DESIGN —
->   see `phase3d_design.md`; unblocked now that ramses_rf 0.58.3 landed).
+>   DONE, in master), and **3d** (ramses_rf alignment, DONE —
+>   `feature/phase3d-alignment`, ready for PR). **3e** (CLI compat +
+>   22B0 builder, BLOCKED on ramses_rf).
 >   See `phase3b_fan_commands_design.md`.
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — TX Generation
 >   Parity + Transport Decoupling. **DONE — shipped in 0.58.2/0.58.3
@@ -837,31 +838,30 @@ output (`class`, `bound`, …) is only valid for the **known_list** —
 `SCH_GLOBAL_SCHEMAS` (the schema validator) rejects mapped trait names,
 so validation stripping must use stage 1 (`strip_traits`) only.
 
-**Phase 3d (DESIGN — see `phase3d_design.md`):** ramses_cc alignment with
-ramses_rf 0.58.3. Five actionable steps (2 blocked on ramses_rf):
+**Phase 3d (DONE — see `phase3d_design.md`):** ramses_cc alignment with
+ramses_rf 0.58.3. Five actionable steps, all complete:
 - **3d.8** — remove dead `ImportError` fallback for `strip_traits` /
   `strip_and_map_traits` in coordinator.py (manifest pins `==0.58.3`,
-  functions shipped in 0.58.2; ~40 lines of dead code)
-- **3d.3** — `strip_traits_for_validation()` in schemas.py still has an
-  inline `_strip_traits` duplicate; delegate to ramses_rf's `strip_traits`
-  like the coordinator already does
+  functions shipped in 0.58.2; ~40 lines of dead code removed)
+- **3d.3** — `strip_traits_for_validation()` in schemas.py delegates
+  stage 1 to ramses_rf's `strip_traits` (was inline duplicate)
 - **3d.3b** — consolidate drifted stage-3 orchestration between
   `strip_traits_for_validation()` (schemas.py) and
-  `_strip_schema_extensions()` (coordinator.py) into one shared function.
-  The two have drifted: the coordinator handles disabled/skipped/foreign
-  filtering, HGI dropping, `None` stripping, `device_comments` removal —
-  the schemas.py version does not. Also unify 3 separate
-  `_HEAT_PREFIXES` definitions (8/8/12 prefixes)
+  `_strip_schema_extensions()` (coordinator.py) into one shared
+  `_strip_and_orchestrate()` function. Bug fix: coordinator path was
+  missing `placed_in_lists` check (device in remotes[] could duplicate
+  in orphans_hvac). Unified 3 separate `_HEAT_PREFIXES` definitions.
+  Fixed `_DEVICE_ID_RE` to hex regex (was decimal-only).
 - **3d.4** — remove `isinstance(bound, str)` guard in
   `_derive_known_list_from_schema`; ramses_rf 0.58.2+ accepts
-  `str | list[str]` for `bound` (verified config.py:89-93)
-- **3d.6** — add precedence tests: `_commands` override wins over native
-  CQRS builder. No code change, test-only
-- ~~3d.5~~ CLI compatibility — BLOCKED (ramses_rf has no callers for
-  `strip_and_map_schema`; Gateway/CLI still use `PREVENT_EXTRA`)
-- ~~3d.7~~ 22B0 calendar builder — BLOCKED (no builder in ramses_rf 0.58.3)
+  `str | list[str]` for `bound`. Sanitizer only strips bound from heat
+  devices (HVAC defaults class to HVC).
+- **3d.6** — 4 precedence tests: `_commands` override wins over native
+  CQRS builder. Test-only, no code change.
+- **Phase 3e** (BLOCKED on ramses_rf): 3e.1 CLI compat (was 3d.5),
+  3e.2 22B0 calendar builder (was 3d.7). Neither affects ramses_cc.
 
-Implementation order: 3d.8 → 3d.3 → 3d.3b → 3d.4 → 3d.6
+1103 tests pass, ruff + mypy clean. Net -130 lines.
 
 
 <a id="2-storageramsescc-ha-store"></a>
@@ -2014,20 +2014,21 @@ PHASE 4 (ramses_rf Phase 3/3.25 — DONE, shipped 0.58.3):
   NOT strip_and_map_schema(), since SCH_GLOBAL_SCHEMAS rejects mapped
   trait names; pass _bound lists through to known_list).
 
-PHASE 3d (ramses_cc — DESIGN, see phase3d_design.md):
+PHASE 3d (ramses_cc — DONE, see phase3d_design.md):
   Align ramses_cc with ramses_rf 0.58.3. No new features — consolidation
-  and cleanup only:
+  and cleanup only. All 5 steps complete:
   3d.8: remove ImportError fallback (dead code, manifest pins 0.58.3)
   3d.3: strip_traits_for_validation delegates stage 1 to ramses_rf
   3d.3b: consolidate stage-3 orchestration (orphan routing, disabled/
          skipped/foreign filtering, HGI dropping) into one shared
-         function — currently duplicated & drifted between schemas.py
-         and coordinator.py. Unify _HEAT_PREFIXES (3 definitions today)
+         function — was duplicated & drifted between schemas.py
+         and coordinator.py. Unify _HEAT_PREFIXES (3 definitions → 1).
+         Fix placed_in_lists bug in coordinator path.
   3d.4: pass _bound as str | list[str] to ramses_rf (remove str-only
          guard in _derive_known_list_from_schema)
   3d.6: precedence tests — _commands override wins over CQRS builder
-  BLOCKED: 3d.5 (CLI compat — ramses_rf has no strip_and_map_schema
-           callers), 3d.7 (22B0 calendar builder — not in 0.58.3)
+  Phase 3e (BLOCKED on ramses_rf): 3e.1 CLI compat (was 3d.5),
+  3e.2 22B0 calendar builder (was 3d.7). Neither affects ramses_cc.
 ```
 
 <a id="summary-what-goes-where"></a>

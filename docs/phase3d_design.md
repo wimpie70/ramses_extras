@@ -1,9 +1,13 @@
 # Phase 3d Design: ramses_rf alignment
 
 **Date:** 2026-07-19
-**Status:** Design — no code changes yet
+**Status:** DONE — 4 commits on `feature/phase3d-alignment`, all tests pass
 **Depends on:** ramses_rf 0.58.3 (DONE — shipped `strip_traits()`, `strip_and_map_traits()`, CQRS builders)
-**Branch:** TBD (create `feature/phase3d-alignment` from `master`)
+**Branch:** `feature/phase3d-alignment` (from `master`)
+
+> **Phase 3e** (CLI compat + 22B0 builder) split out — both blocked on
+> ramses_rf, neither affects ramses_cc. See "Phase 3e" section at the
+> bottom of this doc.
 
 ---
 
@@ -267,42 +271,29 @@ test environments).
 
 ---
 
-## Step 3d.5 — CLI compatibility (BLOCKED)
+## Step 3d.5 — CLI compatibility → moved to Phase 3e
 
-`strip_and_map_schema()` exists in ramses_rf but has **no callers**
-inside ramses_rf itself (not Gateway, not ramses_cli). The CLI still
-uses `SCH_GLOBAL_SCHEMAS` with `PREVENT_EXTRA`, so `config.json` with
-`_commands`/`_bound` keys is rejected.
-
-This needs ramses_rf-side wiring:
-- Gateway/CLI should call `strip_and_map_schema()` before validation
-- A `commands` trait should be added to `SCH_TRAITS` if `_commands`
-  should survive into ramses_rf's internal state
-
-**Action:** Raise an issue on ramses_rf to coordinate with PWhite-Eng.
-No ramses_cc code change for this step.
+Moved to Phase 3e (blocked on ramses_rf, no ramses_cc code change).
+See "Phase 3e" section below.
 
 ---
 
-## Step 3d.7 — 22B0 calendar builder (BLOCKED)
+## Step 3d.7 — 22B0 calendar builder → moved to Phase 3e
 
-No 22B0 (calendar) builder exists in ramses_rf 0.58.3. This is a
-future ramses_rf feature. No ramses_cc code change.
+Moved to Phase 3e (blocked on ramses_rf, no ramses_cc code change).
+See "Phase 3e" section below.
 
 ---
 
 ## Implementation order
 
-1. **3d.8** (cleanup ImportError fallback) — trivial, no risk, do first
-2. **3d.3** (consolidate stage-1 stripping) — low risk, small change
-3. **3d.3b** (consolidate stage-3 orchestration) — medium risk, needs
-   careful testing that validation matches gateway behaviour
-4. **3d.4** (pass `_bound` as list) — low risk, ramses_rf 0.58.3
-   guarantees support
-5. **3d.6** (verify CQRS builders + precedence tests) — test-only,
-   no code change
+1. **3d.8** (cleanup ImportError fallback) — DONE
+2. **3d.3** (consolidate stage-1 stripping) — DONE
+3. **3d.3b** (consolidate stage-3 orchestration) — DONE
+4. **3d.4** (pass `_bound` as list) — DONE
+5. **3d.6** (verify CQRS builders + precedence tests) — DONE
 
-Steps 3d.5 and 3d.7 are blocked on ramses_rf.
+All 5 steps complete. 1103 tests pass, ruff + mypy clean.
 
 ---
 
@@ -322,10 +313,43 @@ Steps 3d.5 and 3d.7 are blocked on ramses_rf.
 ## What's NOT in Phase 3d
 
 - **DeviceRole / strategy profiles** — scrapped (3d.1, 3d.2 = N/A)
-- **CLI compatibility** — blocked on ramses_rf (3d.5)
-- **22B0 calendar builder** — blocked on ramses_rf (3d.7)
+- **CLI compatibility** — moved to Phase 3e (blocked on ramses_rf)
+- **22B0 calendar builder** — moved to Phase 3e (blocked on ramses_rf)
 - **Any change to `_commands` format** — Phase 3b settled the format
   (dict templates with `_comment` metadata). 3d only verifies it works
   with the new CQRS builders.
 - **Any change to ramses_rf** — 3d is ramses_cc-only. ramses_rf 0.58.3
   already provides everything we need.
+
+---
+
+## Phase 3e: ramses_rf-side gaps (BLOCKED, future)
+
+Both items are blocked on ramses_rf and neither affects ramses_cc
+functionality. They enhance the ecosystem (CLI usability, calendar
+support) but ramses_cc works fine without them.
+
+### 3e.1 — CLI compatibility (was 3d.5)
+
+`strip_and_map_schema()` exists in ramses_rf but has **no callers**
+inside ramses_rf itself (not Gateway, not ramses_cli). The CLI still
+uses `SCH_GLOBAL_SCHEMAS` with `PREVENT_EXTRA`, so `config.json` with
+`_commands`/`_bound` keys is rejected.
+
+This needs ramses_rf-side wiring:
+- Gateway/CLI should call `strip_and_map_schema()` before validation
+- A `commands` trait should be added to `SCH_TRAITS` if `_commands`
+  should survive into ramses_rf's internal state
+
+**Action:** Raise an issue on ramses_rf to coordinate with PWhite-Eng.
+No ramses_cc code change.
+
+### 3e.2 — 22B0 calendar builder (was 3d.7)
+
+No 22B0 (calendar) builder exists in ramses_rf 0.58.3. This is a
+future ramses_rf feature. No ramses_cc code change until the builder
+ships.
+
+**Unblock condition:** ramses_rf adds a 22B0 builder to
+`ramses_rf/commands/builders/`. Then ramses_cc can use it as the
+default for calendar commands, with `_commands` as override.

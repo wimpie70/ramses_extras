@@ -1,4 +1,4 @@
-testing (\* = done on ha-sim, A = automated via `tools/ha_sim_test.py`, 50 checks all passing, log report at `/tmp/ha_sim_test_log_report.txt`)
+testing (\* = done on ha-sim, A = automated via `tools/ha_sim_test/` package, 50 checks all passing, log report at `/tmp/ha_sim_test_log_report.txt`)
 
 Service checklist:
 
@@ -519,7 +519,7 @@ Verify faked REM added to FAN's remotes in schema
 Verify faked REM entity created
 Automation summary:
 
-- [A] = automated in `tools/ha_sim_test.py` (runs in ~6 min via websocket + REST API with 100x speed)
+- [A] = automated in `tools/ha_sim_test/` package (runs in ~6 min via websocket + REST API with 100x speed)
 - Log report: `/tmp/ha_sim_test_log_report.txt` (ERROR/WARNING analysis with expected-warning filtering)
 - 50 checks: 48 recipe checks + 2 log monitor checks (0 unexpected errors, 0 unexpected warnings)
 - Automated recipes: 1, 2, 3, 4, 5, 6/14, 7, 7b, 8, 9, 10, 11, 12, 14, 15, 16, 17

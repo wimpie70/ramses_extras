@@ -1,7 +1,7 @@
 # Phase 3 Plan: Commands in Schema + ramses_rf Alignment
 
 **Created:** Jul 2026
-**Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c DONE (PR 831, ready for review) — Phase 3d DESIGN (see `phase3d_design.md`; ramses_rf 0.58.3 landed, unblocked)
+**Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c DONE (in master) — Phase 3d DONE (`feature/phase3d-alignment`, ready for PR) — Phase 3e BLOCKED (ramses_rf-side)
 **Depends on:** Phase 2 (DONE, PR 764), Phase 2.5 (DONE, PR 810, migration scaffolding)
 **Phase 3d depends on:** ramses_rf 0.58.3 (DONE — `strip_and_map_traits()` + CQRS CommandDispatcher shipped)
 
@@ -9,8 +9,9 @@
 > - **ramses_cc Phase 3** (this doc) — commands in schema, our work.
 >   Split into **3a** (commands on REM, PR 811, DONE), **3b**
 >   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
->   DONE, PR 831 ready for review), and **3d** (ramses_rf alignment, DESIGN —
->   see `phase3d_design.md`; unblocked now that ramses_rf 0.58.3 landed).
+>   DONE, in master), and **3d** (ramses_rf alignment, DONE —
+>   `feature/phase3d-alignment`, ready for PR). **3e** (CLI compat +
+>   22B0 builder, BLOCKED on ramses_rf).
 >   See `phase3b_fan_commands_design.md`.
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — **TX Generation
 >   Parity + Transport Layer Decoupling**. Moves command-building and
@@ -113,7 +114,7 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
 | **What** | Commands move to schema as `_commands` | 3/3.25: TX Generation Parity + Transport Decoupling. 3.75: Identity Composition (deprecate `__class__`, "init and go") |
 | **Who** | wimpie70 / ramses_cc | PWhite-Eng / ramses_rf |
 | **Repo** | ramses_cc | ramses_rf |
-| **Status** | 3a DONE (PR 811), 3b DONE (merged), 3c DONE (PR 831), 3d DESIGN (see `phase3d_design.md`) | 3/3.25 DONE (shipped 0.58.3). 3.75 planned (Builder/Strategy scrapped) |
+| **Status** | 3a DONE (PR 811), 3b DONE (merged), 3c DONE (in master), 3d DONE (`feature/phase3d-alignment`), 3e BLOCKED (ramses_rf) | 3/3.25 DONE (shipped 0.58.3). 3.75 planned (Builder/Strategy scrapped) |
 | **Depends on** | 3a: strip workaround (DONE). 3b: no ramses_rf PR needed (packet templates). 3d: ramses_rf 0.58.3 (DONE) | Phase 2 complete (SQLite + RAM cache) |
 | **Blocks?** | No — 3a, 3b, 3c shipped independently. 3d benefits from ramses_rf 0.58.3 | No — shipped without ramses_cc's `_commands` alignment |
 | **Key change** | — | Builder/Strategy pattern **scrapped** (Jul 17 2026). Replaced by "init and go" from schema. `DeviceRole` composition scrapped. |
@@ -131,24 +132,26 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
   notification, entity attributes, bound/missing_class/orphaned detection,
   unified `check_all_mismatches()`. 6 bug fixes for owner handling and
   schema safeguard included.
-- **Phase 3d (DESIGN — see `phase3d_design.md`):** ramses_rf alignment —
-  5 actionable steps (2 blocked on ramses_rf):
+- **Phase 3d (DONE — `feature/phase3d-alignment`, ready for PR):**
+  ramses_rf alignment — 5 actionable steps, all complete:
   - **3d.8** — remove dead `ImportError` fallback (manifest pins 0.58.3)
   - **3d.3** — `strip_traits_for_validation` delegates stage 1 to ramses_rf
   - **3d.3b** — consolidate drifted stage-3 orchestration into one shared
-    function (orphan routing, disabled/skipped/foreign filtering, HGI
-    dropping); unify 3 separate `_HEAT_PREFIXES` definitions
+    function `_strip_and_orchestrate` (orphan routing, disabled/skipped/
+    foreign filtering, HGI dropping); unify 3 separate `_HEAT_PREFIXES`
+    definitions; fix `placed_in_lists` bug in coordinator path
   - **3d.4** — pass `_bound` as `str | list[str]` to ramses_rf (remove
     str-only guard in `_derive_known_list_from_schema`)
   - **3d.6** — precedence tests: `_commands` override wins over CQRS
     builder (test-only, no code change)
-  - BLOCKED: 3d.5 (CLI compat — ramses_rf has no `strip_and_map_schema`
-    callers), 3d.7 (22B0 calendar builder — not in 0.58.3)
 
-  Implementation order: 3d.8 → 3d.3 → 3d.3b → 3d.4 → 3d.6.
-  ramses_rf 0.58.3 shipped the dependencies (`strip_and_map_traits()` +
-  CQRS `CommandDispatcher`); CLI wiring of the pipeline is NOT shipped
-  (blocked, ramses_rf-side).
+  1103 tests pass, ruff + mypy clean. Net -130 lines.
+  See `phase3d_design.md` and `phase3d_pr.md`.
+- **Phase 3e (BLOCKED on ramses_rf):** CLI compat + 22B0 builder —
+  neither affects ramses_cc. Split out from 3d so 3d can merge now.
+  - **3e.1** (was 3d.5) — CLI compat: ramses_rf has no callers for
+    `strip_and_map_schema`; needs ramses_rf-side wiring
+  - **3e.2** (was 3d.7) — 22B0 calendar builder: no builder in 0.58.3
 
 **Key insight:** ramses_cc's Phase 3a shipped using the same
 `_strip_schema_extensions` workaround as Phase 2. Phase 3b moved commands
@@ -703,13 +706,13 @@ scrapped, but TX generation CQRS builders (22F1, 22F7, etc.) and
 | 3d.0 | Bump ramses_rf dependency to 0.58.3 | DONE — manifest already pins `ramses-rf==0.58.3` (commit `00bdaca`) |
 | 3d.1 | Coordinate TX strategy profile key names with PWhite-Eng (per-manufacturer TX profiles, NOT device identity) | N/A — strategy profiles not yet implemented in ramses_rf |
 | 3d.2 | `_class` stays as schema identity trait — no mapping to strategy names needed (DeviceRole scrapped) | N/A |
-| 3d.3 | Consolidate stage-1 stripping: `strip_traits_for_validation()` (schemas.py) still has an inline `_strip_traits` duplicate — delegate to ramses_rf's `strip_traits()` like the coordinator already does. **NOT** `strip_and_map_schema()` — `SCH_GLOBAL_SCHEMAS` rejects mapped trait names (`class`, `bound`, `alias`); those belong in the known_list, not the schema | DESIGN — coordinator side already delegates (stage 1 via `strip_traits`, mapping via `strip_and_map_traits` in `_derive_known_list_from_schema`) |
-| 3d.3b | Consolidate duplicated stage-3 logic: `strip_traits_for_validation()` and `_strip_schema_extensions()` both do orphan routing / trait-only drop but have drifted (coordinator also handles disabled/skipped/foreign owner, HGI dropping, `None` values). Single shared function + single `_HEAT_PREFIXES` definition (currently 3 prefix sets across the two files) | DESIGN — validation-passing schemas must match what the gateway receives |
-| 3d.4 | Pass `_bound` as `str \| list[str]` to ramses_rf — **code change, not just verification**: `_derive_known_list_from_schema` currently drops list-valued `bound` (coordinator.py ~1370-1380). Also re-check the "remove `bound` if no `class`" sanitizer (~1420-1429) — `SCH_TRAITS_HVAC` now defaults `class` to `HVC` | DESIGN — `SCH_TRAITS_HVAC` accepts `str \| list[str]` in 0.58.2+ (verified config.py:89-93) |
-| 3d.5 | CLI can use `_commands`/`_bound` in config.json | BLOCKED (ramses_rf-side) — `strip_and_map_schema()` exists but has NO callers inside ramses_rf (Gateway or CLI); `_commands` is stripped, not mapped; no `commands` trait in `SCH_TRAITS`. Coordinate with PWhite-Eng |
-| 3d.6 | Verify CQRS TX builders (22F1, 22F7, 2411) work as defaults, `_commands` overrides them. Add an end-to-end precedence test (`set_fan_mode` with and without `_commands` override) — the precedence lives in ramses_cc and is untested against the new builders | DESIGN (test-only, no code change) — builders available in 0.58.3, ramses_cc `services.py` already uses `build_dto()` for fan params |
-| 3d.7 | 22B0 (calendar) builder — wait for ramses_rf | BLOCKED — no builder exists yet in 0.58.3 |
-| 3d.8 | Cleanup: remove the `ImportError` fallback for `strip_and_map_traits`/`strip_traits` in coordinator.py (~40 lines, comment says "< 0.59.0" but functions shipped in 0.58.2; manifest pins `==0.58.3`) | DESIGN — trivial, no risk |
+| 3d.3 | Consolidate stage-1 stripping: `strip_traits_for_validation()` (schemas.py) still has an inline `_strip_traits` duplicate — delegate to ramses_rf's `strip_traits()` like the coordinator already does. **NOT** `strip_and_map_schema()` — `SCH_GLOBAL_SCHEMAS` rejects mapped trait names (`class`, `bound`, `alias`); those belong in the known_list, not the schema | DONE — delegates to ramses_rf's `strip_traits` |
+| 3d.3b | Consolidate duplicated stage-3 logic: `strip_traits_for_validation()` and `_strip_schema_extensions()` both do orphan routing / trait-only drop but have drifted (coordinator also handles disabled/skipped/foreign owner, HGI dropping, `None` values). Single shared function + single `_HEAT_PREFIXES` definition (currently 3 prefix sets across the two files) | DONE — shared `_strip_and_orchestrate()` in schemas.py; both callers use it; `placed_in_lists` bug fixed |
+| 3d.4 | Pass `_bound` as `str \| list[str]` to ramses_rf — **code change, not just verification**: `_derive_known_list_from_schema` currently drops list-valued `bound` (coordinator.py ~1370-1380). Also re-check the "remove `bound` if no `class`" sanitizer (~1420-1429) — `SCH_TRAITS_HVAC` now defaults `class` to `HVC` | DONE — str-only guard removed; sanitizer only strips bound from heat devices |
+| 3d.5 | CLI can use `_commands`/`_bound` in config.json → moved to 3e.1 | BLOCKED (ramses_rf-side) — moved to Phase 3e |
+| 3d.6 | Verify CQRS TX builders (22F1, 22F7, 2411) work as defaults, `_commands` overrides them. Add an end-to-end precedence test (`set_fan_mode` with and without `_commands` override) — the precedence lives in ramses_cc and is untested against the new builders | DONE — 4 precedence tests added (test-only, no code change) |
+| 3d.7 | 22B0 (calendar) builder — wait for ramses_rf → moved to 3e.2 | BLOCKED — moved to Phase 3e |
+| 3d.8 | Cleanup: remove the `ImportError` fallback for `strip_and_map_traits`/`strip_traits` in coordinator.py (~40 lines, comment says "< 0.59.0" but functions shipped in 0.58.2; manifest pins `==0.58.3`) | DONE — ~40 lines removed |
 
 #### Phase 3d implementation plan
 
