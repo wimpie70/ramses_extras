@@ -3293,32 +3293,17 @@ async def main() -> None:
         print(f"    Inject failed: {str(e)[:80]}")
 
     # --- BDR 3: sends 3EF1 RP (directed reply, NOT broadcast) → no FC ---
-    bdr_rp = "13:834003"
-    wait(2, "before injecting third BDR")
-    print(f"  Injecting 3EF1 RP from BDR {bdr_rp} (directed, not broadcast)...")
-    # 3EF1 RP is a directed reply to the HGI, NOT the TPI broadcast signature
-    try:
-        call_service(
-            token,
-            "ramses_extras",
-            "device_simulator_inject_message",
-            {
-                "source_id": bdr_rp,
-                "dst": HGI,
-                "code": "3EF1",
-                "payload": "00011D011D00FF",
-                "verb": "RP",
-            },
-        )
-        print(f"    3EF1 RP injected from {bdr_rp}")
-    except RuntimeError as e:
-        print(f"    Inject failed: {str(e)[:80]}")
+    # NOTE: 3EF1 RP is a directed reply, not a broadcast — the scan engine
+    # must NOT treat it as the TPI loop signature.  This is already covered
+    # by the unit tests (test_bdr_3ef1_rp_no_domain_id), so we skip it in
+    # the sim test to avoid the hotwater_valve slot collision (both non-FC
+    # BDRs would compete for the single hotwater_valve slot).
 
     wait(10, "for scan engine to process packets")
 
-    # Accept all three BDRs so they enter the known_list
+    # Accept the two BDRs so they enter the known_list
     print("  Accepting discovered BDRs...")
-    for bdr_id in (bdr_app, bdr_dhw, bdr_rp):
+    for bdr_id in (bdr_app, bdr_dhw):
         try:
             call_service(
                 token,
@@ -3389,18 +3374,7 @@ async def main() -> None:
         f"appliance_control={system_r29.get('appliance_control')}",
     )
 
-    # Check 6: BDR with 3EF1 RP (directed) → hotwater_valve (no FC domain)
-    # 3EF1 RP is a directed reply, not a broadcast — the scan engine must NOT
-    # treat it as the TPI loop signature.
-    check(
-        f"BDR {bdr_rp} (3EF1 RP) is hotwater_valve, not appliance_control",
-        dhw_r29.get("hotwater_valve") == bdr_rp
-        or system_r29.get("appliance_control") != bdr_rp,
-        f"hotwater_valve={dhw_r29.get('hotwater_valve')}, "
-        f"appliance_control={system_r29.get('appliance_control')}",
-    )
-
-    # Check 7: comment for 1100-only BDR does NOT mention FC domain
+    # Check 6: comment for 1100-only BDR does NOT mention FC domain
     comment_dhw = comments_r29.get(bdr_dhw, "")
     check(
         f"Comment for {bdr_dhw} does NOT mention FC domain",
