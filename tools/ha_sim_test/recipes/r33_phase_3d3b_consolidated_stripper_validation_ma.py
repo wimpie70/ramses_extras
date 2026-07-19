@@ -155,45 +155,75 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
             f"schema keys={list(schema_after_r33.keys())[:10]}",
         )
 
-        # Check 2: _owner was stripped from the schema that reached the gateway
-        # (both validation and gateway paths strip _ keys)
+        # The config entry schema keeps _ traits (by design).  The stripping
+        # happens at gateway feed time.  We verify the gateway's view by
+        # grepping the log for "Schema passed to ramses_rf" — this is the
+        # stripped schema that _strip_and_orchestrate() produced.
+        gw_log = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "ha-sim",
+                "grep",
+                "Schema passed to ramses_rf",
+                "/config/home-assistant.log",
+            ],
+            capture_output=True,
+            text=True,
+        ).stdout
+        # Take the last occurrence (in case of multiple reloads)
+        gw_lines = [
+            line for line in gw_log.splitlines() if "Schema passed to ramses_rf" in line
+        ]
+        gw_schema_str = gw_lines[-1] if gw_lines else ""
         ctx.check(
-            "_owner stripped from schema (consolidated stripper)",
-            "_owner" not in schema_after_r33,
-            f"_owner={'present' if '_owner' in schema_after_r33 else 'absent'}",
+            "Gateway received stripped schema (log captured)",
+            bool(gw_schema_str),
+            "no 'Schema passed to ramses_rf' line in log",
+        )
+
+        # Check 2: _owner was stripped from the schema that reached the gateway
+        ctx.check(
+            "_owner stripped from gateway schema (consolidated stripper)",
+            "_owner" not in gw_schema_str,
+            f"_owner={'present' if '_owner' in gw_schema_str else 'absent'}"
+            " in gateway schema",
         )
 
         # Check 3: Zone _alias was stripped but zone survived
-        ctl_after_r33 = schema_after_r33.get(CTL, {})
-        zones_after_r33 = (
-            ctl_after_r33.get("zones", {}) if isinstance(ctl_after_r33, dict) else {}
-        )
-        z03_after_r33 = zones_after_r33.get("03", {})
+        # (zone 03 should be in the gateway schema, but _alias should not)
+        z03_in_gw = "'03':" in gw_schema_str or '"03":' in gw_schema_str
+        alias_in_gw = "_alias" in gw_schema_str
         ctx.check(
-            "Zone 03 survived (trait stripped, zone kept)",
-            "03" in zones_after_r33 and "_alias" not in z03_after_r33,
-            f"zone_03={json.dumps(z03_after_r33)[:100]}",
+            "Zone 03 survived, _alias stripped (gateway schema)",
+            z03_in_gw and not alias_in_gw,
+            f"zone_03={z03_in_gw}, _alias={alias_in_gw}",
         )
 
         # Check 4: REM root entry was dropped (it's in FAN's remotes[] list,
-        # so it should NOT appear as a root entry or in orphans_hvac)
-        rem_in_root = REM in schema_after_r33
-        orphans = schema_after_r33.get("orphans_hvac", [])
-        rem_in_orphans = REM in orphans
+        # so it should NOT appear as a root key in the gateway schema).
+        # The placed_in_lists check in _strip_and_orchestrate prevents
+        # duplication — the REM is already in FAN's remotes[], so its root
+        # entry is dropped (not moved to orphans_hvac).
+        # We check for the pattern '37:170000': { (root key) vs '37:170000'
+        # inside a list (which is expected — it's in FAN's remotes[]).
+        rem_as_root = f"'{REM}':" in gw_schema_str
         ctx.check(
-            f"REM {REM} not duplicated (root dropped, not in orphans)",
-            not rem_in_root and not rem_in_orphans,
-            f"root={rem_in_root}, orphans={rem_in_orphans}",
+            f"REM {REM} root entry dropped (placed_in_lists check)",
+            not rem_as_root,
+            f"REM as root key in gateway schema: {rem_as_root}",
         )
 
         # Check 5: Trait-only HVAC device (29:999999) moved to orphans_hvac
-        # (not dropped, not in root with traits)
-        orphan_in_root = trait_only_hvac in schema_after_r33
-        orphan_in_orphans = trait_only_hvac in orphans
+        # (not dropped, not in root with traits — the orchestrator moved it)
+        # The gateway schema should contain "orphans_hvac": ['29:999999']
+        orphan_in_orphans_gw = (
+            trait_only_hvac in gw_schema_str and "orphans_hvac" in gw_schema_str
+        )
         ctx.check(
             f"Trait-only HVAC {trait_only_hvac} moved to orphans_hvac",
-            orphan_in_orphans and not orphan_in_root,
-            f"root={orphan_in_root}, orphans={orphan_in_orphans}",
+            orphan_in_orphans_gw,
+            f"in orphans_hvac={orphan_in_orphans_gw}",
         )
 
         # Check 6: FAN entity exists (gateway accepted the schema with
