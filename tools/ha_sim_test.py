@@ -3383,6 +3383,318 @@ async def main() -> None:
     )
 
     # =====================================================================
+    # RECIPE 30: Phase 3d.4 — multi-REM FAN with _bound as list[str]
+    # =====================================================================
+    log_section("Recipe 30: Phase 3d.4 — multi-REM FAN _bound as list[str]")
+
+    # This recipe verifies that a FAN with _bound: ["37:170000", "37:170001"]
+    # (list-valued, multi-REM binding) reaches ramses_rf's known_list as
+    # bound: ["37:170000", "37:170001"] (not dropped by the str-only guard
+    # that was removed in 3d.4).
+    #
+    # We load a custom profile with a second REM bound to the FAN, then
+    # verify the known_list has bound as a list.
+
+    rem2 = "37:170001"  # second REM (the first is REM = "37:170000")
+    print(f"  Loading profile with FAN _bound=[{REM}, {rem2}] (list-valued)...")
+    schema_r30 = dict(MIXED_SCHEMA)
+    fan_r30 = dict(schema_r30[FAN])
+    fan_r30["_bound"] = [REM, rem2]
+    fan_r30["_class"] = "FAN"
+    fan_r30["remotes"] = [REM, rem2]
+    schema_r30[FAN] = fan_r30
+    # Add the second REM to the schema with _faked + _class
+    schema_r30[rem2] = {"_faked": True, "_class": "REM", "_bound": FAN}
+    # Also add to known_list
+    kl_r30 = dict(_MIXED_KL)
+    kl_r30[rem2] = {"class": "REM"}
+    # _mixed_yaml uses _MIXED_KL internally, so we need a custom YAML
+    import yaml as _yaml_r30
+
+    profile_r30 = {
+        "known_list": kl_r30,
+        "_enforce_known_list": {"enabled": True},
+        "_schema": schema_r30,
+    }
+    yaml_text_r30 = _yaml_r30.dump(
+        profile_r30, default_flow_style=False, sort_keys=False
+    )
+    try:
+        await load_profile_yaml(token, yaml_text_r30)
+        print("  Profile loaded with list-valued _bound")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {str(e)[:80]}")
+    wait(15, "for ramses_cc reload with list _bound")
+    token = get_token()
+    wait(5, "for ramses_cc to initialize")
+
+    # Activate FAN + both REMs for heartbeats
+    for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (rem2, "REM2")]:
+        try:
+            await ws_send(
+                token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": dev_id,
+                },
+            )
+            print(f"    {name} activated")
+        except RuntimeError:
+            pass
+    wait(10, "for heartbeats + schema population")
+
+    # Trigger sync to populate known_list from schema
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError as e:
+        print(f"  sync_topology failed: {e}")
+    wait(10, "for sync_learned_topology")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save_client_state")
+
+    # Check 1: FAN's known_list entry has bound as a list
+    # NOTE: get_known_list() reads the config entry's USER known_list, not
+    # the derived known_list that ramses_rf receives.  The derived known_list
+    # is computed at runtime from schema + user overrides and passed to
+    # ramses_rf's Gateway in memory (not persisted).  So we verify:
+    # - Schema has _bound as list (Check 3 below)
+    # - FAN climate entity exists (Check 5)
+    # - No validation errors about 'bound' in the log (Check 6)
+    # The config entry known_list only has the user's overrides (class=FAN).
+    kl_after_r30 = get_known_list()
+    fan_kl_r30 = kl_after_r30.get(FAN, {})
+    print(f"  FAN config-entry known_list: {json.dumps(fan_kl_r30)[:200]}")
+    check(
+        f"FAN {FAN} config-entry known_list has class=FAN",
+        fan_kl_r30.get("class") == "FAN",
+        f"class={fan_kl_r30.get('class')}",
+    )
+
+    # Check 3: Schema has FAN with _bound as list (survived reload)
+    schema_after_r30 = get_schema_retry()
+    fan_schema_r30 = schema_after_r30.get(FAN, {})
+    check(
+        f"FAN {FAN} schema has _bound as list",
+        isinstance(fan_schema_r30.get("_bound"), list)
+        and REM in fan_schema_r30["_bound"]
+        and rem2 in fan_schema_r30["_bound"],
+        f"_bound={fan_schema_r30.get('_bound')}",
+    )
+
+    # Check 4: both REMs are in FAN's remotes list
+    fan_remotes_r30 = fan_schema_r30.get("remotes", [])
+    check(
+        "FAN remotes list has both REMs",
+        REM in fan_remotes_r30 and rem2 in fan_remotes_r30,
+        f"remotes={fan_remotes_r30}",
+    )
+
+    # Check 5: FAN climate entity exists (ramses_rf accepted the schema
+    # with list-valued _bound — if SCH_TRAITS_HVAC rejected it, the FAN
+    # entity would not be created)
+    entities_r30 = get_entities(token)
+    fan_entity_r30 = None
+    for s in entities_r30:
+        eid = s.get("entity_id", "")
+        if "climate" in eid and "32_150000" in eid:
+            fan_entity_r30 = s
+            break
+    check(
+        "FAN climate entity exists (list _bound accepted by ramses_rf)",
+        fan_entity_r30 is not None,
+        "no climate entity matching FAN",
+    )
+
+    # Check 6: no validation errors about 'bound' in the log
+    raw_log_r30 = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "ha-sim",
+            "grep",
+            "-i",
+            "bound",
+            "/config/home-assistant.log",
+        ],
+        capture_output=True,
+        text=True,
+    ).stdout
+    bound_errors = [
+        line
+        for line in raw_log_r30.splitlines()
+        if "ERROR" in line
+        and "bound" in line.lower()
+        and "bound method" not in line
+        and "bound_to" not in line
+    ]
+    check(
+        "No ERROR logs about _bound trait (list-valued _bound accepted)",
+        len(bound_errors) == 0,
+        f"{len(bound_errors)} error lines about _bound trait",
+    )
+
+    # =====================================================================
+    # RECIPE 31: Phase 3d.6 — _commands override precedence (E2E)
+    # =====================================================================
+    log_section("Recipe 31: Phase 3d.6 — _commands override precedence (E2E)")
+
+    # This recipe verifies that set_fan_mode uses the FAN's _commands
+    # (dict template) instead of the native ramses_rf builder.  We inject
+    # a custom _commands entry for "low" on the FAN, call set_fan_mode,
+    # and verify the custom packet is sent (not the native one).
+    #
+    # We can't easily intercept the sent packet in ha-sim, but we CAN
+    # verify:
+    # 1. The climate entity exists and has fan_modes including "low"
+    # 2. set_fan_mode("low") succeeds (no error)
+    # 3. The FAN's _commands in the schema has the dict template
+    # 4. The log shows "Intercepted fan_mode" (the override path)
+
+    print("  Loading profile with FAN _commands dict template for 'low'...")
+    schema_r31 = dict(MIXED_SCHEMA)
+    fan_r31 = dict(schema_r31[FAN])
+    fan_r31["_bound"] = [REM]
+    fan_r31["_class"] = "FAN"
+    fan_r31["remotes"] = [REM]
+    fan_r31["_commands"] = {
+        "_comment": "Test override commands",
+        "low": {"verb": "W", "code": "22F1", "payload": "000406"},
+    }
+    schema_r31[FAN] = fan_r31
+    schema_r31[REM] = {"_faked": True, "_class": "REM", "_bound": FAN}
+    profile_r31 = {
+        "known_list": dict(_MIXED_KL),
+        "_enforce_known_list": {"enabled": True},
+        "_schema": schema_r31,
+    }
+    yaml_text_r31 = _yaml_r30.dump(
+        profile_r31, default_flow_style=False, sort_keys=False
+    )
+    try:
+        await load_profile_yaml(token, yaml_text_r31)
+        print("  Profile loaded with _commands dict template")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {str(e)[:80]}")
+    wait(15, "for ramses_cc reload with _commands")
+    token = get_token()
+    wait(5, "for ramses_cc to initialize")
+
+    # Activate FAN + REM for heartbeats
+    for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (CO2, "CO2")]:
+        try:
+            await ws_send(
+                token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": dev_id,
+                },
+            )
+            print(f"    {name} activated")
+        except RuntimeError:
+            pass
+    wait(10, "for heartbeats + schema population")
+
+    # Trigger sync
+    try:
+        call_service(token, "ramses_cc", "sync_topology")
+    except RuntimeError as e:
+        print(f"  sync_topology failed: {e}")
+    wait(10, "for sync_learned_topology")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for save_client_state")
+
+    # Check 1: FAN schema has _commands with dict template for "low"
+    schema_after_r31 = get_schema_retry()
+    fan_schema_r31 = schema_after_r31.get(FAN, {})
+    fan_commands_r31 = fan_schema_r31.get("_commands", {})
+    check(
+        f"FAN {FAN} schema has _commands.low as dict template",
+        isinstance(fan_commands_r31.get("low"), dict)
+        and fan_commands_r31["low"].get("code") == "22F1"
+        and fan_commands_r31["low"].get("payload") == "000406",
+        f"_commands.low={fan_commands_r31.get('low')}",
+    )
+
+    # Check 2: climate entity exists for FAN
+    entities_r31 = get_entities(token)
+    climate_entity = None
+    for s in entities_r31:
+        eid = s.get("entity_id", "")
+        if "climate" in eid and ("32_150000" in eid or "fan_32_150000" in eid):
+            climate_entity = s
+            break
+    climate_eid = climate_entity["entity_id"] if climate_entity else "None"
+    print(f"  Climate entity for FAN: {climate_eid}")
+    check(
+        "Climate entity exists for FAN",
+        climate_entity is not None,
+        f"no climate entity matching FAN {FAN}",
+    )
+
+    if climate_entity:
+        # Check 3: fan_modes includes "low" (from _commands)
+        fan_modes = climate_entity.get("attributes", {}).get("fan_modes", [])
+        print(f"  fan_modes: {fan_modes}")
+        check(
+            "fan_modes includes 'low' (from _commands)",
+            "low" in fan_modes,
+            f"fan_modes={fan_modes}",
+        )
+
+        # Check 4: set_fan_mode("low") succeeds — the override path should
+        # build the packet from the dict template and send it.
+        # We capture the log before/after to verify "Intercepted fan_mode"
+        # appears (the override path logs this).
+        print(f"  Calling climate.set_fan_mode(low) on {climate_eid}...")
+        try:
+            call_service(
+                token,
+                "climate",
+                "set_fan_mode",
+                {"entity_id": climate_eid, "fan_mode": "low"},
+            )
+            print("  set_fan_mode succeeded")
+            check("set_fan_mode(low) succeeds with _commands override", True, "")
+        except RuntimeError as e:
+            check(
+                "set_fan_mode(low) succeeds with _commands override",
+                False,
+                str(e)[:120],
+            )
+
+        wait(3, "for log to flush")
+
+        # Check 5: log shows "Intercepted fan_mode" (override path was taken)
+        # log_monitor may not capture INFO by default, so we read the raw
+        # log file directly.  Use grep instead of tail — the log may have
+        # rotated past the last 100 lines by the time we check.
+        raw_log_result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "ha-sim",
+                "grep",
+                "Intercepted fan_mode",
+                "/config/home-assistant.log",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        raw_log_r31 = raw_log_result.stdout
+        intercepted = "Intercepted fan_mode" in raw_log_r31
+        check(
+            "Log shows 'Intercepted fan_mode' (override path taken)",
+            intercepted,
+            f"{'found' if intercepted else 'NOT found in last 100 log lines'}",
+        )
+
+    # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run
     # =====================================================================
     log_section("Log Report: ERROR/WARNING analysis")
