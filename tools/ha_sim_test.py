@@ -17,6 +17,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime as dt
+from datetime import timedelta
 
 HA_URL = "http://localhost:8124"
 HA_USER = "admin"
@@ -633,6 +635,59 @@ def get_ramses_storage() -> dict:
     if result.returncode != 0:
         return {}
     return json.loads(result.stdout).get("data", {})
+
+
+def write_ramses_storage(data: dict) -> bool:
+    """Write the data portion back to .storage/ramses_cc in the container.
+
+    The container MUST be stopped before calling this (HA's storage is not
+    safe to write while the container is running — HA will overwrite our
+    edit on shutdown).  Reads the current file to preserve the version/key
+    envelope, replaces the ``data`` key, writes a temp file locally, then
+    ``docker cp``s it into the container.
+
+    :return: True if the write succeeded.
+    """
+    # Read the current full file (envelope: version/minor_version/key/data)
+    result = subprocess.run(
+        ["docker", "exec", "ha-sim", "cat", "/config/.storage/ramses_cc"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(
+            f"  write_ramses_storage: failed to read current file: {result.stderr[:80]}"
+        )
+        return False
+    envelope = json.loads(result.stdout)
+    envelope["data"] = data
+    tmp_path = "/tmp/ramses_cc_storage.json"
+    with open(tmp_path, "w") as f:
+        json.dump(envelope, f, indent=2)
+    cp = subprocess.run(
+        ["docker", "cp", tmp_path, "ha-sim:/config/.storage/ramses_cc"],
+        capture_output=True,
+        text=True,
+    )
+    if cp.returncode != 0:
+        print(f"  write_ramses_storage: docker cp failed: {cp.stderr[:80]}")
+        return False
+    return True
+
+
+def find_battery_entity(entities: list, device_id: str) -> dict | None:
+    """Find the battery binary_sensor entity for a ramses device.
+
+    The entity_id slug is built from the device class + id + ``battery_low``
+    (e.g. ``binary_sensor.trv_04_150003_battery_low``), so we match on the
+    normalized device id AND ``battery`` being present in the entity_id.
+    """
+    normalized = device_id.replace(":", "_")
+    for s in entities:
+        eid = s.get("entity_id", "")
+        if "battery" in eid and normalized in eid:
+            return s
+    return None
 
 
 def _get_ramses_cc_entry_id() -> str:
@@ -3693,6 +3748,168 @@ async def main() -> None:
             intercepted,
             f"{'found' if intercepted else 'NOT found in last 100 log lines'}",
         )
+
+    # =====================================================================
+    # RECIPE 32: Battery (1060) cache restore — stale 1060 must survive
+    # =====================================================================
+    # Same regression class as issue 822 / 0004 zone names: 1060
+    # (device_battery) was in HIGH_VOLUME_STATUS_CODES but is sent only
+    # 1/day, so a cached 1060 older than 1h was skipped by
+    # _restore_cached_packets on restart and the battery binary sensor went
+    # Unknown.  Tracked in issue 840 (with before/after screenshots +
+    # ramses_cc.zip from before restart).
+    #
+    # The ha-sim TRV emits 1060 every 13.5s (TRV.yaml), so the bug does NOT
+    # manifest naturally — we must age the cached 1060 timestamps in
+    # .storage/ramses_cc to >1h ago before restarting, reproducing the
+    # real-world condition (the only 1060 in cache is >1h old because
+    # battery devices send 1/day).
+    log_section("Recipe 32: Battery 1060 cache restore (stale >1h, issue 840)")
+
+    # 1. Load mixed profile + activate CTL/TRV/DHW for heartbeats
+    print("  Loading mixed profile (CTL/TRV/DHW for 1060 traffic)...")
+    try:
+        await ws_send(
+            token,
+            {
+                "type": "ramses_extras/device_simulator/load_profile",
+                "profile": "mixed",
+                "speed": 0.01,
+                "preload_schema": True,
+                "reload_ramses_cc": True,
+                "enable_auto_answer": True,
+            },
+        )
+        print("  mixed profile loaded")
+    except RuntimeError as e:
+        print(f"  Profile load failed: {e}")
+    wait(15, "for ramses_cc reload with mixed profile")
+    token = get_token()
+    wait(5, "for ramses_cc to initialize")
+
+    for dev_id, name in [(CTL, "CTL"), (TRV, "TRV"), (DHW, "DHW")]:
+        try:
+            await ws_send(
+                token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": dev_id,
+                },
+            )
+            print(f"    {name} activated")
+        except RuntimeError:
+            pass
+    wait(15, "for 1060 battery packets to populate message_store")
+
+    # 2. Force a fresh 1060 I from TRV (battery 100%, low=0)
+    #    schema: ^0[0-9A-F](FF|[0-9A-F]{2})0[01]$  (idx, level, low_flag)
+    #    payload 006400 = idx 00, level 64 (100%), low-flag 00
+    print(f"  Injecting 1060 I from TRV {TRV} (battery 100%, low=0)...")
+    try:
+        call_service(
+            token,
+            "ramses_extras",
+            "device_simulator_inject_message",
+            {
+                "source_id": TRV,
+                "code": "1060",
+                "payload": "006400",
+                "verb": "I",
+            },
+        )
+        print("    1060 I injected")
+    except RuntimeError as e:
+        print(f"    Inject failed: {str(e)[:80]}")
+    wait(5, "for 1060 to process")
+    try:
+        call_service(token, "ramses_cc", "force_update")
+    except RuntimeError:
+        pass
+    wait(5, "for entity state write")
+
+    # 3. Verify the TRV battery binary sensor has a state before restart
+    entities_r32 = get_entities(token)
+    bat_before = find_battery_entity(entities_r32, TRV)
+    bat_state_before = bat_before.get("state") if bat_before else None
+    bat_eid = bat_before["entity_id"] if bat_before else "None"
+    print(f"  Battery entity: {bat_eid}  state={bat_state_before!r}")
+    check(
+        "TRV battery binary sensor has state before restart",
+        bat_before is not None and bat_state_before in ("on", "off"),
+        f"state={bat_state_before!r} entity={bat_eid}",
+    )
+
+    # 4. Age every cached 1060 packet to 2h ago in .storage/ramses_cc.
+    #    This reproduces the real-world condition: the only 1060 in cache
+    #    is >1h old (battery devices send 1/day).  Other codes keep their
+    #    real timestamps so the rest of the schema restores normally.
+    #    We must stop ha-sim before writing (HA overwrites storage on
+    #    shutdown), then start it again to trigger _restore_cached_packets.
+    storage_r32 = get_ramses_storage()
+    packets_r32 = storage_r32.get("client_state", {}).get("packets", {})
+    n_1060 = sum(
+        1
+        for p in packets_r32.values()
+        if isinstance(p, dict) and p.get("code") == "1060"
+    )
+    print(f"  Found {n_1060} cached 1060 packets to age")
+    check(
+        "Cached 1060 packets exist to age",
+        n_1060 > 0,
+        f"found {n_1060} 1060 in cache (need at least 1)",
+    )
+
+    aged_ts = (dt.now(tz=dt.UTC) - timedelta(hours=2)).isoformat(
+        timespec="microseconds"
+    )
+    new_packets_r32: dict = {}
+    for ts, pkt in packets_r32.items():
+        if isinstance(pkt, dict) and pkt.get("code") == "1060":
+            # Collapse all 1060 to one aged timestamp (only the latest
+            # matters for restore — ramses_cc keeps the newest per code)
+            new_packets_r32[aged_ts] = pkt
+        else:
+            new_packets_r32[ts] = pkt
+    storage_r32["client_state"]["packets"] = new_packets_r32
+
+    # Capture logs before stop (docker stop wipes the in-memory log buffer
+    # only on restart, but capture anyway for completeness)
+    log_monitor.capture_before_restart("R32 pre-restart")
+
+    print("  Stopping ha-sim to write aged .storage/ramses_cc...")
+    subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
+    wait(2, "for container to stop")
+
+    wrote = write_ramses_storage(storage_r32)
+    check(
+        "Aged .storage/ramses_cc written (1060 timestamps → 2h ago)",
+        wrote,
+        "write_ramses_storage returned False",
+    )
+
+    print("  Starting ha-sim to trigger _restore_cached_packets...")
+    subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
+    wait(20, "for ha-sim to start up")
+    log_monitor.reset_baseline()
+    token = get_token()
+    wait(10, "for ramses_cc to restore cached packets + create entities")
+
+    # 5. Check the battery binary sensor state after restart.
+    #    WITHOUT FIX (1060 in HIGH_VOLUME_STATUS_CODES): the aged 1060 is
+    #      >1h old → skipped by _restore_cached_packets → message_store has
+    #      no 1060 → battery entity = Unknown/None.
+    #    WITH FIX (1060 removed from HIGH_VOLUME_STATUS_CODES): the aged
+    #      1060 is restored → battery entity retains its state.
+    entities_r32_after = get_entities(token)
+    bat_after = find_battery_entity(entities_r32_after, TRV)
+    bat_state_after = bat_after.get("state") if bat_after else None
+    bat_eid_after = bat_after["entity_id"] if bat_after else "None"
+    print(f"  Battery entity after restart: {bat_eid_after}  state={bat_state_after!r}")
+    check(
+        "TRV battery binary sensor retained state after restart (stale 1060)",
+        bat_after is not None and bat_state_after in ("on", "off"),
+        f"state={bat_state_after!r} (Unknown/None = bug present, issue 840)",
+    )
 
     # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run

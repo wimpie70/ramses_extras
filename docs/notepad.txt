@@ -206,12 +206,18 @@ TypeError: Either a port_name or an input_file must be specified
 2026-05-05 16:04:23.891 INFO (MainThread) [homeassistant.config_entries] Config entry 'RAMSES RF' for ramses_cc integration not ready yet: Setup failed: Either a port_name or an input_file must be specified; Retrying in 5 seconds
 
 ---
-## PREP: Recipe 32 — Battery (1060) cache restore regression (issue 822 comment)
+## PREP: Recipe 32 — Battery (1060) cache restore regression (issue 840)
 
 **Status**: DESIGN ONLY — do NOT edit ha_sim_test.py yet (another thread is working on it).
-**Trigger**: https://github.com/ramses-rf/ramses_cc/issues/822#issuecomment-5011291025
-            (peternash: "battery sensors not being cached (or at least only a small
-            percentage) and going Unknown again after a period of time")
+**Tracked at**: https://github.com/ramses-rf/ramses_cc/issues/840
+              ("0.58.3 - Evohome battery states not restoring from cache")
+**Originally reported in**: https://github.com/ramses-rf/ramses_cc/issues/822#issuecomment-5011291025
+              (peternash: "battery sensors not being cached (or at least only a small
+              percentage) and going Unknown again after a period of time")
+**Evidence attached to 840**: before/after screenshots + ramses_cc.zip +
+              ramses.db.zip from immediately before the restart, plus HA +
+              packet logs from after. Confirms: battery states populated
+              before restart → Unknown after → up to 24h to recover.
 
 ### Root cause (CONFIRMED — same pattern as the 0004/HGI fix already landed)
 
@@ -248,10 +254,12 @@ age the cached 1060 timestamps in `.storage/ramses_cc` before restarting.
     # Same regression class as issue 822 / 0004 zone names: 1060 is in
     # HIGH_VOLUME_STATUS_CODES but is sent only 1/day, so a cached 1060
     # older than 1h is skipped by _restore_cached_packets on restart and
-    # the battery binary sensor goes Unknown.  We force the real-world
-    # condition by ageing the 1060 timestamps in .storage/ramses_cc to
-    # >1h ago, then restart ha-sim and check the battery entity.
-    log_section("Recipe 32: Battery 1060 cache restore (stale >1h, issue 822)")
+    # the battery binary sensor goes Unknown.  Tracked in issue 840
+    # (with before/after screenshots + ramses_cc.zip from before restart).
+    # We force the real-world condition by ageing the 1060 timestamps in
+    # .storage/ramses_cc to >1h ago, then restart ha-sim and check the
+    # battery entity.
+    log_section("Recipe 32: Battery 1060 cache restore (stale >1h, issue 840)")
 
     # 1. Load mixed profile + activate CTL/TRV/DHW for heartbeats
     await load_profile_yaml(token, _mixed_yaml(), speed=0.01)
@@ -327,4 +335,4 @@ age the cached 1060 timestamps in `.storage/ramses_cc` before restarting.
 ### Files to touch (when the other thread releases ha_sim_test.py)
 - tools/ha_sim_test.py — append Recipe 32 after Recipe 31 (line ~3645)
 - ramses_rf: src/ramses_rf/const.py — remove `Code._1060,` from
-  HIGH_VOLUME_STATUS_CODES (the actual fix; separate PR, references 822)
+  HIGH_VOLUME_STATUS_CODES (the actual fix; separate PR, references 840)
