@@ -37,9 +37,10 @@ Consolidates duplicated schema-stripping logic, passes list-valued `_bound` thro
 - [x] `pytest tests/tests_new/` — 1103 passed, 10 skipped
 - [x] `ruff check .` + `ruff format --check .` — clean
 - [x] `mypy custom_components/ramses_cc/` — no issues
-- [ ] `ha_sim_test.py` — run against ha-sim container with editable `ramses_rf` install
-- [ ] Manual: verify a FAN with `_bound: ["37:170000", "37:170001"]` reaches ramses_rf correctly
-- [ ] Manual: verify config_flow validation matches gateway behaviour (consolidated stripper)
+- [x] `ha_sim_test` R30 — multi-REM FAN with `_bound: [list]` reaches ramses_rf (climate entity exists, no validation errors)
+- [x] `ha_sim_test` R31 — `_commands` override precedence (set_fan_mode succeeds, log shows "Intercepted fan_mode")
+- [x] `ha_sim_test` R33 — consolidated stripper: validation matches gateway behaviour (orphan routing, placed_in_lists, trait-only entries)
+- [x] Bug found & fixed: `_build_packet_from_template` returned full packet format which `Command.from_cli()` rejects — changed to CLI shorthand
 
 ---
 
