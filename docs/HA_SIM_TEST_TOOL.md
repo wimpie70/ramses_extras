@@ -1,11 +1,13 @@
 # ha-sim Test Tool
 
-**Location:** `tools/ha_sim_test.py`
+**Location:** `tools/ha_sim_test/` (Python package)
 **Report:** `/tmp/ha_sim_test_log_report.txt`
 
 ## Overview
 
-`ha_sim_test.py` is an automated end-to-end test suite for ramses_cc + ramses_extras running on the `ha-sim` Docker container. It exercises all PR 764 features (schema management, discovery services, HVAC/FAN handling, device lifecycle) via the HA websocket + REST API at 100x simulator speed.
+`ha_sim_test` is an automated end-to-end test suite for ramses_cc + ramses_extras running on the `ha-sim` Docker container. It exercises all PR 764 features (schema management, discovery services, HVAC/FAN handling, device lifecycle) via the HA websocket + REST API at 100x simulator speed.
+
+Each test recipe lives in its own module under `tools/ha_sim_test/recipes/` and is run by the orchestrator in `tools/ha_sim_test/runner.py`.
 
 ## Prerequisites
 
@@ -20,8 +22,14 @@
 ## Running the tests
 
 ```bash
-cd /home/willem/dev/ramses_extras
-python3 tools/ha_sim_test.py
+cd /home/willem/dev/ramses_extras/tools
+python3 -m ha_sim_test
+```
+
+To run specific recipes only:
+
+```bash
+python3 -m ha_sim_test R06 R29
 ```
 
 The test suite takes ~6 minutes to complete. Output is printed to stdout with:
