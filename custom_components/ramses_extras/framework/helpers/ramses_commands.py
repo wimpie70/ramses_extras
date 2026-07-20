@@ -309,6 +309,21 @@ class RamsesCommands:
         error_msg = f"Failed to send fan command '{command}' to device {device_id}"
         return CommandResult(success=False, error_message=error_msg)
 
+    # Mapping of fan_bypass_* commands to the corresponding 2411 parameter
+    # "4B" (Bypass Valve) value used by Orcon and other units that do not
+    # respond to 22F7.  See ramses_rf `_2411_PARAMS_SCHEMA["4B"]`:
+    #   0 = auto, 1 = open, 2 = closed.
+    # We send BOTH the 22F7 packet and the 2411/4B parameter so the bypass
+    # works regardless of which mechanism the FAN implements.  The 2411
+    # send is best-effort: some units lack a bound REM or 2411 support, in
+    # which case the 22F7 leg is still the authoritative one.
+    _BYPASS_2411_PARAM_ID = "4B"
+    _BYPASS_COMMAND_TO_2411_VALUE: dict[str, int] = {
+        "fan_bypass_open": 1,
+        "fan_bypass_close": 2,
+        "fan_bypass_auto": 0,
+    }
+
     async def send_command(
         self,
         device_id: str,
@@ -335,9 +350,49 @@ class RamsesCommands:
             )
 
         # Send command with queuing
-        return await self._device_manager.send_command_to_device(
+        result = await self._device_manager.send_command_to_device(
             device_id, cmd_def, priority, timeout
         )
+
+        # For bypass commands, also send the 2411/4B parameter that some
+        # Orcon/HRC units use instead of (or in addition to) 22F7.  This is
+        # best-effort: failures are logged but never override the primary
+        # 22F7 result, since not every FAN supports 2411 or has a bound REM.
+        param_value = self._BYPASS_COMMAND_TO_2411_VALUE.get(command_name)
+        if param_value is not None:
+            await self._send_bypass_2411_param(device_id, param_value)
+
+        return result
+
+    async def _send_bypass_2411_param(self, device_id: str, value: int) -> None:
+        """Best-effort send of the 2411 bypass-valve parameter (4B).
+
+        Some Orcon HRC units drive the bypass via 2411 param 4B rather than
+        22F7.  We send it alongside the 22F7 bypass command so both unit
+        types are covered.  Any error is logged at debug level only — the
+        22F7 leg is authoritative for the overall command result.
+
+        :param device_id: Target FAN device identifier
+        :param value: 2411/4B value (0=auto, 1=open, 2=closed)
+        """
+        try:
+            param_result = await self.set_fan_param(
+                device_id, self._BYPASS_2411_PARAM_ID, value
+            )
+            if not param_result.success:
+                _LOGGER.debug(
+                    "Best-effort 2411/%s bypass send for %s did not succeed: %s",
+                    self._BYPASS_2411_PARAM_ID,
+                    device_id,
+                    param_result.error_message,
+                )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug(
+                "Best-effort 2411/%s bypass send for %s raised: %s",
+                self._BYPASS_2411_PARAM_ID,
+                device_id,
+                err,
+            )
 
     async def update_fan_params(
         self, device_id: str, from_id: str | None = None
