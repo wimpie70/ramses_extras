@@ -113,9 +113,15 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         patterns = [
             "switch.temp_control_*",
             "select.temp_control_desired_speed_*",
+            # Match both *_temp and *_temperature suffixes — ramses_cc uses
+            # the full "_temperature" name while older configs/patterns used
+            # the short "_temp" form.
             "sensor.*_indoor_temp",
+            "sensor.*_indoor_temperature",
             "sensor.*_outdoor_temp",
+            "sensor.*_outdoor_temperature",
             "sensor.*_supply_temp",
+            "sensor.*_supply_temperature",
             "number.*_param_75",
             "sensor.*_indoor_humidity",
             "number.relative_humidity_minimum_*",
@@ -155,6 +161,23 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 comfort_entity = str(dev_cfg.get("comfort_temp_entity") or "").strip()
                 if comfort_entity and comfort_entity not in patterns:
                     patterns.append(comfort_entity)
+
+                # Also register area-sensor temperature entities as
+                # concrete listeners so changes to external sensors (e.g.
+                # sensor.temp_disp_bk_prive_temperature) trigger the
+                # automation immediately, not just on the next 300s
+                # re-evaluation timer tick.
+                area_sensors = sc_section.get("area_sensors", {})
+                if isinstance(area_sensors, dict):
+                    dev_areas = area_sensors.get(norm_id) or area_sensors.get(device_id)
+                    if isinstance(dev_areas, list):
+                        for area in dev_areas:
+                            if not isinstance(area, dict):
+                                continue
+                            for key in ("temperature_entity", "humidity_entity"):
+                                ent = str(area.get(key) or "").strip()
+                                if ent and ent not in patterns:
+                                    patterns.append(ent)
         except Exception:
             pass
 
@@ -222,7 +245,14 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             except ComfortTempUnavailableError:
                 self._set_waiting_for_comfort_temp(device_id)
                 continue
-            except ValueError:
+            except ValueError as err:
+                _LOGGER.warning(
+                    "Temp_control re-evaluation for %s skipped: %s. "
+                    "Check that indoor_temp and indoor_humidity entities "
+                    "exist and are available.",
+                    device_id,
+                    err,
+                )
                 continue
             await self._process_automation_logic(device_id, entity_states)
 
@@ -238,7 +268,14 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             except ComfortTempUnavailableError:
                 self._set_waiting_for_comfort_temp(device_id)
                 continue
-            except ValueError:
+            except ValueError as err:
+                _LOGGER.warning(
+                    "Temp_control startup evaluation for %s skipped: %s. "
+                    "Check that indoor_temp and indoor_humidity entities "
+                    "exist and are available.",
+                    device_id,
+                    err,
+                )
                 continue
             await self._process_automation_logic(device_id, entity_states)
 
@@ -262,7 +299,12 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             except ComfortTempUnavailableError:
                 self._set_waiting_for_comfort_temp(dev_id)
                 continue
-            except ValueError:
+            except ValueError as err:
+                _LOGGER.warning(
+                    "Temp_control reconcile for %s skipped: %s",
+                    dev_id,
+                    err,
+                )
                 continue
             await self._process_automation_logic(dev_id, entity_states)
 
@@ -371,12 +413,19 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
     async def _get_device_entity_states(
         self, device_id: str
-    ) -> dict[str, float | bool]:
+    ) -> dict[str, float | bool | None]:
         """Return numeric/bool inputs used by the automation.
 
         Uses FEATURE_DEFINITION.entity_mappings to resolve entity IDs.
         Applies sensor_control overlays so external sensors are used when
         configured.
+
+        outdoor_temp, supply_temp, min_rh and max_rh are **optional** — if
+        the underlying entity is unavailable or does not exist, the value
+        is set to ``None`` instead of raising.  The automation logic handles
+        ``None`` by skipping the relevant sub-checks (e.g. outdoor cooling,
+        supply-air cooling, dewpoint guard).  This prevents a single
+        missing sensor from silently blocking the entire automation.
         """
 
         from custom_components.ramses_extras.framework.helpers.entity.core import (
@@ -423,15 +472,24 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 raise ValueError(f"Entity {entity_id} state unavailable")
             return float(raw)
 
-        resolved: dict[str, float | bool] = {}
+        def _as_float_optional(entity_id: str) -> float | None:
+            """Like _as_float but returns None for unavailable/missing entities."""
+            try:
+                return _as_float(entity_id)
+            except ValueError, TypeError:
+                return None
+
+        resolved: dict[str, float | bool | None] = {}
 
         # Core controls
         resolved["temp_control"] = _as_bool(mappings["temp_control"])
 
-        # Temperatures
+        # Temperatures — indoor_temp and comfort_temp are required; the
+        # rest are optional (the automation skips sub-checks that need
+        # them when they are None).
         resolved["indoor_temp"] = _as_float(mappings["indoor_temp"])
-        resolved["outdoor_temp"] = _as_float(mappings["outdoor_temp"])
-        resolved["supply_temp"] = _as_float(mappings["supply_temp"])
+        resolved["outdoor_temp"] = _as_float_optional(mappings["outdoor_temp"])
+        resolved["supply_temp"] = _as_float_optional(mappings["supply_temp"])
         try:
             resolved["comfort_temp"] = _as_float(mappings["comfort_temp"])
         except ValueError:
@@ -439,10 +497,11 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 f"Comfort temp entity {mappings['comfort_temp']} unavailable"
             ) from None
 
-        # Humidity
+        # Humidity — indoor_rh is required for the dewpoint guard; min/max
+        # RH are only consumed by other features and can be optional.
         resolved["indoor_rh"] = _as_float(mappings["indoor_rh"])
-        resolved["min_rh"] = _as_float(mappings["min_rh"])
-        resolved["max_rh"] = _as_float(mappings["max_rh"])
+        resolved["min_rh"] = _as_float_optional(mappings["min_rh"])
+        resolved["max_rh"] = _as_float_optional(mappings["max_rh"])
         resolved["dehumidifying_active"] = _as_bool(mappings["dehumidifying_active"])
 
         # CO2
@@ -455,7 +514,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         return resolved
 
     async def _process_automation_logic(
-        self, device_id: str, entity_states: Mapping[str, float | bool]
+        self, device_id: str, entity_states: Mapping[str, float | bool | None]
     ) -> None:
         # Normalize device_id to colon format so that all callers
         # (parent class with underscore format, startup/switch toggle
@@ -474,7 +533,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             self._processing_devices.discard(device_id)
 
     async def _process_automation_logic_inner(
-        self, device_id: str, entity_states: Mapping[str, float | bool]
+        self, device_id: str, entity_states: Mapping[str, float | bool | None]
     ) -> None:
         if not self._automation_active or not self._is_feature_enabled():
             return
@@ -502,11 +561,16 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         settings = self.config.get_settings()
         now = time.time()
 
-        indoor_temp = float(entity_states["indoor_temp"])
-        outdoor_temp = float(entity_states["outdoor_temp"])
-        supply_temp = float(entity_states["supply_temp"])
-        comfort_temp = float(entity_states["comfort_temp"])
-        indoor_rh = float(entity_states["indoor_rh"])
+        # indoor_temp, comfort_temp and indoor_rh are required —
+        # _get_device_entity_states raises ValueError if they are
+        # unavailable, so they are never None here.  outdoor_temp and
+        # supply_temp are optional (may be None when the entity is
+        # unavailable).
+        indoor_temp = float(cast(float, entity_states["indoor_temp"]))
+        outdoor_temp = entity_states.get("outdoor_temp")
+        supply_temp = entity_states.get("supply_temp")
+        comfort_temp = float(cast(float, entity_states["comfort_temp"]))
+        indoor_rh = float(cast(float, entity_states["indoor_rh"]))
 
         # Per-area evaluation: if sensor_control areas are configured with
         # temperature entities, evaluate each area separately and aggregate.
@@ -546,14 +610,18 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 #   2. Supply air cooler than indoor (evaporative cooler,
                 #      ground-coupled heat exchanger, etc.)
                 # Either source is sufficient to enter cooling mode.
+                # When outdoor_temp or supply_temp is None (entity
+                # unavailable), that source is treated as "cannot cool".
                 if indoor_temp >= comfort_temp + settings.comfort_delta_activate:
                     outdoor_can_cool = (
-                        outdoor_temp >= settings.min_outdoor_temp
+                        outdoor_temp is not None
+                        and outdoor_temp >= settings.min_outdoor_temp
                         and outdoor_temp
                         <= indoor_temp - settings.cooling_delta_activate
                     )
                     supply_can_cool = (
-                        supply_temp >= settings.min_supply_temp
+                        supply_temp is not None
+                        and supply_temp >= settings.min_supply_temp
                         and supply_temp
                         <= indoor_temp - settings.supply_cooler_delta_activate
                     )
@@ -563,11 +631,15 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             # Apply hysteresis based on previous mode
             if prev_mode == "cooling" and desired_mode != "cooling":
                 if indoor_temp > comfort_temp + settings.comfort_delta_deactivate:
-                    outdoor_can_cool = outdoor_temp <= (
-                        indoor_temp - settings.cooling_delta_deactivate
+                    outdoor_can_cool = (
+                        outdoor_temp is not None
+                        and outdoor_temp
+                        <= indoor_temp - settings.cooling_delta_deactivate
                     )
-                    supply_can_cool = supply_temp <= (
-                        indoor_temp - settings.supply_cooler_delta_deactivate
+                    supply_can_cool = (
+                        supply_temp is not None
+                        and supply_temp
+                        <= indoor_temp - settings.supply_cooler_delta_deactivate
                     )
                     if outdoor_can_cool or supply_can_cool:
                         desired_mode = "cooling"
@@ -584,7 +656,15 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         ):
             dewpoint = self._calc_dewpoint_c(indoor_temp, indoor_rh)
             margin = float(getattr(settings, "dewpoint_margin_c", 1.0))
-            if dewpoint is not None and supply_temp < dewpoint + margin:
+            # Skip dewpoint guard when supply_temp is unavailable — without
+            # it we cannot evaluate the guard, and blocking cooling entirely
+            # just because the supply sensor is missing would be worse than
+            # allowing cooling without the guard.
+            if (
+                dewpoint is not None
+                and supply_temp is not None
+                and supply_temp < dewpoint + margin
+            ):
                 _LOGGER.debug(
                     "Temp_control for %s: dewpoint guard cancelling cooling "
                     "(supply=%.1f < dewpoint+margin=%.1f+%.1f=%.1f)",
@@ -598,14 +678,14 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 await self._clear_all_zone_demands(device_id)
 
         _LOGGER.debug(
-            "Decision for %s: mode=%s (prev=%s, indoor=%.1f, outdoor=%.1f, "
-            "supply=%.1f, comfort=%.1f, RH=%.1f%%, areas=%d)",
+            "Decision for %s: mode=%s (prev=%s, indoor=%.1f, outdoor=%s, "
+            "supply=%s, comfort=%.1f, RH=%.1f%%, areas=%d)",
             device_id,
             desired_mode,
             prev_mode,
             indoor_temp,
-            outdoor_temp,
-            supply_temp,
+            f"{outdoor_temp:.1f}" if outdoor_temp is not None else "N/A",
+            f"{supply_temp:.1f}" if supply_temp is not None else "N/A",
             comfort_temp,
             indoor_rh,
             len(area_results),
@@ -935,7 +1015,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         self,
         device_id: str,
         settings: Any,
-        outdoor_temp: float,
+        outdoor_temp: float | None,
     ) -> list[dict[str, Any]]:
         """Evaluate per-area temperature conditions.
 
@@ -1020,7 +1100,8 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                     f"({area_temp} < {area_comfort})"
                 )
             elif (
-                area_temp >= area_comfort + settings.comfort_delta_activate
+                outdoor_temp is not None
+                and area_temp >= area_comfort + settings.comfort_delta_activate
                 and outdoor_temp >= settings.min_outdoor_temp
                 and outdoor_temp <= area_temp - settings.cooling_delta_activate
             ):
