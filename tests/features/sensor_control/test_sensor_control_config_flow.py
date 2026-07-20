@@ -1597,6 +1597,54 @@ def test_get_rem_device_options_includes_configured():
     assert "01:999999" not in values
 
 
+def test_get_rem_device_options_includes_orcon_rem_prefixes():
+    """Orcon REM/DIS prefixes (21, 37) must appear even when not promoted.
+
+    Reproduces the Tweakers report from studiostevus: his Orcon HRC REM was
+    not yet classified as REM/DIS by ramses_rf, so it only existed as a plain
+    string device with prefix 21/37.  The dropdown must still surface it.
+    """
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "devices": ["21:800000", "37:155617", "01:999999", "32:153002"],
+            "config_entry": MagicMock(data={}, options={}),
+        }
+    }
+
+    values = [opt["value"] for opt in _get_rem_device_options(hass)]
+    assert "21:800000" in values
+    assert "37:155617" in values
+    # Non-remote prefixes are still excluded
+    assert "01:999999" not in values
+    assert "32:153002" not in values
+
+
+def test_get_rem_device_options_includes_switch_slug_devices():
+    """Devices promoted to REM/DIS expose the canonical ramses_rf slugs
+    "switch" / "switch_display" (DEV_TYPE_MAP), not "REM"/"DIS" literals."""
+    hass = MagicMock()
+
+    class RemDevice:
+        id = "37:155617"
+        slugs = ["switch"]
+
+    class DisDevice:
+        id = "21:800060"
+        slugs = ["switch_display"]
+
+    hass.data = {
+        DOMAIN: {
+            "devices": [RemDevice(), DisDevice()],
+            "config_entry": MagicMock(data={}, options={}),
+        }
+    }
+
+    values = [opt["value"] for opt in _get_rem_device_options(hass)]
+    assert "37:155617" in values
+    assert "21:800060" in values
+
+
 def test_get_area_id_options_from_legacy_reads_rems():
     options = {
         "ramses_extras": {
