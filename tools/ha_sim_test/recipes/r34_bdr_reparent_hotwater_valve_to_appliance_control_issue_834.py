@@ -1,0 +1,237 @@
+"""Recipe R34: BDR re-parent hotwater_valve → appliance_control (issue 834)."""
+
+from __future__ import annotations
+
+import json
+
+import yaml as _yaml
+
+from ..base import Recipe, RecipeContext
+from ..const import CTL, DHW, FAN, HGI, REM
+from ..helpers import (
+    call_service,
+    get_schema_retry,
+    load_profile_yaml,
+    ws_send,
+)
+from ..profile import MIXED_KL, MIXED_SCHEMA
+
+
+class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
+    id = "R34"
+    seq = 360
+    title = "BDR re-parent hotwater_valve → appliance_control (issue 834)"
+
+    async def run(self, ctx: RecipeContext) -> None:
+        # Issue 834 race condition: the controller's 000C binding table has
+        # a BDR in the HTG slot (domain FA = hotwater_valve), but the BDR is
+        # actually the appliance_control (domain FC).  When the 000C HTG
+        # binding arrives first, the BDR is incorrectly bound as
+        # hotwater_valve to a spuriously-created DhwZone.  When the 000C
+        # APP binding arrives later, the BDR must be re-parented from
+        # DhwZone.hotwater_valve to System.appliance_control.
+        #
+        # This recipe simulates the race:
+        #   1. Inject 000C RP with HTG role (0E) → BDR bound as hotwater_valve
+        #   2. Inject 000C RP with APP role (0F) → BDR re-parented to
+        #      appliance_control
+        #
+        # The profile has NO DHW sensor — the re-parenting is suppressed
+        # when a DHW sensor exists (the system genuinely has DHW in that
+        # case).
+        ctx.log_section(
+            "Recipe 34: BDR re-parent hotwater_valve → appliance_control "
+            "(issue 834 race condition)"
+        )
+
+        bdr_id = "13:834001"
+        # dev_id_to_hex_id("13:834001") = (13 << 18) + 834001 = 0x40B9D1
+        bdr_hex_id = "40B9D1"
+
+        # --- Build a custom profile without DHW sensor ---
+        # The mixed profile has stored_hotwater: {sensor: DHW}.  We remove
+        # it so the DhwZone created by the 000C HTG binding has no sensor,
+        # which is the precondition for re-parenting.
+        schema_r34 = dict(MIXED_SCHEMA)
+        ctl_schema_r34 = dict(schema_r34.get(CTL, {}))
+        # Remove stored_hotwater — this system has NO DHW
+        ctl_schema_r34.pop("stored_hotwater", None)
+        schema_r34[CTL] = ctl_schema_r34
+
+        kl_r34 = dict(MIXED_KL)
+        kl_r34[bdr_id] = {"class": "BDR"}
+
+        profile_r34 = {
+            "known_list": kl_r34,
+            "_enforce_known_list": {"enabled": True},
+            "_schema": schema_r34,
+        }
+        yaml_text_r34 = _yaml.dump(
+            profile_r34, default_flow_style=False, sort_keys=False
+        )
+
+        print("  Loading profile (no DHW sensor, BDR in known_list)...")
+        try:
+            await load_profile_yaml(ctx.token, yaml_text_r34, speed=0.01)
+            print("  Profile loaded")
+        except RuntimeError as e:
+            print(f"  Profile load failed: {e}")
+        ctx.wait(15, "for ramses_cc reload")
+        ctx.refresh_token()
+        ctx.wait(5, "for ramses_cc to initialize")
+
+        # Activate CTL for heartbeats
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": CTL,
+                },
+            )
+        except RuntimeError:
+            pass
+        ctx.wait(10, "for CTL heartbeats + schema population")
+
+        # --- Step 1: Inject 000C RP with HTG role (0E) ---
+        # This binds the BDR as hotwater_valve (domain FA) to a DhwZone.
+        # 000C payload (long format, 12 chars):
+        #   00 (idx) + 0E (HTG role) + 00 (pad) + 40B9D1 (hex_id for 13:834001)
+        htg_payload = f"000E00{bdr_hex_id}"
+        print(f"  Injecting 000C RP (HTG/hotwater_valve) from CTL for BDR {bdr_id}...")
+        print(f"    payload: {htg_payload}")
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": CTL,
+                    "dst": HGI,
+                    "code": "000C",
+                    "payload": htg_payload,
+                    "verb": "RP",
+                },
+            )
+            print("    000C RP (HTG) injected")
+        except RuntimeError as e:
+            print(f"    Inject failed: {str(e)[:80]}")
+
+        ctx.wait(5, "for 000C HTG processing")
+        try:
+            call_service(ctx.token, "ramses_cc", "sync_topology")
+        except RuntimeError as e:
+            print(f"  sync_topology failed: {e}")
+        ctx.wait(10, "for sync_learned_topology")
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(5, "for save")
+
+        schema_step1 = get_schema_retry()
+        ctl_step1 = schema_step1.get(CTL, {})
+        system_step1 = (
+            ctl_step1.get("system", {}) if isinstance(ctl_step1, dict) else {}
+        )
+        dhw_step1 = (
+            ctl_step1.get("stored_hotwater", {}) if isinstance(ctl_step1, dict) else {}
+        )
+
+        print("  After HTG inject:")
+        print(f"    system = {json.dumps(system_step1)[:120]}")
+        print(f"    stored_hotwater = {json.dumps(dhw_step1)[:120]}")
+
+        # Check 1: BDR is bound as hotwater_valve (the incorrect state)
+        ctx.check(
+            f"BDR {bdr_id} is hotwater_valve after 000C HTG",
+            dhw_step1.get("hotwater_valve") == bdr_id,
+            f"hotwater_valve={dhw_step1.get('hotwater_valve')}",
+        )
+
+        # Check 2: BDR is NOT appliance_control yet
+        ctx.check(
+            f"BDR {bdr_id} is NOT appliance_control after 000C HTG",
+            system_step1.get("appliance_control") != bdr_id,
+            f"appliance_control={system_step1.get('appliance_control')}",
+        )
+
+        # --- Step 2: Inject 000C RP with APP role (0F) ---
+        # This should re-parent the BDR from DhwZone.hotwater_valve (FA)
+        # to System.appliance_control (FC), because the DhwZone has no
+        # DHW sensor.
+        # 000C payload (long format, 12 chars):
+        #   00 (idx) + 0F (APP role) + 00 (pad) + 40B9D1 (hex_id)
+        app_payload = f"000F00{bdr_hex_id}"
+        print(
+            f"  Injecting 000C RP (APP/appliance_control) from CTL for BDR {bdr_id}..."
+        )
+        print(f"    payload: {app_payload}")
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": CTL,
+                    "dst": HGI,
+                    "code": "000C",
+                    "payload": app_payload,
+                    "verb": "RP",
+                },
+            )
+            print("    000C RP (APP) injected")
+        except RuntimeError as e:
+            print(f"    Inject failed: {str(e)[:80]}")
+
+        ctx.wait(5, "for 000C APP processing")
+        try:
+            call_service(ctx.token, "ramses_cc", "sync_topology")
+        except RuntimeError as e:
+            print(f"  sync_topology failed: {e}")
+        ctx.wait(10, "for sync_learned_topology")
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(5, "for save")
+
+        schema_step2 = get_schema_retry()
+        ctl_step2 = schema_step2.get(CTL, {})
+        system_step2 = (
+            ctl_step2.get("system", {}) if isinstance(ctl_step2, dict) else {}
+        )
+        dhw_step2 = (
+            ctl_step2.get("stored_hotwater", {}) if isinstance(ctl_step2, dict) else {}
+        )
+
+        print("  After APP inject:")
+        print(f"    system = {json.dumps(system_step2)[:120]}")
+        print(f"    stored_hotwater = {json.dumps(dhw_step2)[:120]}")
+
+        # Check 3: BDR is now appliance_control (re-parented)
+        ctx.check(
+            f"BDR {bdr_id} is appliance_control after 000C APP (re-parented)",
+            system_step2.get("appliance_control") == bdr_id,
+            f"appliance_control={system_step2.get('appliance_control')}",
+        )
+
+        # Check 4: BDR is NO LONGER hotwater_valve
+        ctx.check(
+            f"BDR {bdr_id} is NOT hotwater_valve after re-parenting",
+            dhw_step2.get("hotwater_valve") != bdr_id,
+            f"hotwater_valve={dhw_step2.get('hotwater_valve')}",
+        )
+
+        # Check 5: stored_hotwater should be empty (DhwZone cleaned up)
+        ctx.check(
+            "stored_hotwater is empty after re-parenting",
+            not dhw_step2
+            or (
+                isinstance(dhw_step2, dict)
+                and not dhw_step2.get("hotwater_valve")
+                and not dhw_step2.get("heating_valve")
+                and not dhw_step2.get("sensor")
+            ),
+            f"stored_hotwater={json.dumps(dhw_step2)[:120]}",
+        )

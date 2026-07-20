@@ -19,6 +19,43 @@ Each test recipe lives in its own module under `tools/ha_sim_test/recipes/` and 
 - HA websocket on `ws://localhost:8124/api/websocket`
 - HA REST API on `http://localhost:8124/api/`
 
+### Testing with a local ramses_rf (PYTHONPATH)
+
+HA installs `ramses_rf` from the ramses_cc `manifest.json` (`ramses-rf==0.58.4`)
+on every startup, overriding any manually `pip install`ed version.  To test a
+local/fixed ramses_rf, the ha-sim docker-compose already bind-mounts
+`/home/willem/dev/ramses_rf` to `/config/ramses_rf`.  Adding
+`PYTHONPATH=/config/ramses_rf/src` to the container environment makes Python
+load the local copy before site-packages (where the pip-installed 0.58.4
+lives) — no modification to ramses_cc needed.
+
+The `docker-compose.yml` at `/home/willem/docker_files/ha-sim/docker-compose.yml`
+should have:
+
+```yaml
+    environment:
+      - TZ=Europe/Amsterdam
+      - HASSIO_PORT=8124
+      - PYTHONPATH=/config/ramses_rf/src
+```
+
+After changing the environment, recreate the container (a plain `restart` is
+not enough — environment changes require recreation):
+
+```bash
+cd /home/willem/docker_files/ha-sim
+docker compose up -d
+```
+
+To verify the local copy is loaded:
+
+```bash
+docker exec ha-sim python3 -c 'import sys; print([p for p in sys.path if "ramses_rf" in p])'
+# Should show: ['/config/ramses_rf/src']
+```
+
+To revert, remove the `PYTHONPATH` line and `docker compose up -d` again.
+
 ## Running the tests
 
 ```bash
