@@ -1,4 +1,4 @@
-"""Recipe R34: Water heater DHW CQRS hydration (issue 843)."""
+"""Recipe R35: Water heater DHW CQRS hydration (issue 843)."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from ..helpers import (
 )
 
 
-class R34WaterHeaterDhwCqrsHydrationIssue843(Recipe):
-    id = "R34"
+class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
+    id = "R35"
     seq = 360
     title = "Water heater DHW CQRS hydration (issue 843)"
 
