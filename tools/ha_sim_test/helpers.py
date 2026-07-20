@@ -373,3 +373,31 @@ def get_entity_attributes(token: str, device_id: str, prefix: str = "") -> dict:
     if entity is None:
         return {}
     return entity.get("attributes", {})
+
+
+def grep_ha_log(pattern: str, since_lines: int = 0) -> list[str]:
+    """Grep the HA log inside the ha-sim container for a pattern.
+
+    :param pattern: Extended regex to search for (case-insensitive, -iE).
+    :param since_lines: If >0, only search the last N lines of the log.
+    :return: List of matching log lines (stripped).
+    """
+    if since_lines > 0:
+        cmd = [
+            "docker",
+            "exec",
+            "ha-sim",
+            "bash",
+            "-c",
+            f"tail -n {since_lines} /config/home-assistant.log | grep -iE '{pattern}'",
+        ]
+    else:
+        cmd = ["docker", "exec", "ha-sim", "grep", "-iE", pattern]
+        cmd += ["/config/home-assistant.log"]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]

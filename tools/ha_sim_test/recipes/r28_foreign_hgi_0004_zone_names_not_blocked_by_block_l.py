@@ -23,6 +23,7 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    grep_ha_log,
     load_profile_yaml,
     write_ramses_storage,
     ws_send,
@@ -164,4 +165,52 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             "Foreign HGI still in schema after 30C9 inject",
             foreign_hgi_r28 in schema_r28b,
             f"keys={[k for k in schema_r28b if k.startswith('18:')]}",
+        )
+
+        # Check 3: RQ from foreign HGI to CTL must not be dropped.
+        # This is the scenario from issue 822 comment 5017168119: the foreign
+        # HGI sends an RQ to the controller.  Before the dispatcher fix, the
+        # un-suppressed get_device(src) in instantiate_devices rejected the
+        # foreign HGI (not in known_list) and dropped the entire packet,
+        # producing repeating FILTER EXCEPTION warnings.
+        print(f"  Injecting 0004 RQ from foreign HGI {foreign_hgi_r28} to CTL {CTL}...")
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": foreign_hgi_r28,
+                    "dst": CTL,
+                    "code": "0004",
+                    "payload": "00",
+                    "verb": "RQ",
+                },
+            )
+            print("    0004 RQ injected")
+        except RuntimeError as e:
+            print(f"    Inject failed: {str(e)[:80]}")
+
+        ctx.wait(3, "for dispatcher to process RQ from foreign HGI")
+
+        # Check 4: no FILTER EXCEPTION for the foreign HGI in the HA log.
+        # The dispatcher fix (instantiate_devices) skips get_device(src) for
+        # foreign HGIs when enforce_known_list is True, so no
+        # DeviceNotFoundError is raised and no FILTER EXCEPTION is logged.
+        #
+        # NOTE: this check is expected to FAIL on ramses_rf master (bug
+        # present) and PASS after the dispatcher fix lands.  The error
+        # message from dev_filter.py is "Can't create 18:XXXX: it is not
+        # an allowed device_id" (enforce_known_list) or "it is a blocked
+        # device_id" (block_list) or "it is unwanted or invalid" (cached
+        # in _unwanted list after first rejection).
+        filter_warnings = grep_ha_log(
+            f"FILTER EXCEPTION.*{foreign_hgi_r28}|Can.*t create {foreign_hgi_r28}",
+            since_lines=500,
+        )
+        ctx.check(
+            f"No FILTER EXCEPTION for foreign HGI {foreign_hgi_r28}",
+            len(filter_warnings) == 0,
+            f"found {len(filter_warnings)} warning(s)"
+            + (f": {filter_warnings[0][:80]}" if filter_warnings else ""),
         )
