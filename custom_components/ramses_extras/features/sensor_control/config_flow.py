@@ -2113,17 +2113,23 @@ def _get_rem_device_options(hass: HomeAssistant) -> list[selector.SelectOptionDi
     domain_data = hass.data.get(DOMAIN, {})
     devices = domain_data.get("devices", [])
 
+    # HVAC remote/display (REM/DIS) prefixes.  These devices are often not
+    # yet promoted to the REM/DIS class by ramses_rf (e.g. right after a
+    # restart, or when the binding/1FC9 handshake hasn't completed), so they
+    # appear as plain string devices.  The whitelist below covers the known
+    # REM/DIS prefixes we have seen in the wild:
+    #   21 - Orcon 15RF / Display (e.g. 21:800000, 21:800060)
+    #   37 - Orcon/Vasco REM (e.g. 37:155617)
+    #   18, 22, 29, 30 - other HVAC remote prefixes previously matched
+    # See ramses_rf `devices/hvac_remotes.py::_REMOTES` for the Orcon models.
+    _rem_prefixes = ("18", "21", "22", "29", "30", "37")
+
     for device in devices:
         if isinstance(device, str):
-            # For plain string devices, check if it looks like a REM ID
-            # REM IDs are typically 2-digit prefixes like 18, 22, 29, 30
+            # For plain string devices, check if it looks like a REM ID.
+            # REM/DIS IDs are 2-digit prefix + :XXXXXX (>= 9 chars total).
             device_id = str(device).replace("_", ":").strip()
-            if len(device_id) >= 9 and device_id[:2] in (
-                "18",
-                "22",
-                "29",
-                "30",
-            ):
+            if len(device_id) >= 9 and device_id[:2] in _rem_prefixes:
                 add_device_id(device_id)
             continue
 
@@ -2148,9 +2154,21 @@ def _get_rem_device_options(hass: HomeAssistant) -> list[selector.SelectOptionDi
         if hasattr(device, "type"):
             slugs.append(str(device.type))
 
-        # Check if any slug indicates a DIS/REM device
+        # Check if any slug indicates a DIS/REM device.  Include both the
+        # human-friendly names and the canonical ramses_rf DevType slugs:
+        # REM -> "switch", DIS -> "switch_display" (see DEV_TYPE_MAP).
         is_rem = any(
-            slug in ("DIS", "REM", "DIS", "HRC", "remote", "display") for slug in slugs
+            slug
+            in (
+                "DIS",
+                "REM",
+                "HRC",
+                "remote",
+                "display",
+                "switch",
+                "switch_display",
+            )
+            for slug in slugs
         )
 
         if is_rem:

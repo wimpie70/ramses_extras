@@ -43,6 +43,24 @@ def ramses_commands(hass):
                 "payload": "000107",
                 "description": "Low",
             },
+            "fan_bypass_open": {
+                "code": "22F7",
+                "verb": "W",
+                "payload": "00C8EF",
+                "description": "Open bypass",
+            },
+            "fan_bypass_close": {
+                "code": "22F7",
+                "verb": "W",
+                "payload": "0000EF",
+                "description": "Close bypass",
+            },
+            "fan_bypass_auto": {
+                "code": "22F7",
+                "verb": "W",
+                "payload": "00FFEF",
+                "description": "Set bypass to auto mode",
+            },
         }.get(cmd)
         mock_reg.get_registered_commands.return_value = {"fan_high": {}, "fan_low": {}}
         return RamsesCommands(hass)
@@ -164,6 +182,83 @@ class TestRamsesCommands:
 
         assert result.success is True
         ramses_commands._device_manager.send_command_to_device.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_send_bypass_command_also_sends_2411_param(self, ramses_commands):
+        """fan_bypass_* commands must also send the 2411/4B parameter.
+
+        Some Orcon HRC units drive the bypass via 2411 param 4B rather than
+        22F7, so send_command fires both legs.  The 2411 send is best-effort
+        and must not override the primary 22F7 result.
+        """
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            return_value=CommandResult(success=True)
+        )
+        ramses_commands.set_fan_param = AsyncMock(
+            return_value=CommandResult(success=True)
+        )
+
+        cases = {
+            "fan_bypass_open": 1,
+            "fan_bypass_close": 2,
+            "fan_bypass_auto": 0,
+        }
+        for command_name, expected_value in cases.items():
+            ramses_commands.set_fan_param.reset_mock()
+            result = await ramses_commands.send_command("32_123456", command_name)
+
+            assert result.success is True
+            ramses_commands.set_fan_param.assert_awaited_once_with(
+                "32_123456", "4B", expected_value
+            )
+
+    @pytest.mark.asyncio
+    async def test_send_bypass_command_2411_failure_does_not_fail_command(
+        self, ramses_commands
+    ):
+        """A best-effort 2411/4B failure must not fail the 22F7 bypass send."""
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            return_value=CommandResult(success=True)
+        )
+        ramses_commands.set_fan_param = AsyncMock(
+            return_value=CommandResult(success=False, error_message="broker not found")
+        )
+
+        result = await ramses_commands.send_command("32_123456", "fan_bypass_open")
+
+        # Primary 22F7 result is preserved
+        assert result.success is True
+        ramses_commands.set_fan_param.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_send_bypass_command_2411_raises_does_not_fail_command(
+        self, ramses_commands
+    ):
+        """An exception from the 2411 leg must not propagate."""
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            return_value=CommandResult(success=True)
+        )
+        ramses_commands.set_fan_param = AsyncMock(side_effect=RuntimeError("boom"))
+
+        result = await ramses_commands.send_command("32_123456", "fan_bypass_close")
+
+        assert result.success is True
+        ramses_commands.set_fan_param.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_send_non_bypass_command_does_not_send_2411(self, ramses_commands):
+        """Non-bypass commands must not trigger the 2411/4B leg."""
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            return_value=CommandResult(success=True)
+        )
+        ramses_commands.set_fan_param = AsyncMock(
+            return_value=CommandResult(success=True)
+        )
+
+        result = await ramses_commands.send_command("32_123456", "fan_high")
+
+        assert result.success is True
+        ramses_commands.set_fan_param.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_send_packet_success(self, ramses_commands, hass):
