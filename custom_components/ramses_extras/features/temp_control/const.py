@@ -111,9 +111,12 @@ FEATURE_DEFINITION: dict[str, Any] = {
         "desired_speed": "select.temp_control_desired_speed_{device_id}",
         "temp_control_active": "binary_sensor.temp_control_active_{device_id}",
         # Inputs (provided by ramses_cc / other features)
-        "indoor_temp": "sensor.{device_id}_indoor_temp",
-        "outdoor_temp": "sensor.{device_id}_outdoor_temp",
-        "supply_temp": "sensor.{device_id}_supply_temp",
+        # ramses_cc names these *_temperature, not *_temp — use the full
+        # name so the default mapping resolves correctly when sensor_control
+        # overlays are not configured.
+        "indoor_temp": "sensor.{device_id}_indoor_temperature",
+        "outdoor_temp": "sensor.{device_id}_outdoor_temperature",
+        "supply_temp": "sensor.{device_id}_supply_temperature",
         "comfort_temp": "number.{device_id}_param_75",
         "indoor_rh": "sensor.{device_id}_indoor_humidity",
         "min_rh": "number.relative_humidity_minimum_{device_id}",

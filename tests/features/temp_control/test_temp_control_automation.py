@@ -212,6 +212,58 @@ class TestTempControlDecisionLogic:
         assert automation_manager._mode["32:153289"] == "idle"
 
     @pytest.mark.asyncio
+    async def test_no_cooling_when_outdoor_temp_is_none(self, automation_manager):
+        """When outdoor_temp entity is unavailable (None), no outdoor cooling.
+
+        The automation must not crash or abort — it should simply skip the
+        outdoor cooling check and stay idle (unless supply-air cooling is
+        possible).  This is the key fix for the silent failure where a
+        missing outdoor_temp entity blocked the entire automation.
+        """
+        states = make_entity_states(
+            indoor_temp=24.0,
+            outdoor_temp=None,  # entity unavailable
+            supply_temp=30.0,  # too warm to cool from supply
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        assert automation_manager._mode["32:153289"] == "idle"
+
+    @pytest.mark.asyncio
+    async def test_cooling_via_supply_when_outdoor_temp_is_none(
+        self, automation_manager
+    ):
+        """Supply-air cooling still works when outdoor_temp is unavailable."""
+        states = make_entity_states(
+            indoor_temp=24.0,
+            outdoor_temp=None,  # entity unavailable
+            supply_temp=18.0,  # cool enough to cool from supply
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        assert automation_manager._mode["32:153289"] == "cooling"
+        automation_manager.ramses_commands.send_command.assert_called_once_with(
+            "32:153289", "fan_bypass_open"
+        )
+
+    @pytest.mark.asyncio
+    async def test_heating_retention_works_with_none_outdoor_and_supply(
+        self, automation_manager
+    ):
+        """Heating retention does not need outdoor/supply temp at all."""
+        states = make_entity_states(
+            indoor_temp=18.0,  # below comfort - delta
+            outdoor_temp=None,
+            supply_temp=None,
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        assert automation_manager._mode["32:153289"] == "heating_retention"
+
+    @pytest.mark.asyncio
     async def test_heating_retention_priority_over_cooling(self, automation_manager):
         """When indoor is below comfort-delta, heating_retention takes priority."""
         states = make_entity_states(
