@@ -103,8 +103,9 @@ If a new bug introduces an unexpected ERROR or WARNING, it will appear in the re
 | R1 | Heat profile activation + schema/entities | 5 |
 | R14 | Raw packet injection — zone rebinding | 1 |
 | R17 | Discovery service lifecycle | 7 |
+| R34 | Water heater DHW CQRS hydration (issue 843) | 4 |
 | Log Report | ERROR/WARNING analysis | 2 |
-| **Total** | | **50** |
+| **Total** | | **54** |
 
 ## Services tested
 
