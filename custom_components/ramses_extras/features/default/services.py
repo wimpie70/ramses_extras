@@ -543,6 +543,49 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             ):
                 await automation._reconcile_startup_states(device_id)
 
+    async def _async_disable_temp_control_for_bypass(device_id: str) -> None:
+        """Turn off the temp_control switch when the user manually moves the bypass.
+
+        The card's bypass buttons (fan_bypass_open / fan_bypass_close) are an
+        explicit manual override of the bypass damper.  temp_control's whole
+        job is to drive the bypass based on indoor/outdoor/supply temps, so
+        when the user takes over the damper temp_control must stand down —
+        otherwise it would re-send its own bypass command on the next
+        re-evaluation and fight the user.
+
+        This is the deterministic, explicit counterpart to temp_control's
+        inferential "external bypass change" safety net (which exists for the
+        case where the damper is moved by the physical button on the device
+        or another integration, where no service call flows through here).
+
+        Only turns the switch off if it currently exists and is on, so the
+        common case of pressing a bypass button while temp_control is already
+        off is a no-op.
+        """
+        switch_id = f"switch.temp_control_{device_id.replace(':', '_')}"
+        switch_state = hass.states.get(switch_id)
+        if switch_state is None or switch_state.state != "on":
+            return
+        try:
+            await hass.services.async_call(
+                "switch",
+                "turn_off",
+                {"entity_id": switch_id},
+            )
+            _LOGGER.info(
+                "Manual bypass command for %s; turned temp_control off (switch %s)",
+                device_id,
+                switch_id,
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "Failed to turn off temp_control switch %s after manual "
+                "bypass command for %s: %s",
+                switch_id,
+                device_id,
+                err,
+            )
+
     async def _async_send_fan_command(call: ServiceCall) -> None:
         data = dict(call.data)
         device_id = data["device_id"]
@@ -586,6 +629,27 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             arbiter.set_extras_control_enabled(device_id, False)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
+            commands = RamsesCommands(hass)
+            await commands.send_command(device_id, command)
+            return
+
+        if command in {"fan_bypass_open", "fan_bypass_close"}:
+            # Explicit manual bypass override from the card.  Stand
+            # temp_control down so it doesn't fight the user's damper
+            # position on its next re-evaluation.  fan_bypass_auto is
+            # NOT handled here — it is the "give control back" gesture
+            # and is covered by the resume path below.
+            await _async_disable_temp_control_for_bypass(device_id)
+            commands = RamsesCommands(hass)
+            await commands.send_command(device_id, command)
+            return
+
+        if command == "fan_bypass_auto":
+            # "Give control back to the automation" gesture.  Resume
+            # feature control so temp_control (and humidity/co2) can
+            # re-evaluate and drive the bypass again.  This mirrors
+            # fan_auto's behaviour for fan speed.
+            await _async_resume_feature_control(device_id)
             commands = RamsesCommands(hass)
             await commands.send_command(device_id, command)
             return

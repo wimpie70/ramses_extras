@@ -384,3 +384,226 @@ async def test_get_queue_statistics_service(hass):
         await get_stats_func(call)
 
         assert hass.data[DOMAIN]["queue_statistics"] == {"sent": 10, "queued": 2}
+
+
+async def test_fan_bypass_open_turns_off_temp_control_switch(hass):
+    """fan_bypass_open from the card is an explicit manual bypass override.
+
+    temp_control drives the bypass based on temps, so when the user takes
+    over the damper via the card's bypass-open button, temp_control must
+    stand down — otherwise it would re-send its own bypass command on the
+    next re-evaluation and fight the user.
+    """
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    # temp_control switch exists and is on → must be turned off.
+    switch_state = MagicMock()
+    switch_state.state = "on"
+    hass.states = MagicMock()
+    hass.states.get = MagicMock(return_value=switch_state)
+    hass.services.async_call = AsyncMock()
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_bypass_open"}
+
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_commands_class:
+        mock_commands = MagicMock()
+        mock_commands.send_command = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await send_command_func(call)
+
+        # temp_control switch turned off explicitly.
+        hass.services.async_call.assert_any_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.temp_control_32_123456"},
+        )
+        # Bypass RF command still sent.
+        mock_commands.send_command.assert_awaited_once_with(
+            "32:123456", "fan_bypass_open"
+        )
+
+
+async def test_fan_bypass_close_turns_off_temp_control_switch(hass):
+    """fan_bypass_close from the card also stands temp_control down."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    switch_state = MagicMock()
+    switch_state.state = "on"
+    hass.states = MagicMock()
+    hass.states.get = MagicMock(return_value=switch_state)
+    hass.services.async_call = AsyncMock()
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_bypass_close"}
+
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_commands_class:
+        mock_commands = MagicMock()
+        mock_commands.send_command = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await send_command_func(call)
+
+        hass.services.async_call.assert_any_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.temp_control_32_123456"},
+        )
+        mock_commands.send_command.assert_awaited_once_with(
+            "32:123456", "fan_bypass_close"
+        )
+
+
+async def test_fan_bypass_open_noop_when_temp_control_already_off(hass):
+    """If temp_control is already off, bypass buttons don't call turn_off."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    switch_state = MagicMock()
+    switch_state.state = "off"
+    hass.states = MagicMock()
+    hass.states.get = MagicMock(return_value=switch_state)
+    hass.services.async_call = AsyncMock()
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_bypass_open"}
+
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_commands_class:
+        mock_commands = MagicMock()
+        mock_commands.send_command = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await send_command_func(call)
+
+        # No switch.turn_off call (temp_control already off).
+        for c in hass.services.async_call.call_args_list:
+            assert not (c.args == ("switch", "turn_off"))
+        mock_commands.send_command.assert_awaited_once_with(
+            "32:123456", "fan_bypass_open"
+        )
+
+
+async def test_fan_bypass_open_noop_when_temp_control_switch_missing(hass):
+    """If the temp_control switch doesn't exist, bypass buttons just send RF."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    hass.states = MagicMock()
+    hass.states.get = MagicMock(return_value=None)
+    hass.services.async_call = AsyncMock()
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_bypass_open"}
+
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_commands_class:
+        mock_commands = MagicMock()
+        mock_commands.send_command = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await send_command_func(call)
+
+        hass.services.async_call.assert_not_called()
+        mock_commands.send_command.assert_awaited_once_with(
+            "32:123456", "fan_bypass_open"
+        )
+
+
+async def test_fan_bypass_auto_resumes_feature_control(hass):
+    """fan_bypass_auto is the 'give control back' gesture.
+
+    It must resume temp_control (and humidity/co2) so the automations can
+    re-evaluate and drive the bypass again — mirroring fan_auto's behaviour
+    for fan speed.
+    """
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+    hass.data[DOMAIN] = {
+        "features": {
+            "humidity_control": {
+                "automation": MagicMock(_reconcile_startup_states=AsyncMock()),
+            },
+            "co2_control": {
+                "automation": MagicMock(_evaluate_co2_control=AsyncMock()),
+            },
+            "temp_control": {
+                "automation": MagicMock(_reconcile_startup_states=AsyncMock()),
+            },
+        }
+    }
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_bypass_auto"}
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+        ),
+        patch(
+            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        ) as mock_commands_class,
+    ):
+        mock_commands = MagicMock()
+        mock_commands.send_command = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await send_command_func(call)
+
+        # All three automations' resume hooks called.
+        temp_automation = hass.data[DOMAIN]["features"]["temp_control"]["automation"]
+        humidity_automation = hass.data[DOMAIN]["features"]["humidity_control"][
+            "automation"
+        ]
+        co2_automation = hass.data[DOMAIN]["features"]["co2_control"]["automation"]
+        temp_automation._reconcile_startup_states.assert_awaited_once_with("32:123456")
+        humidity_automation._reconcile_startup_states.assert_awaited_once()
+        co2_automation._evaluate_co2_control.assert_awaited_once_with("32:123456")
+        # Bypass auto RF command still sent.
+        mock_commands.send_command.assert_awaited_once_with(
+            "32:123456", "fan_bypass_auto"
+        )
