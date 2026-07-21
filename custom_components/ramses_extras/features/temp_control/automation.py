@@ -353,25 +353,106 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                     current_mode = self._mode.get(device_id, "idle")
                     if current_mode in {"cooling", "heating_retention"}:
                         # Was this change caused by our own command?
+                        #
+                        # The bypass damper is physical hardware: after we
+                        # send fan_bypass_open / fan_bypass_close it can take
+                        # one to three minutes before the damper has moved and
+                        # the new position is reported back over RF.  A pure
+                        # time-based grace window (the old 10s check) is
+                        # therefore unreliable — our own command's feedback
+                        # routinely arrived long after the window expired,
+                        # which made temp_control turn itself off overnight
+                        # whenever cooling/heating_retention kicked in.
+                        #
+                        # Instead, compare the *reported* bypass state to the
+                        # state we *commanded*.  The bypass_position binary
+                        # sensor reports "on" when the damper is open
+                        # (bypass_position > 0) and "off" when closed (0).
+                        #   fan_bypass_open  -> expected "on"
+                        #   fan_bypass_close -> expected "off"
+                        # If the new state matches what we last commanded, the
+                        # change is our own command taking effect (regardless
+                        # of how long it took) and must NOT disable us.  A
+                        # move to the *opposite* state is a real external /
+                        # manual override and turns temp_control off
+                        # immediately.  When no command is on record we fall
+                        # back to a generous time window (covering observed
+                        # damper + RF latency of ~2-3 min).
+                        last_cmd = self._last_bypass_command.get(device_id)
                         last_cmd_time = self._last_bypass_command_time.get(
                             device_id, 0.0
                         )
                         now = _time.time()
-                        # Allow a 10s window for our command to take effect
-                        if now - last_cmd_time > 10.0:
-                            _LOGGER.info(
-                                "External bypass change detected for %s "
-                                "(mode=%s, no recent temp_control command); "
-                                "turning temp_control off",
-                                device_id,
-                                current_mode,
-                            )
-                            await self.hass.services.async_call(
-                                "switch",
-                                "turn_off",
-                                {"entity_id": switch_id},
-                            )
-                            return
+                        raw_new = new_state.state
+                        new_state_str = (
+                            str(raw_new).lower() if raw_new is not None else ""
+                        )
+                        # Ignore non-definite states — they are not real
+                        # damper movements and must not disable temp_control.
+                        if new_state_str in {"unavailable", "unknown", "none", ""}:
+                            pass
+                        elif last_cmd is not None:
+                            new_is_open = new_state_str in {"on", "true", "1"}
+                            expected_open = last_cmd == "fan_bypass_open"
+                            if new_is_open == expected_open:
+                                # Our own command's feedback arrived (possibly
+                                # delayed by minutes).  Refresh the timestamp
+                                # so a later legitimate external change is
+                                # still detected via the fallback window.
+                                self._last_bypass_command_time[device_id] = now
+                                _LOGGER.debug(
+                                    "Bypass change for %s matches our own "
+                                    "command (mode=%s, last_cmd=%s, "
+                                    "age=%.1fs); ignoring",
+                                    device_id,
+                                    current_mode,
+                                    last_cmd,
+                                    now - last_cmd_time,
+                                )
+                            else:
+                                # Bypass moved to the OPPOSITE of what we
+                                # commanded → genuine external / manual
+                                # override.  Turn temp_control off regardless
+                                # of how recently we sent our command.
+                                _LOGGER.info(
+                                    "External bypass change detected for %s "
+                                    "(mode=%s, new_state=%s, last_cmd=%s, "
+                                    "age=%.1fs); bypass moved opposite to "
+                                    "commanded state, turning temp_control off",
+                                    device_id,
+                                    current_mode,
+                                    raw_new,
+                                    last_cmd,
+                                    now - last_cmd_time,
+                                )
+                                await self.hass.services.async_call(
+                                    "switch",
+                                    "turn_off",
+                                    {"entity_id": switch_id},
+                                )
+                                return
+                        else:
+                            # No recorded command — fall back to a generous
+                            # time window that covers damper movement + RF
+                            # feedback latency (~2-3 min observed).
+                            fallback_window_s = 300.0
+                            if now - last_cmd_time > fallback_window_s:
+                                _LOGGER.info(
+                                    "External bypass change detected for %s "
+                                    "(mode=%s, new_state=%s, no recorded "
+                                    "command, age=%.1fs); turning "
+                                    "temp_control off",
+                                    device_id,
+                                    current_mode,
+                                    raw_new,
+                                    now - last_cmd_time,
+                                )
+                                await self.hass.services.async_call(
+                                    "switch",
+                                    "turn_off",
+                                    {"entity_id": switch_id},
+                                )
+                                return
 
         # Bypass debounce for user-initiated switch toggles — these should
         # be processed immediately, not delayed by sensor-fluctuation debounce.

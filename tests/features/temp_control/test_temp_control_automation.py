@@ -660,8 +660,8 @@ class TestTempControlBypassSafetyNet:
     async def test_external_bypass_change_turns_off_temp_control(
         self, automation_manager
     ):
-        """When bypass position changes externally (no recent command from us),
-        temp_control switch is turned off."""
+        """When the bypass moves to the OPPOSITE of what we commanded,
+        temp_control switch is turned off (genuine external/manual override)."""
         import time
 
         hass = automation_manager.hass
@@ -671,14 +671,16 @@ class TestTempControlBypassSafetyNet:
         hass.states.get = MagicMock(return_value=switch_state)
         hass.services.async_call = AsyncMock()
 
-        # No recent bypass command from temp_control (old timestamp)
-        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 60
+        # We commanded fan_bypass_open (expected bypass "on"/open) but the
+        # damper moved to closed ("off") — opposite of our command → external.
+        automation_manager._last_bypass_command["32:153289"] = "fan_bypass_open"
+        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 5
         # Safety net only fires when temp_control is actively forcing a
         # bypass state (cooling/heating_retention), not in idle.
         automation_manager._mode["32:153289"] = "cooling"
 
-        old_state = MagicMock()
-        new_state = MagicMock()
+        old_state = MagicMock(state="on")
+        new_state = MagicMock(state="off")
 
         await automation_manager._async_handle_state_change(
             "binary_sensor.32_153289_bypass_position",
@@ -691,6 +693,119 @@ class TestTempControlBypassSafetyNet:
             "turn_off",
             {"entity_id": "switch.temp_control_32_153289"},
         )
+
+    @pytest.mark.asyncio
+    async def test_external_bypass_change_no_recorded_command_turns_off(
+        self, automation_manager
+    ):
+        """When no command is on record and the bypass changes long after any
+        command, temp_control is turned off (fallback time window)."""
+        import time
+
+        hass = automation_manager.hass
+        switch_state = MagicMock()
+        switch_state.state = "on"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+
+        # No recorded command; last command timestamp well beyond the 300s
+        # fallback window → external.
+        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 400
+        automation_manager._mode["32:153289"] = "cooling"
+
+        old_state = MagicMock(state="on")
+        new_state = MagicMock(state="off")
+
+        await automation_manager._async_handle_state_change(
+            "binary_sensor.32_153289_bypass_position",
+            old_state,
+            new_state,
+        )
+
+        hass.services.async_call.assert_called_once_with(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.temp_control_32_153289"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_own_delayed_bypass_feedback_does_not_turn_off(
+        self, automation_manager
+    ):
+        """Regression: our own fan_bypass_open command's position feedback can
+        arrive 1-3 minutes later (physical damper + RF latency).  The matching
+        state must NOT be treated as an external override.
+
+        This is the overnight self-disablement bug: cooling kicked in, we sent
+        fan_bypass_open, and ~120s later the bypass_position sensor reported
+        the new (open) state — which the old 10s grace window misclassified as
+        external, turning temp_control off.
+        """
+        import time
+
+        hass = automation_manager.hass
+        switch_state = MagicMock()
+        switch_state.state = "on"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+
+        # We commanded fan_bypass_open ~120s ago (damper feedback just arrived).
+        automation_manager._last_bypass_command["32:153289"] = "fan_bypass_open"
+        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 120
+        automation_manager._mode["32:153289"] = "cooling"
+
+        old_state = MagicMock(state="off")
+        # Damper finally reports open — matches our fan_bypass_open command.
+        new_state = MagicMock(state="on")
+
+        with patch.object(
+            type(automation_manager).__mro__[1],
+            "_async_handle_state_change",
+            new_callable=AsyncMock,
+        ):
+            await automation_manager._async_handle_state_change(
+                "binary_sensor.32_153289_bypass_position",
+                old_state,
+                new_state,
+            )
+
+        hass.services.async_call.assert_not_called()
+        # Timestamp refreshed so a later real external change is still caught.
+        assert (
+            automation_manager._last_bypass_command_time["32:153289"] > time.time() - 5
+        )
+
+    @pytest.mark.asyncio
+    async def test_unavailable_bypass_state_does_not_turn_off(self, automation_manager):
+        """A non-definite bypass state (unavailable/unknown) must not disable
+        temp_control — it is not a real damper movement."""
+        import time
+
+        hass = automation_manager.hass
+        switch_state = MagicMock()
+        switch_state.state = "on"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+
+        automation_manager._last_bypass_command["32:153289"] = "fan_bypass_open"
+        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 400
+        automation_manager._mode["32:153289"] = "cooling"
+
+        old_state = MagicMock(state="on")
+        new_state = MagicMock(state="unavailable")
+
+        with patch.object(
+            type(automation_manager).__mro__[1],
+            "_async_handle_state_change",
+            new_callable=AsyncMock,
+        ):
+            await automation_manager._async_handle_state_change(
+                "binary_sensor.32_153289_bypass_position",
+                old_state,
+                new_state,
+            )
+
+        hass.services.async_call.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_own_bypass_change_does_not_turn_off(self, automation_manager):
@@ -1226,7 +1341,8 @@ class TestTempControlBypassFlowProdScenario:
         self, automation_manager
     ):
         """Contrast: in cooling mode (forcing bypass open), an external bypass
-        change IS a real manual override → temp_control is disabled.
+        change to the OPPOSITE state IS a real manual override → temp_control
+        is disabled.
         """
         import time
 
@@ -1236,10 +1352,13 @@ class TestTempControlBypassFlowProdScenario:
         hass.states.get = MagicMock(return_value=switch_state)
         hass.services.async_call = AsyncMock()
         automation_manager._mode["32:153289"] = "cooling"
+        # We commanded fan_bypass_open (expected "on"/open); the damper moved
+        # to closed ("off") — opposite of commanded → external override.
+        automation_manager._last_bypass_command["32:153289"] = "fan_bypass_open"
         automation_manager._last_bypass_command_time["32:153289"] = time.time() - 120
 
-        old_state = MagicMock(state="open")
-        new_state = MagicMock(state="closed")
+        old_state = MagicMock(state="on")
+        new_state = MagicMock(state="off")
 
         await automation_manager._async_handle_state_change(
             "binary_sensor.32_153289_bypass_position",
