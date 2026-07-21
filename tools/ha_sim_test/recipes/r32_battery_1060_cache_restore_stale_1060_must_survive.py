@@ -124,6 +124,16 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             f"state={bat_state_before!r} entity={bat_eid}",
         )
 
+        # 3b. Force a state save so the injected 1060 is in .storage/ramses_cc
+        #     before we read/age it.  async_save_client_state runs on a 5-min
+        #     timer; without this, the TRV 1060 is in the CQRS read-model (so
+        #     the entity has state) but not yet persisted to the cache.
+        try:
+            call_service(ctx.token, "ramses_cc", "sync_topology")
+        except RuntimeError:
+            pass
+        ctx.wait(5, "for async_save_client_state to persist 1060 to cache")
+
         # 4. Age every cached 1060 packet to 2h ago in .storage/ramses_cc.
         #    This reproduces the real-world condition: the only 1060 in cache
         #    is >1h old (battery devices send 1/day).  Other codes keep their

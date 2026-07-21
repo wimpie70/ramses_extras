@@ -189,8 +189,24 @@ class ResponseEngine:
 
             # 000C (zone_devices): prefer schema-aware response so device IDs
             # match the active profile's known_list rather than recorded captures.
+            # When a schema is available but the zone is not in it (e.g. zone
+            # types 0E/0F for HTG/APP), do NOT fall through to recorded payloads
+            # — those reference real device IDs from a different network's
+            # capture and would create spurious bindings.  Only fall through
+            # when no schema is available at all.
             if not payload and code == "000C" and verb == "RQ":
-                payload = self._build_schema_000c_response(parsed["payload"], dst)
+                schema_payload = self._build_schema_000c_response(
+                    parsed["payload"], dst
+                )
+                if schema_payload is not None:
+                    payload = schema_payload
+                elif self._has_active_schema():
+                    # Schema exists but zone not in it — don't respond
+                    LOGGER.debug(
+                        "ResponseEngine: 000C zone %s not in schema, not responding",
+                        (parsed["payload"] or "")[:2],
+                    )
+                    return
 
             if not payload and response and response.payloads:
                 payload = response.payloads[0]
@@ -314,6 +330,18 @@ class ResponseEngine:
 
         schema = profile.device_configs.get("_schema", {})
         return build_schema_000c_response(rq_payload, dst, schema)
+
+    def _has_active_schema(self) -> bool:
+        """Return True if the active profile has a _schema dict."""
+        if not self._config_store:
+            return False
+        profile_name = self._config_store.get_active_profile()
+        if not profile_name:
+            return False
+        profile = self._config_store.get_profile(profile_name)
+        if not profile:
+            return False
+        return bool(profile.device_configs.get("_schema"))
 
     def _build_write_ack_payload(
         self, parsed: dict[str, str], response: ResponseEntry | None

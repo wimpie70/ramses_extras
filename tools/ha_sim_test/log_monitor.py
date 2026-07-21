@@ -53,6 +53,8 @@ EXPECTED_WARNINGS: list[str] = [
     "Task exception was never retrieved",
     # ramses_rf: SUPPRESSED in Zone handler (cosmetic, from zone rebinding)
     "SUPPRESSED in Zone",
+    # ramses_rf: SUPPRESSED in SystemBase 000C handler (BDR re-parenting)
+    "SUPPRESSED in SystemBase 000C",
     # HA: logging too frequently (simulator at 100x speed generates lots of logs)
     "logging too frequently",
     # HA: custom integration not tested (cosmetic, every reload)
@@ -104,6 +106,15 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_extras: ramses_rf.const import warning when ramses_rf is
     # installed from a non-standard location (editable install / manual copy)
     "could not import ramses_rf.const for patching",
+    # HA core: ramses_cc climate entity already exists during profile reload
+    # (transient — HA correctly ignores the duplicate, but logs an error)
+    "does not generate unique IDs",
+    # ramses_extras: broker not found during early init (transient — ramses_cc
+    # may not be loaded yet when ramses_extras starts)
+    "Could not find ramses_cc broker",
+    # HA core: slow state update warning (transient — profile reloads cause
+    # batch entity updates that can exceed HA's 0.5s threshold)
+    "Updating state for",
     # ramses_cc: orphaned task warning during profile reload (transient —
     # the EntityPlatform async_add_entities task may still be pending when
     # the integration unloads)

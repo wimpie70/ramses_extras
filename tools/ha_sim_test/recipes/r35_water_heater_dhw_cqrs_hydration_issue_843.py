@@ -8,7 +8,6 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW
 from ..helpers import (
     call_service,
-    find_entity_for_device,
     get_entities,
     ws_send,
 )
@@ -148,17 +147,16 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
         ctx.wait(5, "for entity state write")
 
         # 5. Find the water_heater entity for the DhwZone
-        #    The DhwZone ID is CTL + "_HW" (e.g. "01:150000_HW")
-        #    The entity_id is water_heater.<normalized_id> (lowercase)
+        #    The DhwZone ID is CTL + "_HW" (e.g. "01:150000_HW"), but the
+        #    HA entity_id is slugified from the device name, which is
+        #    "stored_hw" (ramses_cc uses has_entity_name=True with name=None,
+        #    so HA derives the slug from the device name, not the unique_id).
         entities = get_entities(ctx.token)
-        dhw_zone_id = f"{CTL}_HW".lower()
-        wh_entity = find_entity_for_device(
-            entities, dhw_zone_id, prefix="water_heater."
-        )
-
-        if wh_entity is None:
-            # Try without prefix — the entity_id format may vary
-            wh_entity = find_entity_for_device(entities, dhw_zone_id)
+        wh_entity = None
+        for e in entities:
+            if e["entity_id"].startswith("water_heater."):
+                wh_entity = e
+                break
 
         wh_eid = wh_entity["entity_id"] if wh_entity else "None"
         wh_state = wh_entity.get("state") if wh_entity else None

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 
 import yaml as _yaml
 
@@ -44,22 +46,101 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
             "(issue 834 race condition)"
         )
 
-        bdr_id = "13:834001"
-        # dev_id_to_hex_id("13:834001") = (13 << 18) + 834001 = 0x40B9D1
-        bdr_hex_id = "40B9D1"
+        # NOTE: the serial number must be < 262144 (18-bit max), otherwise
+        # the hex_id overflows into the device-type bits and convert_from_hex
+        # returns a different device_id (e.g. 13:834001 → 0x40B9D1 → 16:047569).
+        # 13:083400 references issue 834 while staying within the valid range.
+        bdr_id = "13:083400"
+        # dev_id_to_hex_id("13:083400") = (13 << 18) + 83400 = 0x3545C8
+        bdr_hex_id = "3545C8"
+
+        # --- Clear ALL cached state from previous tests (e.g. R29 binds BDR
+        # as appliance_control and writes it to the config entry schema).
+        # Both .storage/ramses_cc (client state cache) AND the CONF_SCHEMA in
+        # core.config_entries persist across docker restarts (bind mount).
+        # deep_merge preserves old keys like system: {appliance_control: ...}
+        # from the cached schema even when the config schema sets system: {}.
+        # The ramses.db message database also persists and replays old 000C
+        # packets (including the 000F003545C8 APP binding from a previous run)
+        # which would trigger the re-parenting before our manual inject.
+        # We must stop the container, delete all three, and restart to get
+        # a truly clean state for this race condition test.
+        print("  Stopping ha-sim and clearing cached state...")
+        ctx.log_monitor.capture_before_restart("R34 pre-restart")
+        subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
+        ctx.wait(2, "for container to stop")
+        # Delete .storage/ramses_cc (client state cache)
+        storage_path = "/home/willem/docker_files/ha-sim/config/.storage/ramses_cc"
+        if os.path.exists(storage_path):
+            os.remove(storage_path)
+        # Delete ramses.db (message database — replays old 000C packets)
+        for db_path in (
+            "/home/willem/docker_files/ha-sim/config/ramses.db",
+            "/home/willem/docker_files/ha-sim/config/ramses_rf/ramses.db",
+        ):
+            if os.path.exists(db_path):
+                os.remove(db_path)
+        # Clear CONF_SCHEMA from core.config_entries (config entry options).
+        # The file is root-owned inside the container, so we can't edit it
+        # directly from the host.  The container is stopped, so docker exec
+        # won't work either.  Use a temporary alpine container with the config
+        # volume mounted to modify the file.
+        ce_path_host = (
+            "/home/willem/docker_files/ha-sim/config/.storage/core.config_entries"
+        )
+        if os.path.exists(ce_path_host):
+            subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-v",
+                    "/home/willem/docker_files/ha-sim/config:/config",
+                    "python:3.12-slim",
+                    "python3",
+                    "-c",
+                    "import json; "
+                    "p='/config/.storage/core.config_entries'; "
+                    "d=json.load(open(p)); "
+                    "[e.get('options',{}).pop('schema',None) "
+                    "for e in d.get('data',{}).get('entries',[]) "
+                    "if e.get('domain')=='ramses_cc']; "
+                    "json.dump(d, open(p,'w')); "
+                    "print('Cleared CONF_SCHEMA')",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
+        ctx.wait(20, "for ha-sim to start up")
+        ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait(5, "for ramses_cc to initialize")
 
         # --- Build a custom profile without DHW sensor ---
         # The mixed profile has stored_hotwater: {sensor: DHW}.  We remove
         # it so the DhwZone created by the 000C HTG binding has no sensor,
         # which is the precondition for re-parenting.
+        # We also explicitly clear `system` to prevent the schema merge from
+        # preserving appliance_control bindings from previous tests (e.g. R29).
         schema_r34 = dict(MIXED_SCHEMA)
         ctl_schema_r34 = dict(schema_r34.get(CTL, {}))
         # Remove stored_hotwater — this system has NO DHW
         ctl_schema_r34.pop("stored_hotwater", None)
+        # Explicitly clear system to prevent merge preserving old bindings
+        ctl_schema_r34["system"] = {}
         schema_r34[CTL] = ctl_schema_r34
 
         kl_r34 = dict(MIXED_KL)
         kl_r34[bdr_id] = {"class": "BDR"}
+        # Remove the DHW sensor from the known_list — this system has NO DHW,
+        # so the DHW sensor should not be present to create a DhwZone
+        kl_r34.pop(DHW, None)
+
+        # The BDR must also be in the schema (SSOT mode derives known_list
+        # from schema, so a known_list-only entry would be dropped).
+        schema_r34[bdr_id] = {}
 
         profile_r34 = {
             "known_list": kl_r34,

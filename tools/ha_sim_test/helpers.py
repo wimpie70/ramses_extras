@@ -257,30 +257,53 @@ def write_ramses_storage(data: dict) -> bool:
 
     :return: True if the write succeeded.
     """
-    # Read the current full file (envelope: version/minor_version/key/data)
+    # Read the current full file (envelope: version/minor_version/key/data).
+    # Try docker exec first (works if container is running); fall back to the
+    # host bind-mount path (needed when the container is stopped, since
+    # `docker exec` requires a running container).
+    storage_path = "/home/willem/docker_files/ha-sim/config/.storage/ramses_cc"
     result = subprocess.run(
         ["docker", "exec", "ha-sim", "cat", "/config/.storage/ramses_cc"],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        print(
-            f"  write_ramses_storage: failed to read current file: {result.stderr[:80]}"
-        )
-        return False
-    envelope = json.loads(result.stdout)
+        # Container is likely stopped — read from the host bind mount instead.
+        try:
+            with open(storage_path) as f:
+                content = f.read()
+        except OSError as err:
+            print(
+                f"  write_ramses_storage: failed to read current file: "
+                f"docker exec failed ({result.stderr[:60]}) and host read "
+                f"failed ({err})"
+            )
+            return False
+    else:
+        content = result.stdout
+    envelope = json.loads(content)
     envelope["data"] = data
     tmp_path = "/tmp/ramses_cc_storage.json"
     with open(tmp_path, "w") as f:
         json.dump(envelope, f, indent=2)
+    # Try docker cp first; if the container is stopped, write directly to the
+    # host bind-mount path (HA will pick up the file on next start).
     cp = subprocess.run(
         ["docker", "cp", tmp_path, "ha-sim:/config/.storage/ramses_cc"],
         capture_output=True,
         text=True,
     )
     if cp.returncode != 0:
-        print(f"  write_ramses_storage: docker cp failed: {cp.stderr[:80]}")
-        return False
+        try:
+            import shutil
+
+            shutil.copyfile(tmp_path, storage_path)
+        except OSError as err:
+            print(
+                f"  write_ramses_storage: docker cp failed ({cp.stderr[:60]}) "
+                f"and host write failed ({err})"
+            )
+            return False
     return True
 
 

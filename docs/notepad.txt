@@ -1,5 +1,21 @@
 # Working Notes
 
+## PWhite-Eng Coding Preferences (from PR 868 review, Jul 20 2026)
+When contributing to ramses_rf, follow these architectural standards:
+1. **Encapsulation** — no direct private attribute mutation from outside
+   the object (e.g. `old_parent._dhw_valve = None`,
+   `old_parent.childs.remove(dev)`). State mutation should remain within
+   the object itself. Use dedicated methods like `detach_child()` or
+   `remove_device()` on the classes so they manage their own referential
+   integrity and cleanup.
+2. **Type checking** — use `isinstance(old_parent, DhwZone)`, not
+   `type(old_parent).__name__ == "DhwZone"`. Or rely on a specific
+   interface property.
+3. **Separation of concerns** — don't overload factory/retrieval methods
+   (like `get_device()`) with complex graph mutation / re-parenting /
+   cleanup logic. Keep methods focused on a single responsibility.
+   Abstract complex logic into dedicated methods.
+
 ## Archived Docs (for reference)
 - docs/FAN_CONFIGURATION_SCHEMA_DRAFT.md
 - docs/REMOTE_BINDING_IMPLEMENTATION_PLAN.md
