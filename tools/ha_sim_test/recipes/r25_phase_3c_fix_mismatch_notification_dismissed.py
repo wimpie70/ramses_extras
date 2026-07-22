@@ -38,8 +38,24 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 25: Phase 3c — fix mismatch, notification dismissed")
 
-        # Reload with correct _class — mismatch should clear
-        fixed_yaml = mixed_yaml()  # default MIXED_SCHEMA has no _class override
+        # Reload with correct _class on all top-level schema entries.
+        #
+        # R24 injected a wrong _class ("DIS") on the FAN.  The "fix" is to
+        # set the correct _class ("FAN").  We also add _class to CTL and REM
+        # (the other top-level entries in MIXED_SCHEMA) so that
+        # check_missing_class doesn't flag them as "missing _class" — which
+        # would keep the mismatch notification alive even though the class
+        # mismatch is resolved.
+        #
+        # Without _class on all top-level entries, check_all_mismatches
+        # returns total > 0 (from check_missing_class), and the notification
+        # is recreated with "missing _class" content instead of being
+        # dismissed.
+        fixed_schema = dict(MIXED_SCHEMA)
+        fixed_schema[CTL] = {**fixed_schema.get(CTL, {}), "_class": "CTL"}
+        fixed_schema[FAN] = {**fixed_schema.get(FAN, {}), "_class": "FAN"}
+        fixed_schema[REM] = {**fixed_schema.get(REM, {}), "_class": "REM"}
+        fixed_yaml = mixed_yaml(fixed_schema)
         await load_profile_yaml(ctx.token, fixed_yaml, speed=0.01)
         ctx.wait(5, "for profile reload")
 
