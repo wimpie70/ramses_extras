@@ -73,6 +73,26 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
                 pass
         ctx.wait(10, "for CTL/DHW heartbeats + schema population")
 
+        # Silence the DHW sensor's periodic emitter before injecting, so the
+        # sim's own 1260 heartbeat (which carries the sim's internal temp,
+        # e.g. 58.9°C) doesn't overwrite our injected value (55.0°C) at 100x
+        # speed.  The inject_message call below sends a raw packet that is
+        # processed regardless of the emitter state.
+        print(f"  Silencing DHW {DHW} periodic emitter to prevent overwrite...")
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/silence_devices",
+                    "device_ids": [DHW],
+                    "set_suppress": False,
+                },
+            )
+            print(f"    DHW {DHW} emitter silenced")
+        except RuntimeError as e:
+            print(f"    Silence failed (continuing): {str(e)[:80]}")
+        ctx.wait(2, "for emitter cancellation to take effect")
+
         # 2. Inject 1260 I from DHW sensor (07:150000)
         #    Payload: 00 + temp_hex(55.0°C = 0x157C) = 00157C
         #    The DHW sensor is the source; the DhwZone must receive this
