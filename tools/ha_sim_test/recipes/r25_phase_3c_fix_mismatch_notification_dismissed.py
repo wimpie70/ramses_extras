@@ -38,23 +38,37 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 25: Phase 3c — fix mismatch, notification dismissed")
 
-        # Reload with correct _class on all top-level schema entries.
+        # Reload with correct _class on ALL top-level schema entries.
         #
         # R24 injected a wrong _class ("DIS") on the FAN.  The "fix" is to
-        # set the correct _class ("FAN").  We also add _class to CTL and REM
-        # (the other top-level entries in MIXED_SCHEMA) so that
-        # check_missing_class doesn't flag them as "missing _class" — which
-        # would keep the mismatch notification alive even though the class
-        # mismatch is resolved.
+        # set the correct _class ("FAN").  We must also add _class to every
+        # other top-level schema entry (CTL, REM, TRVs, DHW, CO2, BDR, zone
+        # CTLs) so that check_missing_class doesn't flag them as "missing
+        # _class" — which would keep the mismatch notification alive even
+        # though the class mismatch is resolved.
         #
         # Without _class on all top-level entries, check_all_mismatches
         # returns total > 0 (from check_missing_class), and the notification
         # is recreated with "missing _class" content instead of being
         # dismissed.
         fixed_schema = dict(MIXED_SCHEMA)
-        fixed_schema[CTL] = {**fixed_schema.get(CTL, {}), "_class": "CTL"}
-        fixed_schema[FAN] = {**fixed_schema.get(FAN, {}), "_class": "FAN"}
-        fixed_schema[REM] = {**fixed_schema.get(REM, {}), "_class": "REM"}
+        # Add _class from the known_list to every device (skip HGI —
+        # check_missing_class skips 18: devices).
+        for dev_id, kl_entry in MIXED_KL.items():
+            if dev_id.startswith("18:"):
+                continue
+            kl_class = kl_entry.get("class")
+            if kl_class:
+                fixed_schema[dev_id] = {
+                    **fixed_schema.get(dev_id, {}),
+                    "_class": kl_class,
+                }
+        # 13:083400 is a BDR that's in the mixed profile's schema but not
+        # in MIXED_KL — add _class so check_missing_class doesn't flag it.
+        fixed_schema["13:083400"] = {
+            **fixed_schema.get("13:083400", {}),
+            "_class": "BDR",
+        }
         fixed_yaml = mixed_yaml(fixed_schema)
         await load_profile_yaml(ctx.token, fixed_yaml, speed=0.01)
         ctx.wait(5, "for profile reload")
