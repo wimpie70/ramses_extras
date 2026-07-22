@@ -60,14 +60,21 @@ except (ImportError, AttributeError) as e:
 
         # --- Full test body (runs only when HVAC binding rules exist) ---
 
-        # 1. Load fresh_start (no schema, no known devices)
-        print("  Loading fresh_start profile (no preloaded schema)...")
+        # 1. Load fresh_start_allow_unknown_devices (no enforce_known_list)
+        #    We need unknown devices to be accepted so TopologyBuilder can
+        #    learn HVAC bindings from traffic.  With enforce_known_list=True
+        #    (plain fresh_start), packets from unknown FAN/REM/CO2 would be
+        #    filtered out before TopologyBuilder sees them.
+        print(
+            "  Loading fresh_start_allow_unknown_devices profile "
+            "(enforce_known_list disabled)..."
+        )
         try:
             await ws_send(
                 ctx.token,
                 {
                     "type": "ramses_extras/device_simulator/load_profile",
-                    "profile": "fresh_start",
+                    "profile": "fresh_start_allow_unknown_devices",
                     "speed": 0.01,
                     "preload_schema": False,
                     "reload_ramses_cc": True,

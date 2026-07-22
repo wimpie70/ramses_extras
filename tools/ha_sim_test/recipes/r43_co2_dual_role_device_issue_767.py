@@ -66,14 +66,19 @@ except ImportError as e:
 
         # --- Full test body (runs only when dual-role is supported) ---
 
-        # 1. Load fresh_start
-        print("  Loading fresh_start profile...")
+        # 1. Load fresh_start_allow_unknown_devices
+        #    The dual-role device 37:153002 is unknown — with enforce_known_list
+        #    (plain fresh_start), its packets would be filtered out.
+        print(
+            "  Loading fresh_start_allow_unknown_devices profile "
+            "(enforce_known_list disabled)..."
+        )
         try:
             await ws_send(
                 ctx.token,
                 {
                     "type": "ramses_extras/device_simulator/load_profile",
-                    "profile": "fresh_start",
+                    "profile": "fresh_start_allow_unknown_devices",
                     "speed": 0.01,
                     "preload_schema": False,
                     "reload_ramses_cc": True,

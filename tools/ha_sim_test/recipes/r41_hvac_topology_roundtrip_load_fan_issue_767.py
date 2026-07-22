@@ -20,9 +20,8 @@ from ..helpers import (
     docker_exec_python,
     get_schema_retry,
     load_profile_yaml,
-    ws_send,
 )
-from ..profile import MIXED_KL, mixed_yaml
+from ..profile import mixed_yaml
 
 
 class R41HvacTopologyRoundtripLoadFanIssue767(Recipe):
@@ -104,8 +103,9 @@ except ImportError as e:
         # 3. Verify gateway.schema() outputs HVAC structure (not orphans_hvac)
         #    The roundtrip bug: gateway.schema() flattens HVAC to orphans_hvac
         #    because load_fan doesn't process the schema.
-        cached = get_schema_retry()
-        orphans_hvac = cached.get("orphans_hvac", [])
+        #    The cached schema in .storage reflects gateway.schema() output
+        #    (saved every 5 min by save_state).  We already have it from step 2.
+        orphans_hvac = schema.get("orphans_hvac", [])
 
         # When load_fan is fixed, the FAN/REM/CO2 should NOT be in
         # orphans_hvac — they should be under the FAN's structure
@@ -125,4 +125,27 @@ except ImportError as e:
             f"CO2 {CO2} not in orphans_hvac (bound to FAN)",
             CO2 not in orphans_hvac,
             f"CO2 found in orphans_hvac: {orphans_hvac}",
+        )
+
+        # 4. Verify the cached schema (gateway output) also has HVAC structure
+        #    Wait for save_state to flush, then re-read
+        ctx.wait(5, "for save_state to flush gateway.schema() to cache")
+        cached = get_schema_retry()
+        cached_fan = cached.get(FAN, {})
+        cached_orphans = cached.get("orphans_hvac", [])
+
+        ctx.check(
+            f"cached schema has FAN {FAN} with remotes (gateway output)",
+            isinstance(cached_fan, dict)
+            and "remotes" in cached_fan
+            and REM in cached_fan.get("remotes", []),
+            f"cached_fan={cached_fan}, orphans={cached_orphans}",
+        )
+
+        ctx.check(
+            f"cached schema has FAN {FAN} with sensors (gateway output)",
+            isinstance(cached_fan, dict)
+            and "sensors" in cached_fan
+            and CO2 in cached_fan.get("sensors", []),
+            f"cached_fan={cached_fan}, orphans={cached_orphans}",
         )
