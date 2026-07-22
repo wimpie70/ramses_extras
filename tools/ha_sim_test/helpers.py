@@ -424,3 +424,44 @@ def grep_ha_log(pattern: str, since_lines: int = 0) -> list[str]:
         timeout=10,
     )
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def docker_exec_python(code: str, timeout: int = 30) -> dict:
+    """Run Python code inside the ha-sim container and return the result.
+
+    The code must print a JSON line to stdout (typically via ``json.dumps``).
+    This is used by structural recipes that need to inspect ramses_rf/ramses_tx
+    internals (CommandDTO, PacketDTO, load_fan, etc.) which are only available
+    in the container's newer ramses_rf installation.
+
+    :param code: Python source code to execute inside the container.
+    :param timeout: Timeout in seconds.
+    :return: Parsed JSON dict from stdout, or ``{"error": "..."}`` on failure.
+    """
+    cmd = [
+        "docker",
+        "exec",
+        "ha-sim",
+        "python3",
+        "-c",
+        code,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            return {"error": result.stderr.strip()[:500]}
+        # The code should print exactly one JSON line
+        for line in result.stdout.strip().splitlines():
+            line = line.strip()
+            if line.startswith("{"):
+                return json.loads(line)
+        return {"error": f"no JSON in stdout: {result.stdout[:200]}"}
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout"}
+    except (json.JSONDecodeError, Exception) as e:
+        return {"error": str(e)[:200]}
