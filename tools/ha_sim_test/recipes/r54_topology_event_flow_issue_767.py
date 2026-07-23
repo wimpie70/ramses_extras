@@ -99,8 +99,9 @@ try:
     mock_msg.dst.id = "18:765432"  # gateway
     mock_msg._pkt = mock_pkt
 
-    # Process the message
-    builder.process_message(mock_msg)
+    # Process the message (consume is async)
+    import asyncio
+    asyncio.run(builder.consume(mock_msg))
 
     # Should emit CREATE_CONTROLLER (src is 01:) and possibly BIND_DEVICE
     _ctrl = TopologyAction.CREATE_CONTROLLER
@@ -120,16 +121,16 @@ try:
     emitted_events.clear()
 
     from ramses_tx.const import Code as Code2
-    # 000C is typically a CTL-only code
+    # 1F09 is a CTL-only code (system mode) in CODES_ONLY_FROM_CTL
     mock_msg2 = MagicMock()
     mock_msg2.header.verb = " I"
-    mock_msg2.header.code = Code2._000C
+    mock_msg2.header.code = Code2._1F09
     mock_msg2.src.id = "{CTL}"
     mock_msg2.dst.id = "18:765432"
     mock_msg2._pkt = MagicMock()
     mock_msg2._pkt.payload = "000E003545C8"
 
-    builder.process_message(mock_msg2)
+    asyncio.run(builder.consume(mock_msg2))
 
     ctl_events = [e for e in emitted_events if e.action == _ctrl]
     results["ctl_broadcast_emitted"] = len(ctl_events) > 0
