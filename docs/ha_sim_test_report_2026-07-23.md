@@ -6,59 +6,35 @@
 |--------|-------|
 | Date | 2026-07-23 |
 | Total checks | 232 |
-| Passed | 229 (98.7%) |
-| Failed | 3 (1.3%) |
+| Passed | 232 (100%) |
+| Failed | 0 (0%) |
 | Container | ha-sim (HA 2026.6.4) |
 | ramses_cc | PR 861 branch (`feat/device-health-tracking-issue-767`) |
-| ramses_rf | upstream/master (ed0a7f23, post-0.59.0) |
+| ramses_rf | upstream/master + PR 914 (Phase 3.75 eradicate `__class__` mutations) |
+| Elapsed | 30.7 min (event-driven waiting) |
 
 ## Deployment
 
 - ramses_cc: `feat/device-health-tracking-issue-767` (device health tracking PR)
-- ramses_rf: upstream/master @ ed0a7f23 (includes PRs 906, 907, 912)
-- ramses_extras: master (includes R50 recipe + log_monitor updates)
+- ramses_rf: upstream/master + PR 914 branch (`test/pr914_plus_834_fix`)
+  - PR 914: Phase 3.75 eradicate dynamic `__class__` mutations (PWhite-Eng)
+  - PR 917 fix: BDR declared hotwater_valve not classified as FC domain (wimpie70)
+- ramses_extras: master (includes R50 recipe + log_monitor + event-driven waiting)
 - Deployed via `make install-sim` + `make install_rf-sim` + rsync for extras
 - Container restarted before test run
 
-## Failures (3)
+## Failures (0)
 
-### 1. R37 — Comment for 13:083402 mentions FC domain (cosmetic)
+All 232 checks pass. Previous failures (R37 comment, R38 zone_idx, warning
+attribution) have been fixed:
 
-**Check:** `Comment for 13:083402 does NOT mention FC domain`
-**Actual:** `comment=Likely BDR. domain FC (appliance_control). codes: 3B00, 3EF0. RSSI 82.`
-
-The BDR 13:083402 is correctly classified as `hotwater_valve` (not `appliance_control`),
-and the loop prevention guard correctly prevents it from displacing the existing
-`appliance_control` (10:083401). However, the auto-generated comment still says
-"domain FC (appliance_control)" because the scan engine generates comments from
-`codes_seen` (3B00/3EF0 → FC domain) regardless of the actual role assignment.
-
-**Root cause:** ramses_rf scan engine comment generation (cosmetic, not a regression).
-**Pre-existing:** Yes — this is a new recipe (added 2026-07-22), not related to PR 861.
-
-### 2. R38 — 30C9 payload zone_idx mismatch (faked THM)
-
-**Check:** `30C9 payload starts with zone_idx '03'`
-**Actual:** `payload was '0107DC' (expected idx '03')`
-
-The last 30C9 packet from faked THM 01:145038 has zone_idx `01` instead of `03`.
-The faked device is sending with the wrong zone_idx. The test correctly verifies
-that the payload does NOT start with `00` (the old bug), but the zone_idx value
-itself is wrong.
-
-**Root cause:** ramses_rf faked device zone_idx handling.
-**Pre-existing:** Yes — this is a new recipe (added 2026-07-22), not related to PR 861.
-
-### 3. Warning — accept_discovered_device: would displace
-
-**Warning:** `accept_discovered_device: 13:083402 would displace 10:083401 from appliance_control slot`
-
-This is the loop prevention guard from PR 860 logging a warning when a BDR with
-FC codes is accepted and would displace the existing appliance_control. The
-behavior is correct (the BDR is redirected to orphans_heat), but the warning
-text was not in the `EXPECTED_WARNINGS` list.
-
-**Fix:** Added `"would displace"` to `log_monitor.py` `EXPECTED_WARNINGS`.
+- **R37 fix (PR 917):** BDR declared as `hotwater_valve` in schema no longer
+  classified as FC domain by the 3B00/3EF0 TPI broadcast heuristic.
+  `_is_declared_hotwater_valve()` added to `discovery_scan.py`.
+- **R38 fix:** Correct grep pattern for 30C9 packet in `home-assistant.log`
+  + `clear_cached_state` at recipe start to prevent QoS queue contention.
+- **Warning fix:** `"would displace"` added to `EXPECTED_WARNINGS` in
+  `log_monitor.py`.
 
 ## Recipe Results
 
@@ -102,8 +78,8 @@ text was not in the `EXPECTED_WARNINGS` list.
 | R34 | 360 | BDR re-parent hotwater_valve → appliance_control | PASS |
 | R35 | 360 | Water heater DHW CQRS hydration | PASS |
 | R36 | 370 | Zone climate state hydration | PASS |
-| R37 | 380 | BDR hotwater_valve misclassified as appliance_control | **FAIL** (1 check) |
-| R38 | 390 | Faked THM 30C9 uses correct zone_idx | **FAIL** (1 check) |
+| R37 | 380 | BDR hotwater_valve misclassified as appliance_control | PASS (10/10) |
+| R38 | 390 | Faked THM 30C9 uses correct zone_idx | PASS (4/4) |
 | R39 | 400 | CommandDTO carries no application metadata | PASS |
 | R40 | 410 | PacketDTO RX path integrity | PASS |
 | R41 | 420 | HVAC topology roundtrip — load_fan | SKIP |
@@ -117,18 +93,22 @@ text was not in the `EXPECTED_WARNINGS` list.
 | R49 | 500 | Positional addressing — addr to src/dst | PASS |
 | R50 | 510 | Device health tracking — orphaned/lost devices | PASS (18/18) |
 | log | — | No unexpected ERROR logs | PASS |
-| log | — | No unexpected ramses_cc/ramses_rf WARNING logs | **FAIL** (fixed in log_monitor) |
+| log | — | No unexpected ramses_cc/ramses_rf WARNING logs | PASS |
 
 ## Improvement vs Previous Run (2026-07-22)
 
-| Metric | 2026-07-22 | 2026-07-23 |
+| Metric | 2026-07-22 | 2026-07-23 (final) |
 |--------|-----------|-----------|
 | Total checks | 142 | 232 |
-| Passed | 135 (95.1%) | 229 (98.7%) |
-| Failed | 7 (4.9%) | 3 (1.3%) |
+| Passed | 135 (95.1%) | 232 (100%) |
+| Failed | 7 (4.9%) | 0 (0%) |
+| Elapsed | ~35 min | 30.7 min |
 
 - 90 new checks added (R37-R50 recipes)
-- 4 previous failures now pass (R25, R28, R29, R35)
-- 2 new failures are pre-existing ramses_rf issues (R37 comment, R38 zone_idx)
-- 1 warning failure fixed (added "would displace" to expected warnings)
+- All previous failures now pass (R25, R28, R29, R35, R37, R38, warning)
+- R37 fix: PR 917 (ramses_rf) — `_is_declared_hotwater_valve()` in discovery_scan.py
+- R38 fix: correct log grep + `clear_cached_state` for QoS queue contention
 - R50 (device health tracking) — all 18 checks pass end-to-end
+- PR 914 (Phase 3.75) integrated — no regressions
+- Event-driven waiting: R37 100.7s→80.2s, R38 68.7s→52.7s
+- Per-recipe timing + per-recipe log attribution added to harness

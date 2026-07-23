@@ -20,7 +20,8 @@
 > - **ramses_rf Phase 3.75** (PWhite-Eng, issue 639) — Identity
 >   Composition. Was "Builder Pattern" (issue 530), now "init and go"
 >   from schema. `DeviceRole` composition scrapped. Deprecate `__class__`
->   mutations.
+>   mutations. **PR 914** (draft) implements this — tested with
+>   ha_sim_test: 232/232 pass (Jul 23 2026).
 >
 > **Key shift (Jul 17 2026, updated Jul 19):** Device identity Builder
 > (`DeviceRole`, `supported_commands()`) scrapped in favor of "init and go"
@@ -3460,21 +3461,31 @@ topology/device schema this document is about. Unrelated to our plan
 
 
 <a id="verification-status-checked-jul-2026"></a>
-### Verification status (checked Jul 2026)
+### Verification status (checked Jul 23 2026)
 
 ```
 REFERENCE                    STATE    NOTES
 ──────────────────────────────────────────────────────────────────
 ramses_rf discussion 191     open     started by zxdavb, 19 Apr 2025
 ramses_rf issue 530          closed   Builder/Strategy pattern scrapped (Jul 17 2026)
-ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX DONE 0.58.3, 3.75 Identity TODO)
+ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX DONE 0.58.3, 3.75 PR 914 draft)
 ramses_rf issue 836          closed   Dynamic class promotion → "init and go"
 ramses_rf issue 87           open     Itho fan states / manufacturer
 ramses_rf issue 627          open     CODES_SCHEMA reloc (unrelated)
+ramses_rf PR 914             draft    Phase 3.75: eradicate __class__ mutations (PWhite-Eng)
+                                      TESTED: 232/232 ha_sim_test pass (Jul 23 2026)
+ramses_rf PR 917             open     fix: declared hotwater_valve BDR not FC domain (wimpie70)
+ramses_rf PR 916             draft    Phase 4a: Shadow ConversationManager (hold)
+ramses_rf PR 918             open     refactor(hvac): binary struct packing (PWhite-Eng)
+ramses_rf PR 919             open     refactor(protocol): schedule BOFM struct (PWhite-Eng)
+ramses_cc PR 861             open     feat: device health tracking (wimpie70)
 ramses_cc issue 677          CLOSED   fixed in 0.57.6 (Jun 2026)
 ramses_cc issue 666          CLOSED   CPU ramp up (0.56.7)
 ramses_cc issue 627          open     milestone 0.57.8 (wimpie70)
 ramses_cc issue 601          open     version switching
+ramses_cc issue 834          open     BDR hotwater_valve vs appliance_control classification
+ramses_cc issue 767          open     device health tracking (PR 861 implements item 7)
+ramses_cc issue 857          open     Test with ha_sim_test before every release
 ```
 
 
@@ -3612,6 +3623,9 @@ The ramses_rf CQRS refactor (#530) is ongoing:
 - Step F5 ("The Great Lobotomy" — delete legacy dicts): UNBLOCKED
   per PWhite-Eng, not yet executed
 - Phase 3 (Strict DTO Boundaries, issue 714): not started
+- Phase 3.75 (Identity Composition, "init and go"): **PR 914 open (draft)**
+  — eradicates dynamic `__class__` mutations. **Tested with ha_sim_test:
+  232/232 pass** (Jul 23 2026). No regressions in ramses_cc.
 - StateUpdatedEvent bus: confirmed by PWhite-Eng as the future
   signal source for ramses_cc entity updates (Step 4).  However,
   issue 794 shipped an interim solution in 0.58.0: the coordinator
@@ -3643,7 +3657,8 @@ Our schema changes align as agreed:
 1. COORDINATE with ramses_rf maintainers (silverailscolo, PWhite-Eng)
    - Share our schema_architecture.md
    - ramses_rf Phase 3/3.25 DONE (shipped 0.58.3, TX Generation Parity)
-   - ramses_rf Phase 3.75 planned (Identity Composition, "init and go")
+   - ramses_rf Phase 3.75 PR 914 (draft) — tested 232/232 ha_sim_test pass
+   - ramses_rf PR 917 (open) — BDR hotwater_valve domain fix (our contribution)
 
 2. VERIFY enforce_known_list fix BEFORE making it always-on
    - ramses_cc issue 677 closed (fixed in 0.57.6)
@@ -3695,6 +3710,14 @@ This is a large doc, if you make any changes, please add a comment below
 on what was changed. I keep and edit this file local and don't want to
 copy/paste over changes someone else made, without an easy way to find
 those changes.
+
+### Changes Jul 23 2026
+
+- Updated verification status table: added PRs 914, 916, 917, 918, 919
+  (ramses_rf) and PR 861 (ramses_cc). Added issues 834, 767, 857.
+- Updated Phase 3.75 note: PR 914 is draft, tested 232/232 ha_sim_test pass.
+- Updated CQRS refactor timing section: added Phase 3.75 PR 914 status.
+- Updated recommendations: added PR 917 and PR 914 test results.
 
 
 [top](#schema-as-source-of-truth-architecture)

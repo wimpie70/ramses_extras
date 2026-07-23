@@ -4,6 +4,7 @@
 **Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c DONE (in master) — Phase 3d DONE (`feature/phase3d-alignment`, ready for PR) — Phase 3e BLOCKED (ramses_rf-side)
 **Depends on:** Phase 2 (DONE, PR 764), Phase 2.5 (DONE, PR 810, migration scaffolding)
 **Phase 3d depends on:** ramses_rf 0.58.3 (DONE — `strip_and_map_traits()` + CQRS CommandDispatcher shipped)
+**ha_sim_test:** 232/232 checks pass (Jul 23 2026), including PR 914 integration
 
 > **Naming note (updated Jul 19 2026):** There are several "Phase 3"s:
 > - **ramses_cc Phase 3** (this doc) — commands in schema, our work.
@@ -34,6 +35,9 @@
 >   Composition**. Was originally "Builder Pattern" (issue 530), now
 >   reframed as "init and go": devices instantiate with correct, final
 >   roles from schema traits — no runtime `__class__` mutation.
+>   **PR 914** (PWhite-Eng, draft) implements this — eradicates dynamic
+>   `__class__` mutations and object substitution. **Tested with
+>   ha_sim_test: 232/232 pass** (Jul 23 2026). Awaiting merge.
 >
 > **Key shift (Jul 17 2026, updated Jul 19):** PWhite-Eng scrapped the **device identity**
 > part of the Builder pattern (`DeviceRole` composition, active discovery
@@ -1105,6 +1109,10 @@ Before runtime migration, save state as YAML to
 | Jul 19 2026 | Phase 3d unblocked | ramses_rf 0.58.3 shipped all dependencies: `strip_and_map_schema()`, `SCH_TRAITS_HVAC` list bound, CQRS Intent builders. Manifest already pins `ramses-rf==0.58.3`. |
 | Jul 18 2026 | Pre-3d review corrections (verified against 0.58.3 source) | (1) `strip_and_map_schema()` has NO callers inside ramses_rf — CLI support for `_` keys is still blocked (3d.5). (2) `_commands` does NOT map to `commands` — it's stripped; no `commands` trait in `SCH_TRAITS`. (3) 3d.3 must use `strip_traits()` for validation, not `strip_and_map_schema()` — `SCH_GLOBAL_SCHEMAS` rejects mapped names. (4) 3d.4 is a code change: `_derive_known_list_from_schema` drops list-valued `bound`. |
 | Jul 18 2026 | Checked open ramses_rf PRs 849-855 | Legacy builder purge continues (849 ready, 850-854 stacked drafts). No open PR wires the CLI pipeline, adds a `commands` trait, or adds 22B0 — those gaps remain. Roadmap Phase 3.5 (`1FC9` → `TopologyChangedEvent`) will give us a schema-update hook for new bindings. `==0.58.3` pin shields us from the purge; retest device setters on next bump. |
+| Jul 23 2026 | PR 914 tested with ha_sim_test | PWhite-Eng's Phase 3.75 PR (eradicate dynamic `__class__` mutations) tested: 232/232 checks pass. No regressions. Comment posted on PR 914 confirming test results. |
+| Jul 23 2026 | PR 917 opened (ramses_rf) | Fix for R37: BDR declared as `hotwater_valve` in schema should not be classified as FC (appliance_control) by the 3B00/3EF0 TPI broadcast heuristic. Added `_is_declared_hotwater_valve()` check in `discovery_scan.py`. |
+| Jul 23 2026 | PR 861 opened (ramses_cc) | Device health tracking — `review_device_health` config flow step showing orphaned/lost devices with Keep/Remove selectors. 18 ha_sim_test checks (R50) verify end-to-end. |
+| Jul 23 2026 | ha_sim_test harness improvements | Event-driven waiting (`wait_for` + `is_ha_ready` + `is_ramses_cc_loaded`), per-recipe timing, per-recipe log attribution, centralized `clear_cached_state` helper. R37 100.7s→80.2s, R38 68.7s→52.7s. Full suite 232/232 in 30.7 min. |
 
 ---
 
