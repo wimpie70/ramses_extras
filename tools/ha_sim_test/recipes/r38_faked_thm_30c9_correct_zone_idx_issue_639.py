@@ -20,6 +20,8 @@ See: https://github.com/ramses-rf/ramses_rf/issues/639
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 
 from ..base import Recipe, RecipeContext
@@ -40,6 +42,54 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 38: Faked THM 30C9 uses correct zone_idx (issue 639)")
+
+        # 0. Clear cached state from previous recipes (e.g. R37 adds OTB/BDR
+        #    to the schema which persist across restarts and cause the
+        #    discovery scan to continuously poll them, blocking the QoS
+        #    queue and preventing the 30C9 I packet from being transmitted).
+        print("  Stopping ha-sim and clearing cached state...")
+        ctx.log_monitor.capture_before_restart("R38 pre-clean")
+        subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
+        ctx.wait(2, "for container to stop")
+        storage_path = "/home/willem/docker_files/ha-sim/config/.storage/ramses_cc"
+        if os.path.exists(storage_path):
+            os.remove(storage_path)
+        for db_path in (
+            "/home/willem/docker_files/ha-sim/config/ramses.db",
+            "/home/willem/docker_files/ha-sim/config/ramses_rf/ramses.db",
+        ):
+            if os.path.exists(db_path):
+                os.remove(db_path)
+        ce_path = "/home/willem/docker_files/ha-sim/config/.storage/core.config_entries"
+        if os.path.exists(ce_path):
+            subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-v",
+                    "/home/willem/docker_files/ha-sim/config:/config",
+                    "python:3.12-slim",
+                    "python3",
+                    "-c",
+                    "import json; "
+                    "p='/config/.storage/core.config_entries'; "
+                    "d=json.load(open(p)); "
+                    "[e.get('options',{}).pop('schema',None) "
+                    "for e in d.get('data',{}).get('entries',[]) "
+                    "if e.get('domain')=='ramses_cc']; "
+                    "json.dump(d, open(p,'w')); "
+                    "print('Cleared CONF_SCHEMA')",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
+        ctx.wait(20, "for ha-sim to start up")
+        ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait(5, "for ramses_cc to initialize")
 
         # 1. Load mixed profile with the zone-03 sensor (01:150003) faked
         sensor_id = "01:150003"
@@ -117,7 +167,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
         #    The service sends a 30C9 I packet and waits for an echo response.
         #    In the simulator, no echo comes, so the service times out after
         #    ~20 seconds with ProtocolTimeoutError (HTTP 500).  But the 30C9
-        #    packet IS transmitted and appears in the packet log.
+        #    packet IS transmitted and appears in the HA log as a Recv'd line.
         print(
             f"  Calling put_room_temp on {sensor_eid} "
             f"(zone {zone_idx}, {fake_temp}°C)..."
@@ -143,11 +193,14 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
                 f"(expected): {str(e)[:60]}"
             )
 
-        ctx.wait(5, "for 30C9 TX packet to appear in log")
+        ctx.wait(5, "for 30C9 packet to appear in log")
 
-        # 4. Read the packet log for the 30C9 packet
-        #    The packet log rotates at ~10KB, so we need to search all
-        #    rotated logs (.1, .2, .3, .4, .5) as well as the current log.
+        # 5. Read the HA log for the 30C9 packet from our faked device.
+        #    The faked device sends a 30C9 I broadcast via MQTT.  The
+        #    device simulator receives it and logs:
+        #      "Simulator received from ramses_rf:  I --- <src> ... 30C9 ..."
+        #    We filter for our specific device to avoid matching other
+        #    traffic.
         result = subprocess.run(
             [
                 "docker",
@@ -155,7 +208,8 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
                 "ha-sim",
                 "bash",
                 "-c",
-                "grep '30C9' /config/packet_log.log* | tail -10",
+                f"grep 'Simulator received.*{sensor_id}.*30C9' "
+                "/config/home-assistant.log | tail -10",
             ],
             capture_output=True,
             text=True,
@@ -165,16 +219,12 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
             line = line.strip()
             if not line:
                 continue
-            # Strip the filename prefix from grep output
-            # e.g. "/config/packet_log.log.4:2026-..." -> "2026-..."
-            if ":" in line and line.startswith("/config/"):
-                line = line.split(":", 1)[1] if ":" in line else line
             tx_lines.append(line)
 
         ctx.check(
-            "30C9 packet found in packet log",
+            "30C9 packet found in HA log",
             len(tx_lines) > 0,
-            "no 30C9 packets found in packet log",
+            "no 30C9 packets found in HA log",
         )
 
         if not tx_lines:
