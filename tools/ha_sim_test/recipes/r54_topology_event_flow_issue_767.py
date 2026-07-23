@@ -59,12 +59,20 @@ try:
         results["event_immutable"] = True
 
     # ── 2. TopologyAction enum has all expected values ────────────────
+    # NOTE: PR 914 renamed PROMOTE_CLASS to UPDATE_DEVICE_CLASS.
+    # Accept either name for compatibility across versions.
     expected_actions = {{
-        "promote_class", "update_traits", "bind_device",
+        "update_traits", "bind_device",
         "create_controller", "create_circuit",
     }}
     actual_actions = {{str(a) for a in TopologyAction}}
     results["all_actions_present"] = expected_actions.issubset(actual_actions)
+    # Check for either promote_class (pre-914) or update_device_class (post-914)
+    has_promote_or_update = (
+        "promote_class" in actual_actions
+        or "update_device_class" in actual_actions
+    )
+    results["has_promote_or_update"] = has_promote_or_update
     results["actions"] = sorted(actual_actions)
 
     # ── 3. TopologyBuilder emits events via callback ──────────────────
@@ -195,6 +203,11 @@ except Exception as e:
         ctx.check(
             "all TopologyAction values present",
             result.get("all_actions_present") is True,
+            f"actions={result.get('actions')}",
+        )
+        ctx.check(
+            "has promote_class or update_device_class (PR 914 rename)",
+            result.get("has_promote_or_update") is True,
             f"actions={result.get('actions')}",
         )
 
