@@ -134,6 +134,10 @@ EXPECTED_WARNINGS: list[str] = [
     # artificial speed pressure).  See ha_sim_test report 2026-07-22,
     # failure 7.
     "Something is blocking Home Assistant",
+    # ramses_cc: device marked as lost/orphaned (expected in R50 —
+    # the recipe intentionally manipulates last_seen to trigger this)
+    "marked as lost",
+    "marked as orphaned",
 ]
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
