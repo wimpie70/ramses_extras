@@ -20,15 +20,16 @@ See: https://github.com/ramses-rf/ramses_rf/issues/639
 
 from __future__ import annotations
 
-import json
-import os
 import subprocess
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL
 from ..helpers import (
     call_service,
+    clear_cached_state,
     get_entities,
+    is_ha_ready,
+    is_ramses_cc_loaded,
     load_profile_yaml,
     ws_send,
 )
@@ -48,48 +49,11 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
         #    discovery scan to continuously poll them, blocking the QoS
         #    queue and preventing the 30C9 I packet from being transmitted).
         print("  Stopping ha-sim and clearing cached state...")
-        ctx.log_monitor.capture_before_restart("R38 pre-clean")
-        subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
-        ctx.wait(2, "for container to stop")
-        storage_path = "/home/willem/docker_files/ha-sim/config/.storage/ramses_cc"
-        if os.path.exists(storage_path):
-            os.remove(storage_path)
-        for db_path in (
-            "/home/willem/docker_files/ha-sim/config/ramses.db",
-            "/home/willem/docker_files/ha-sim/config/ramses_rf/ramses.db",
-        ):
-            if os.path.exists(db_path):
-                os.remove(db_path)
-        ce_path = "/home/willem/docker_files/ha-sim/config/.storage/core.config_entries"
-        if os.path.exists(ce_path):
-            subprocess.run(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-v",
-                    "/home/willem/docker_files/ha-sim/config:/config",
-                    "python:3.12-slim",
-                    "python3",
-                    "-c",
-                    "import json; "
-                    "p='/config/.storage/core.config_entries'; "
-                    "d=json.load(open(p)); "
-                    "[e.get('options',{}).pop('schema',None) "
-                    "for e in d.get('data',{}).get('entries',[]) "
-                    "if e.get('domain')=='ramses_cc']; "
-                    "json.dump(d, open(p,'w')); "
-                    "print('Cleared CONF_SCHEMA')",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
-        ctx.wait(20, "for ha-sim to start up")
+        clear_cached_state(ctx.log_monitor, label="R38 pre-clean")
+        ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
+        ctx.wait_for(is_ramses_cc_loaded, timeout=15, msg="for ramses_cc to initialize")
 
         # 1. Load mixed profile with the zone-03 sensor (01:150003) faked
         sensor_id = "01:150003"
@@ -124,9 +88,8 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        ctx.wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
 
         # Activate CTL for heartbeats
         try:
@@ -139,7 +102,13 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait(10, "for CTL heartbeats + schema population")
+        from ..helpers import get_schema_retry
+
+        ctx.wait_for(
+            lambda: len(get_schema_retry(max_tries=1)) > 5,
+            timeout=15,
+            msg="for CTL heartbeats + schema population",
+        )
 
         # 2. Find the temperature sensor entity for 01:150003
         entities = get_entities(ctx.token)

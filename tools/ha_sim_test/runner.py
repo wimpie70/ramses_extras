@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import sys
+import time
 
 from .base import RecipeContext
 from .const import CO2, CTL, FAN, REM, TRV
@@ -25,6 +26,8 @@ from .helpers import (
     get_known_list,
     get_schema_retry,
     get_token,
+    is_ha_ready,
+    is_ramses_cc_loaded,
     log_section,
     wait,
     ws_send,
@@ -59,7 +62,15 @@ async def setup(ctx: RecipeContext) -> None:
 
     wait(15, "for ramses_cc reload + init + config entry write")
     ctx.refresh_token()
-    wait(5, "for ramses_cc to initialize")
+    # Event-driven: wait for ramses_cc to be loaded instead of fixed 5s
+    from .helpers import wait_for as _wait_for
+
+    _wait_for(
+        is_ramses_cc_loaded,
+        timeout=15,
+        interval=2,
+        msg="for ramses_cc to initialize",
+    )
 
     # Activate devices via websocket (faster — uses profile config)
     for dev_id, name in [
@@ -86,7 +97,13 @@ async def setup(ctx: RecipeContext) -> None:
             else:
                 print(f"    {name} activate failed: {str(e)[:80]}")
 
-    wait(10, "for fast heartbeats + schema population (100x speed)")
+    # Event-driven: wait for schema to be populated instead of fixed 10s
+    _wait_for(
+        lambda: len(get_schema_retry(max_tries=1)) > 5,
+        timeout=15,
+        interval=2,
+        msg="for fast heartbeats + schema population (100x speed)",
+    )
 
     # Check schema is populated (retry — profile reload may still be writing)
     schema = get_schema_retry()
@@ -95,8 +112,16 @@ async def setup(ctx: RecipeContext) -> None:
     print(f"  Known_list: {list(kl.keys())[:15]}")
 
 
-async def teardown(ctx: RecipeContext) -> None:
+async def teardown(
+    ctx: RecipeContext,
+    *,
+    start_time: float,
+    start_time_wall: float = 0,
+) -> None:
     """Collect log report and print summary."""
+    end_time = time.monotonic()
+    elapsed = end_time - start_time
+
     # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run
     # =====================================================================
@@ -141,10 +166,28 @@ async def teardown(ctx: RecipeContext) -> None:
     # SUMMARY
     # =====================================================================
     log_section("SUMMARY")
-    print(f"\n  Passed: {ctx.passed}")
-    print(f"  Failed: {ctx.failed}")
-    print(f"  Total:  {ctx.passed + ctx.failed}")
+    started_str = time.strftime(
+        "%Y-%m-%d %H:%M:%S", time.localtime(start_time_wall or start_time)
+    )
+    print(f"\n  Started:  {started_str}")
+    print(f"  Elapsed:  {elapsed:.1f}s ({elapsed / 60:.1f} min)")
+    print(f"  Passed:   {ctx.passed}")
+    print(f"  Failed:   {ctx.failed}")
+    print(f"  Total:    {ctx.passed + ctx.failed}")
     print()
+
+    # Per-recipe timing table
+    if ctx.recipe_stats:
+        print("  Per-recipe timing:")
+        print(f"    {'Recipe':<8} {'Pass':>5} {'Fail':>5} {'Time':>8}  Title")
+        print(f"    {'-' * 7} {'-' * 5} {'-' * 5} {'-' * 8}  {'-' * 30}")
+        for rid, stats in ctx.recipe_stats.items():
+            dur = stats.get("duration", 0.0)
+            p = stats.get("passed", 0)
+            f = stats.get("failed", 0)
+            title = stats.get("title", "")[:40]
+            print(f"    {rid:<8} {p:>5} {f:>5} {dur:>7.1f}s  {title}")
+        print()
 
     for r in ctx.results:
         print(r)
@@ -165,6 +208,9 @@ async def run(recipe_ids: list[str] | None = None) -> None:
     :param recipe_ids: If given, run only these recipe ids (in seq order).
                        If None, run all registered recipes.
     """
+    suite_start_mono = time.monotonic()
+    suite_start_wall = time.time()
+
     # Discover all recipe modules so they self-register
     discover_recipes()
     print(f"  Discovered {len(REGISTRY)} recipes")
@@ -196,10 +242,19 @@ async def run(recipe_ids: list[str] | None = None) -> None:
     # Setup phase
     await setup(ctx)
 
-    # Run recipes
+    # Run recipes with per-recipe timing + log attribution
     for recipe_cls in recipes:
         recipe = recipe_cls()
         print(f"\n  >>> Running {recipe.id} (seq={recipe.seq}): {recipe.title}")
+
+        # Snapshot log baseline before recipe
+        log_snapshot = log_monitor.snapshot()
+
+        # Track check counts before/after for per-recipe accounting
+        passed_before = ctx.passed
+        failed_before = ctx.failed
+
+        recipe_start = time.monotonic()
         try:
             await recipe.run(ctx)
         except Exception as e:
@@ -209,6 +264,31 @@ async def run(recipe_ids: list[str] | None = None) -> None:
                 f"{type(e).__name__}: {e}",
             )
             print(f"  !!! Recipe {recipe.id} raised: {e}")
+        recipe_elapsed = time.monotonic() - recipe_start
+
+        # Record per-recipe stats
+        ctx.recipe_stats[recipe.id] = {
+            "passed": ctx.passed - passed_before,
+            "failed": ctx.failed - failed_before,
+            "duration": recipe_elapsed,
+            "title": recipe.title,
+        }
+
+        # Per-recipe log check: collect logs since snapshot
+        recipe_logs = log_monitor.record_recipe(recipe.id, log_snapshot)
+        n_recipe_errors = len(recipe_logs["errors"])
+        n_recipe_warnings = len(recipe_logs["warnings"])
+        if n_recipe_errors or n_recipe_warnings:
+            print(
+                f"  [log] {recipe.id}: {n_recipe_errors} unexpected errors, "
+                f"{n_recipe_warnings} unexpected warnings"
+            )
+            for line in recipe_logs["errors"][:3]:
+                clean = re.sub(r"\x1b\[[0-9;]*m", "", line)
+                print(f"    ERROR: {clean[:150]}")
+            for line in recipe_logs["warnings"][:3]:
+                clean = re.sub(r"\x1b\[[0-9;]*m", "", line)
+                print(f"    WARN:  {clean[:150]}")
 
     # Teardown / summary
-    await teardown(ctx)
+    await teardown(ctx, start_time=suite_start_mono, start_time_wall=suite_start_wall)

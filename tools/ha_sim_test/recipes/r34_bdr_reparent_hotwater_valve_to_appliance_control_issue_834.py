@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 
 import yaml as _yaml
@@ -12,7 +11,10 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW, FAN, HGI, REM
 from ..helpers import (
     call_service,
+    clear_cached_state,
     get_schema_retry,
+    is_ha_ready,
+    is_ramses_cc_loaded,
     load_profile_yaml,
     ws_send,
 )
@@ -66,57 +68,11 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         # We must stop the container, delete all three, and restart to get
         # a truly clean state for this race condition test.
         print("  Stopping ha-sim and clearing cached state...")
-        ctx.log_monitor.capture_before_restart("R34 pre-restart")
-        subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
-        ctx.wait(2, "for container to stop")
-        # Delete .storage/ramses_cc (client state cache)
-        storage_path = "/home/willem/docker_files/ha-sim/config/.storage/ramses_cc"
-        if os.path.exists(storage_path):
-            os.remove(storage_path)
-        # Delete ramses.db (message database — replays old 000C packets)
-        for db_path in (
-            "/home/willem/docker_files/ha-sim/config/ramses.db",
-            "/home/willem/docker_files/ha-sim/config/ramses_rf/ramses.db",
-        ):
-            if os.path.exists(db_path):
-                os.remove(db_path)
-        # Clear CONF_SCHEMA from core.config_entries (config entry options).
-        # The file is root-owned inside the container, so we can't edit it
-        # directly from the host.  The container is stopped, so docker exec
-        # won't work either.  Use a temporary alpine container with the config
-        # volume mounted to modify the file.
-        ce_path_host = (
-            "/home/willem/docker_files/ha-sim/config/.storage/core.config_entries"
-        )
-        if os.path.exists(ce_path_host):
-            subprocess.run(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-v",
-                    "/home/willem/docker_files/ha-sim/config:/config",
-                    "python:3.12-slim",
-                    "python3",
-                    "-c",
-                    "import json; "
-                    "p='/config/.storage/core.config_entries'; "
-                    "d=json.load(open(p)); "
-                    "[e.get('options',{}).pop('schema',None) "
-                    "for e in d.get('data',{}).get('entries',[]) "
-                    "if e.get('domain')=='ramses_cc']; "
-                    "json.dump(d, open(p,'w')); "
-                    "print('Cleared CONF_SCHEMA')",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
-        ctx.wait(20, "for ha-sim to start up")
+        clear_cached_state(ctx.log_monitor, label="R34 pre-restart")
+        ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
+        ctx.wait_for(is_ramses_cc_loaded, timeout=15, msg="for ramses_cc to initialize")
 
         # --- Build a custom profile without DHW sensor ---
         # The mixed profile has stored_hotwater: {sensor: DHW}.  We remove
@@ -157,9 +113,8 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
             print("  Profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        ctx.wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
 
         # Activate CTL for heartbeats
         try:
@@ -172,7 +127,11 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait(10, "for CTL heartbeats + schema population")
+        ctx.wait_for(
+            lambda: len(get_schema_retry(max_tries=1)) > 5,
+            timeout=15,
+            msg="for CTL heartbeats + schema population",
+        )
 
         # --- Step 1: Inject 000C RP with HTG role (0E) ---
         # This binds the BDR as hotwater_valve (domain FA) to a DhwZone.

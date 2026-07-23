@@ -158,12 +158,18 @@ class LogMonitor:
     Before a docker restart, call capture_before_restart() to save
     logs that would otherwise be wiped. At the end, generates a report
     file and counts unexpected errors.
+
+    Per-recipe attribution: call snapshot() before a recipe and
+    collect_since() after to get errors/warnings that occurred during
+    that recipe only.
     """
 
     def __init__(self) -> None:
         self._baseline: str = ""  # timestamp of the first log line
         self._accumulated: list[str] = []  # classified lines from before restarts
         self._accumulated_total: int = 0  # total log lines from before restarts
+        # Per-recipe log data: {recipe_id: {"errors": [...], "warnings": [...]}}
+        self._recipe_logs: dict[str, dict[str, list[str]]] = {}
 
     def _get_log_timestamp(self) -> str:
         """Get the timestamp of the most recent log line."""
@@ -211,6 +217,52 @@ class LogMonitor:
         """Reset baseline after a docker restart (logs are wiped)."""
         self._baseline = self._get_log_timestamp()
         print(f"  Log baseline reset: {self._baseline}")
+
+    # -- per-recipe log attribution -------------------------------------
+    def snapshot(self) -> str:
+        """Capture the current log timestamp as a per-recipe baseline.
+
+        Call this right before a recipe starts.  After the recipe,
+        pass the returned timestamp to :meth:`collect_since` to get
+        only the logs that appeared during that recipe.
+        """
+        return self._get_log_timestamp()
+
+    def collect_since(self, since: str) -> dict[str, list[str]]:
+        """Collect and classify logs since a per-recipe snapshot.
+
+        :param since: Timestamp returned by :meth:`snapshot`.
+        :return: ``{"errors": [...], "warnings": [...]}`` — only
+            unexpected errors and ramses_cc/ramses_rf warnings.
+        """
+        if not since:
+            return {"errors": [], "warnings": []}
+        logs = self._fetch_logs(since)
+        errors: list[str] = []
+        warnings: list[str] = []
+        for line in logs.splitlines():
+            level = self._classify_line(line)
+            if level == "ERROR":
+                errors.append(line.strip())
+            elif level == "WARNING":
+                warnings.append(line.strip())
+        return {"errors": errors, "warnings": warnings}
+
+    def record_recipe(self, recipe_id: str, since: str) -> dict[str, list[str]]:
+        """Snapshot-aware collect: record logs for a specific recipe.
+
+        Combines :meth:`collect_since` with storage in
+        :attr:`_recipe_logs` so the final report can attribute
+        errors/warnings to individual recipes.
+        """
+        data = self.collect_since(since)
+        self._recipe_logs[recipe_id] = data
+        return data
+
+    @property
+    def recipe_logs(self) -> dict[str, dict[str, list[str]]]:
+        """Per-recipe log data collected via :meth:`record_recipe`."""
+        return self._recipe_logs
 
     def _fetch_logs(self, since: str) -> str:
         """Fetch ha-sim logs since a timestamp."""
@@ -311,6 +363,27 @@ class LogMonitor:
 
             if not log_data["errors"] and not log_data["warnings"]:
                 f.write("No unexpected errors or warnings found.\n\n")
+
+            # Per-recipe log attribution
+            if self._recipe_logs:
+                has_recipe_issues = any(
+                    d["errors"] or d["warnings"] for d in self._recipe_logs.values()
+                )
+                if has_recipe_issues:
+                    f.write("PER-RECIPE LOG ATTRIBUTION:\n")
+                    f.write("-" * 40 + "\n")
+                    for rid, data in self._recipe_logs.items():
+                        n_err = len(data["errors"])
+                        n_warn = len(data["warnings"])
+                        if n_err or n_warn:
+                            f.write(f"  {rid}: {n_err} errors, {n_warn} warnings\n")
+                            for line in data["errors"][:5]:
+                                clean = _strip_ansi(line)
+                                f.write(f"    ERROR: {clean[:200]}\n")
+                            for line in data["warnings"][:5]:
+                                clean = _strip_ansi(line)
+                                f.write(f"    WARN:  {clean[:200]}\n")
+                    f.write("\n")
 
             f.write("Expected warnings (filtered out):\n")
             f.write("-" * 40 + "\n")

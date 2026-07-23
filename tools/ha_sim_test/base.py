@@ -37,11 +37,13 @@ Two registration styles are supported (see :mod:`.registry`):
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from .helpers import get_token
 from .helpers import log_section as _log_section
+from .helpers import wait_for as _wait_for
 
 
 class RecipeError(Exception):
@@ -66,6 +68,8 @@ class RecipeContext:
     passed: int = 0
     failed: int = 0
     results: list[str] = field(default_factory=list)
+    # Per-recipe accounting: {recipe_id: {"passed": N, "failed": N, "duration": float}}
+    recipe_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # -- token -----------------------------------------------------------
     def refresh_token(self) -> str:
@@ -90,6 +94,31 @@ class RecipeContext:
         print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
         time.sleep(seconds)
         print(" done")
+
+    def wait_for(
+        self,
+        condition: Callable[[], bool],
+        timeout: int = 30,
+        interval: float = 1.0,
+        msg: str = "",
+    ) -> bool:
+        """Poll a condition until it returns True or timeout is reached.
+
+        Event-driven replacement for fixed ``ctx.wait(N, ...)`` calls.
+        Checks ``condition`` every ``interval`` seconds.  Returns True
+        if the condition was met within ``timeout`` seconds, False
+        otherwise.  Prints progress like :meth:`wait`.
+
+        Example::
+
+            if ctx.wait_for(
+                lambda: "04:200001" in get_schema(),
+                timeout=15,
+                msg="for 04:200001 to appear in schema",
+            ):
+                ...
+        """
+        return _wait_for(condition, timeout, interval, msg)
 
     def log_section(self, title: str) -> None:
         """Emit a labelled section banner in the test output."""

@@ -12,6 +12,8 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
+from typing import Any
 
 from .const import HA_PASS, HA_URL, HA_USER
 
@@ -374,6 +376,32 @@ def wait(seconds: int, msg: str = "") -> None:
     print(" done")
 
 
+def wait_for(
+    condition: Callable[[], bool],
+    timeout: int = 30,
+    interval: float = 1.0,
+    msg: str = "",
+) -> bool:
+    """Poll a condition until True or timeout.
+
+    Checks *condition* every *interval* seconds.  Returns True if the
+    condition was met within *timeout* seconds, False otherwise.
+    Prints progress like :func:`wait`.
+    """
+    print(f"  Waiting up to {timeout}s {msg}...", end="", flush=True)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if condition():
+                print(f" done ({timeout - int(deadline - time.monotonic())}s)")
+                return True
+        except Exception:
+            pass  # condition may fail while HA is reloading
+        time.sleep(interval)
+    print(f" TIMEOUT ({timeout}s)")
+    return False
+
+
 async def get_persistent_notifications(token: str) -> list:
     """Get all persistent notifications from the HA websocket API.
 
@@ -465,3 +493,103 @@ def docker_exec_python(code: str, timeout: int = 30) -> dict:
         return {"error": "timeout"}
     except (json.JSONDecodeError, Exception) as e:
         return {"error": str(e)[:200]}
+
+
+# ---------------------------------------------------------------------------
+# Container lifecycle helpers
+# ---------------------------------------------------------------------------
+def is_ha_ready() -> bool:
+    """Check if the ha-sim HA API is responding (event-driven startup wait).
+
+    HA's /api/ endpoint returns 401 (Unauthorized) when the server is
+    running but no auth token is provided.  Any HTTP response (even
+    401) means the server is up — a connection refused means it's not.
+    """
+    try:
+        req = urllib.request.Request(HA_URL + "/api/")
+        urllib.request.urlopen(req, timeout=5)
+        return True  # 200 (rare for /api/ without auth)
+    except urllib.error.HTTPError as e:
+        # 401 Unauthorized means HA is running (just needs auth)
+        return e.code in (200, 401, 403)
+    except Exception:
+        return False  # connection refused = not ready yet
+
+
+def is_ramses_cc_loaded() -> bool:
+    """Check if ramses_cc is loaded and its schema is populated."""
+    schema = get_schema()
+    return bool(schema)
+
+
+def clear_cached_state(
+    log_monitor: Any = None,
+    label: str = "",
+) -> None:
+    """Stop ha-sim, delete .storage/ramses_cc + ramses.db, clear CONF_SCHEMA.
+
+    This is the shared clean-slate pattern used by R34, R37, R38 (and
+    any recipe that needs to eliminate cached state from previous tests).
+
+    1. ``capture_before_restart`` (if log_monitor given) to save logs.
+    2. ``docker stop ha-sim``
+    3. Delete ``.storage/ramses_cc`` (client state cache).
+    4. Delete ``ramses.db`` (message database — replays old packets).
+    5. Clear CONF_SCHEMA from ``core.config_entries`` (config entry options).
+    6. ``docker start ha-sim`` (caller then waits for readiness).
+    """
+    import os
+
+    if log_monitor is not None:
+        log_monitor.capture_before_restart(label)
+
+    subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
+    time.sleep(2)
+
+    # Delete .storage/ramses_cc (client state cache)
+    storage_path = "/home/willem/docker_files/ha-sim/config/.storage/ramses_cc"
+    if os.path.exists(storage_path):
+        os.remove(storage_path)
+
+    # Delete ramses.db (message database — replays old packets)
+    for db_path in (
+        "/home/willem/docker_files/ha-sim/config/ramses.db",
+        "/home/willem/docker_files/ha-sim/config/ramses_rf/ramses.db",
+    ):
+        if os.path.exists(db_path):
+            os.remove(db_path)
+
+    # Clear CONF_SCHEMA from core.config_entries (config entry options).
+    # The file is root-owned inside the container, so we can't edit it
+    # directly from the host.  The container is stopped, so docker exec
+    # won't work either.  Use a temporary python container with the config
+    # volume mounted to modify the file.
+    ce_path_host = (
+        "/home/willem/docker_files/ha-sim/config/.storage/core.config_entries"
+    )
+    if os.path.exists(ce_path_host):
+        subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "-v",
+                "/home/willem/docker_files/ha-sim/config:/config",
+                "python:3.12-slim",
+                "python3",
+                "-c",
+                "import json; "
+                "p='/config/.storage/core.config_entries'; "
+                "d=json.load(open(p)); "
+                "[e.get('options',{}).pop('schema',None) "
+                "for e in d.get('data',{}).get('entries',[]) "
+                "if e.get('domain')=='ramses_cc']; "
+                "json.dump(d, open(p,'w')); "
+                "print('Cleared CONF_SCHEMA')",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
