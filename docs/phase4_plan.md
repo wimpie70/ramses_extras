@@ -121,8 +121,10 @@ confusion, and prepares the ground for event-driven topology updates
 | Phase 3a-3e complete | DONE | All sub-phases merged |
 | PR 914 (Phase 3.75) | DRAFT (tested 232/232) | "init and go" from schema `_class` — ensures device class is correct without known_list fallback. **Hard blocker for Step 2.** |
 | Issue 677 fix (0.57.6) | DONE | `enforce_known_list` bug fixed — verify on real Evohome before Step 3 |
-| ramses_rf Phase 3.5 (1FC9 → TopologyChangedEvent) | NOT STARTED | Needed for Step 5. ramses_rf roadmap. |
-| ramses_rf HVAC topology PR | NOT STARTED | Needed for Step 6. load_fan, FAN as Parent, binding rules. |
+| ramses_rf Phase 3.5 (1FC9 → TopologyChangedEvent) | **DONE in 0.59.0** | `_evaluate_rf_bind_rules` in `topology_builder.py` intercepts 1FC9, emits `BIND_DEVICE` events. `CREATE_CONTROLLER` + `CREATE_CIRCUIT` actions also in enum. |
+| TopologyChangedEvent public subscription API | **MISSING** | Events flow internally (TopologyBuilder → DeviceRegistry). No public callback for ramses_cc to subscribe. Needs ramses_rf PR. |
+| ramses_rf HVAC topology (`load_fan`) | **STILL A STUB** | `load_fan()` in `schemas.py:397` has `fan._update_schema(**schema)` commented out. No open PR. |
+| ramses_rf PR 916 (Shadow ConversationManager) | DRAFT (on hold) | Phase 4a: L7 Request/Reply tracking. Not started in code. |
 
 ### Critical path
 
@@ -131,13 +133,15 @@ PR 914 merge ──→ Step 1 (storage bump) ──→ Step 2 (remove known_list
                                               │
                                               ├──→ Step 3 (enforce always-on)
                                               ├──→ Step 4 (shrink _commands)
-                                              │
-ramses_rf Phase 3.5 ──→ Step 5 (TopologyChangedEvent)  [parallel]
-ramses_rf HVAC PR   ──→ Step 6 (HVAC topology)         [parallel]
+
+ramses_rf: expose subscription API ──→ Step 5 (TopologyChangedEvent)  [parallel]
+ramses_rf: implement load_fan        ──→ Step 6 (HVAC topology)       [parallel]
 ```
 
-Steps 1-4 are ramses_cc-only. Steps 5-6 depend on ramses_rf PRs and
-can proceed in parallel once those land.
+Steps 1-4 are ramses_cc-only. Step 5 needs a small ramses_rf PR to
+expose the topology event callback (the events themselves already
+exist in 0.59.0). Step 6 needs `load_fan` implementation (still a
+stub, no open PR).
 
 ---
 
@@ -297,23 +301,24 @@ Event-driven subscription:
 - No wasted cycles
 - No race conditions
 
-**Depends on:** ramses_rf Phase 3.5 — `1FC9` interception in
-`TopologyBuilder` emits `TopologyChangedEvent` for unmapped bindings.
-Not yet started in ramses_rf.
-
 **What ramses_rf already has (0.59.0):**
 - `TopologyChangedEvent` dataclass (frozen, with tracing triad)
 - `TopologyAction` enum: `UPDATE_DEVICE_CLASS`, `UPDATE_TRAITS`,
-  `BIND_DEVICE`
-- `DeviceRegistry` handles these events (`dev_registry.py`)
-- `TopologyBuilder` emits `BIND_DEVICE` events for 000C zone bindings
+  `BIND_DEVICE`, `CREATE_CONTROLLER`, `CREATE_CIRCUIT`
+- `DeviceRegistry` handles all these events (`dev_registry.py`)
+- `TopologyBuilder._evaluate_rf_bind_rules` intercepts **1FC9** and
+  emits `BIND_DEVICE` events (Phase 3.5 is DONE)
+- `TopologyBuilder._evaluate_hvac_rules` emits `UPDATE_DEVICE_CLASS`
+  for HVAC signature detection
+- Events flow: `TopologyBuilder` → `emit_event_cb` →
+  `DeviceRegistry.handle_topology_event()`
 
-**What's missing:**
-- ramses_rf doesn't expose a public callback/subscription API for
-  ramses_cc to listen to these events
-- 1FC9 (HVAC binding) doesn't emit `TopologyChangedEvent` yet
-- No `CREATE_CONTROLLER` or `CREATE_CIRCUIT` actions (mentioned in
-  architecture doc but not in enum)
+**What's missing (needs ramses_rf PR):**
+- **No public subscription API** — events flow internally only.
+  ramses_cc needs `gwy.add_topology_callback(cb)` or similar to
+  receive `TopologyChangedEvent` without polling.
+- This is a small PR — the infrastructure exists, just needs an
+  external callback hook.
 
 **Changes (ramses_cc side):**
 - `coordinator.py`: register a callback with ramses_rf gateway for
@@ -322,9 +327,9 @@ Not yet started in ramses_rf.
 - Keep `sync_learned_topology` as a fallback (run on shutdown + every
   30 min as safety net)
 
-**Changes (ramses_rf side — needed from PWhite-Eng):**
+**Changes (ramses_rf side — small PR needed):**
 - Expose `gwy.add_topology_callback(cb)` or similar
-- Emit `TopologyChangedEvent` for 1FC9 bindings (not just 000C)
+- The events already fire — just need to fan out to external listeners
 
 **Test:** ha_sim_test recipe verifying real-time schema update on
 zone binding change (no 5-min wait).
@@ -338,20 +343,31 @@ zone binding change (no 5-min wait).
 FAN/REM/sensor relationships are learned from traffic, not just
 cached.
 
-**Why:** Currently `load_fan` is a stub — ramses_rf ignores HVAC
-schema (remotes/sensors). `gateway.schema()` flattens all HVAC to
-`orphans_hvac`. On restart, the HVAC structure is lost unless the
+**Why:** `load_fan()` in `schemas.py:397` is still a stub —
+`fan._update_schema(**schema)` is commented out. ramses_rf ignores
+HVAC schema (remotes/sensors). `gateway.schema()` flattens all HVAC
+to `orphans_hvac`. On restart, the HVAC structure is lost unless the
 config entry has it.
 
-**Depends on:** ramses_rf HVAC topology PR (not started). This is the
-biggest remaining gap in the architecture.
+**Status:** No open PR. This is the biggest remaining gap.
 
-**What's needed in ramses_rf:**
-1. `load_fan` implementation — FAN device reads `remotes`/`sensors`
+**What ramses_rf already has (0.59.0):**
+- `HvacVentilator` class with `_bound_devices` dict, `add_bound_device`,
+  `remove_bound_device`, `get_bound_rem` methods
+- `TopologyBuilder._evaluate_hvac_rules` detects HVAC device class
+  from verb/code signatures (31D9 = fan on RQ, CO2 on I)
+- 1FC9 binding events emit `BIND_DEVICE` (Phase 3.5, done)
+- `SCH_TRAITS_HVAC` accepts `remotes`, `sensors`, `bound` as
+  `str | list[str]`
+
+**What's missing:**
+1. `load_fan` implementation — uncomment and implement
+   `fan._update_schema(**schema)` so FAN reads `remotes`/`sensors`
    from schema and creates child devices
-2. FAN as Parent class — FAN owns its REMs and sensors
-3. HVAC binding rules in `TopologyBuilder` — 1FC9 handshake →
-   `BIND_DEVICE` event
+2. FAN as Parent class — FAN owns its REMs and sensors (the
+   `_bound_devices` dict exists but isn't populated from schema)
+3. `gateway.schema()` should output HVAC structure (not flat
+   `orphans_hvac`) when FAN has remotes/sensors
 4. CO2 dual-role support — 37: device can be both REM and sensor
 
 **What ramses_cc can do now (workaround):**
@@ -449,9 +465,9 @@ pass). This is a quality-of-life upgrade.
      in a later release. Gives users time to verify the fix works.
 
 4. **When will ramses_rf expose TopologyChangedEvent to external consumers?**
-   - Not yet started. Coordinate with PWhite-Eng. The event dataclass
-     exists, but no public subscription API. May come with Phase 3.5
-     (1FC9 interception) or a separate PR.
+   - The events already fire internally (0.59.0). A small ramses_rf PR
+     is needed to add `gwy.add_topology_callback(cb)`. Coordinate with
+     PWhite-Eng — the infrastructure exists, just needs an external hook.
 
 5. **Should `_commands` entries matching native builders be auto-removed?**
    - No — `_commands` is the user override layer. Even if a native
@@ -471,6 +487,8 @@ pass). This is a quality-of-life upgrade.
 | Jul 23 2026 | Steps 5-6 are parallel, depend on ramses_rf | TopologyChangedEvent subscription needs ramses_rf Phase 3.5. HVAC topology needs ramses_rf HVAC PR. Both can proceed in parallel once those land. |
 | Jul 23 2026 | Keep `.storage[remotes]` as crash recovery cache | Commands are in schema `_commands`, but .storage provides fast restore without config entry write. Don't delete until certain schema path is reliable. |
 | Jul 23 2026 | Deprecate `enforce_known_list` before removing | Issue 677 fix may not hold for all real Evohome systems. Deprecate with warning first, remove in later release. |
+| Jul 23 2026 | Phase 3.5 (1FC9 → TopologyChangedEvent) is DONE in 0.59.0 | `_evaluate_rf_bind_rules` in `topology_builder.py` intercepts 1FC9 and emits `BIND_DEVICE`. `CREATE_CONTROLLER` + `CREATE_CIRCUIT` also in enum. Step 5 only needs a small ramses_rf PR to expose the callback externally. |
+| Jul 23 2026 | `load_fan` is still a stub (0.59.0) | `schemas.py:397` has `fan._update_schema(**schema)` commented out. No open PR. Step 6 (HVAC topology) remains blocked. `HvacVentilator` class has `_bound_devices` infrastructure but it's not populated from schema. |
 
 ---
 
