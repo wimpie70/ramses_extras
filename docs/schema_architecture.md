@@ -7,7 +7,7 @@
 >   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
 >   DONE, in master), and **3d** (ramses_rf alignment, DONE —
 >   `feature/phase3d-alignment`, merged via PR 839). **3e** (CLI compat +
->   22B0 builder, BLOCKED on ramses_rf).
+>   22B0 builder, DONE — shipped in ramses_rf 0.59.0).
 >   See `phase3b_fan_commands_design.md`.
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — TX Generation
 >   Parity + Transport Decoupling. **DONE — shipped in 0.58.2/0.58.3
@@ -859,8 +859,10 @@ ramses_rf 0.58.3+ (current pin: 0.59.0). Five actionable steps, all complete:
   devices (HVAC defaults class to HVC).
 - **3d.6** — 4 precedence tests: `_commands` override wins over native
   CQRS builder. Test-only, no code change.
-- **Phase 3e** (BLOCKED on ramses_rf): 3e.1 CLI compat (was 3d.5),
-  3e.2 22B0 calendar builder (was 3d.7). Neither affects ramses_cc.
+- **Phase 3e** (DONE — shipped in ramses_rf 0.59.0): 3e.1 CLI compat
+  (`strip_and_map_schema()` called by gateway.py), 3e.2 22B0 calendar
+  builder (`build_set_program_enabled` in hvac.py). Neither affects
+  ramses_cc, but both are now available.
 
 1103 tests pass, ruff + mypy clean. Net -130 lines.
 
@@ -1931,7 +1933,7 @@ UI/UX change, not just a schema change.
    (22F1 fan mode, 22F7 bypass, 2411 fan param, 31DA fan info, etc.).
    These become the **defaults**. `_commands` in the schema stays as the
    **authoritative user override**.
-   **Note:** 22B0 (calendar) builder not yet implemented. Per-manufacturer
+   **Note:** 22B0 (calendar) builder shipped in 0.59.0 (PR 879). Per-manufacturer
    strategy profiles not yet implemented. The Builder/Strategy pattern
    (issue 530) was scrapped in favor of "init and go" from schema
    (Jul 17 2026). ramses_cc Phase 3d = align with 0.58.3+ (current pin 0.59.0).
@@ -2028,8 +2030,9 @@ PHASE 3d (ramses_cc — DONE, see phase3d_design.md):
   3d.4: pass _bound as str | list[str] to ramses_rf (remove str-only
          guard in _derive_known_list_from_schema)
   3d.6: precedence tests — _commands override wins over CQRS builder
-  Phase 3e (BLOCKED on ramses_rf): 3e.1 CLI compat (was 3d.5),
-  3e.2 22B0 calendar builder (was 3d.7). Neither affects ramses_cc.
+  Phase 3e (DONE in 0.59.0): 3e.1 CLI compat (strip_and_map_schema
+  called by gateway.py), 3e.2 22B0 builder (build_set_program_enabled).
+  Neither affects ramses_cc, but both now available.
 ```
 
 <a id="summary-what-goes-where"></a>

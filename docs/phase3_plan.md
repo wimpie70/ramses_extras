@@ -1,9 +1,10 @@
 # Phase 3 Plan: Commands in Schema + ramses_rf Alignment
 
 **Created:** Jul 2026
-**Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c DONE (in master) — Phase 3d DONE (PR 839, merged) — Phase 3e BLOCKED (ramses_rf-side)
+**Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c DONE (in master) — Phase 3d DONE (PR 839, merged) — Phase 3e DONE (shipped in ramses_rf 0.59.0)
 **Depends on:** Phase 2 (DONE, PR 764), Phase 2.5 (DONE, PR 810, migration scaffolding)
 **Phase 3d depends on:** ramses_rf 0.58.3+ (DONE — `strip_and_map_traits()` + CQRS CommandDispatcher shipped in 0.58.3, current pin is 0.59.0)
+**Phase 3e depends on:** ramses_rf 0.59.0 (DONE — `strip_and_map_schema()` called by gateway.py + 22B0 builder shipped)
 **ha_sim_test:** 232/232 checks pass (Jul 23 2026), including PR 914 integration
 
 > **Naming note (updated Jul 19 2026):** There are several "Phase 3"s:
@@ -118,7 +119,7 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
 | **What** | Commands move to schema as `_commands` | 3/3.25: TX Generation Parity + Transport Decoupling. 3.75: Identity Composition (deprecate `__class__`, "init and go") |
 | **Who** | wimpie70 / ramses_cc | PWhite-Eng / ramses_rf |
 | **Repo** | ramses_cc | ramses_rf |
-| **Status** | 3a DONE (PR 811), 3b DONE (merged), 3c DONE (in master), 3d DONE (PR 839, merged), 3e BLOCKED (ramses_rf) | 3/3.25 DONE (shipped 0.58.3, current pin 0.59.0). 3.75 PR 914 draft (tested 232/232) |
+| **Status** | 3a-3e ALL DONE (3a PR 811, 3b merged, 3c PR 831, 3d PR 839, 3e shipped in ramses_rf 0.59.0) | 3/3.25 DONE (shipped 0.58.3, current pin 0.59.0). 3.75 PR 914 draft (tested 232/232) |
 | **Depends on** | 3a: strip workaround (DONE). 3b: no ramses_rf PR needed (packet templates). 3d: ramses_rf 0.58.3+ (DONE) | Phase 2 complete (SQLite + RAM cache) |
 | **Blocks?** | No — 3a, 3b, 3c shipped independently. 3d benefits from ramses_rf 0.58.3+ | No — shipped without ramses_cc's `_commands` alignment |
 | **Key change** | — | Builder/Strategy pattern **scrapped** (Jul 17 2026). Replaced by "init and go" from schema. `DeviceRole` composition scrapped. |
@@ -151,11 +152,14 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
 
   1103 tests pass, ruff + mypy clean. Net -130 lines.
   See `phase3d_design.md` and `phase3d_pr.md`.
-- **Phase 3e (BLOCKED on ramses_rf):** CLI compat + 22B0 builder —
-  neither affects ramses_cc. Split out from 3d so 3d can merge now.
-  - **3e.1** (was 3d.5) — CLI compat: ramses_rf has no callers for
-    `strip_and_map_schema`; needs ramses_rf-side wiring
-  - **3e.2** (was 3d.7) — 22B0 calendar builder: no builder in 0.59.0
+- **Phase 3e (DONE — shipped in ramses_rf 0.59.0):** CLI compat + 22B0
+  builder — neither affects ramses_cc, but both are now available.
+  - **3e.1** (was 3d.5) — CLI compat: `strip_and_map_schema()` is now
+    called by `gateway.py:143` — CLI can use `_commands`/`_bound` in
+    config.json. DONE in 0.59.0.
+  - **3e.2** (was 3d.7) — 22B0 calendar builder: `build_set_program_enabled`
+    shipped in `ramses_rf/commands/builders/hvac.py` (PR 879, merged
+    into 0.59.0). DONE.
 
 **Key insight:** ramses_cc's Phase 3a shipped using the same
 `_strip_schema_extensions` workaround as Phase 2. Phase 3b moved commands
@@ -1114,6 +1118,7 @@ Before runtime migration, save state as YAML to
 | Jul 23 2026 | PR 861 opened (ramses_cc) | Device health tracking — `review_device_health` config flow step showing orphaned/lost devices with Keep/Remove selectors. 18 ha_sim_test checks (R50) verify end-to-end. |
 | Jul 23 2026 | ha_sim_test harness improvements | Event-driven waiting (`wait_for` + `is_ha_ready` + `is_ramses_cc_loaded`), per-recipe timing, per-recipe log attribution, centralized `clear_cached_state` helper. R37 100.7s→80.2s, R38 68.7s→52.7s. Full suite 232/232 in 30.7 min. |
 | Jul 23 2026 | ramses_rf 0.59.0 released and pinned | Manifest bumped from `==0.58.3` to `==0.59.0`. 0.59.0 includes 131 commits: our fixes (834, 840, 822, 835, 843, 851, 852), PWhite-Eng refactors (dev-registry generic downcast, topology type narrowing, MQTT thread safety, 2411 FAN routing, protocol schema consolidation). PR 914 (Phase 3.75) NOT in 0.59.0 — still draft. PR 917 (R37 fix) NOT in 0.59.0 — still open. |
+| Jul 23 2026 | **Phase 3 COMPLETE** — all sub-phases done | 3e.1 (CLI compat): `strip_and_map_schema()` now called by `gateway.py:143` in 0.59.0 — CLI can use `_` keys. 3e.2 (22B0 builder): `build_set_program_enabled` shipped in 0.59.0 (PR 879). Phase 3a-3e all done. Phase 4 can start. |
 
 ---
 
