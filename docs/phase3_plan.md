@@ -1,7 +1,7 @@
 # Phase 3 Plan: Commands in Schema + ramses_rf Alignment
 
 **Created:** Jul 2026
-**Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c DONE (in master) — Phase 3d DONE (`feature/phase3d-alignment`, ready for PR) — Phase 3e BLOCKED (ramses_rf-side)
+**Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c DONE (in master) — Phase 3d DONE (PR 839, merged) — Phase 3e BLOCKED (ramses_rf-side)
 **Depends on:** Phase 2 (DONE, PR 764), Phase 2.5 (DONE, PR 810, migration scaffolding)
 **Phase 3d depends on:** ramses_rf 0.58.3 (DONE — `strip_and_map_traits()` + CQRS CommandDispatcher shipped)
 **ha_sim_test:** 232/232 checks pass (Jul 23 2026), including PR 914 integration
@@ -11,7 +11,7 @@
 >   Split into **3a** (commands on REM, PR 811, DONE), **3b**
 >   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
 >   DONE, in master), and **3d** (ramses_rf alignment, DONE —
->   `feature/phase3d-alignment`, ready for PR). **3e** (CLI compat +
+>   `feature/phase3d-alignment`, merged via PR 839). **3e** (CLI compat +
 >   22B0 builder, BLOCKED on ramses_rf).
 >   See `phase3b_fan_commands_design.md`.
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — **TX Generation
@@ -118,7 +118,7 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
 | **What** | Commands move to schema as `_commands` | 3/3.25: TX Generation Parity + Transport Decoupling. 3.75: Identity Composition (deprecate `__class__`, "init and go") |
 | **Who** | wimpie70 / ramses_cc | PWhite-Eng / ramses_rf |
 | **Repo** | ramses_cc | ramses_rf |
-| **Status** | 3a DONE (PR 811), 3b DONE (merged), 3c DONE (in master), 3d DONE (`feature/phase3d-alignment`), 3e BLOCKED (ramses_rf) | 3/3.25 DONE (shipped 0.58.3). 3.75 planned (Builder/Strategy scrapped) |
+| **Status** | 3a DONE (PR 811), 3b DONE (merged), 3c DONE (in master), 3d DONE (PR 839, merged), 3e BLOCKED (ramses_rf) | 3/3.25 DONE (shipped 0.58.3). 3.75 PR 914 draft (tested 232/232) |
 | **Depends on** | 3a: strip workaround (DONE). 3b: no ramses_rf PR needed (packet templates). 3d: ramses_rf 0.58.3 (DONE) | Phase 2 complete (SQLite + RAM cache) |
 | **Blocks?** | No — 3a, 3b, 3c shipped independently. 3d benefits from ramses_rf 0.58.3 | No — shipped without ramses_cc's `_commands` alignment |
 | **Key change** | — | Builder/Strategy pattern **scrapped** (Jul 17 2026). Replaced by "init and go" from schema. `DeviceRole` composition scrapped. |
@@ -136,7 +136,7 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
   notification, entity attributes, bound/missing_class/orphaned detection,
   unified `check_all_mismatches()`. 6 bug fixes for owner handling and
   schema safeguard included.
-- **Phase 3d (DONE — `feature/phase3d-alignment`, ready for PR):**
+- **Phase 3d (DONE — PR 839, merged to master):**
   ramses_rf alignment — 5 actionable steps, all complete:
   - **3d.8** — remove dead `ImportError` fallback (manifest pins 0.58.3)
   - **3d.3** — `strip_traits_for_validation` delegates stage 1 to ramses_rf
@@ -809,10 +809,11 @@ phases that fill gaps relevant to us:
   the ramses_rf-side hook our schema-SSOT + Phase 3c flagging can
   subscribe to — watch for it, it replaces polling-based `bound_to`
   detection for new bindings.
-- **Phase 3.75 (planned): purge `__class__` mutations** — deletes
+- **Phase 3.75 (PR 914, draft — tested 232/232): purge `__class__` mutations** — deletes
   `_handle_promote_class` / `_post_class_promote()`. Confirms "init and
   go" from `_class`; no ramses_cc change needed (we already tear down
-  and rebuild on schema change).
+  and rebuild on schema change). **Tested with ha_sim_test: no
+  regressions.** Awaiting merge by PWhite-Eng.
 - **Phase 4 (planned): FSM conversational parity + passive ingestion** —
   deprecates active discovery probing in favour of a Passive Device
   Scan engine. Aligns with our passive DiscoveryScan; verify our scan

@@ -6,7 +6,7 @@
 >   Split into **3a** (commands on REM, PR 811, DONE), **3b**
 >   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
 >   DONE, in master), and **3d** (ramses_rf alignment, DONE —
->   `feature/phase3d-alignment`, ready for PR). **3e** (CLI compat +
+>   `feature/phase3d-alignment`, merged via PR 839). **3e** (CLI compat +
 >   22B0 builder, BLOCKED on ramses_rf).
 >   See `phase3b_fan_commands_design.md`.
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — TX Generation
