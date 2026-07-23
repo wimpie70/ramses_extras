@@ -138,6 +138,9 @@ EXPECTED_WARNINGS: list[str] = [
     # the recipe intentionally manipulates last_seen to trigger this)
     "marked as lost",
     "marked as orphaned",
+    # ramses_cc: loop prevention guard — BDR with FC codes would displace
+    # existing appliance_control (expected in R37, redirected to orphans_heat)
+    "would displace",
 ]
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
