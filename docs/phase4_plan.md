@@ -36,6 +36,7 @@
   - [Step 6: HVAC topology](#step-6-hvac-topology)
   - [Step 7: StateUpdatedEvent subscription (future upgrade)](#step-7-stateupdatedevent-subscription-future-upgrade)
 - [ramses_rf Phase 4 impact (issue 915)](#ramses_rf-phase-4-impact)
+- [ramses_rf Phase 5+ impact (issue 639 comment)](#ramses_rf-phase-5-impact)
 - [Migration](#migration)
 - [Risks & Mitigations](#risks--mitigations)
 - [Open Questions](#open-questions)
@@ -453,6 +454,66 @@ interval configuration entities in HA. Watch for this in PR 4c.
 
 ---
 
+<a id="ramses_rf-phase-5-impact"></a>
+## ramses_rf Phase 5+ impact (issue 639 comment)
+
+PWhite-Eng's full roadmap (issue 639 comment, updated Jul 23 2026)
+goes beyond Phase 4 to Phase 10. **Phase 5 directly impacts ramses_cc.**
+
+### ramses_rf Phase 5: Client API & Consumer DTO Boundary Enforcement
+
+| Step | What | ramses_cc impact | Action needed |
+|------|------|------------------|---------------|
+| 5.1 Event Bus Hardening | `TopologyChangedEvent` queued and delivered reliably to consumer | **This is our Step 5** — the public subscription API we need | Coordinate with PWhite-Eng. When this lands, implement our Step 5. |
+| 5.2 Ingestion Handshake | API contract for ramses_cc → ramses_rf schema updates + warm-restart safety | Relevant to our known_list removal — defines how schema updates flow back | Monitor. Our `_strip_schema_extensions` + config entry update path may need adjustment. |
+| 5.3 DTO Boundary Enforcement | Remove legacy dict shims; getters return native CQRS dataclasses | **MEDIUM RISK** — ramses_cc uses `resolve_async_attr` for `heat_demands` (attribute access, safe). But other getters may use dict patterns. | Audit ramses_cc for dict access on device properties. See audit below. |
+| 5.4 Shim Removal | Remove L7 proxy shims in `ramses_tx/address.py` | Low — ramses_cc doesn't touch address parsing | None |
+| 5.5 Identity Constant Relocation | Move `DevType`, `DevRole`, `ZoneRole`, `DEV_TYPE_MAP`, `DEV_ROLE_MAP`, `DEVICE_ID_REGEX` from `ramses_tx` to `ramses_rf` | **HIGH RISK** — ramses_cc imports `DevType`, `DEV_TYPE_MAP` from `ramses_tx.const`, `DeviceIdT` from `ramses_tx.typing` | Update imports when Phase 5.5 lands. See audit below. |
+| 5.6 Final Polish | Mypy/Ruff/Pytest sweeps | None | None |
+
+### ramses_cc import audit (for Phase 5.5)
+
+Files importing from `ramses_tx.const` or `ramses_tx.typing` that
+would break if constants are relocated to `ramses_rf`:
+
+| File | Import | Risk |
+|------|--------|------|
+| `coordinator.py` | `DEV_TYPE_MAP` from `ramses_tx.const` | HIGH — used in `_normalize_class_slug` |
+| `fan_handler.py` | `DevType` from `ramses_tx.const` | HIGH — type annotation |
+| `fan_handler.py` | `DeviceIdT` from `ramses_tx.typing` | HIGH — type annotation |
+| `const.py` | `SZ_IS_EVOFW3` from `ramses_tx.const` | LOW — string constant, unlikely to move |
+| `water_heater.py` | `SZ_ACTIVE`, `SZ_MODE`, `SZ_SYSTEM_MODE` from `ramses_tx.const` | LOW — string constants |
+| `sensor.py` | Multiple `SZ_*` from `ramses_tx.const` | LOW — string constants |
+| `schemas.py` | Multiple `SZ_*` from `ramses_tx.const` | LOW — string constants |
+| `remote.py` | `DEFAULT_GAP_DURATION`, `Priority` from `ramses_tx.const` | MEDIUM — `Priority` may move |
+| `binary_sensor.py` | Multiple from `ramses_tx.const` | LOW — string constants |
+| `coordinator.py` | `SZ_ACTIVE_HGI`, `Code` from `ramses_tx.const` | MEDIUM — `Code` may move |
+| `climate.py` | `SZ_MODE`, `SZ_SETPOINT`, `SZ_SYSTEM_MODE`, `Priority` from `ramses_tx.const` | MEDIUM — `Priority` may move |
+
+**Mitigation:** When Phase 5.5 lands, ramses_tx will likely re-export
+the constants for backward compatibility. But we should update our
+imports to point to `ramses_rf` directly. The `SZ_*` string constants
+are unlikely to move (they're schema keys, not identity constants).
+
+### ramses_rf Phase 4.5: Domain Layer Decommissioning
+
+Deletes `_handle_msg` methods and legacy synchronous routing. ramses_cc
+doesn't call `_handle_msg` directly, so impact is low. But the removal
+of `call_soon(dev._handle_msg)` routing means all data flows through
+asyncio.Queue pipelines — verify ha_sim_test passes after 4.5 merge.
+
+### ramses_rf Phase 6-10: Future enhancements
+
+| Phase | What | ramses_cc impact |
+|-------|------|------------------|
+| 6 | Declarative Binary Parsing (replace Regex) | None — internal to ramses_rf |
+| 7 | Remove Dual-Routing (setpoint belongs to Zone, not TRV) | **MEDIUM** — climate entities may change attributes |
+| 8 | Dedicated OpenTherm Read-Models | LOW — sensor entities may get new attributes |
+| 9 | Deprecate SQLite MessageStore for state retrieval | **MEDIUM** — if ramses_cc uses MessageStore for restore |
+| 10 | Centralized CommandBus | LOW — ramses_cc calls device setters, not send_cmd directly |
+
+---
+
 <a id="migration"></a>
 ## Migration
 
@@ -493,8 +554,12 @@ interval configuration entities in HA. Watch for this in PR 4c.
 | `known_list` removal breaks device instantiation | PR 914 ensures "init and go" from schema. Test with ha_sim_test before shipping. |
 | `enforce_known_list` always-on breaks real Evohome | Issue 677 fixed in 0.57.6. Verify on real systems before Step 3. Keep override as deprecated option with warning. |
 | Storage migration loses data | Backup v1 as YAML before migration. Migration is additive (merges into schema). Test migration with real config files. |
-| TopologyChangedEvent API changes in ramses_rf | Coordinate with PWhite-Eng. Keep polling as fallback. |
+| TopologyChangedEvent API changes in ramses_rf | Coordinate with PWhite-Eng. Keep polling as fallback. Phase 5.1 (Event Bus Hardening) is the planned delivery mechanism. |
 | HVAC topology PR delays Phase 4 | Steps 1-4 are ramses_cc-only and can ship without HVAC topology. Steps 5-6 are parallel. |
+| ramses_rf Phase 5.3 (DTO Boundary) breaks dict access | Audit ramses_cc for dict access on device properties. `heat_demands` uses `resolve_async_attr` (safe). Check other getters. |
+| ramses_rf Phase 5.5 (Identity Relocation) breaks imports | ramses_cc imports `DevType`, `DEV_TYPE_MAP`, `DeviceIdT` from `ramses_tx`. Update to `ramses_rf` when Phase 5.5 lands. See import audit above. |
+| ramses_rf Phase 4b (Execution Cutover) changes send path | ramses_cc calls `gwy.send_cmd()` which abstracts the path. Verify ha_sim_test after 4b merge. |
+| ramses_rf Phase 4c (Active Discovery Removal) breaks battery devices | Verify passive scan + warm restart covers TRV/SEN state. Run ha_sim_test after 4c merge. |
 
 ---
 
@@ -542,6 +607,7 @@ interval configuration entities in HA. Watch for this in PR 4c.
 | Jul 23 2026 | Phase 3.5 (1FC9 → TopologyChangedEvent) is DONE in 0.59.0 | `_evaluate_rf_bind_rules` in `topology_builder.py` intercepts 1FC9 and emits `BIND_DEVICE`. `CREATE_CONTROLLER` + `CREATE_CIRCUIT` also in enum. Step 5 only needs a small ramses_rf PR to expose the callback externally. |
 | Jul 23 2026 | `load_fan` is still a stub (0.59.0) | `schemas.py:397` has `fan._update_schema(**schema)` commented out. No open PR. Step 6 (HVAC topology) remains blocked. `HvacVentilator` class has `_bound_devices` infrastructure but it's not populated from schema. |
 | Jul 23 2026 | ramses_rf Phase 4 (issue 915) is in progress | 5-PR strangler fig. PR 916 (4a) + PR 920 (4a.5) done — Shadow ConversationManager built and hooked into live pipeline with 100% parity. PRs 4b/4c/4d pending. Phase 4c (Active Discovery Removal) is HIGH impact on ramses_cc — must verify passive scan + warm restart covers all use cases before merge. |
+| Jul 23 2026 | ramses_rf Phase 5+ roadmap reviewed (issue 639 comment) | PWhite-Eng's full roadmap goes to Phase 10. Phase 5 directly impacts ramses_cc: Step 5.1 (Event Bus Hardening) = our Step 5 (TopologyChangedEvent subscription). Step 5.3 (DTO Boundary) may break dict access patterns. Step 5.5 (Identity Relocation) will break `DevType`/`DEV_TYPE_MAP`/`DeviceIdT` imports from `ramses_tx`. Added import audit to plan. Phase 4b is currently being worked on. |
 
 ---
 
