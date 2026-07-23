@@ -829,7 +829,7 @@ as a 3-stage pipeline (see `phase3b_fan_commands_design.md`):
 This avoids a duplicate stripper — both the CLI (`ramses_cli -monitor`)
 and ramses_cc call ramses_rf's stage 1+2. ramses_cc keeps stage 3 only.
 
-**Status (verified Jul 18 2026, ramses_rf 0.58.3):** stages 1+2 exist in
+**Status (verified Jul 23 2026, ramses_rf 0.59.0):** stages 1+2 exist in
 ramses_rf (`strip_traits`, `strip_and_map_traits`/`strip_and_map_schema`)
 and ramses_cc's coordinator already delegates to them — but **nothing in
 ramses_rf itself calls them** (not the Gateway, not `ramses_cli`), so the
@@ -840,9 +840,9 @@ output (`class`, `bound`, …) is only valid for the **known_list** —
 so validation stripping must use stage 1 (`strip_traits`) only.
 
 **Phase 3d (DONE — see `phase3d_design.md`):** ramses_cc alignment with
-ramses_rf 0.58.3. Five actionable steps, all complete:
+ramses_rf 0.58.3+ (current pin: 0.59.0). Five actionable steps, all complete:
 - **3d.8** — remove dead `ImportError` fallback for `strip_traits` /
-  `strip_and_map_traits` in coordinator.py (manifest pins `==0.58.3`,
+  `strip_and_map_traits` in coordinator.py (manifest now pins `==0.59.0`,
   functions shipped in 0.58.2; ~40 lines of dead code removed)
 - **3d.3** — `strip_traits_for_validation()` in schemas.py delegates
   stage 1 to ramses_rf's `strip_traits` (was inline duplicate)
@@ -1934,7 +1934,7 @@ UI/UX change, not just a schema change.
    **Note:** 22B0 (calendar) builder not yet implemented. Per-manufacturer
    strategy profiles not yet implemented. The Builder/Strategy pattern
    (issue 530) was scrapped in favor of "init and go" from schema
-   (Jul 17 2026). ramses_cc Phase 3d = align with 0.58.3.
+   (Jul 17 2026). ramses_cc Phase 3d = align with 0.58.3+ (current pin 0.59.0).
 
    **However:** even with CQRS TX builders,
    the schema must still be able to **overrule** them. A user may need
@@ -2010,7 +2010,7 @@ PHASE 4 (ramses_rf Phase 3/3.25 — DONE, shipped 0.58.3):
   known_list fully removed (or only for legacy compat)
   NOTE: ramses_rf 0.58.3 shipped Jul 17 2026. Builder/Strategy
   pattern scrapped (Jul 17 2026) — no supported_commands() on strategies.
-  ramses_cc Phase 3d = align with this (pin already 0.58.3; consolidate
+  ramses_cc Phase 3d = align with this (pin now 0.59.0; consolidate
   local stage-1/stage-3 stripping — validation must use strip_traits(),
   NOT strip_and_map_schema(), since SCH_GLOBAL_SCHEMAS rejects mapped
   trait names; pass _bound lists through to known_list).
@@ -2018,7 +2018,7 @@ PHASE 4 (ramses_rf Phase 3/3.25 — DONE, shipped 0.58.3):
 PHASE 3d (ramses_cc — DONE, see phase3d_design.md):
   Align ramses_cc with ramses_rf 0.58.3. No new features — consolidation
   and cleanup only. All 5 steps complete:
-  3d.8: remove ImportError fallback (dead code, manifest pins 0.58.3)
+  3d.8: remove ImportError fallback (dead code, manifest now pins 0.59.0)
   3d.3: strip_traits_for_validation delegates stage 1 to ramses_rf
   3d.3b: consolidate stage-3 orchestration (orphan routing, disabled/
          skipped/foreign filtering, HGI dropping) into one shared
@@ -3468,7 +3468,7 @@ REFERENCE                    STATE    NOTES
 ──────────────────────────────────────────────────────────────────
 ramses_rf discussion 191     open     started by zxdavb, 19 Apr 2025
 ramses_rf issue 530          closed   Builder/Strategy pattern scrapped (Jul 17 2026)
-ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX DONE 0.58.3, 3.75 PR 914 draft)
+ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX DONE 0.58.3, 3.75 PR 914 draft; current pin 0.59.0)
 ramses_rf issue 836          closed   Dynamic class promotion → "init and go"
 ramses_rf issue 87           open     Itho fan states / manufacturer
 ramses_rf issue 627          open     CODES_SCHEMA reloc (unrelated)
@@ -3656,7 +3656,7 @@ Our schema changes align as agreed:
 ```
 1. COORDINATE with ramses_rf maintainers (silverailscolo, PWhite-Eng)
    - Share our schema_architecture.md
-   - ramses_rf Phase 3/3.25 DONE (shipped 0.58.3, TX Generation Parity)
+   - ramses_rf Phase 3/3.25 DONE (shipped 0.58.3, current pin 0.59.0)
    - ramses_rf Phase 3.75 PR 914 (draft) — tested 232/232 ha_sim_test pass
    - ramses_rf PR 917 (open) — BDR hotwater_valve domain fix (our contribution)
 
@@ -3718,6 +3718,10 @@ those changes.
 - Updated Phase 3.75 note: PR 914 is draft, tested 232/232 ha_sim_test pass.
 - Updated CQRS refactor timing section: added Phase 3.75 PR 914 status.
 - Updated recommendations: added PR 917 and PR 914 test results.
+- Fixed stale 0.58.3 references: manifest now pins 0.59.0 (131 commits
+  since 0.58.3, including our fixes 834/840/822/835/843/851/852 and
+  PWhite-Eng refactors). PR 914 and PR 917 NOT in 0.59.0.
+- Fixed stale Phase 3d status: was "ready for PR", actually merged via PR 839.
 
 
 [top](#schema-as-source-of-truth-architecture)

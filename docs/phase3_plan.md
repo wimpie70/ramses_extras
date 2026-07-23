@@ -3,7 +3,7 @@
 **Created:** Jul 2026
 **Status:** Phase 2.5 DONE (PR 810) — Phase 3a DONE (PR 811, merged) — Phase 3b DONE (merged) — Phase 3c DONE (in master) — Phase 3d DONE (PR 839, merged) — Phase 3e BLOCKED (ramses_rf-side)
 **Depends on:** Phase 2 (DONE, PR 764), Phase 2.5 (DONE, PR 810, migration scaffolding)
-**Phase 3d depends on:** ramses_rf 0.58.3 (DONE — `strip_and_map_traits()` + CQRS CommandDispatcher shipped)
+**Phase 3d depends on:** ramses_rf 0.58.3+ (DONE — `strip_and_map_traits()` + CQRS CommandDispatcher shipped in 0.58.3, current pin is 0.59.0)
 **ha_sim_test:** 232/232 checks pass (Jul 23 2026), including PR 914 integration
 
 > **Naming note (updated Jul 19 2026):** There are several "Phase 3"s:
@@ -118,9 +118,9 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
 | **What** | Commands move to schema as `_commands` | 3/3.25: TX Generation Parity + Transport Decoupling. 3.75: Identity Composition (deprecate `__class__`, "init and go") |
 | **Who** | wimpie70 / ramses_cc | PWhite-Eng / ramses_rf |
 | **Repo** | ramses_cc | ramses_rf |
-| **Status** | 3a DONE (PR 811), 3b DONE (merged), 3c DONE (in master), 3d DONE (PR 839, merged), 3e BLOCKED (ramses_rf) | 3/3.25 DONE (shipped 0.58.3). 3.75 PR 914 draft (tested 232/232) |
-| **Depends on** | 3a: strip workaround (DONE). 3b: no ramses_rf PR needed (packet templates). 3d: ramses_rf 0.58.3 (DONE) | Phase 2 complete (SQLite + RAM cache) |
-| **Blocks?** | No — 3a, 3b, 3c shipped independently. 3d benefits from ramses_rf 0.58.3 | No — shipped without ramses_cc's `_commands` alignment |
+| **Status** | 3a DONE (PR 811), 3b DONE (merged), 3c DONE (in master), 3d DONE (PR 839, merged), 3e BLOCKED (ramses_rf) | 3/3.25 DONE (shipped 0.58.3, current pin 0.59.0). 3.75 PR 914 draft (tested 232/232) |
+| **Depends on** | 3a: strip workaround (DONE). 3b: no ramses_rf PR needed (packet templates). 3d: ramses_rf 0.58.3+ (DONE) | Phase 2 complete (SQLite + RAM cache) |
+| **Blocks?** | No — 3a, 3b, 3c shipped independently. 3d benefits from ramses_rf 0.58.3+ | No — shipped without ramses_cc's `_commands` alignment |
 | **Key change** | — | Builder/Strategy pattern **scrapped** (Jul 17 2026). Replaced by "init and go" from schema. `DeviceRole` composition scrapped. |
 
 **ramses_cc Phase 3 split:**
@@ -138,7 +138,7 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
   schema safeguard included.
 - **Phase 3d (DONE — PR 839, merged to master):**
   ramses_rf alignment — 5 actionable steps, all complete:
-  - **3d.8** — remove dead `ImportError` fallback (manifest pins 0.58.3)
+  - **3d.8** — remove dead `ImportError` fallback (manifest now pins 0.59.0)
   - **3d.3** — `strip_traits_for_validation` delegates stage 1 to ramses_rf
   - **3d.3b** — consolidate drifted stage-3 orchestration into one shared
     function `_strip_and_orchestrate` (orphan routing, disabled/skipped/
@@ -155,7 +155,7 @@ These tracks are complementary: ramses_cc's schema becomes the seed for the Buil
   neither affects ramses_cc. Split out from 3d so 3d can merge now.
   - **3e.1** (was 3d.5) — CLI compat: ramses_rf has no callers for
     `strip_and_map_schema`; needs ramses_rf-side wiring
-  - **3e.2** (was 3d.7) — 22B0 calendar builder: no builder in 0.58.3
+  - **3e.2** (was 3d.7) — 22B0 calendar builder: no builder in 0.59.0
 
 **Key insight:** ramses_cc's Phase 3a shipped using the same
 `_strip_schema_extensions` workaround as Phase 2. Phase 3b moved commands
@@ -681,12 +681,11 @@ The ramses_rf dependencies for Phase 3d are now merged:
 - PR [842](https://github.com/ramses-rf/ramses_rf/pull/842) — CQRS `CommandDispatcher` + domain builders (`zones.py`, `dhw.py`, `hvac.py`, `heat.py`, `schedules.py`, `faultlog.py`, `opentherm.py`) (merged Jul 17 2026, released in 0.58.3)
 - PRs [843](https://github.com/ramses-rf/ramses_rf/pull/843)–[847](https://github.com/ramses-rf/ramses_rf/pull/847) — CQRS Intent cut-over for devices, systems, schedules, fault log, OpenTherm, HVAC (merged Jul 17 2026, released in 0.58.3)
 
-> **ramses_cc manifest already pins `ramses-rf==0.58.3`** (commit `00bdaca`,
-> merged from master into `feature/phase3c-flagging`). ramses_cc's
-> `services.py` already uses CQRS Intents (`build_dto` + `Intent` from
-> `ramses_rf.commands.builders` / `ramses_rf.commands.core`).
+> **ramses_cc manifest pins `ramses-rf==0.59.0`** (current as of Jul 23 2026).
+> ramses_cc's `services.py` already uses CQRS Intents (`build_dto` + `Intent`
+> from `ramses_rf.commands.builders` / `ramses_rf.commands.core`).
 
-**What's verified as available in 0.58.3:**
+**What's verified as available in 0.59.0 (includes all 0.58.3 features):**
 - `strip_and_map_traits()` / `strip_and_map_schema()` — importable from `ramses_rf.schemas`
 - `SCH_TRAITS_HVAC` bound accepts `str | list[str] | None` (config.py:89-93)
 - CQRS builders for: 22F1 (fan mode), 22F7 (bypass), 2411 (fan param),
@@ -707,7 +706,7 @@ scrapped, but TX generation CQRS builders (22F1, 22F7, etc.) and
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 3d.0 | Bump ramses_rf dependency to 0.58.3 | DONE — manifest already pins `ramses-rf==0.58.3` (commit `00bdaca`) |
+| 3d.0 | Bump ramses_rf dependency to 0.58.3+ | DONE — manifest now pins `ramses-rf==0.59.0` |
 | 3d.1 | Coordinate TX strategy profile key names with PWhite-Eng (per-manufacturer TX profiles, NOT device identity) | N/A — strategy profiles not yet implemented in ramses_rf |
 | 3d.2 | `_class` stays as schema identity trait — no mapping to strategy names needed (DeviceRole scrapped) | N/A |
 | 3d.3 | Consolidate stage-1 stripping: `strip_traits_for_validation()` (schemas.py) still has an inline `_strip_traits` duplicate — delegate to ramses_rf's `strip_traits()` like the coordinator already does. **NOT** `strip_and_map_schema()` — `SCH_GLOBAL_SCHEMAS` rejects mapped trait names (`class`, `bound`, `alias`); those belong in the known_list, not the schema | DONE — delegates to ramses_rf's `strip_traits` |
@@ -716,11 +715,11 @@ scrapped, but TX generation CQRS builders (22F1, 22F7, etc.) and
 | 3d.5 | CLI can use `_commands`/`_bound` in config.json → moved to 3e.1 | BLOCKED (ramses_rf-side) — moved to Phase 3e |
 | 3d.6 | Verify CQRS TX builders (22F1, 22F7, 2411) work as defaults, `_commands` overrides them. Add an end-to-end precedence test (`set_fan_mode` with and without `_commands` override) — the precedence lives in ramses_cc and is untested against the new builders | DONE — 4 precedence tests added (test-only, no code change) |
 | 3d.7 | 22B0 (calendar) builder — wait for ramses_rf → moved to 3e.2 | BLOCKED — moved to Phase 3e |
-| 3d.8 | Cleanup: remove the `ImportError` fallback for `strip_and_map_traits`/`strip_traits` in coordinator.py (~40 lines, comment says "< 0.59.0" but functions shipped in 0.58.2; manifest pins `==0.58.3`) | DONE — ~40 lines removed |
+| 3d.8 | Cleanup: remove the `ImportError` fallback for `strip_and_map_traits`/`strip_traits` in coordinator.py (~40 lines, comment says "< 0.59.0" but functions shipped in 0.58.2; manifest now pins `==0.59.0`) | DONE — ~40 lines removed |
 
 #### Phase 3d implementation plan
 
-1. ~~**Bump ramses_rf pin** to `>=0.58.3`~~ — DONE (manifest already pins 0.58.3).
+1. ~~**Bump ramses_rf pin** to `>=0.58.3`~~ — DONE (manifest now pins 0.59.0).
 2. **Consolidate stripping** — make `strip_traits_for_validation()` in
    `schemas.py` delegate stage 1 to `ramses_rf.schemas.strip_traits()`
    (the coordinator's `_strip_schema_extensions` already does this).
@@ -749,9 +748,9 @@ scrapped, but TX generation CQRS builders (22F1, 22F7, etc.) and
    should survive into ramses_rf) — raise with PWhite-Eng.
 6. **Cleanup** — drop the `ImportError` fallback for
    `strip_and_map_traits`/`strip_traits` in coordinator.py (dead code
-   with the `==0.58.3` pin; comment wrongly says "< 0.59.0").
+   with the `==0.59.0` pin; comment wrongly says "< 0.59.0").
 
-#### What ramses_rf 0.58.3 provides (verified)
+#### What ramses_rf 0.59.0 provides (verified, includes all 0.58.3 features)
 
 ```python
 from ramses_rf.schemas import strip_and_map_traits, strip_and_map_schema
@@ -765,7 +764,7 @@ from ramses_rf.schemas import strip_and_map_traits, strip_and_map_schema
 
 # strip_and_map_schema: apply strip+map to every device entry in a schema
 
-# CAVEATS (verified against 0.58.3 source):
+# CAVEATS (verified against 0.59.0 source):
 #   - Defined in ramses_rf/config.py, re-exported from ramses_rf.schemas
 #   - NO callers inside ramses_rf itself (not Gateway, not ramses_cli) —
 #     only ramses_cc and ramses_rf's own unit tests use them
@@ -795,7 +794,7 @@ PWhite-Eng's in-flight PRs (Strangler Fig purge of legacy L3 builders):
 
 | PR | What | Relevance to us |
 |---|---|---|
-| [849](https://github.com/ramses-rf/ramses_rf/pull/849) (ready) | Purge legacy `Command.set_fan_mode` / `set_bypass_position` etc. from `ramses_tx/command/hvac.py`, remove `HvacMixins` + `CODE_API_MAP` HVAC routing | ramses_cc does NOT call `Command.set_*` classmethods directly (verified), but climate/water_heater call **device-level** setters (`device.set_fan_mode`, `set_mode`, `set_config`, `set_boost_mode`) — those were cut over to CQRS in PR 847. Our `==0.58.3` pin shields us; retest all device setters when bumping past 0.58.3 |
+| [849](https://github.com/ramses-rf/ramses_rf/pull/849) (ready) | Purge legacy `Command.set_fan_mode` / `set_bypass_position` etc. from `ramses_tx/command/hvac.py`, remove `HvacMixins` + `CODE_API_MAP` HVAC routing | ramses_cc does NOT call `Command.set_*` classmethods directly (verified), but climate/water_heater call **device-level** setters (`device.set_fan_mode`, `set_mode`, `set_config`, `set_boost_mode`) — those were cut over to CQRS in PR 847. Our `==0.59.0` pin shields us; retest all device setters when bumping past 0.59.0 |
 | [850](https://github.com/ramses-rf/ramses_rf/pull/850)–[852](https://github.com/ramses-rf/ramses_rf/pull/852) (stacked, draft) | Zone parity tests, discovery cut-over to `CommandDTO` + `LegacyCommandShim`, purge legacy zone builders | Internal to ramses_rf; discovery `src` reverted to `HGI_DEV_ADDR` |
 | [853](https://github.com/ramses-rf/ramses_rf/pull/853)–[854](https://github.com/ramses-rf/ramses_rf/pull/854) (stacked, draft) | DHW builder parity tests + DHW discovery/ingestion to L7 CQRS | Same — internal cut-over |
 | [855](https://github.com/ramses-rf/ramses_rf/pull/855) (ours) | Foreign-HGI exception before block_list check | Already on ramses_rf master |
@@ -1107,13 +1106,14 @@ Before runtime migration, save state as YAML to
 | Jul 16 2026 | ramses_rf PR 832 merged — recursive `strip_and_map_traits()` | `strip_traits()` added, `strip_and_map_traits()` made recursive. Released in 0.58.2. |
 | Jul 17 2026 | ramses_rf PRs 842-847 merged — CQRS CommandDispatcher + Intent builders | L7 domain intent builders for zones, DHW, HVAC, schedules, fault log, OpenTherm. Released in 0.58.3. ramses_cc `services.py` already uses CQRS Intents (merged from master). |
 | Jul 19 2026 | Phase 3c DONE (PR 831) | All 10 items (3c.1-3c.10) implemented + 6 bug fixes for owner handling and schema safeguard. 1077 tests pass. ha_sim_test Recipe 27 verifies safeguard. |
-| Jul 19 2026 | Phase 3d unblocked | ramses_rf 0.58.3 shipped all dependencies: `strip_and_map_schema()`, `SCH_TRAITS_HVAC` list bound, CQRS Intent builders. Manifest already pins `ramses-rf==0.58.3`. |
+| Jul 19 2026 | Phase 3d unblocked | ramses_rf 0.58.3 shipped all dependencies: `strip_and_map_schema()`, `SCH_TRAITS_HVAC` list bound, CQRS Intent builders. Manifest now pins `ramses-rf==0.59.0` (bumped from 0.58.3). |
 | Jul 18 2026 | Pre-3d review corrections (verified against 0.58.3 source) | (1) `strip_and_map_schema()` has NO callers inside ramses_rf — CLI support for `_` keys is still blocked (3d.5). (2) `_commands` does NOT map to `commands` — it's stripped; no `commands` trait in `SCH_TRAITS`. (3) 3d.3 must use `strip_traits()` for validation, not `strip_and_map_schema()` — `SCH_GLOBAL_SCHEMAS` rejects mapped names. (4) 3d.4 is a code change: `_derive_known_list_from_schema` drops list-valued `bound`. |
-| Jul 18 2026 | Checked open ramses_rf PRs 849-855 | Legacy builder purge continues (849 ready, 850-854 stacked drafts). No open PR wires the CLI pipeline, adds a `commands` trait, or adds 22B0 — those gaps remain. Roadmap Phase 3.5 (`1FC9` → `TopologyChangedEvent`) will give us a schema-update hook for new bindings. `==0.58.3` pin shields us from the purge; retest device setters on next bump. |
+| Jul 18 2026 | Checked open ramses_rf PRs 849-855 | Legacy builder purge continues (849 ready, 850-854 stacked drafts). No open PR wires the CLI pipeline, adds a `commands` trait, or adds 22B0 — those gaps remain. Roadmap Phase 3.5 (`1FC9` → `TopologyChangedEvent`) will give us a schema-update hook for new bindings. `==0.59.0` pin shields us from the purge; retest device setters on next bump. |
 | Jul 23 2026 | PR 914 tested with ha_sim_test | PWhite-Eng's Phase 3.75 PR (eradicate dynamic `__class__` mutations) tested: 232/232 checks pass. No regressions. Comment posted on PR 914 confirming test results. |
 | Jul 23 2026 | PR 917 opened (ramses_rf) | Fix for R37: BDR declared as `hotwater_valve` in schema should not be classified as FC (appliance_control) by the 3B00/3EF0 TPI broadcast heuristic. Added `_is_declared_hotwater_valve()` check in `discovery_scan.py`. |
 | Jul 23 2026 | PR 861 opened (ramses_cc) | Device health tracking — `review_device_health` config flow step showing orphaned/lost devices with Keep/Remove selectors. 18 ha_sim_test checks (R50) verify end-to-end. |
 | Jul 23 2026 | ha_sim_test harness improvements | Event-driven waiting (`wait_for` + `is_ha_ready` + `is_ramses_cc_loaded`), per-recipe timing, per-recipe log attribution, centralized `clear_cached_state` helper. R37 100.7s→80.2s, R38 68.7s→52.7s. Full suite 232/232 in 30.7 min. |
+| Jul 23 2026 | ramses_rf 0.59.0 released and pinned | Manifest bumped from `==0.58.3` to `==0.59.0`. 0.59.0 includes 131 commits: our fixes (834, 840, 822, 835, 843, 851, 852), PWhite-Eng refactors (dev-registry generic downcast, topology type narrowing, MQTT thread safety, 2411 FAN routing, protocol schema consolidation). PR 914 (Phase 3.75) NOT in 0.59.0 — still draft. PR 917 (R37 fix) NOT in 0.59.0 — still open. |
 
 ---
 
