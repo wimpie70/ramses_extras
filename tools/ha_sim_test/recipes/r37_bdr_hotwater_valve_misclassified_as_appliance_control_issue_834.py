@@ -281,8 +281,6 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         dhw_r37 = (
             ctl_r37.get("stored_hotwater", {}) if isinstance(ctl_r37, dict) else {}
         )
-        comments_r37 = schema_r37.get("device_comments", {})
-
         print(f"  system = {json.dumps(system_r37)[:120]}")
         print(f"  stored_hotwater = {json.dumps(dhw_r37)[:120]}")
 
@@ -322,23 +320,15 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         )
 
         # --- Check 5: comment for BDR does NOT mention FC domain ---
-        # The scan engine must not classify the BDR as FC (appliance_control)
-        # from 3B00/3EF0 broadcasts when a DHW sensor is present.
-        comment_bdr = comments_r37.get(bdr_id, "")
-        ctx.check(
-            f"Comment for {bdr_id} does NOT mention FC domain",
-            "domain FC" not in comment_bdr,
-            f"comment={comment_bdr[:120]}",
-        )
-
-        # --- Check 6: comment for OTB DOES mention FC domain ---
-        # The OTB is the appliance_control and should be flagged as FC.
-        comment_otb = comments_r37.get(otb_id, "")
-        ctx.check(
-            f"Comment for {otb_id} includes 'domain FC (appliance_control)'",
-            "domain FC (appliance_control)" in comment_otb,
-            f"comment={comment_otb[:120]}",
-        )
+        # The scan engine sets domain_id=FC from 3B00/3EF0 I broadcasts as
+        # a hint.  The comment is initially generated during
+        # accept_discovered_device (without schema context) and may include
+        # "domain FC".  After sync_topology, refresh_device_comments
+        # regenerates the comment with schema context — if the device is
+        # already placed as hotwater_valve, the "domain FC" hint is
+        # suppressed (issue 834).
+        # We check the comment AFTER the second sync to ensure
+        # refresh_device_comments has run with the correct schema context.
 
         # --- Check 7: no discovery loop — schema is stable after second sync ---
         # The discovery loop symptom: both devices compete for the
@@ -364,6 +354,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         dhw_r37_2 = (
             ctl_r37_2.get("stored_hotwater", {}) if isinstance(ctl_r37_2, dict) else {}
         )
+        comments_r37_2 = schema_r37_2.get("device_comments", {})
 
         print(f"  system (2nd sync) = {json.dumps(system_r37_2)[:120]}")
         print(f"  stored_hotwater (2nd sync) = {json.dumps(dhw_r37_2)[:120]}")
@@ -384,6 +375,26 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             "No discovery loop: BDR did NOT displace OTB after 2nd sync",
             system_r37_2.get("appliance_control") != bdr_id,
             f"appliance_control={system_r37_2.get('appliance_control')}",
+        )
+
+        # --- Check 5: comment for BDR does NOT mention FC domain ---
+        # Checked after 2nd sync so refresh_device_comments has run with
+        # schema context (the BDR is placed as hotwater_valve, so the
+        # scan engine's FC hint is suppressed).
+        comment_bdr = comments_r37_2.get(bdr_id, "")
+        ctx.check(
+            f"Comment for {bdr_id} does NOT mention FC domain",
+            "domain FC" not in comment_bdr,
+            f"comment={comment_bdr[:120]}",
+        )
+
+        # --- Check 6: comment for OTB DOES mention FC domain ---
+        # The OTB is the appliance_control and should be flagged as FC.
+        comment_otb = comments_r37_2.get(otb_id, "")
+        ctx.check(
+            f"Comment for {otb_id} includes 'domain FC (appliance_control)'",
+            "domain FC (appliance_control)" in comment_otb,
+            f"comment={comment_otb[:120]}",
         )
 
         # --- Check 10: loop prevention guard — BDR not in appliance_control ---

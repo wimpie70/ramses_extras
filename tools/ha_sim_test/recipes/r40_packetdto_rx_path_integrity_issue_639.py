@@ -156,41 +156,60 @@ except Exception as e:
         # Inject a 30C9 I packet from the zone-03 sensor (01:150003)
         #    payload: 03 + hex_for_temp(22.0)
         #    22.0°C = 0x0AC0 → "030AC0"
-        print("  Injecting 30C9 I from 01:150003 (zone 03, 22.0°C)...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": "01:150003",
-                    "code": "30C9",
-                    "payload": "030AC0",
-                    "verb": "I",
-                },
-            )
-            print("    30C9 I injected")
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for 30C9 to process")
-
-        # Force entity state update
-        try:
-            call_service(ctx.token, "ramses_cc", "force_update")
-        except RuntimeError:
-            pass
-        ctx.wait(3, "for entity state write")
-
-        # Check that a climate entity for zone 03 exists and has a temperature
-        entities = get_entities(ctx.token)
+        # In the full suite, entity state may be stale from previous recipes.
+        # We retry the inject + force_update up to 3 times to ensure the
+        # temperature propagates.
+        temp = None
         zone_climate = None
-        for e in entities:
-            if not e["entity_id"].startswith("climate."):
-                continue
-            attrs = e.get("attributes", {})
-            if attrs.get("zone_idx") == "03":
-                zone_climate = e
-                break
+        for attempt in range(3):
+            if attempt > 0:
+                print(f"  Retry {attempt}: re-injecting 30C9 I from 01:150003...")
+            else:
+                print("  Injecting 30C9 I from 01:150003 (zone 03, 22.0°C)...")
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": "01:150003",
+                        "code": "30C9",
+                        "payload": "030AC0",
+                        "verb": "I",
+                    },
+                )
+                print("    30C9 I injected")
+            except RuntimeError as e:
+                print(f"    Inject failed: {str(e)[:80]}")
+            ctx.wait(5, "for 30C9 to process")
+
+            # Force entity state update
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            ctx.wait(3, "for entity state write")
+
+            # Check that a climate entity for zone 03 exists and has a temp
+            entities = get_entities(ctx.token)
+            zone_climate = None
+            for e in entities:
+                if not e["entity_id"].startswith("climate."):
+                    continue
+                attrs = e.get("attributes", {})
+                if attrs.get("zone_idx") == "03":
+                    zone_climate = e
+                    break
+
+            if zone_climate:
+                temp = zone_climate.get("attributes", {}).get("current_temperature")
+                if temp is not None:
+                    break
+                print(f"    current_temperature still None after attempt {attempt + 1}")
+            else:
+                print(
+                    f"    zone 03 climate entity not found after attempt {attempt + 1}"
+                )
 
         ctx.check(
             "climate entity for zone 03 exists after 30C9 RX",
@@ -199,7 +218,6 @@ except Exception as e:
         )
 
         if zone_climate:
-            temp = zone_climate.get("attributes", {}).get("current_temperature")
             ctx.check(
                 "zone 03 climate has current_temperature after 30C9 RX",
                 temp is not None,

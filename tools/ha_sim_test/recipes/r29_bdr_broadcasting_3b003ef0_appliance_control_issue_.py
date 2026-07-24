@@ -13,6 +13,7 @@ from ..base import Recipe, RecipeContext
 from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
 from ..helpers import (
     call_service,
+    clear_cached_state,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
@@ -23,6 +24,8 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ha_ready,
+    is_ramses_cc_loaded,
     load_profile_yaml,
     write_ramses_storage,
     ws_send,
@@ -46,6 +49,18 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # params, no TPI loop) does NOT get domain_id=FC and falls back to
         # hotwater_valve (the pre-fix behaviour).
         ctx.log_section("Recipe 29: BDR 3B00/3EF0 → appliance_control (issue 834)")
+
+        # Clear ALL cached state from previous tests (R37 writes OTB/BDR
+        # to the config entry schema and they persist across docker
+        # restarts via .storage/ramses_cc.  We need a truly clean slate
+        # so the pre-existing OTB (10:083401) and BDR (13:083402) don't
+        # hold the appliance_control/hotwater_valve slots.
+        print("  Stopping ha-sim and clearing cached state...")
+        clear_cached_state(ctx.log_monitor, label="R29 pre-restart")
+        ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait_for(is_ramses_cc_loaded, timeout=15, msg="for ramses_cc to initialize")
 
         # Load mixed profile (has CTL 01:150000 as main_tcs for TCS placement)
         print("  Loading mixed profile (has CTL for TCS placement)...")
@@ -193,19 +208,13 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
 
         # Check 1: BDR with 3B00/3EF0 → system.appliance_control
         #
-        # NOTE: the mixed profile may already have a pre-existing BDR
-        # (13:083400) assigned to the appliance_control slot.  When that
-        # happens, sync_learned_topology does NOT replace it with the newly
-        # injected BDR (13:834001) — the existing slot wins.  The scan
-        # engine's classification is verified by check 3 (comment includes
-        # "domain FC (appliance_control)"), which is the authoritative
-        # assertion for issue 834.  Here we accept either the injected BDR
-        # or the pre-existing one holding the slot.
+        # With a clean slate (clear_cached_state at start), the injected
+        # BDR should be placed as appliance_control by the scan engine's
+        # FC domain hint + generate_schema_entry.
         appliance_control = system_r29.get("appliance_control")
         ctx.check(
-            f"BDR {bdr_app} (3B00/3EF0) is appliance_control "
-            "(or pre-existing BDR holds slot)",
-            appliance_control in (bdr_app, "13:083400"),
+            f"BDR {bdr_app} (3B00/3EF0) is appliance_control",
+            appliance_control == bdr_app,
             f"appliance_control={appliance_control}",
         )
 
@@ -228,13 +237,11 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
 
         # Check 4: BDR with only 1100 → stored_hotwater.hotwater_valve (fallback)
         #
-        # NOTE: hotwater_valve slot assignment requires a 000C HTG binding
-        # (FA domain), not just 1100 broadcasts.  If no 000C HTG was injected
-        # for this BDR, the slot stays None.  The scan engine's classification
-        # (NOT FC domain) is verified by check 6 (comment does NOT mention
-        # "domain FC"), which is the authoritative assertion.  Here we accept
-        # either the BDR holding the hotwater_valve slot or the slot being
-        # None (no HTG binding injected).
+        # With a clean slate, the hotwater_valve slot should be either the
+        # injected BDR (if 000C HTG binding was processed) or None (no HTG
+        # binding injected).  The scan engine's classification (NOT FC
+        # domain) is verified by check 6 (comment does NOT mention
+        # "domain FC"), which is the authoritative assertion.
         hotwater_valve = dhw_r29.get("hotwater_valve")
         ctx.check(
             f"BDR {bdr_dhw} (1100 only) is hotwater_valve (or None — no HTG binding)",
