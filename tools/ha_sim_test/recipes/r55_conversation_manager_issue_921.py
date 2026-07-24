@@ -1,7 +1,6 @@
 """Recipe R55: L7 ConversationManager RQ/RP tracking + retransmission.
 
-Verifies the ConversationManager infrastructure (Phase 4a + 4a.5) and
-optionally the Phase 4b execution cutover:
+Verifies the ConversationManager infrastructure (Phase 4a through 4b):
 
 1. **ConversationManager instantiation** — created by Gateway, accessible
    via ``gwy.conversation_manager``
@@ -14,8 +13,8 @@ optionally the Phase 4b execution cutover:
    max_retries, then raises ProtocolTimeoutError
 6. **cancel_all** — cancels all pending conversations on shutdown
 7. **CommandDispatcher integration** — ``dispatcher.send()`` with
-   ``wait_for_reply=True`` uses ConversationManager (shadow hook in
-   Phase 4a.5, full cutover with ``wait_for_reply=False`` in Phase 4b)
+   ``wait_for_reply=True`` uses ConversationManager and passes
+   ``wait_for_reply=False`` to L3 (Phase 4b execution cutover)
 
 This is a structural test that runs inside the ha-sim container.
 
@@ -358,13 +357,10 @@ except Exception as e:
         )
         # Phase 4b cutover: dispatcher passes wait_for_reply=False to L3
         # because ConversationManager handles reply tracking at L7.
-        # Phase 4a.5 shadow: dispatcher still passes wait_for_reply through
-        # to L3 (shadow only).  This check passes in either case.
         ctx.check(
-            "CommandDispatcher.send cutover or shadow (track_intent)",
-            result.get("dispatcher_uses_wait_for_reply_false") is True
-            or result.get("dispatcher_uses_track_intent") is True,
-            "neither wait_for_reply=False nor track_intent found in send()",
+            "CommandDispatcher.send passes wait_for_reply=False (Phase 4b)",
+            result.get("dispatcher_uses_wait_for_reply_false") is True,
+            "wait_for_reply=False not found in send()",
         )
 
         # 9. dispatcher.process_msg hooks ConversationManager (Phase 4a.5)
