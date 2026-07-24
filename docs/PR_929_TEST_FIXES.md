@@ -171,3 +171,26 @@ the sensor-to-zone mapping.
 **Workaround** (R40 recipe): Inject the 30C9 from the CTL (01:150000)
 instead of the zone sensor (01:150003), since the CTL's TCS has the
 zone.
+
+## 6. ramses_cc: resolve_async_attr cooldown blocks None→value transitions
+
+**Commit**: `32a6810` (ramses_cc, branch `fix/merge-schemas-config-traits-pr929`)
+
+**Problem**: `resolve_async_attr` in `ramses_cc/helpers.py` has a 30s
+cooldown to prevent command floods from async getters with side effects
+(e.g. `system_mode()` dispatches RQ commands).  However, when the cached
+value is `None` (unhydrated state), the cooldown blocks re-reads even
+when the underlying state has been updated (e.g. a 30C9 temperature
+broadcast sets `temp_state.temperature`).
+
+In the full test suite, the climate entity's `current_temperature` is
+read during the initial 30s wait (before the 30C9 inject), caching
+`None`.  The 30C9 then updates `temp_state.temperature` to 27.52, but
+the cooldown prevents the entity from re-reading the value.  This only
+manifests in the full suite (not in isolation) because earlier recipes
+trigger the initial state read.
+
+**Fix** (`custom_components/ramses_cc/helpers.py`): Skip the cooldown
+when the cached value is `None` so that the first real data is picked
+up immediately.  The cooldown still applies once a non-None value is
+cached, preventing command floods for side-effecting getters.
