@@ -55,6 +55,27 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
         ctx.wait(5, "for profile reload + entity creation")
 
+        # Inject a 1FC9 heartbeat from the FAN so the scan engine tracks
+        # 32:150000 and can detect the _class=DIS mismatch.  The profile
+        # reload stops all simulator devices, so without this injection the
+        # scan engine has no data for 32:150000 and check_class_mismatches
+        # skips it.
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": FAN,
+                    "code": "1FC9",
+                    "payload": "00",
+                    "verb": "I",
+                },
+            )
+        except RuntimeError as e:
+            print(f"    FAN heartbeat inject failed: {str(e)[:80]}")
+        ctx.wait(5, "for FAN heartbeat to reach scan engine")
+
         # Force a sync cycle to trigger mismatch detection
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
