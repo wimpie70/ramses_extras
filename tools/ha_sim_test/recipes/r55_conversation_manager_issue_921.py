@@ -194,10 +194,15 @@ try:
     #   entirely, so async_send_cmd is called without it.
     # Both are valid — the key is that L3 doesn't block (ConversationManager
     # handles reply tracking at L7).
+    # PR 926: "wait_for_reply=False" is explicitly passed to async_send_cmd
+    # PR 929: wait_for_reply is not passed to async_send_cmd at all
+    #         (it's only in the method signature + if condition, not in the
+    #         async_send_cmd call).  Check by verifying wait_for_reply does
+    #         not appear after the last async_send_cmd reference.
+    after_send = src_code.split("async_send_cmd")[-1]
     results["dispatcher_no_l3_reply_block"] = (
         "wait_for_reply=False" in src_code
-        or "async_send_cmd(\n                dto," in src_code
-        or "async_send_cmd(dto," in src_code.replace(" ", "")
+        or "wait_for_reply" not in after_send
     )
 
     # ── 9. dispatcher.process_msg hooks ConversationManager ───────────
