@@ -187,8 +187,18 @@ try:
     import inspect
     src_code = inspect.getsource(CommandDispatcher.send)
     results["dispatcher_uses_conv_mgr"] = "conversation_manager" in src_code
-    results["dispatcher_uses_wait_for_reply_false"] = "wait_for_reply=False" in src_code
     results["dispatcher_uses_track_intent"] = "track_intent" in src_code
+    # Phase 4b cutover: the dispatcher should NOT block at L3 for replies.
+    # PR 926 style: explicitly passes wait_for_reply=False to async_send_cmd.
+    # PR 928/929 style: wait_for_reply is removed from the transport layer
+    #   entirely, so async_send_cmd is called without it.
+    # Both are valid — the key is that L3 doesn't block (ConversationManager
+    # handles reply tracking at L7).
+    results["dispatcher_no_l3_reply_block"] = (
+        "wait_for_reply=False" in src_code
+        or "async_send_cmd(\n                dto," in src_code
+        or "async_send_cmd(dto," in src_code.replace(" ", "")
+    )
 
     # ── 9. dispatcher.process_msg hooks ConversationManager ───────────
     # Phase 4a.5: inbound messages are passed to ConversationManager
@@ -355,12 +365,13 @@ except Exception as e:
             result.get("dispatcher_uses_track_intent") is True,
             "track_intent not found in send()",
         )
-        # Phase 4b cutover: dispatcher passes wait_for_reply=False to L3
-        # because ConversationManager handles reply tracking at L7.
+        # Phase 4b cutover: dispatcher does not block at L3 for replies.
+        # PR 926: explicitly passes wait_for_reply=False to async_send_cmd.
+        # PR 928/929: wait_for_reply removed from transport layer entirely.
         ctx.check(
-            "CommandDispatcher.send passes wait_for_reply=False (Phase 4b)",
-            result.get("dispatcher_uses_wait_for_reply_false") is True,
-            "wait_for_reply=False not found in send()",
+            "CommandDispatcher.send does not block L3 for replies (Phase 4b)",
+            result.get("dispatcher_no_l3_reply_block") is True,
+            "L3 reply blocking not disabled in send()",
         )
 
         # 9. dispatcher.process_msg hooks ConversationManager (Phase 4a.5)

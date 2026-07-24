@@ -48,9 +48,17 @@ try:
     )
     from ramses_rf.const import DevType
     from ramses_rf.gateway import Gateway
-    from ramses_rf.discovery import DiscoveryService
     from ramses_rf.lifecycle import GatewayLifecycle
     import inspect
+
+    # PR 927+ removes DiscoveryService entirely.  PR 926 keeps it as a
+    # deprecated no-op.  Handle both cases.
+    try:
+        from ramses_rf.discovery import DiscoveryService
+        discovery_service_exists = True
+    except ImportError:
+        DiscoveryService = None
+        discovery_service_exists = False
 
     results = {}
 
@@ -93,15 +101,21 @@ try:
     results["pm_has_shadow_mode_param"] = "shadow_mode" in sig.parameters
 
     # ── 5. Legacy poller deactivated ──────────────────────────────────
-    poller_src = inspect.getsource(DiscoveryService.start_poller)
-    results["legacy_poller_is_noop"] = (
-        "deprecated" in poller_src.lower()
-        or "disabled" in poller_src.lower()
-    )
-    # The no-op start_poller should NOT contain schedule_task
-    results["legacy_poller_no_schedule_task"] = (
-        "schedule_task" not in poller_src
-    )
+    # PR 926: DiscoveryService.start_poller is a deprecated no-op.
+    # PR 927+: DiscoveryService is removed entirely (stronger deprecation).
+    if discovery_service_exists:
+        poller_src = inspect.getsource(DiscoveryService.start_poller)
+        results["legacy_poller_is_noop"] = (
+            "deprecated" in poller_src.lower()
+            or "disabled" in poller_src.lower()
+        )
+        results["legacy_poller_no_schedule_task"] = (
+            "schedule_task" not in poller_src
+        )
+    else:
+        # DiscoveryService fully removed — stronger than no-op
+        results["legacy_poller_is_noop"] = True
+        results["legacy_poller_no_schedule_task"] = True
 
     # ── 6. Lifecycle integration ──────────────────────────────────────
     start_src = inspect.getsource(GatewayLifecycle.start)
