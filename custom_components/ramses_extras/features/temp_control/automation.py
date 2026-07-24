@@ -246,13 +246,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 self._set_waiting_for_comfort_temp(device_id)
                 continue
             except ValueError as err:
-                _LOGGER.warning(
-                    "Temp_control re-evaluation for %s skipped: %s. "
-                    "Check that indoor_temp and indoor_humidity entities "
-                    "exist and are available.",
-                    device_id,
-                    err,
-                )
+                self._set_waiting_for_sensors(device_id, err)
                 continue
             await self._process_automation_logic(device_id, entity_states)
 
@@ -269,13 +263,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 self._set_waiting_for_comfort_temp(device_id)
                 continue
             except ValueError as err:
-                _LOGGER.warning(
-                    "Temp_control startup evaluation for %s skipped: %s. "
-                    "Check that indoor_temp and indoor_humidity entities "
-                    "exist and are available.",
-                    device_id,
-                    err,
-                )
+                self._set_waiting_for_sensors(device_id, err)
                 continue
             await self._process_automation_logic(device_id, entity_states)
 
@@ -300,11 +288,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 self._set_waiting_for_comfort_temp(dev_id)
                 continue
             except ValueError as err:
-                _LOGGER.warning(
-                    "Temp_control reconcile for %s skipped: %s",
-                    dev_id,
-                    err,
-                )
+                self._set_waiting_for_sensors(dev_id, err)
                 continue
             await self._process_automation_logic(dev_id, entity_states)
 
@@ -465,7 +449,8 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 except ComfortTempUnavailableError:
                     self._set_waiting_for_comfort_temp(device_id)
                     return
-                except ValueError:
+                except ValueError as err:
+                    self._set_waiting_for_sensors(device_id, err)
                     return
                 await self._process_automation_logic(device_id, entity_states)
                 return
@@ -578,9 +563,13 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 f"Comfort temp entity {mappings['comfort_temp']} unavailable"
             ) from None
 
-        # Humidity — indoor_rh is required for the dewpoint guard; min/max
-        # RH are only consumed by other features and can be optional.
-        resolved["indoor_rh"] = _as_float(mappings["indoor_rh"])
+        # Humidity — indoor_rh is optional: it is only used by the
+        # dewpoint guard (which is disabled by default).  Devices like
+        # the Orcon HRC220 have no built-in humidity sensor, so requiring
+        # indoor_rh would block temp_control entirely for those users.
+        # min/max RH are only consumed by other features and can be
+        # optional too.
+        resolved["indoor_rh"] = _as_float_optional(mappings["indoor_rh"])
         resolved["min_rh"] = _as_float_optional(mappings["min_rh"])
         resolved["max_rh"] = _as_float_optional(mappings["max_rh"])
         resolved["dehumidifying_active"] = _as_bool(mappings["dehumidifying_active"])
@@ -642,16 +631,16 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         settings = self.config.get_settings()
         now = time.time()
 
-        # indoor_temp, comfort_temp and indoor_rh are required —
+        # indoor_temp and comfort_temp are required —
         # _get_device_entity_states raises ValueError if they are
-        # unavailable, so they are never None here.  outdoor_temp and
-        # supply_temp are optional (may be None when the entity is
-        # unavailable).
+        # unavailable, so they are never None here.  outdoor_temp,
+        # supply_temp and indoor_rh are optional (may be None when the
+        # entity is unavailable or the device has no such sensor).
         indoor_temp = float(cast(float, entity_states["indoor_temp"]))
         outdoor_temp = entity_states.get("outdoor_temp")
         supply_temp = entity_states.get("supply_temp")
         comfort_temp = float(cast(float, entity_states["comfort_temp"]))
-        indoor_rh = float(cast(float, entity_states["indoor_rh"]))
+        indoor_rh = entity_states.get("indoor_rh")
 
         # Per-area evaluation: if sensor_control areas are configured with
         # temperature entities, evaluate each area separately and aggregate.
@@ -735,32 +724,40 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         if desired_mode == "cooling" and getattr(
             settings, "dewpoint_guard_enabled", False
         ):
-            dewpoint = self._calc_dewpoint_c(indoor_temp, indoor_rh)
-            margin = float(getattr(settings, "dewpoint_margin_c", 1.0))
-            # Skip dewpoint guard when supply_temp is unavailable — without
-            # it we cannot evaluate the guard, and blocking cooling entirely
-            # just because the supply sensor is missing would be worse than
-            # allowing cooling without the guard.
-            if (
-                dewpoint is not None
-                and supply_temp is not None
-                and supply_temp < dewpoint + margin
-            ):
+            # Skip dewpoint guard when indoor_rh or supply_temp is
+            # unavailable — without either we cannot evaluate the guard,
+            # and blocking cooling entirely just because a sensor is
+            # missing would be worse than allowing cooling without the
+            # guard.  This applies to devices like the Orcon HRC220 that
+            # have no built-in humidity sensor.
+            if indoor_rh is None or supply_temp is None:
                 _LOGGER.debug(
-                    "Temp_control for %s: dewpoint guard cancelling cooling "
-                    "(supply=%.1f < dewpoint+margin=%.1f+%.1f=%.1f)",
+                    "Temp_control for %s: dewpoint guard skipped "
+                    "(indoor_rh=%s, supply_temp=%s)",
                     device_id,
-                    supply_temp,
-                    dewpoint,
-                    margin,
-                    dewpoint + margin,
+                    f"{indoor_rh:.1f}" if indoor_rh is not None else "N/A",
+                    f"{supply_temp:.1f}" if supply_temp is not None else "N/A",
                 )
-                desired_mode = "idle"
+            else:
+                dewpoint = self._calc_dewpoint_c(indoor_temp, indoor_rh)
+                margin = float(getattr(settings, "dewpoint_margin_c", 1.0))
+                if dewpoint is not None and supply_temp < dewpoint + margin:
+                    _LOGGER.debug(
+                        "Temp_control for %s: dewpoint guard cancelling cooling "
+                        "(supply=%.1f < dewpoint+margin=%.1f+%.1f=%.1f)",
+                        device_id,
+                        supply_temp,
+                        dewpoint,
+                        margin,
+                        dewpoint + margin,
+                    )
+                    desired_mode = "idle"
+                    await self._clear_all_zone_demands(device_id)
                 await self._clear_all_zone_demands(device_id)
 
         _LOGGER.debug(
             "Decision for %s: mode=%s (prev=%s, indoor=%.1f, outdoor=%s, "
-            "supply=%s, comfort=%.1f, RH=%.1f%%, areas=%d)",
+            "supply=%s, comfort=%.1f, RH=%s, areas=%d)",
             device_id,
             desired_mode,
             prev_mode,
@@ -768,7 +765,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             f"{outdoor_temp:.1f}" if outdoor_temp is not None else "N/A",
             f"{supply_temp:.1f}" if supply_temp is not None else "N/A",
             comfort_temp,
-            indoor_rh,
+            f"{indoor_rh:.1f}%" if indoor_rh is not None else "N/A",
             len(area_results),
         )
 
@@ -993,6 +990,28 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             "Temp_control for %s: comfort temp unavailable, "
             "setting status to waiting_for_comfort_temp",
             device_id,
+        )
+
+    def _set_waiting_for_sensors(self, device_id: str, err: ValueError) -> None:
+        """Set status to waiting_for_sensors when a required entity is unavailable.
+
+        This is used instead of silently skipping the device, so the card
+        can show a clear indicator that a required sensor (indoor_temp,
+        indoor_humidity) is missing.  The user can then configure an
+        external sensor via sensor_control.
+        """
+        attrs = {
+            "mode": "waiting",
+            "reason": "required_sensor_unavailable",
+            "message": str(err),
+        }
+        self._set_active_indicator(device_id, False, attrs)
+        self._set_status_sensor(device_id, "waiting_for_sensors", attrs)
+        _LOGGER.warning(
+            "Temp_control for %s: required sensor unavailable, "
+            "setting status to waiting_for_sensors: %s",
+            device_id,
+            err,
         )
 
     # ---- sensor_control integration ----
