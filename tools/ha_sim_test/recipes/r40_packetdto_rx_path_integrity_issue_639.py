@@ -153,26 +153,33 @@ except Exception as e:
             pass
         ctx.wait(10, "for CTL heartbeats")
 
-        # Inject a 30C9 I packet from the zone-03 sensor (01:150003)
+        # Inject a 30C9 I packet from the CTL (01:150000) for zone 03
         #    payload: 03 + hex_for_temp(22.0)
         #    22.0°C = 0x0AC0 → "030AC0"
-        # In the full suite, entity state may be stale from previous recipes.
-        # We retry the inject + force_update up to 3 times to ensure the
-        # temperature propagates.
+        # NOTE: We inject from the CTL (01:150000), not the zone sensor
+        # (01:150003), because the dispatcher's _resolve_logical_targets
+        # looks up zones via the source device's TCS.  The zone sensor
+        # (01:150003) is classed as CTL and has its own (empty) TCS, so
+        # a 30C9 from it would not reach zone 03 in the main TCS.
+        # In PR 926, the DiscoveryService polled the CTL for 30C9, which
+        # set zone temps via RQ/RP.  PR 927 removed DiscoveryService,
+        # exposing this pre-existing routing gap.  Injecting from the CTL
+        # works because the CTL's TCS has zone 03.
+        # TODO: fix _resolve_logical_targets to look up zones by sensor ID.
         temp = None
         zone_climate = None
         for attempt in range(3):
             if attempt > 0:
-                print(f"  Retry {attempt}: re-injecting 30C9 I from 01:150003...")
+                print(f"  Retry {attempt}: re-injecting 30C9 I from 01:150000...")
             else:
-                print("  Injecting 30C9 I from 01:150003 (zone 03, 22.0°C)...")
+                print("  Injecting 30C9 I from 01:150000 (zone 03, 22.0°C)...")
             try:
                 call_service(
                     ctx.token,
                     "ramses_extras",
                     "device_simulator_inject_message",
                     {
-                        "source_id": "01:150003",
+                        "source_id": "01:150000",
                         "code": "30C9",
                         "payload": "030AC0",
                         "verb": "I",

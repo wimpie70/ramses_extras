@@ -135,3 +135,39 @@ PR 929 is stacked on top of:
    if either:
    - `DiscoveryService` exists and `start_poller` is a no-op (PR 926 style), OR
    - `DiscoveryService` does not exist (PR 927+ style — fully removed)
+
+## 4. ramses_cc: dev.discovery access after PR 927 removal
+
+**Commit**: `00b4dc7` (ramses_cc, branch `fix/merge-schemas-config-traits-pr929`)
+
+**Problem**: PR 927 removed `DiscoveryService` from ramses_rf devices
+(`dev.discovery`), but ramses_cc's `services.py` still accessed
+`dev.discovery.cmds` and `dev.discovery.discover()`, causing
+`'TrvActuator' object has no attribute 'discovery'` warnings and
+preventing entity creation for newly accepted devices.
+
+**Fix** (`custom_components/ramses_cc/services.py`): Use
+`getattr(dev, 'discovery', None)` to gracefully handle both PR 926
+(DiscoveryService exists as no-op) and PR 927+ (removed entirely).
+
+## 5. Pre-existing routing gap exposed by PR 927
+
+**Problem**: `_resolve_logical_targets` in `ramses_rf/dispatcher.py`
+looks up zones via the source device's TCS (`tcs = getattr(src_dev,
+"tcs", None)`). When a 30C9 (room temperature) packet comes from a
+zone sensor (e.g. 01:150003) that is classed as CTL, the sensor has
+its own (empty) TCS, so the zone is not found and the temperature is
+not propagated to the zone entity.
+
+In PR 926, this was masked by the `DiscoveryService` polling the CTL
+for 30C9 via RQ/RP, which set the zone temperature through the CTL's
+TCS. PR 927 removed `DiscoveryService`, exposing this gap.
+
+**Fix needed** (ramses_rf, future PR): Update
+`_resolve_logical_targets` to also look up zones by sensor ID — when
+the source device is a zone sensor, find the zone in the main TCS via
+the sensor-to-zone mapping.
+
+**Workaround** (R40 recipe): Inject the 30C9 from the CTL (01:150000)
+instead of the zone sensor (01:150003), since the CTL's TCS has the
+zone.
