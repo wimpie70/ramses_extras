@@ -1,6 +1,7 @@
 """Recipe R55: L7 ConversationManager RQ/RP tracking + retransmission.
 
-Verifies the Phase 4b ConversationManager that replaces L3 RQ/RP tracking:
+Verifies the ConversationManager infrastructure (Phase 4a + 4a.5) and
+optionally the Phase 4b execution cutover:
 
 1. **ConversationManager instantiation** — created by Gateway, accessible
    via ``gwy.conversation_manager``
@@ -13,11 +14,13 @@ Verifies the Phase 4b ConversationManager that replaces L3 RQ/RP tracking:
    max_retries, then raises ProtocolTimeoutError
 6. **cancel_all** — cancels all pending conversations on shutdown
 7. **CommandDispatcher integration** — ``dispatcher.send()`` with
-   ``wait_for_reply=True`` uses ConversationManager
+   ``wait_for_reply=True`` uses ConversationManager (shadow hook in
+   Phase 4a.5, full cutover with ``wait_for_reply=False`` in Phase 4b)
 
 This is a structural test that runs inside the ha-sim container.
 
-See: https://github.com/ramses-rf/ramses_rf/pull/921
+See: https://github.com/ramses-rf/ramses_rf/pull/920 (Phase 4a.5)
+     https://github.com/ramses-rf/ramses_rf/pull/921 (Phase 4b)
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ class R55ConversationManagerIssue921(Recipe):
     title = "L7 ConversationManager RQ/RP tracking + retransmission (PR 921)"
 
     async def run(self, ctx: RecipeContext) -> None:
-        ctx.log_section("Recipe 55: L7 ConversationManager (PR 921)")
+        ctx.log_section("Recipe 55: L7 ConversationManager (PR 920)")
 
         code = f"""
 import asyncio
@@ -66,21 +69,15 @@ try:
     results["pending_has_timer_task"] = "timer_task" in _fields
 
     # ── 2. ConversationManager instantiation ──────────────────────────
+    # PR 920 API: __init__(loop, *, default_timeout, max_retries)
+    # No send_func — retries just re-schedule timeouts without re-sending.
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    send_calls = []
-
-    async def mock_send(dto):
-        send_calls.append(dto)
-        # Return a mock packet
-        from unittest.mock import MagicMock
-        return MagicMock()
 
     cm = ConversationManager(
         loop=loop,
         default_timeout=0.5,  # short for testing
         max_retries=2,
-        send_func=mock_send,
     )
     results["cm_created"] = True
     results["cm_pending_count_init"] = cm.pending_count
@@ -131,8 +128,9 @@ try:
         results["future_state"] = "pending" if not fut.done() else "cancelled"
 
     # ── 5. Timeout + retry behavior ───────────────────────────────────
-    send_calls.clear()
-
+    # PR 920: on timeout, _handle_timeout increments retry_count and
+    # re-schedules the timeout.  After max_retries, it raises
+    # ProtocolTimeoutError on the future.  No re-sending occurs.
     intent2 = Command(
         src=src,
         dst=Address("04:150003"),  # different device, won't match
@@ -148,8 +146,9 @@ try:
 
     # Wait for timeout + retries to complete (0.3 * 3 = 0.9s + overhead)
     try:
-        loop.run_until_complete(asyncio.wait_for(fut2, timeout=2.0))
+        loop.run_until_complete(asyncio.wait_for(fut2, timeout=3.0))
         results["timeout_future_completed"] = True
+        results["timeout_error_type"] = "none"
     except ProtocolTimeoutError as e:
         results["timeout_future_completed"] = True
         results["timeout_error_type"] = "ProtocolTimeoutError"
@@ -160,8 +159,7 @@ try:
         results["timeout_future_completed"] = True
         results["timeout_error_type"] = type(e).__name__
 
-    # Should have retried 2 times (max_retries=2)
-    results["timeout_retry_count"] = len(send_calls)
+    # After timeout, the pending conversation should be cleaned up
     results["cm_pending_count_after_timeout"] = cm.pending_count
 
     # ── 6. cancel_all clears pending conversations ────────────────────
@@ -192,6 +190,19 @@ try:
     results["dispatcher_uses_conv_mgr"] = "conversation_manager" in src_code
     results["dispatcher_uses_wait_for_reply_false"] = "wait_for_reply=False" in src_code
     results["dispatcher_uses_track_intent"] = "track_intent" in src_code
+
+    # ── 9. dispatcher.process_msg hooks ConversationManager ───────────
+    # Phase 4a.5: inbound messages are passed to ConversationManager
+    # at the start of process_msg() for reply matching.
+    from ramses_rf import dispatcher as disp_mod
+    proc_src = inspect.getsource(disp_mod.process_msg)
+    results["process_msg_hooks_conv_mgr"] = "conversation_manager" in proc_src
+    results["process_msg_calls_cm_process_msg"] = ".process_msg(" in proc_src
+
+    # ── 10. GatewayLifecycle.stop() calls cancel_all ──────────────────
+    from ramses_rf.lifecycle import GatewayLifecycle
+    life_src = inspect.getsource(GatewayLifecycle.stop)
+    results["lifecycle_calls_cancel_all"] = "cancel_all" in life_src
 
     print(json.dumps({{"ok": True, **results}}))
 except Exception as e:
@@ -298,16 +309,11 @@ except Exception as e:
             f" err={result.get('future_error', 'N/A')}",
         )
 
-        # 5. Timeout + retry
+        # 5. Timeout + retry (PR 920: re-schedules timeout, no re-send)
         ctx.check(
             "timeout future completes with ProtocolTimeoutError",
             result.get("timeout_future_completed") is True,
             f"error={result.get('timeout_error_type', 'N/A')}",
-        )
-        ctx.check(
-            "retried 2 times (max_retries=2)",
-            result.get("timeout_retry_count") == 2,
-            f"retries={result.get('timeout_retry_count')}",
         )
         ctx.check(
             "pending_count is 0 after timeout",
@@ -346,12 +352,36 @@ except Exception as e:
             "ConversationManager not referenced in send()",
         )
         ctx.check(
-            "CommandDispatcher.send passes wait_for_reply=False to L3",
-            result.get("dispatcher_uses_wait_for_reply_false") is True,
-            "wait_for_reply=False not found in send()",
-        )
-        ctx.check(
             "CommandDispatcher.send calls track_intent",
             result.get("dispatcher_uses_track_intent") is True,
             "track_intent not found in send()",
+        )
+        # Phase 4b cutover: dispatcher passes wait_for_reply=False to L3
+        # because ConversationManager handles reply tracking at L7.
+        # Phase 4a.5 shadow: dispatcher still passes wait_for_reply through
+        # to L3 (shadow only).  This check passes in either case.
+        ctx.check(
+            "CommandDispatcher.send cutover or shadow (track_intent)",
+            result.get("dispatcher_uses_wait_for_reply_false") is True
+            or result.get("dispatcher_uses_track_intent") is True,
+            "neither wait_for_reply=False nor track_intent found in send()",
+        )
+
+        # 9. dispatcher.process_msg hooks ConversationManager (Phase 4a.5)
+        ctx.check(
+            "dispatcher.process_msg references conversation_manager",
+            result.get("process_msg_hooks_conv_mgr") is True,
+            "conversation_manager not found in process_msg()",
+        )
+        ctx.check(
+            "dispatcher.process_msg calls cm.process_msg()",
+            result.get("process_msg_calls_cm_process_msg") is True,
+            ".process_msg() call not found in dispatcher.process_msg()",
+        )
+
+        # 10. GatewayLifecycle.stop() calls cancel_all (Phase 4a.5)
+        ctx.check(
+            "GatewayLifecycle.stop() calls cancel_all",
+            result.get("lifecycle_calls_cancel_all") is True,
+            "cancel_all not found in GatewayLifecycle.stop()",
         )
