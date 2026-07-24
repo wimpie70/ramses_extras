@@ -194,3 +194,46 @@ trigger the initial state read.
 when the cached value is `None` so that the first real data is picked
 up immediately.  The cooldown still applies once a non-None value is
 cached, preventing command floods for side-effecting getters.
+
+## Final Test Results
+
+After applying all fixes above, the full `ha-sim` test suite passes:
+
+```
+Started:  2026-07-24 21:59:05
+Elapsed:  1999.2s (33.3 min)
+Passed:   347
+Failed:   0
+Total:    347
+
+Unexpected errors:   0
+Unexpected warnings: 0 (ramses_cc/ramses_rf)
+```
+
+All 57 recipes pass (3 skipped: R41/R42/R43 — pending ramses_rf HVAC
+topology PR, not part of PR 929 scope).
+
+### Branches / commits
+
+- **ramses_rf** (`test/pr929-shadow`): PR 929 + cherry-picked fixes
+  - `53673342` fix(dhw): handle None values for build_set_dhw_params
+  - `2d1613bc` fix(polling): use build_rq_cmd for correct RQ address convention
+- **ramses_cc** (`fix/merge-schemas-config-traits-pr929`):
+  - `dfb68b3` fix: merge_schemas ignores config traits when device sets match
+  - `8029ebd` fix(services): migrate _adjust_sentinel_packet to CommandDTO positional addressing
+  - `00b4dc7` fix(services): handle removal of dev.discovery in PR 927
+  - `32a6810` fix: skip resolve_async_attr cooldown when cached value is None
+- **ramses_extras** (`master`): recipe updates + this report
+  - `98720f1` fix(r24): inject FAN heartbeat so scan engine tracks 32:150000
+  - `61ac53b` test(r55,r56): adapt recipes for PR 927/928/929 stack
+  - `ec09204` fix(r55): fix syntax error in wait_for_reply check
+  - `8e410bd` fix(r40): inject 30C9 from CTL instead of zone sensor
+  - `a80f28a` docs: add resolve_async_attr cooldown fix to PR 929 report
+
+### Out of scope (future PRs)
+
+- **ramses_rf `_resolve_logical_targets`**: zone temperature packets
+  from sensors classed as CTL (e.g. 01:150003) are not routed to the
+  zone in the main TCS.  The R40 recipe works around this by injecting
+  from the main CTL.  A proper fix would look up zones by sensor ID
+  when the source device's own TCS has no zones.
