@@ -52,7 +52,7 @@ try:
     from ramses_rf.lifecycle import GatewayLifecycle
     import inspect
 
-    results = {}
+    results = {{}}
 
     # ── 1. Module imports ────────────────────────────────────────────
     results["polling_module_imported"] = True
@@ -70,13 +70,13 @@ try:
     results["schedules_has_default"] = "DEFAULT" in DEFAULT_POLLING_SCHEDULES
 
     # Battery devices (TRV, THM, DHW) must have None intervals
-    trv_schedule = DEFAULT_POLLING_SCHEDULES.get(DevType.TRV, {})
+    trv_schedule = DEFAULT_POLLING_SCHEDULES.get(DevType.TRV, {{}})
     results["trv_has_none_interval"] = any(
         v is None for v in trv_schedule.values()
     )
 
     # Mains devices (CTL, FAN) must have non-None intervals
-    ctl_schedule = DEFAULT_POLLING_SCHEDULES.get(DevType.CTL, {})
+    ctl_schedule = DEFAULT_POLLING_SCHEDULES.get(DevType.CTL, {{}})
     results["ctl_has_active_interval"] = any(
         v is not None and v > 0 for v in ctl_schedule.values()
     )
@@ -117,7 +117,8 @@ try:
     # ── 7. PollingManager.send uses async_send_cmd (live mode) ────────
     poll_src = inspect.getsource(PollingManager.poll_due_commands)
     results["poll_dispatches_cmd"] = "async_send_cmd" in poll_src
-    results["poll_uses_command_dto"] = "CommandDTO" in poll_src
+    results["poll_uses_build_rq_cmd"] = "build_rq_cmd" in poll_src
+    results["poll_no_raw_command_dto"] = "CommandDTO(" not in poll_src
     results["poll_checks_disable_polling"] = "disable_polling" in poll_src
 
     # ── 8. Config has disable_polling ─────────────────────────────────
@@ -125,14 +126,14 @@ try:
     config_src = inspect.getsource(GatewayConfig)
     results["config_has_disable_polling"] = "disable_polling" in config_src
 
-    print(json.dumps({"ok": True, **results}))
+    print(json.dumps({{"ok": True, **results}}))
 except Exception as e:
     import traceback
-    print(json.dumps({
-        "error": f"{type(e).__name__}: {e}",
+    print(json.dumps({{
+        "error": f"{{type(e).__name__}}: {{e}}",
         "traceback": traceback.format_exc()[:2000],
         "ok": False,
-    }))
+    }}))
 """
         result = docker_exec_python(code, timeout=30)
 
@@ -250,9 +251,14 @@ except Exception as e:
             "async_send_cmd not found in poll_due_commands",
         )
         ctx.check(
-            "PollingManager constructs CommandDTO",
-            result.get("poll_uses_command_dto") is True,
-            "CommandDTO not found in poll_due_commands",
+            "PollingManager uses build_rq_cmd (correct address convention)",
+            result.get("poll_uses_build_rq_cmd") is True,
+            "build_rq_cmd not found in poll_due_commands",
+        )
+        ctx.check(
+            "PollingManager does not construct raw CommandDTO (avoids addr bugs)",
+            result.get("poll_no_raw_command_dto") is True,
+            "raw CommandDTO() constructor found in poll_due_commands",
         )
         ctx.check(
             "PollingManager respects disable_polling config",
