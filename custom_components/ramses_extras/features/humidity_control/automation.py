@@ -631,6 +631,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         for device_id in list(self._active_area_spikes):
             self._clear_active_area_spike(device_id)
 
+        for device_id in list(self._active_indoor_spikes):
+            self._clear_active_indoor_spike(device_id)
+
         for device_id in list(self._humidity_demand_zones):
             self._sync_zone_demands(device_id, None)
 
