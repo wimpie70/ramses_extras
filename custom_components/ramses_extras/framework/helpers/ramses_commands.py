@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from .commands.registry import get_command_registry
 from .transport_monitor import get_transport_monitor

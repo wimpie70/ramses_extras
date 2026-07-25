@@ -318,6 +318,12 @@ class TransportMonitor:
                 self._msg_handler_unsub = None
                 _LOGGER.debug("Stopped listening via ramses_cc client message handler")
 
+            # Cancel any per-device timeout timers still pending
+            for task in self._device_timeout_tasks.values():
+                if not task.done():
+                    task.cancel()
+            self._device_timeout_tasks.clear()
+
     async def _monitor_loop(self) -> None:
         """Main monitoring loop - just keeps transport state updated."""
         _LOGGER.debug("Transport monitor loop started")

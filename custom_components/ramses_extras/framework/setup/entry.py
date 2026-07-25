@@ -536,6 +536,34 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 except Exception as e:
                     _LOGGER.warning("Failed to stop automation: %s", e)
 
+            # Stop all feature automation managers (humidity, temp, co2, ...)
+            # so their state listeners and interval timers don't keep firing
+            # after unload/reload.
+            features = domain_data.get("features", {})
+            if isinstance(features, dict):
+                for feature_name, feature_instance in features.items():
+                    if not isinstance(feature_instance, dict):
+                        continue
+                    automation = feature_instance.get("automation")
+                    if automation is None or not hasattr(automation, "stop"):
+                        continue
+                    try:
+                        await automation.stop()
+                        _LOGGER.info("Stopped %s automation manager", feature_name)
+                    except Exception as e:
+                        _LOGGER.warning(
+                            "Failed to stop %s automation: %s", feature_name, e
+                        )
+
+    # Stop the transport monitor singleton (background task + ramses_cc
+    # message handler) so it doesn't survive an unload/reload cycle.
+    try:
+        from ..helpers.transport_monitor import get_transport_monitor
+
+        await get_transport_monitor().stop_monitoring()
+    except Exception as e:
+        _LOGGER.warning("Failed to stop transport monitor: %s", e)
+
     from ...services_integration import async_unload_feature_services
 
     await async_unload_feature_services(hass)
