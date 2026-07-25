@@ -47,8 +47,6 @@ _SIM_ISOLATION_STORAGE_VERSION = 1
 _SIM_ISOLATION_STORAGE_KEY = "ramses_extras_device_sim_isolation"
 _SZ_ORIGINAL_PORT = "original_port_name"
 _SZ_ORIGINAL_SCHEMA = "original_schema"
-_SZ_ORIGINAL_KNOWN_LIST = "original_known_list"
-_SZ_ORIGINAL_ENFORCE_KNOWN_LIST = "original_enforce_known_list"
 _SZ_ORIGINAL_ENABLE_EAVESDROP = "original_enable_eavesdrop"
 _SZ_ORIGINAL_MQTT_TOPIC = "original_mqtt_topic"
 _SZ_ORIGINAL_MQTT_HGI_ID = "original_mqtt_hgi_id"
@@ -146,10 +144,6 @@ async def _remember_original_ramses_cc_state(
         return
     state[_SZ_ORIGINAL_PORT] = port_name
     state[_SZ_ORIGINAL_SCHEMA] = deepcopy(schema) if schema is not None else None
-    state[_SZ_ORIGINAL_KNOWN_LIST] = (
-        deepcopy(known_list) if known_list is not None else None
-    )
-    state[_SZ_ORIGINAL_ENFORCE_KNOWN_LIST] = enforce_known_list
     state[_SZ_ORIGINAL_ENABLE_EAVESDROP] = enable_eavesdrop
     state[_SZ_ORIGINAL_MQTT_TOPIC] = mqtt_topic
     state[_SZ_ORIGINAL_MQTT_HGI_ID] = mqtt_hgi_id
@@ -157,13 +151,11 @@ async def _remember_original_ramses_cc_state(
     await store.async_save(state)
     _LOGGER.info(
         "Saved original ramses_cc state for simulator cleanup "
-        "(port=%s topic=%s hgi=%s schema_keys=%s known_list_count=%s enforce=%s eavesdrop=%s)",  # noqa: E501
+        "(port=%s topic=%s hgi=%s schema_keys=%s eavesdrop=%s)",
         port_name,
         mqtt_topic,
         mqtt_hgi_id,
         list(schema.keys()) if isinstance(schema, dict) else None,
-        len(known_list) if isinstance(known_list, dict) else None,
-        enforce_known_list,
         enable_eavesdrop,
     )
 
@@ -178,8 +170,8 @@ async def _remember_original_port_name(
 async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
     """Restore full ramses_cc state if simulator isolation modified it.
 
-    Restores serial_port.port_name, schema, known_list, ramses_rf.enforce_known_list,
-    and ramses_rf.enable_eavesdrop from the values saved when isolation was enabled.
+    Restores serial_port.port_name, schema, and ramses_rf.enable_eavesdrop from
+    the values saved when isolation was enabled.
     If only port_name was saved (legacy), only port_name is restored.
 
     Returns True if any state was restored and ramses_cc was reloaded.
@@ -263,21 +255,9 @@ async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
         else:
             cc_options.pop("schema", None)
 
-        # Restore known_list
-        original_known_list = state.get(_SZ_ORIGINAL_KNOWN_LIST)
-        if original_known_list is not None:
-            cc_options["known_list"] = original_known_list
-        else:
-            cc_options.pop("known_list", None)
-
         # Restore ramses_rf options
         ramses_rf_opts = dict(cc_options.get("ramses_rf", {}))
-        original_enforce = state.get(_SZ_ORIGINAL_ENFORCE_KNOWN_LIST)
         original_eavesdrop = state.get(_SZ_ORIGINAL_ENABLE_EAVESDROP)
-        if original_enforce is not None:
-            ramses_rf_opts["enforce_known_list"] = original_enforce
-        else:
-            ramses_rf_opts.pop("enforce_known_list", None)
         if original_eavesdrop is not None:
             ramses_rf_opts["enable_eavesdrop"] = original_eavesdrop
         else:
@@ -285,9 +265,7 @@ async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
         cc_options["ramses_rf"] = ramses_rf_opts
 
         changed = True
-        _LOGGER.info(
-            "Restored ramses_cc schema/known_list/ramses_rf to pre-simulator state"
-        )
+        _LOGGER.info("Restored ramses_cc schema/ramses_rf to pre-simulator state")
 
     if not changed:
         _LOGGER.debug("ramses_cc already in desired state - no reload needed")
@@ -405,13 +383,7 @@ async def _enforce_simulator_isolation(hass: HomeAssistant) -> bool:
     # Capture current ramses_cc state before any modification so we can
     # restore the user's real-device configuration on disable/remove.
     current_schema = cc_options.get("schema")
-    current_known_list = cc_options.get("known_list")
     ramses_rf_opts = cc_options.get("ramses_rf", {})
-    current_enforce = (
-        ramses_rf_opts.get("enforce_known_list")
-        if isinstance(ramses_rf_opts, dict)
-        else None
-    )
     current_eavesdrop = (
         ramses_rf_opts.get("enable_eavesdrop")
         if isinstance(ramses_rf_opts, dict)
@@ -448,8 +420,8 @@ async def _enforce_simulator_isolation(hass: HomeAssistant) -> bool:
             hass,
             port_name,
             current_schema,
-            current_known_list,
-            current_enforce,
+            None,
+            None,
             current_eavesdrop,
             mqtt_topic,
             mqtt_hgi_id,

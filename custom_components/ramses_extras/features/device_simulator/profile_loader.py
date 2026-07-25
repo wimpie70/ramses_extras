@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
@@ -375,6 +374,51 @@ async def async_apply_profile(
     }
 
 
+def _merge_known_list_into_schema(
+    schema: dict[str, Any] | None, known_list: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge known_list traits into schema as _-prefixed keys.
+
+    For each device_id in known_list (except HGI devices), merge its traits
+    into the corresponding schema entry using _-prefixed keys:
+    class→_class, faked→_faked, bound→_bound, scheme→_scheme, alias→_alias.
+
+    If the device_id is not yet in the schema, a new entry is created.
+    """
+    merged: dict[str, Any] = dict(schema) if isinstance(schema, dict) else {}
+    for device_id, kl in known_list.items():
+        if not isinstance(kl, dict):
+            continue
+        if kl.get("class") == "HGI":
+            continue
+        traits: dict[str, Any] = {}
+        if "class" in kl:
+            traits["_class"] = kl["class"]
+        if "faked" in kl:
+            traits["_faked"] = kl["faked"]
+        if "bound" in kl:
+            traits["_bound"] = kl["bound"]
+        if "scheme" in kl:
+            traits["_scheme"] = kl["scheme"]
+        if "alias" in kl:
+            traits["_alias"] = kl["alias"]
+        if device_id in merged:
+            entry = (
+                dict(merged[device_id]) if isinstance(merged[device_id], dict) else {}
+            )
+            # Only add traits that are not already present in the schema entry
+            # — the schema is the single source of truth and may have user-
+            # authored overrides (e.g. _class=DIS for class mismatch testing)
+            # that should not be overwritten by known_list traits.
+            for k, v in traits.items():
+                if k not in entry:
+                    entry[k] = v
+            merged[device_id] = entry
+        else:
+            merged[device_id] = traits
+    return merged
+
+
 async def _update_known_list_and_reload(
     hass: HomeAssistant,
     known_list: dict[str, Any],
@@ -385,7 +429,13 @@ async def _update_known_list_and_reload(
     schema: dict[str, Any] | None = None,
     enable_eavesdrop: bool = False,
 ) -> list[str]:
-    """Persist known_list to ramses_cc options and optionally reload the entry."""
+    """Persist known_list traits into the schema and optionally reload the entry.
+
+    Phase 4: known_list is no longer stored in config entry options.  Device
+    traits are merged into the schema as _-prefixed keys, and the schema is
+    the single source of truth.  enforce_known_list is hardcoded to True in
+    the coordinator, so it is not written to options.
+    """
 
     actions: list[str] = []
     ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
@@ -395,20 +445,19 @@ async def _update_known_list_and_reload(
 
     entry = ramses_cc_entries[0]
     new_options = dict(entry.options)
-    new_options["known_list"] = known_list
+
+    ramses_rf_opts = dict(new_options.get("ramses_rf", {}))
+    ramses_rf_opts["enable_eavesdrop"] = bool(enable_eavesdrop)
+    new_options["ramses_rf"] = ramses_rf_opts
 
     enforce = (
         bool(enforce_cfg.get("enabled", False))
         if isinstance(enforce_cfg, dict)
         else bool(enforce_cfg)
     )
-    ramses_rf_opts = dict(new_options.get("ramses_rf", {}))
-    ramses_rf_opts["enforce_known_list"] = enforce
-    ramses_rf_opts["enable_eavesdrop"] = bool(enable_eavesdrop)
-    new_options["ramses_rf"] = ramses_rf_opts
-
     if schema is not None:
-        new_options[CONF_SCHEMA] = deepcopy(schema)
+        merged_schema = _merge_known_list_into_schema(schema, known_list)
+        new_options[CONF_SCHEMA] = merged_schema
     else:
         # No schema to preload.  If the profile has enforce_known_list=False,
         # it wants to discover devices from traffic — preserve any existing
@@ -417,14 +466,14 @@ async def _update_known_list_and_reload(
         # which blocks discovery of devices not in the known_list).
         # If enforce_known_list=True, the profile is a "clean slate" — remove
         # the old schema so the reload starts fresh.
-        enforce = (
-            bool(enforce_cfg.get("enabled", False))
-            if isinstance(enforce_cfg, dict)
-            else bool(enforce_cfg)
-        )
         if not enforce:
-            # Preserve existing schema — needed for known_list derivation
-            pass
+            # Preserve existing schema — merge known_list traits into it
+            existing_schema = new_options.get(CONF_SCHEMA, {})
+            if isinstance(existing_schema, dict) and existing_schema:
+                merged_schema = _merge_known_list_into_schema(
+                    existing_schema, known_list
+                )
+                new_options[CONF_SCHEMA] = merged_schema
         else:
             new_options.pop(CONF_SCHEMA, None)
 
@@ -445,11 +494,12 @@ async def _update_known_list_and_reload(
         LOGGER.warning("Profile load: could not persist ramses_cc options: %s", err)
 
     actions.append("updated_known_list")
+    final_schema = new_options.get(CONF_SCHEMA, {})
     LOGGER.info(
         "Profile load: known_list=%s enforce_known_list=%s schema_keys=%s",
         list(known_list.keys()),
         enforce,
-        list(schema.keys()) if schema else [],
+        list(final_schema.keys()) if isinstance(final_schema, dict) else [],
     )
 
     profile_devices = {
@@ -597,6 +647,29 @@ async def _reload_ramses_cc(
                 LOGGER.info("Profile load: cleared HA store schema+packets+discovery")
         except Exception as err:  # noqa: BLE001
             LOGGER.warning("Profile load: could not clear HA store schema: %s", err)
+
+    # Always clear the cached schema from .storage/ramses_cc when a new
+    # profile is being loaded — even when preloading a schema (wipe_schema=
+    # False).  The cached schema from a previous profile may have stale
+    # traits (e.g. _class=THM from a previous test) that would override
+    # the new profile's schema via merge_schemas on reload.
+    if not wipe_schema:
+        try:
+            preload_store: HaStore = HaStore(
+                hass,
+                RAMSES_CC_STORAGE_VERSION,
+                RAMSES_CC_STORAGE_KEY,
+            )
+            preload_stored: dict[str, Any] = await preload_store.async_load() or {}
+            preload_cs = preload_stored.get(SZ_CLIENT_STATE, {})
+            if SZ_SCHEMA in preload_cs:
+                preload_cs.pop(SZ_SCHEMA)
+                await preload_store.async_save(preload_stored)
+                LOGGER.info("Profile load: cleared cached schema (preload mode)")
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning(
+                "Profile load: could not clear cached schema (preload): %s", err
+            )
 
     await hass.config_entries.async_setup(entry_id)
 

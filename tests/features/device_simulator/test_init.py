@@ -660,7 +660,12 @@ class TestRestoreGatewayTopic:
 
     @pytest.mark.asyncio
     async def test_restore_gateway_with_full_state(self):
-        """Test restoring schema, known_list, and ramses_rf options."""
+        """Test restoring schema and ramses_rf options.
+
+        Phase 4: known_list and enforce_known_list are no longer stored
+        in the config entry — the schema is the sole source of truth.
+        The restore function only restores schema and ramses_rf options.
+        """
         hass = MagicMock()
         entry = MagicMock()
         entry.entry_id = "test_entry"
@@ -678,8 +683,6 @@ class TestRestoreGatewayTopic:
                 return_value={
                     "original_port_name": "mqtt://host/RAMSES/GATEWAY/18:001234",
                     "original_schema": {"key": "value"},
-                    "original_known_list": {"device": "class"},
-                    "original_enforce_known_list": True,
                     "original_enable_eavesdrop": False,
                     "state_saved": True,
                 }
@@ -695,8 +698,6 @@ class TestRestoreGatewayTopic:
             "options"
         ]
         assert updated_options["schema"] == {"key": "value"}
-        assert updated_options["known_list"] == {"device": "class"}
-        assert updated_options["ramses_rf"]["enforce_known_list"] is True
         assert updated_options["ramses_rf"]["enable_eavesdrop"] is False
 
     @pytest.mark.asyncio

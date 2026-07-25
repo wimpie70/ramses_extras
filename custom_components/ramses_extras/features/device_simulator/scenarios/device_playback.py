@@ -297,7 +297,9 @@ async def _wait_for_known_list(
         coordinator = _get_ramses_cc_coordinator(hass)
         known_ids: set[str] = set()
         if coordinator is not None:
-            known_list = coordinator.options.get("known_list", {})
+            known_list = coordinator._derive_known_list_from_schema(
+                coordinator.options.get("schema", {})
+            )
             if isinstance(known_list, dict):
                 known_ids = {str(k).upper() for k in known_list}
 

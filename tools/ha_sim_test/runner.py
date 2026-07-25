@@ -23,6 +23,7 @@ import time
 from .base import RecipeContext
 from .const import CO2, CTL, FAN, REM, TRV
 from .helpers import (
+    delete_test_profiles,
     get_known_list,
     get_schema_retry,
     get_token,
@@ -121,6 +122,17 @@ async def teardown(
     """Collect log report and print summary."""
     end_time = time.monotonic()
     elapsed = end_time - start_time
+
+    # =====================================================================
+    # FINAL CLEANUP: delete any remaining test profiles
+    # =====================================================================
+    try:
+        ctx.refresh_token()
+        n = await delete_test_profiles(ctx.token)
+        if n:
+            print(f"  Final cleanup: removed {n} test profile(s)")
+    except Exception:
+        pass
 
     # =====================================================================
     # LOG REPORT: Collect and analyse ha-sim logs from the entire test run
@@ -273,6 +285,16 @@ async def run(recipe_ids: list[str] | None = None) -> None:
             "duration": recipe_elapsed,
             "title": recipe.title,
         }
+
+        # Clean up test profiles created by this recipe to prevent
+        # user_profiles.json from growing unboundedly across runs.
+        try:
+            ctx.refresh_token()
+            n = await delete_test_profiles(ctx.token)
+            if n:
+                print(f"  Cleaned up {n} test profile(s)")
+        except Exception:
+            pass
 
         # Per-recipe log check: collect logs since snapshot
         recipe_logs = log_monitor.record_recipe(recipe.id, log_snapshot)
