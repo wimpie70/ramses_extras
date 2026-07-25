@@ -1,7 +1,7 @@
 <a id="schema-as-source-of-truth-architecture"></a>
 # Schema-as-Source-of-Truth Architecture
 
-> **Naming note (updated Jul 19 2026):** There are several "Phase 3"s:
+> **Naming note (updated Jul 24 2026):** There are several "Phase 3"s and "Phase 4"s:
 > - **ramses_cc Phase 3** — commands in schema, our work.
 >   Split into **3a** (commands on REM, PR 811, DONE), **3b**
 >   (commands on FAN with packet templates, DONE, merged), **3c** (flagging,
@@ -9,6 +9,9 @@
 >   `feature/phase3d-alignment`, merged via PR 839). **3e** (CLI compat +
 >   22B0 builder, DONE — shipped in ramses_rf 0.59.0).
 >   See `phase3b_fan_commands_design.md`.
+> - **ramses_cc Phase 4** — known_list removal + event-driven topology.
+>   See `phase4_plan.md`. Steps 1-3 unblocked (PR 914 merged). Steps 5-6
+>   blocked on ramses_rf subscription API / `load_fan`.
 > - **ramses_rf Phase 3/3.25** (PWhite-Eng, issue 639) — TX Generation
 >   Parity + Transport Decoupling. **DONE — shipped in 0.58.2/0.58.3
 >   (Jul 16-17 2026).** Brought CQRS `CommandDispatcher` + domain builders
@@ -20,10 +23,16 @@
 > - **ramses_rf Phase 3.75** (PWhite-Eng, issue 639) — Identity
 >   Composition. Was "Builder Pattern" (issue 530), now "init and go"
 >   from schema. `DeviceRole` composition scrapped. Deprecate `__class__`
->   mutations. **PR 914** (draft) implements this — tested with
->   ha_sim_test: 232/232 pass (Jul 23 2026).
+>   mutations. **PR 914 MERGED to master** (Jul 23 2026, commit `46cdebcc`).
+>   Not yet released (no 0.60.0 tag). Tested with ha_sim_test: 232/232 pass.
+> - **ramses_rf Phase 4** (PWhite-Eng, issue 915) — FSM Conversational
+>   Parity & Passive Ingestion. **ALL COMPLETE** (PRs 916, 920, 921,
+>   924-929). 5-PR strangler fig: Shadow FSM → Live Parity → Execution
+>   Cutover → Active Discovery Removal → Transport FSM Streamlining.
+>   Verified by ha-sim: 347/347 tests pass. Only Phase 4e (API
+>   Modernization: Packet→Message) remains.
 >
-> **Key shift (Jul 17 2026, updated Jul 19):** Device identity Builder
+> **Key shift (Jul 17 2026, updated Jul 24):** Device identity Builder
 > (`DeviceRole`, `supported_commands()`) scrapped in favor of "init and go"
 > from schema `_class`. CQRS TX builders (22F1, 22F7, 2411, 31DA, etc.)
 > shipped in 0.58.3. 22B0 (calendar) and per-manufacturer strategy profiles
@@ -3464,24 +3473,35 @@ topology/device schema this document is about. Unrelated to our plan
 
 
 <a id="verification-status-checked-jul-2026"></a>
-### Verification status (checked Jul 23 2026)
+### Verification status (checked Jul 24 2026)
 
 ```
 REFERENCE                    STATE    NOTES
 ──────────────────────────────────────────────────────────────────
 ramses_rf discussion 191     open     started by zxdavb, 19 Apr 2025
 ramses_rf issue 530          closed   Builder/Strategy pattern scrapped (Jul 17 2026)
-ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX DONE 0.58.3, 3.75 PR 914 draft; current pin 0.59.0)
+ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX DONE 0.58.3, 3.75 MERGED; Phase 4 DONE; current pin 0.59.0)
 ramses_rf issue 836          closed   Dynamic class promotion → "init and go"
 ramses_rf issue 87           open     Itho fan states / manufacturer
 ramses_rf issue 627          open     CODES_SCHEMA reloc (unrelated)
-ramses_rf PR 914             draft    Phase 3.75: eradicate __class__ mutations (PWhite-Eng)
+ramses_rf issue 915          open     Phase 4: FSM Parity & Passive Ingestion (ALL PRs merged: 916, 920, 921, 924-929)
+ramses_rf PR 914             MERGED   Phase 3.75: eradicate __class__ mutations (merged to master Jul 23 2026, unreleased)
                                       TESTED: 232/232 ha_sim_test pass (Jul 23 2026)
-ramses_rf PR 917             open     fix: declared hotwater_valve BDR not FC domain (wimpie70)
-ramses_rf PR 916             draft    Phase 4a: Shadow ConversationManager (hold)
-ramses_rf PR 918             open     refactor(hvac): binary struct packing (PWhite-Eng)
-ramses_rf PR 919             open     refactor(protocol): schedule BOFM struct (PWhite-Eng)
+ramses_rf PR 916             MERGED   Phase 4a: Shadow ConversationManager
+ramses_rf PR 920             MERGED   Phase 4a.5: Live Shadow Parity (100% parity 2126/2126)
+ramses_rf PR 921             MERGED   Phase 4b: Execution Cutover
+ramses_rf PR 924             MERGED   Phase 4c.1: Schema Extensibility for Polling
+ramses_rf PR 925             MERGED   Phase 4c.2: L7 PollingManager (Shadow Parity)
+ramses_rf PR 926             MERGED   Phase 4c.3: Polling Cutover (Live Parity)
+ramses_rf PR 927             MERGED   Phase 4c.4: Legacy Discovery Purge
+ramses_rf PR 928             MERGED   Phase 4d.1: wait_for_reply Deprecation
+ramses_rf PR 929             MERGED   Phase 4d.2: Transport FSM Streamlining
+ramses_rf PR 931             open     Test fixes (wimpie70): DHW None + PollingManager build_rq_cmd + test update
+ramses_rf PR 917             MERGED   fix: declared hotwater_valve BDR not FC domain (wimpie70)
+ramses_rf PR 918             MERGED   refactor(hvac): binary struct packing (PWhite-Eng)
+ramses_rf PR 919             MERGED   refactor(protocol): schedule BOFM struct (PWhite-Eng)
 ramses_cc PR 861             open     feat: device health tracking (wimpie70)
+ramses_cc PR 869             open     ramses_cc compat fixes for Phase 4 (mergeable, CI green)
 ramses_cc issue 677          CLOSED   fixed in 0.57.6 (Jun 2026)
 ramses_cc issue 666          CLOSED   CPU ramp up (0.56.7)
 ramses_cc issue 627          open     milestone 0.57.8 (wimpie70)
@@ -3626,9 +3646,16 @@ The ramses_rf CQRS refactor (#530) is ongoing:
 - Step F5 ("The Great Lobotomy" — delete legacy dicts): UNBLOCKED
   per PWhite-Eng, not yet executed
 - Phase 3 (Strict DTO Boundaries, issue 714): not started
-- Phase 3.75 (Identity Composition, "init and go"): **PR 914 open (draft)**
-  — eradicates dynamic `__class__` mutations. **Tested with ha_sim_test:
-  232/232 pass** (Jul 23 2026). No regressions in ramses_cc.
+- Phase 3.75 (Identity Composition, "init and go"): **PR 914 MERGED
+  to master** (Jul 23 2026, commit `46cdebcc`) — eradicates dynamic
+  `__class__` mutations. Not yet released (no 0.60.0 tag). **Tested
+  with ha_sim_test: 232/232 pass** (Jul 23 2026). No regressions in
+  ramses_cc.
+- Phase 4 (FSM Conversational Parity & Passive Ingestion, issue 915):
+  **ALL COMPLETE** (PRs 916, 920, 921, 924-929). Shadow FSM → Live
+  Parity → Execution Cutover → Active Discovery Removal → Transport
+  FSM Streamlining. **Verified by ha-sim: 347/347 tests pass** (Jul
+  24 2026). Only Phase 4e (API Modernization: Packet→Message) remains.
 - StateUpdatedEvent bus: confirmed by PWhite-Eng as the future
   signal source for ramses_cc entity updates (Step 4).  However,
   issue 794 shipped an interim solution in 0.58.0: the coordinator
@@ -3713,6 +3740,21 @@ This is a large doc, if you make any changes, please add a comment below
 on what was changed. I keep and edit this file local and don't want to
 copy/paste over changes someone else made, without an easy way to find
 those changes.
+
+### Changes Jul 24 2026
+
+- Updated naming note: added ramses_cc Phase 4 and ramses_rf Phase 4
+  (issue 915) entries. ramses_rf Phase 4 is ALL COMPLETE (PRs 916,
+  920, 921, 924-929). Verified by ha-sim: 347/347 tests pass.
+- Updated verification status table: PR 914 MERGED to master (Jul 23
+  2026, unreleased). PRs 916, 920, 921, 924-929 all MERGED. Added
+  PR 931 (our test fixes, open) and PR 869 (ramses_cc compat fixes,
+  open). PR 917, 918, 919 now MERGED. Added issue 915.
+- Updated CQRS refactor timing section: Phase 3.75 PR 914 MERGED to
+  master. Phase 4 (issue 915) ALL COMPLETE — added full PR list and
+  ha-sim verification results.
+- PR 914 is in master but NOT yet released (no 0.60.0 tag). Available
+  in `test/pr929-shadow` branch for ha-sim testing.
 
 ### Changes Jul 23 2026
 
