@@ -140,6 +140,38 @@ def _convert_known_devices_schema_to_internal(
     return internal_schema if internal_schema else None
 
 
+def _build_minimal_schema_from_known_list(
+    known_list: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Build a minimal schema from a known_list, preserving device IDs and traits.
+
+    Used in the clean-slate path (enforce_known_list=True, no schema to preload):
+    instead of dropping the schema entirely (which would leave
+    ``_derive_known_list_from_schema`` with nothing to derive from), build a
+    minimal schema that has each known_list device as a top-level key with its
+    traits stored as ``_`` prefixed keys — the format
+    ``_derive_known_list_from_schema`` reads.
+    """
+    schema: dict[str, Any] = {}
+    for dev_id, traits in known_list.items():
+        entry: dict[str, Any] = {}
+        if isinstance(traits, dict):
+            if "class" in traits:
+                entry["_class"] = traits["class"]
+            if "alias" in traits:
+                entry["_alias"] = traits["alias"]
+            if "name" in traits:
+                entry["_name"] = traits["name"]
+            if traits.get("faked") is True:
+                entry["_faked"] = True
+            if "bound" in traits:
+                entry["_bound"] = traits["bound"]
+            if "scheme" in traits:
+                entry["_scheme"] = traits["scheme"]
+        schema[dev_id] = entry
+    return schema
+
+
 def build_profile_from_payload(
     name: str,
     payload: dict[str, Any],
@@ -415,8 +447,10 @@ async def _update_known_list_and_reload(
         # schema so _derive_known_list_from_schema can extract device IDs
         # (ramses_cc's passive scan override will force enforce_known_list=True,
         # which blocks discovery of devices not in the known_list).
-        # If enforce_known_list=True, the profile is a "clean slate" — remove
-        # the old schema so the reload starts fresh.
+        # If enforce_known_list=True, the profile is a "clean slate" — drop
+        # the old schema, but keep the profile's own devices: with Phase 4
+        # (enforce_known_list always-on, known_list derived from the schema)
+        # devices that are not in the schema would be blocked entirely.
         enforce = (
             bool(enforce_cfg.get("enabled", False))
             if isinstance(enforce_cfg, dict)
@@ -426,7 +460,7 @@ async def _update_known_list_and_reload(
             # Preserve existing schema — needed for known_list derivation
             pass
         else:
-            new_options.pop(CONF_SCHEMA, None)
+            new_options[CONF_SCHEMA] = _build_minimal_schema_from_known_list(known_list)
 
     object.__setattr__(entry, "options", MappingProxyType(new_options))
 
