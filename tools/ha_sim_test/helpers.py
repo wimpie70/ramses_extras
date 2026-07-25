@@ -151,21 +151,95 @@ async def load_profile_yaml(
 
     This avoids a full docker restart — ramses_cc is reloaded in-process
     with the new schema/known_list, preserving logs and saving ~20s.
+
+    The created profile is tracked in the module-level ``_CREATED_PROFILES``
+    set so it can be cleaned up by :func:`delete_test_profiles`.
     """
-    return await ws_send(
+    profile_name = f"test_{int(time.time())}"
+    result = await ws_send(
         token,
         {
             "type": "ramses_extras/device_simulator/start_scenario",
             "scenario": "load_profile_yaml",
             "params": {
                 "profile_yaml": yaml_text,
-                "profile_name": f"test_{int(time.time())}",
+                "profile_name": profile_name,
                 "speed": speed,
                 "preload_schema": preload_schema,
                 "reload_ramses": reload_ramses,
             },
         },
     )
+    _CREATED_PROFILES.add(profile_name)
+    return result
+
+
+# Track profiles created by load_profile_yaml for cleanup.
+_CREATED_PROFILES: set[str] = set()
+
+
+async def delete_test_profiles(token: str) -> int:
+    """Delete all test profiles created during the test run.
+
+    Called by the runner after each recipe and during teardown to prevent
+    the user_profiles.json store from growing unboundedly.
+
+    :return: Number of profiles deleted.
+    """
+    deleted = 0
+    # Try deleting via the websocket API first (clean — updates in-memory store)
+    for name in sorted(_CREATED_PROFILES):
+        try:
+            await ws_send(
+                token,
+                {
+                    "type": "ramses_extras/device_simulator/delete_profile",
+                    "profile": name,
+                },
+            )
+            deleted += 1
+        except Exception:
+            pass
+    _CREATED_PROFILES.clear()
+    # Also clean up any leftover test_ profiles from previous runs by
+    # editing the JSON store directly (the websocket API may not list them
+    # if the store was reloaded).
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "ha-sim",
+                "python3",
+                "-c",
+                """
+import json
+path = '/root/.ramses_simulator/user_profiles.json'
+try:
+    with open(path) as f:
+        data = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    raise SystemExit(0)
+profiles = data.get('profiles', {})
+removed = [k for k in list(profiles) if k.startswith('test_')]
+for k in removed:
+    del profiles[k]
+if removed:
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=2)
+print(len(removed))
+""",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        extra = int(result.stdout.strip() or "0")
+        if extra:
+            deleted += extra
+    except Exception:
+        pass
+    return deleted
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +295,15 @@ def get_schema_retry(max_tries: int = 5, delay: int = 3) -> dict:
 
 
 def get_known_list() -> dict:
-    """Get the known_list from .storage."""
+    """Get the known_list from .storage.
+
+    Phase 4: known_list is no longer stored in config entry options.
+    It is derived from the schema.  This function now extracts device IDs
+    from the schema (top-level device keys + TCS topology devices) and
+    maps _-prefixed traits to their ramses_rf equivalents (class, alias,
+    faked, bound, scheme) — matching what _derive_known_list_from_schema
+    in coordinator.py produces.
+    """
     result = subprocess.run(
         ["docker", "exec", "ha-sim", "cat", "/config/.storage/core.config_entries"],
         capture_output=True,
@@ -232,7 +314,76 @@ def get_known_list() -> dict:
     data = json.loads(result.stdout)
     for e in data["data"]["entries"]:
         if e["domain"] == "ramses_cc":
-            return e.get("options", {}).get("known_list", {})
+            options = e.get("options", {})
+            # Phase 4: check known_list first (backward compat), then schema
+            if "known_list" in options:
+                return options["known_list"]
+            schema = options.get("schema", {})
+            # Extract device IDs from schema — top-level device keys
+            import re
+
+            dev_id_re = re.compile(r"^\d{2}:[0-9A-Fa-f]{6}$")
+            known = {}
+            for k, v in schema.items():
+                if dev_id_re.match(str(k)):
+                    known[str(k)] = v if isinstance(v, dict) else {}
+            # Also extract from TCS topology (zones, DHW, etc.)
+            for k, v in schema.items():
+                if not dev_id_re.match(str(k)) or not isinstance(v, dict):
+                    continue
+                # Zone sensors and actuators
+                zones = v.get("zones", {})
+                if isinstance(zones, dict):
+                    for zone in zones.values():
+                        if isinstance(zone, dict):
+                            sensor = zone.get("sensor")
+                            if sensor and dev_id_re.match(str(sensor)):
+                                known.setdefault(str(sensor), {})
+                            for act in zone.get("actuators", []):
+                                if dev_id_re.match(str(act)):
+                                    known.setdefault(str(act), {})
+                # DHW sensor
+                dhw = v.get("stored_hotwater", {})
+                if isinstance(dhw, dict):
+                    sensor = dhw.get("sensor")
+                    if sensor and dev_id_re.match(str(sensor)):
+                        known.setdefault(str(sensor), {})
+                    valve = dhw.get("hotwater_valve")
+                    if valve and dev_id_re.match(str(valve)):
+                        known.setdefault(str(valve), {})
+                # FAN remotes and sensors
+                for rem in v.get("remotes", []):
+                    if dev_id_re.match(str(rem)):
+                        known.setdefault(str(rem), {})
+                for sen in v.get("sensors", []):
+                    if dev_id_re.match(str(sen)):
+                        known.setdefault(str(sen), {})
+            # Orphans
+            for orphan_list_key in ("orphans_heat", "orphans_hvac"):
+                for dev_id in schema.get(orphan_list_key, []):
+                    if dev_id_re.match(str(dev_id)):
+                        known.setdefault(str(dev_id), {})
+            # Map _-prefixed traits to ramses_rf equivalents (matching
+            # _derive_known_list_from_schema in coordinator.py)
+            trait_map = {
+                "_class": "class",
+                "_alias": "alias",
+                "_faked": "faked",
+                "_bound": "bound",
+                "_scheme": "scheme",
+            }
+            for dev_id, entry in known.items():
+                if not isinstance(entry, dict):
+                    continue
+                mapped = {}
+                for src_key, dst_key in trait_map.items():
+                    if src_key in entry and entry[src_key] is not None:
+                        val = entry[src_key]
+                        if dst_key == "faked" and val is not True:
+                            continue
+                        mapped[dst_key] = val
+                known[dev_id] = mapped
+            return known
     return {}
 
 

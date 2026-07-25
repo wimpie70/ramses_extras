@@ -23,6 +23,7 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
     write_ramses_storage,
     ws_send,
@@ -38,20 +39,52 @@ class R05NoResurrectionAfterRestart(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 5: No resurrection after restart")
 
+        # The setup() profile reload may still be writing to .storage
+        # (the profile loader's async_update_entry can fire 20+ seconds
+        # after the reload starts).  Wait for it to complete before
+        # removing devices, otherwise the profile loader overwrites
+        # our remove_device changes.
+        print("  Waiting for profile reload to fully complete...")
+        for _ in range(15):
+            kl_check = get_known_list()
+            # The mixed profile has 20 devices — wait until they appear
+            if len(kl_check) >= 15:
+                break
+            time.sleep(2)
+        # Extra wait for the profile loader's async_update_entry to flush
+        ctx.wait(5, "for profile loader .storage flush to complete")
+        # Wait for ramses_cc to be fully loaded so the coordinator's
+        # in-memory options match .storage (remove_device reads from
+        # coordinator.options, not .storage).
+        ctx.refresh_token()
+        ctx.wait_for(is_ramses_cc_loaded, timeout=15, msg="for ramses_cc to initialize")
+
         # TRV and CTL were removed in recipes 2/4.  The 7b profile reload brings
         # them back (mixed profile includes them in known_list).  Re-remove them
         # to verify that remove_device persists across sync cycles and that the
         # devices don't get resurrected by subsequent sync_learned_topology calls.
-        print(f"  Re-removing TRV {TRV} and CTL {CTL} (brought back by 7b reload)...")
-        for dev_id, name in [(TRV, "TRV"), (CTL, "CTL")]:
-            try:
-                call_service(
-                    ctx.token, "ramses_cc", "remove_device", {"device_id": dev_id}
-                )
-                print(f"    {name} removed")
-            except RuntimeError as e:
-                print(f"    {name} remove failed: {str(e)[:80]}")
-        ctx.wait(3, "for coordinator refresh")
+        # If running standalone (without R07b), the devices may already be
+        # absent — skip the removal in that case.
+        kl_before = get_known_list()
+        devices_present = TRV in kl_before or CTL in kl_before
+        if devices_present:
+            print(
+                f"  Re-removing TRV {TRV} and CTL {CTL} (brought back by 7b reload)..."
+            )
+            for dev_id, name in [(TRV, "TRV"), (CTL, "CTL")]:
+                try:
+                    call_service(
+                        ctx.token, "ramses_cc", "remove_device", {"device_id": dev_id}
+                    )
+                    print(f"    {name} removed")
+                except RuntimeError as e:
+                    print(f"    {name} remove failed: {str(e)[:80]}")
+            ctx.wait(3, "for coordinator refresh")
+        else:
+            print(
+                "  Devices already absent (standalone run without R07b)"
+                " — skipping removal"
+            )
 
         # Trigger a sync to verify the removal survives sync_learned_topology
         try:
@@ -65,7 +98,17 @@ class R05NoResurrectionAfterRestart(Recipe):
             pass
         ctx.wait(3, "for save")
 
-        kl_post_restart = get_known_list()
+        # Wait for .storage to be flushed — HA doesn't flush immediately
+        # after async_update_entry.  Retry for up to 30s.
+        kl_post_restart = {}
+        for i in range(10):
+            kl_post_restart = get_known_list()
+            trv_present = TRV in kl_post_restart
+            ctl_present = CTL in kl_post_restart
+            print(f"  Retry {i + 1}/10: TRV={trv_present}, CTL={ctl_present}")
+            if not trv_present and not ctl_present:
+                break
+            time.sleep(3)
 
         ctx.check(
             "TRV not resurrected in known_list",
