@@ -26,11 +26,12 @@
 >   mutations. **PR 914 MERGED to master** (Jul 23 2026, commit `46cdebcc`).
 >   Not yet released (no 0.60.0 tag). Tested with ha_sim_test: 232/232 pass.
 > - **ramses_rf Phase 4** (PWhite-Eng, issue 915) — FSM Conversational
->   Parity & Passive Ingestion. **ALL COMPLETE** (PRs 916, 920, 921,
->   924-929). 5-PR strangler fig: Shadow FSM → Live Parity → Execution
->   Cutover → Active Discovery Removal → Transport FSM Streamlining.
->   Verified by ha-sim: 347/347 tests pass. Only Phase 4e (API
->   Modernization: Packet→Message) remains.
+>   Parity & Passive Ingestion. **Work complete, PRs still OPEN** (916,
+>   920, 921, 924-929 — most in draft). Issue 915 marks all "✅ COMPLETED"
+>   but they are not merged. 5-PR strangler fig: Shadow FSM → Live Parity
+>   → Execution Cutover → Active Discovery Removal → Transport FSM
+>   Streamlining. Verified by ha-sim: 347/347 tests pass. Only Phase 4e
+>   (API Modernization: Packet→Message) remains.
 >
 > **Key shift (Jul 17 2026, updated Jul 24):** Device identity Builder
 > (`DeviceRole`, `supported_commands()`) scrapped in favor of "init and go"
@@ -3480,23 +3481,23 @@ REFERENCE                    STATE    NOTES
 ──────────────────────────────────────────────────────────────────
 ramses_rf discussion 191     open     started by zxdavb, 19 Apr 2025
 ramses_rf issue 530          closed   Builder/Strategy pattern scrapped (Jul 17 2026)
-ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX DONE 0.58.3, 3.75 MERGED; Phase 4 DONE; current pin 0.59.0)
+ramses_rf issue 639          open     master roadmap (Phase 3/3.25 TX DONE 0.58.3, 3.75 MERGED; Phase 4 work done, PRs open; current pin 0.59.0)
 ramses_rf issue 836          closed   Dynamic class promotion → "init and go"
 ramses_rf issue 87           open     Itho fan states / manufacturer
 ramses_rf issue 627          open     CODES_SCHEMA reloc (unrelated)
-ramses_rf issue 915          open     Phase 4: FSM Parity & Passive Ingestion (ALL PRs merged: 916, 920, 921, 924-929)
+ramses_rf issue 915          open     Phase 4: FSM Parity & Passive Ingestion (work done, PRs open: 916, 920, 921, 924-929)
 ramses_rf PR 914             MERGED   Phase 3.75: eradicate __class__ mutations (merged to master Jul 23 2026, unreleased)
                                       TESTED: 232/232 ha_sim_test pass (Jul 23 2026)
-ramses_rf PR 916             MERGED   Phase 4a: Shadow ConversationManager
-ramses_rf PR 920             MERGED   Phase 4a.5: Live Shadow Parity (100% parity 2126/2126)
-ramses_rf PR 921             MERGED   Phase 4b: Execution Cutover
-ramses_rf PR 924             MERGED   Phase 4c.1: Schema Extensibility for Polling
-ramses_rf PR 925             MERGED   Phase 4c.2: L7 PollingManager (Shadow Parity)
-ramses_rf PR 926             MERGED   Phase 4c.3: Polling Cutover (Live Parity)
-ramses_rf PR 927             MERGED   Phase 4c.4: Legacy Discovery Purge
-ramses_rf PR 928             MERGED   Phase 4d.1: wait_for_reply Deprecation
-ramses_rf PR 929             MERGED   Phase 4d.2: Transport FSM Streamlining
-ramses_rf PR 931             open     Test fixes (wimpie70): DHW None + PollingManager build_rq_cmd + test update
+ramses_rf PR 916             OPEN     Phase 4a: Shadow ConversationManager (work done per issue 915)
+ramses_rf PR 920             OPEN     Phase 4a.5: Live Shadow Parity (draft, 100% parity 2126/2126)
+ramses_rf PR 921             OPEN     Phase 4b: Execution Cutover (draft)
+ramses_rf PR 924             OPEN     Phase 4c.1: Schema Extensibility for Polling (draft)
+ramses_rf PR 925             OPEN     Phase 4c.2: L7 PollingManager Shadow Parity (draft)
+ramses_rf PR 926             OPEN     Phase 4c.3: Polling Cutover Live Parity (draft)
+ramses_rf PR 927             OPEN     Phase 4c.4: Legacy Discovery Purge (draft)
+ramses_rf PR 928             OPEN     Phase 4d.1: wait_for_reply Deprecation (draft)
+ramses_rf PR 929             OPEN     Phase 4d.2: Transport FSM Streamlining (draft)
+ramses_rf PR 931             open     Test fixes (wimpie70): DHW None + PollingManager build_rq_cmd + test update (mergeable, CI green)
 ramses_rf PR 917             MERGED   fix: declared hotwater_valve BDR not FC domain (wimpie70)
 ramses_rf PR 918             MERGED   refactor(hvac): binary struct packing (PWhite-Eng)
 ramses_rf PR 919             MERGED   refactor(protocol): schedule BOFM struct (PWhite-Eng)
@@ -3652,10 +3653,12 @@ The ramses_rf CQRS refactor (#530) is ongoing:
   with ha_sim_test: 232/232 pass** (Jul 23 2026). No regressions in
   ramses_cc.
 - Phase 4 (FSM Conversational Parity & Passive Ingestion, issue 915):
-  **ALL COMPLETE** (PRs 916, 920, 921, 924-929). Shadow FSM → Live
-  Parity → Execution Cutover → Active Discovery Removal → Transport
-  FSM Streamlining. **Verified by ha-sim: 347/347 tests pass** (Jul
-  24 2026). Only Phase 4e (API Modernization: Packet→Message) remains.
+  **Work complete, PRs still OPEN** (916, 920, 921, 924-929 — most in
+  draft). Issue 915 marks all "✅ COMPLETED" but they are not merged.
+  Shadow FSM → Live Parity → Execution Cutover → Active Discovery
+  Removal → Transport FSM Streamlining. **Verified by ha-sim: 347/347
+  tests pass** (Jul 24 2026). Only Phase 4e (API Modernization:
+  Packet→Message) remains.
 - StateUpdatedEvent bus: confirmed by PWhite-Eng as the future
   signal source for ramses_cc entity updates (Step 4).  However,
   issue 794 shipped an interim solution in 0.58.0: the coordinator
@@ -3744,15 +3747,16 @@ those changes.
 ### Changes Jul 24 2026
 
 - Updated naming note: added ramses_cc Phase 4 and ramses_rf Phase 4
-  (issue 915) entries. ramses_rf Phase 4 is ALL COMPLETE (PRs 916,
-  920, 921, 924-929). Verified by ha-sim: 347/347 tests pass.
+  (issue 915) entries. ramses_rf Phase 4 work is complete but PRs are
+  still OPEN (not merged). Verified by ha-sim: 347/347 tests pass.
 - Updated verification status table: PR 914 MERGED to master (Jul 23
-  2026, unreleased). PRs 916, 920, 921, 924-929 all MERGED. Added
-  PR 931 (our test fixes, open) and PR 869 (ramses_cc compat fixes,
-  open). PR 917, 918, 919 now MERGED. Added issue 915.
+  2026, unreleased). PRs 916, 920, 921, 924-929 are OPEN (work done,
+  not merged). Added PR 931 (our test fixes, open) and PR 869
+  (ramses_cc compat fixes, open). PR 917, 918, 919 now MERGED. Added
+  issue 915.
 - Updated CQRS refactor timing section: Phase 3.75 PR 914 MERGED to
-  master. Phase 4 (issue 915) ALL COMPLETE — added full PR list and
-  ha-sim verification results.
+  master. Phase 4 (issue 915) work complete, PRs open — added full PR
+  list and ha-sim verification results.
 - PR 914 is in master but NOT yet released (no 0.60.0 tag). Available
   in `test/pr929-shadow` branch for ha-sim testing.
 
