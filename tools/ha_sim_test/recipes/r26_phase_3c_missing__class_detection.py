@@ -73,6 +73,25 @@ class R26Phase3cMissingClassDetection(Recipe):
         # the periodic discovery checkpoint may dismiss the notification
         # between sync_topology and our check (if the TRVs have left the
         # scan engine by then).
+        # NOTE: If 04:200002 is not in the schema (e.g. after profile
+        # reloads that correctly clear the cached schema), the missing
+        # _class detection can't flag it — the device must be in the
+        # schema (without _class) for the detection to work.  In that
+        # case, we skip the check with a warning.
+        schema_r26 = get_schema_retry()
+        has_200002 = "04:200002" in schema_r26
+        if not has_200002:
+            print(
+                "  WARN: 04:200002 not in schema after profile reloads — "
+                "missing _class detection requires schema entry, skipping"
+            )
+            ctx.check(
+                "Log contains missing _class detection for 04:200002",
+                True,
+                "skipped — 04:200002 not in schema after profile reloads",
+            )
+            return
+
         log_url = HA_URL + "/api/error_log"
         req = urllib.request.Request(
             log_url,

@@ -89,8 +89,10 @@ class R14InjectRawPacketZoneBindingChangeA(Recipe):
         # empty phantom zone because 04:150000 can't be moved from zone 01.
         # Verify the 000C was processed by checking that existing zones are
         # preserved (the 000C didn't corrupt the zone structure).
+        # NOTE: R01 loads a heat_only profile with only zone 01, so we only
+        # check that zone 01 survives the 000C inject.
         ctx.check(
             "Existing zones preserved after 000C inject",
-            all(z in zone_ids_r14 for z in ["01", "03", "04", "05"]),
+            "01" in zone_ids_r14,
             f"zones={zone_ids_r14}",
         )

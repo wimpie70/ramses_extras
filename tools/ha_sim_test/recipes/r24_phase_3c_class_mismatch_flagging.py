@@ -51,29 +51,53 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             **mismatch_schema.get(FAN, {}),
             "_class": "DIS",  # wrong class — should be FAN
         }
-        mismatch_yaml = mixed_yaml(mismatch_schema)
+        # Build a custom known_list that does NOT include class=FAN for the
+        # FAN device — otherwise _merge_known_list_into_schema would
+        # overwrite the schema's _class=DIS with _class=FAN from the
+        # known_list, defeating the purpose of the mismatch test.
+        import yaml as _yaml
+
+        mismatch_kl = dict(MIXED_KL)
+        fan_kl = dict(mismatch_kl.get(FAN, {}))
+        fan_kl.pop("class", None)
+        mismatch_kl[FAN] = fan_kl
+        profile = {
+            "known_list": mismatch_kl,
+            "_enforce_known_list": {"enabled": True},
+            "_schema": mismatch_schema,
+        }
+        mismatch_yaml = _yaml.dump(profile, default_flow_style=False, sort_keys=False)
         await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
-        ctx.wait(5, "for profile reload + entity creation")
+        ctx.wait(15, "for profile reload + entity creation")
+        ctx.refresh_token()
+        ctx.wait(5, "for ramses_cc to initialize")
 
         # Inject a 1FC9 heartbeat from the FAN so the scan engine tracks
         # 32:150000 and can detect the _class=DIS mismatch.  The profile
         # reload stops all simulator devices, so without this injection the
         # scan engine has no data for 32:150000 and check_class_mismatches
-        # skips it.
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": FAN,
-                    "code": "1FC9",
-                    "payload": "00",
-                    "verb": "I",
-                },
-            )
-        except RuntimeError as e:
-            print(f"    FAN heartbeat inject failed: {str(e)[:80]}")
+        # skips it.  Retry up to 3 times — the MQTT endpoint may not be
+        # fully connected immediately after the reload.
+        for attempt in range(3):
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": FAN,
+                        "code": "1FC9",
+                        "payload": "00",
+                        "verb": "I",
+                    },
+                )
+                break
+            except RuntimeError as e:
+                print(
+                    f"    FAN heartbeat inject attempt {attempt + 1} failed:"
+                    f" {str(e)[:80]}"
+                )
+                ctx.wait(3, "before retry")
         ctx.wait(5, "for FAN heartbeat to reach scan engine")
 
         # Force a sync cycle to trigger mismatch detection
