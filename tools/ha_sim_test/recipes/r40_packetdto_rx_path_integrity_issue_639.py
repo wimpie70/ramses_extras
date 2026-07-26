@@ -21,6 +21,7 @@ from ..helpers import (
     docker_exec_python,
     get_entities,
     is_ramses_cc_loaded,
+    wait_for,
     ws_send,
 )
 
@@ -137,7 +138,7 @@ except Exception as e:
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
         ctx.wait_for(
             is_ramses_cc_loaded,

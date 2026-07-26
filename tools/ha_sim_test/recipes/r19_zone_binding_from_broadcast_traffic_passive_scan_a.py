@@ -23,7 +23,10 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
+    wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
 )
@@ -62,10 +65,8 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with mixed profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Activate CTL for heartbeats
         try:
             await ws_send(
@@ -77,7 +78,7 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait(10, "for CTL heartbeats + schema population")
+        wait_for_schema_populated(timeout=15)
 
         # Inject 30C9 (temperature) broadcast packets from TRVs with zone_idx
         # 30C9 payload: zone_idx(2 hex) + temperature(4 hex, *100)
@@ -130,7 +131,7 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
                 print(f"    {trv_id} -> 3150: FAILED - {str(e)[:80]}")
             time.sleep(0.5)
 
-        ctx.wait(10, "for scan engine to process packets")
+        ctx.wait(3, "for scan engine to process")
 
         # Accept the discovered TRVs so they enter the known_list.
         # With the mixed profile (enforce_known_list=True), unknown devices
@@ -155,7 +156,7 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for sync_learned_topology to process")
+        ctx.wait(5, "for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:

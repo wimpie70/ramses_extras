@@ -9,6 +9,9 @@ from ..const import CTL
 from ..helpers import (
     call_service,
     get_entities,
+    is_ramses_cc_loaded,
+    wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 
@@ -52,10 +55,8 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with mixed profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Activate CTL for heartbeats
         try:
             await ws_send(
@@ -68,7 +69,7 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             print("    CTL activated")
         except RuntimeError:
             pass
-        ctx.wait(10, "for CTL heartbeats + schema population")
+        wait_for_schema_populated(timeout=15)
 
         # 2. Inject 2E04 I from CTL (01:150000) — system_mode = auto
         #    Payload: 00 + FFFFFFFFFFFF00 (16 hex chars, len=8)

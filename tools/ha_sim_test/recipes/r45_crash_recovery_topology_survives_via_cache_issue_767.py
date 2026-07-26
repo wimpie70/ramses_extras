@@ -15,6 +15,8 @@ from ..const import CTL, DHW, TRV
 from ..helpers import (
     get_entities,
     get_schema_retry,
+    is_ramses_cc_loaded,
+    wait_for,
     ws_send,
 )
 
@@ -43,10 +45,8 @@ class R45CrashRecoveryTopologySurvivesViaCacheIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 2. Activate CTL for heartbeats
         try:
             await ws_send(
@@ -114,10 +114,8 @@ class R45CrashRecoveryTopologySurvivesViaCacheIssue767(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 5. Verify entities reappear from cached schema
         entities_after = get_entities(ctx.token)
         schema_after = get_schema_retry()

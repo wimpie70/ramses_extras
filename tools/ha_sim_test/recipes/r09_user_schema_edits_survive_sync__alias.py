@@ -23,7 +23,9 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -57,10 +59,8 @@ class R09UserSchemaEditsSurviveSyncAlias(Recipe):
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
 
-        ctx.wait(15, "for ramses_cc reload with _alias")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Verify _alias is present before sync
         schema_before_sync = get_schema()
         ctl_before = schema_before_sync.get(CTL, {})
@@ -82,7 +82,7 @@ class R09UserSchemaEditsSurviveSyncAlias(Recipe):
             print("  sync_topology called")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for sync_learned_topology to process")
+        ctx.wait(5, "for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:

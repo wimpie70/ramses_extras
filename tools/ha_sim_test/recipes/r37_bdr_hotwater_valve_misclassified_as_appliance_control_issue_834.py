@@ -47,6 +47,7 @@ from ..helpers import (
     is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA
@@ -245,7 +246,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(10, "for scan engine to process packets")
+        ctx.wait(3, "for scan engine to process")
 
         # Accept both discovered devices so they enter the known_list
         print("  Accepting discovered OTB and BDR...")
@@ -268,7 +269,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for sync_learned_topology to process")
+        ctx.wait(5, "for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:

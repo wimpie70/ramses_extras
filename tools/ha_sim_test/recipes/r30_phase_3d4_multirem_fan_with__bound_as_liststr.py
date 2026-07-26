@@ -23,7 +23,10 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
+    wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
 )
@@ -75,10 +78,8 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
             print("  Profile loaded with list-valued _bound")
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
-        ctx.wait(15, "for ramses_cc reload with list _bound")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Activate FAN + both REMs for heartbeats
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (rem2, "REM2")]:
             try:
@@ -93,7 +94,7 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
                 print(f"    {name} activated")
             except RuntimeError:
                 pass
-        ctx.wait(10, "for heartbeats + schema population")
+        wait_for_schema_populated(timeout=15)
 
         # Trigger sync to populate known_list from schema
         try:

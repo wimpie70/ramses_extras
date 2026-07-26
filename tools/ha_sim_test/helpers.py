@@ -553,6 +553,94 @@ def wait_for(
     return False
 
 
+# ---------------------------------------------------------------------------
+# Composite wait helpers — poll for common conditions instead of fixed sleeps
+# ---------------------------------------------------------------------------
+def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
+    """Wait until the schema has at least *min_keys* device entries.
+
+    Replaces ``wait(10, "for CTL heartbeats + schema population")`` —
+    typically returns in 2-5s once ramses_rf has processed the first
+    heartbeat batch and written the learned schema.
+    """
+    return wait_for(
+        lambda: len(get_schema_retry(max_tries=1)) >= min_keys,
+        timeout=timeout,
+        interval=2,
+        msg=f"for schema to have >= {min_keys} keys",
+    )
+
+
+def wait_for_schema_has(
+    device_id: str, timeout: int = 20, *, trait: str | None = None
+) -> bool:
+    """Wait until *device_id* appears in the schema.
+
+    If *trait* is given (e.g. ``"_class"``), also require that the
+    device's schema entry has that trait set.
+
+    Replaces ``wait(10, "for sync_learned_topology to process")`` when
+    the expected outcome is a specific device appearing in the schema.
+    """
+
+    def _check() -> bool:
+        schema = get_schema_retry(max_tries=1)
+        entry = schema.get(device_id)
+        if entry is None:
+            return False
+        if trait is not None:
+            return entry.get(trait) is not None
+        return True
+
+    return wait_for(
+        _check, timeout=timeout, interval=2, msg=f"for {device_id} in schema"
+    )
+
+
+def wait_for_entity_state(
+    token: str,
+    entity_id: str,
+    *,
+    expected: str | None = None,
+    not_none: bool = False,
+    timeout: int = 15,
+) -> bool:
+    """Wait until an entity state matches a condition.
+
+    :param expected: If given, wait until ``state == expected``.
+    :param not_none: If True, wait until the entity exists and state is not None.
+
+    Replaces ``wait(5, "for entity state write")`` / ``wait(3, "for 1260 to process")``
+    — typically returns in 1-2s once HA has processed the state update.
+    """
+
+    def _check() -> bool:
+        req = urllib.request.Request(
+            f"{HA_URL}/api/states/{entity_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=5)
+            state = json.loads(resp.read()).get("state")
+        except urllib.error.HTTPError:
+            return False  # 404 = entity not yet created
+        except Exception:
+            return False
+        if expected is not None:
+            return state == expected
+        if not_none:
+            return state is not None
+        return True  # entity exists
+
+    return wait_for(
+        _check,
+        timeout=timeout,
+        interval=1,
+        msg=f"for {entity_id} state"
+        + (f" == {expected!r}" if expected else " to be set"),
+    )
+
+
 async def get_persistent_notifications(token: str) -> list:
     """Get all persistent notifications from the HA websocket API.
 

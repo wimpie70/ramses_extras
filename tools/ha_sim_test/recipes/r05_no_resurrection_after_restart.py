@@ -25,6 +25,7 @@ from ..helpers import (
     get_schema_retry,
     is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -96,7 +97,7 @@ class R05NoResurrectionAfterRestart(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(3, "for save")
+        ctx.wait(5, "for save")
 
         # Wait for .storage to be flushed — HA doesn't flush immediately
         # after async_update_entry.  Retry for up to 30s.

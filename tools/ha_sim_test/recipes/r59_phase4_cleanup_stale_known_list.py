@@ -27,7 +27,7 @@ import subprocess
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL
-from ..helpers import get_schema_retry
+from ..helpers import get_schema_retry, is_ha_ready, wait_for
 
 
 class R59Phase4CleanupStaleKnownList(Recipe):
@@ -123,14 +123,14 @@ class R59Phase4CleanupStaleKnownList(Recipe):
         if cp_result.returncode != 0:
             # Restart ha-sim to recover
             subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
-            ctx.wait(20, "for ha-sim to start up")
+            wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
             return
 
         # Step 4: Start ha-sim — async_setup_entry will run and call
         # _cleanup_stale_known_list, which should strip the stale keys
         print("  Starting ha-sim (triggers _cleanup_stale_known_list)...")
         subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
-        ctx.wait(20, "for ha-sim to start up")
+        wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
         ctx.wait(10, "for ramses_cc to initialize + run cleanup")

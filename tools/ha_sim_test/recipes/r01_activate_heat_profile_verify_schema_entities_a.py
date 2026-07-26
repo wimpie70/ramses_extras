@@ -23,7 +23,10 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
+    wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
 )
@@ -67,10 +70,8 @@ class R01ActivateHeatProfileVerifySchemaEntitiesA(Recipe):
             print("  heat_only profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
-        ctx.wait(15, "for ramses_cc reload with heat_only")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Activate CTL, TRV, DHW
         for dev, slug in [(CTL, "CTL"), ("04:150000", "TRV"), (DHW, "DHW")]:
             try:
@@ -85,7 +86,7 @@ class R01ActivateHeatProfileVerifySchemaEntitiesA(Recipe):
                 print(f"    {slug} {dev} activated")
             except RuntimeError:
                 pass  # may already be active
-        ctx.wait(10, "for heartbeats + schema population (100x speed)")
+        wait_for_schema_populated(timeout=15)
 
         schema_r1 = get_schema_retry()
         kl_r1 = get_known_list()

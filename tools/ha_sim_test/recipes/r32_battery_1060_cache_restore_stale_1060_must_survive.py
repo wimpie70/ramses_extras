@@ -23,7 +23,10 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ha_ready,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -67,10 +70,8 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with mixed profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         for dev_id, name in [(CTL, "CTL"), (TRV, "TRV"), (DHW, "DHW")]:
             try:
                 await ws_send(
@@ -184,10 +185,14 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
 
         print("  Starting ha-sim to trigger _restore_cached_packets...")
         subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
-        ctx.wait(20, "for ha-sim to start up")
+        wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait(10, "for ramses_cc to restore cached packets + create entities")
+        wait_for(
+            is_ramses_cc_loaded,
+            timeout=15,
+            msg="for ramses_cc to restore cached packets",
+        )
 
         # 5. Check the battery binary sensor state after restart.
         #    WITHOUT FIX (1060 in HIGH_VOLUME_STATUS_CODES): the aged 1060 is

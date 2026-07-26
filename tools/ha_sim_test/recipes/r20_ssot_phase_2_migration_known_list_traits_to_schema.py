@@ -70,7 +70,7 @@ class R20SsotPhase2MigrationKnownListTraitsToSchema(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for sync_learned_topology + trait migration")
+        ctx.wait(5, "for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:

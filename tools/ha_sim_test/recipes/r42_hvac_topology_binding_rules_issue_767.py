@@ -17,6 +17,8 @@ from ..helpers import (
     call_service,
     docker_exec_python,
     get_schema_retry,
+    is_ramses_cc_loaded,
+    wait_for,
     ws_send,
 )
 
@@ -83,10 +85,8 @@ except (ImportError, AttributeError) as e:
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 2. Inject 31D9 I from FAN (32:150000) — FAN announces itself
         print(f"  Injecting 31D9 I from FAN {FAN}...")
         try:
