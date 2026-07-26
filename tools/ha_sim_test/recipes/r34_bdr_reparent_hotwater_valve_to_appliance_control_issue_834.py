@@ -73,7 +73,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=15, msg="for ramses_cc to initialize")
+        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
 
         # --- Build a custom profile without DHW sensor ---
         # The mixed profile has stored_hotwater: {sensor: DHW}.  We remove

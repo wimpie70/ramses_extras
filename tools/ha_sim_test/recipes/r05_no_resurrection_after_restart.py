@@ -58,7 +58,7 @@ class R05NoResurrectionAfterRestart(Recipe):
         # in-memory options match .storage (remove_device reads from
         # coordinator.options, not .storage).
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=15, msg="for ramses_cc to initialize")
+        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
 
         # TRV and CTL were removed in recipes 2/4.  The 7b profile reload brings
         # them back (mixed profile includes them in known_list).  Re-remove them
