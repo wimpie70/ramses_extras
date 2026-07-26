@@ -99,9 +99,9 @@ class R59Phase4CleanupStaleKnownList(Recipe):
         import os
         import tempfile
 
-        tmp_path = tempfile.mktemp(suffix=".json")
-        with open(tmp_path, "w") as f:
+        with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as f:
             json.dump(data, f)
+            tmp_path = f.name
 
         cp_result = subprocess.run(
             [
