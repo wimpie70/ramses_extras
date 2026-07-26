@@ -752,7 +752,6 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                         dewpoint + margin,
                     )
                     desired_mode = "idle"
-                    await self._clear_all_zone_demands(device_id)
                 await self._clear_all_zone_demands(device_id)
 
         _LOGGER.debug(

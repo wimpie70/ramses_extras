@@ -75,7 +75,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         await async_setup_yaml_config(hass, config)
 
-    hass.bus.async_listen(EVENT_HOMEASSISTANT_STARTED, _startup_callback)
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _startup_callback)
 
     return True
 
