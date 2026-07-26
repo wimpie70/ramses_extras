@@ -1,9 +1,9 @@
 # Phase 4 Plan: known_list Removal + Event-Driven Topology
 
 **Created:** Jul 23 2026
-**Updated:** Jul 24 2026
-**Status:** READY (assuming ramses_rf Phase 4 PRs merge) — Phase 3 complete, PR 914 merged to master, ramses_rf Phase 4 work complete (PRs open). Steps 1-3 unblocked.
-**Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED to master, unreleased)
+**Updated:** Jul 26 2026
+**Status:** Steps 1-3 IMPLEMENTED (PR 863 + PR 870). ramses_rf 0.59.1 released with all Phase 4 PRs merged. Steps 5-6 still blocked on ramses_rf subscription API / `load_fan`.
+**Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED, shipped in ramses_rf 0.59.1)
 **Blocks:** nothing (this is the final phase for schema-as-SSOT)
 
 > **Naming note:** There are several "Phase 4"s:
@@ -11,11 +11,9 @@
 >   make `enforce_known_list` always-on, event-driven topology updates.
 > - **ramses_rf Phase 4** (PWhite-Eng, issue 915) — FSM
 >   Conversational Parity & Passive Ingestion. 5-PR strangler fig:
->   **work complete, PRs still OPEN** (916, 920, 921, 924-929 — most
->   in draft). Issue 915 marks them "✅ COMPLETED" but they are not
->   merged yet. We build ramses_cc Phase 4 as if they were merged.
->   Verified by ha-sim: 347/347 tests pass.
->   Only Phase 4e (API Modernization: Packet→Message) remains.
+>   **MERGED to ramses_rf 0.59.1** (PRs 916, 919-921, 924-929 all
+>   merged Jul 25 2026). Only Phase 4e (API Modernization:
+>   Packet→Message) remains.
 > - **RF Binding Handshake Phase 4** (protocol level) — RATIFY step
 >   (10E0 device info exchange). Not a development phase.
 
@@ -48,7 +46,7 @@
 ## Overview
 
 Phase 4 is the final step in the schema-as-SSOT migration. With Phase 3
-complete (all sub-phases 3a-3e done, ramses_rf 0.59.0 pinned), the
+complete (all sub-phases 3a-3e done, ramses_rf 0.59.1 released), the
 schema now carries all device traits (`_class`, `_alias`, `_faked`,
 `_bound`, `_scheme`, `_commands`, `_disabled`). The `known_list` in
 the config entry is now a redundant fallback — it duplicates
@@ -79,7 +77,7 @@ confusion, and prepares the ground for event-driven topology updates
 | 22B0 calendar builder | DONE | Phase 3e (0.59.0, PR 879) |
 | `known_list` derived from schema | DONE | `_derive_known_list_from_schema()` |
 | `enforce_known_list` auto-forcing with passive scan | DONE | PR 764 |
-| Device health tracking (orphaned/lost) | DONE | PR 861 (open) |
+| Device health tracking (orphaned/lost) | DONE | PR 861 (merged) |
 | Cache → config sync (`sync_learned_topology`) | DONE | PR 764 |
 | Passive DiscoveryScan | DONE | PR 764 (ramses_rf `discovery_scan.py`) |
 
@@ -122,35 +120,35 @@ confusion, and prepares the ground for event-driven topology updates
 
 | Dependency | Status | Notes |
 |---|---|---|
-| ramses_rf 0.59.0 | DONE (pinned) | `strip_and_map_schema()` called by gateway, 22B0 builder. **Need to bump to 0.60.0 when released** (will include PR 914). |
+| ramses_rf 0.59.1 | **RELEASED** (Jul 25 2026) | Includes PR 914 + all Phase 4 PRs (916-929) + PR 931 test fixes. ramses_cc manifest pin needs bumping from `0.59.0` to `0.59.1`. |
 | Phase 3a-3e complete | DONE | All sub-phases merged |
-| PR 914 (Phase 3.75) | **MERGED to master** (Jul 23 2026) | "init and go" from schema `_class` — ensures device class is correct without known_list fallback. In master but not yet released (no 0.60.0 tag). Available in `test/pr929-shadow` branch for testing. |
+| PR 914 (Phase 3.75) | **MERGED, shipped in 0.59.1** | "init and go" from schema `_class` — ensures device class is correct without known_list fallback. |
 | Issue 677 fix (0.57.6) | DONE | `enforce_known_list` bug fixed — verify on real Evohome before Step 3 |
 | ramses_rf Phase 3.5 (1FC9 → TopologyChangedEvent) | **DONE in 0.59.0** (issue #911, closed) | `_evaluate_rf_bind_rules` in `topology_builder.py` intercepts 1FC9, emits `BIND_DEVICE` events. `CREATE_CONTROLLER` + `CREATE_CIRCUIT` actions also in enum. |
 | TopologyChangedEvent public subscription API | **MISSING** | Events flow internally (TopologyBuilder → DeviceRegistry). No public callback for ramses_cc to subscribe. Needs ramses_rf PR. Blocks Step 5. |
 | ramses_rf HVAC topology (`load_fan`) | **STILL A STUB** | `load_fan()` in `schemas.py:397` has `fan._update_schema(**schema)` commented out. No open PR. Blocks Step 6. |
-| ramses_rf Phase 4 (issue #915) | **WORK COMPLETE, PRs OPEN** (916, 920, 921, 924-929) | 5-PR strangler fig: Shadow FSM → Live Parity → Execution Cutover → Active Discovery Removal → Transport FSM Streamlining. Issue 915 marks all "✅ COMPLETED" but PRs are not merged (most in draft). We build ramses_cc Phase 4 as if they were merged. Verified by ha-sim: 347/347 tests pass. Only Phase 4e (API Modernization: Packet→Message) remains. |
-| ramses_rf PR 931 (test fixes) | **OPEN** (mergeable, CI green) | Our fixes on top of PR 929: DHW None handling + PollingManager build_rq_cmd + test update. |
-| ramses_cc PR 869 (compat fixes) | **OPEN** (mergeable, CI green) | Our compatibility fixes: merge_schemas traits + sentinel packet + discovery removal + resolve_async_attr cooldown. |
+| ramses_rf Phase 4 (issue #915) | **MERGED to 0.59.1** (Jul 25 2026) | 5-PR strangler fig: Shadow FSM → Live Parity → Execution Cutover → Active Discovery Removal → Transport FSM Streamlining. All PRs merged (916, 919-921, 924-929). Only Phase 4e (API Modernization: Packet→Message) remains. |
+| ramses_rf PR 931 (test fixes) | **MERGED** | Our fixes on top of PR 929: DHW None handling + PollingManager build_rq_cmd + test update. Merged Jul 25 2026. |
+| ramses_cc PR 869 (compat fixes) | **OPEN** (mergeable, CI green) | Our compatibility fixes: merge_schemas traits + sentinel packet + discovery removal + resolve_async_attr cooldown. Target: ramses_cc 0.59.1. |
+| ramses_cc PR 863 (migration + backup) | **OPEN** (mergeable) | Phase 4 Step 1: config entry v2→v3 migration with safety net backup. Target: ramses_cc 0.59.1. |
+| ramses_cc PR 870 (known_list removal) | **OPEN** (stacked on 869) | Phase 4 Steps 1-3: migration + remove known_list + enforce always-on. Target: ramses_cc 0.59.2 (after 863 bakes in production). |
 
 ### Critical path
 
 ```
-PR 914 (MERGED to master) ──→ Step 1 (storage bump) ──→ Step 2 (remove known_list)
-                                                              │
-                                                              ├──→ Step 3 (enforce always-on)
-                                                              ├──→ Step 4 (shrink _commands)
+ramses_rf 0.59.1 (RELEASED) ──→ PR 869 (compat) ──→ PR 863 (migration + backup)
+                                                            │
+                                                            ├──→ PR 870 (remove known_list) → Step 3 (enforce always-on)
+                                                            ├──→ Step 4 (shrink _commands)
 
 ramses_rf: expose subscription API ──→ Step 5 (TopologyChangedEvent)  [blocked]
 ramses_rf: implement load_fan        ──→ Step 6 (HVAC topology)       [blocked]
 ```
 
-**Steps 1-4 are unblocked and ready to implement.** PR 914 is merged
-to ramses_rf master (unreleased). ramses_rf Phase 4 PRs (916-929) are
-work-complete but still open — we build ramses_cc Phase 4 as if they
-were merged, testing against `test/pr929-shadow` in ha-sim. When
-ramses_rf 0.60.0 ships (with PR 914 + Phase 4 PRs), bump the manifest
-pin and release.
+**Steps 1-3 are implemented** (PR 863 + PR 870). Release plan:
+- ramses_cc 0.59.1: PR 869 (compat) + PR 863 (migration with backup, keeps known_list as fallback)
+- ramses_cc 0.59.2: PR 870 (remove known_list, enforce always-on — breaking change)
+- Bump ramses_cc manifest pin from `ramses-rf==0.59.0` to `ramses-rf==0.59.1`
 
 Step 5 needs a small ramses_rf PR to expose the topology event callback
 (the events themselves already exist in 0.59.0). Step 6 needs `load_fan`
@@ -219,10 +217,9 @@ it in-memory from schema at startup via
 two sources causes confusion (which wins?) and makes the config flow
 complex. The derivation function already exists and works.
 
-**Depends on:** PR 914 (Phase 3.75) — **MERGED to master** (Jul 23 2026).
+**Depends on:** PR 914 (Phase 3.75) — **MERGED, shipped in ramses_rf 0.59.1**.
 "init and go" from schema `_class` ensures ramses_rf instantiates devices
-correctly from the derived known_list. Not yet released (no 0.60.0 tag),
-but available in `test/pr929-shadow` for ha-sim testing.
+correctly from the derived known_list.
 
 **Changes:**
 - `coordinator.py`: `_derive_known_list_from_schema()` becomes the
@@ -419,24 +416,25 @@ pass). This is a quality-of-life upgrade.
 
 ramses_rf Phase 4 (issue 915, PWhite-Eng) is a 5-PR strangler fig
 that moves RQ/RP tracking from L3 FSM to L7 event bus and removes
-active discovery probing. **All work is complete per issue 915, but
-the PRs are still OPEN (not merged).** We build ramses_cc Phase 4 as
-if they were merged.
+active discovery probing. **All PRs merged to ramses_rf 0.59.1**
+(Jul 25 2026).
 
 ### ramses_rf Phase 4 PR status
 
 | PR | Phase | Status | What |
 |----|-------|--------|------|
-| 916 | 4a Shadow FSM | ✅ work done, OPEN | L7 ConversationManager built, parity tested |
-| 920 | 4a.5 Live Parity | ✅ work done, OPEN (draft) | Shadow FSM hooked into live pipeline, 100% parity (2126/2126) |
-| 921 | 4b Execution Cutover | ✅ work done, OPEN (draft) | Switch live execution to L7 ConversationManager |
-| 924 | 4c.1 Schema Polling | ✅ work done, OPEN (draft) | `polling_interval` + `is_battery` traits, `disable_polling` config |
-| 925 | 4c.2 PollingManager Shadow | ✅ work done, OPEN (draft) | L7 PollingManager built, shadow parity tested |
-| 926 | 4c.3 Polling Cutover | ✅ work done, OPEN (draft) | Live polling switched to L7 PollingManager |
-| 927 | 4c.4 Discovery Purge | ✅ work done, OPEN (draft) | Legacy DiscoveryService deleted, passive scan only |
-| 928 | 4d.1 wait_for_reply Deprecation | ✅ work done, OPEN (draft) | Scrubbed from application layer |
-| 929 | 4d.2 Transport FSM Streamlining | ✅ work done, OPEN (draft) | WantRply state deleted, L3 only tracks Echo |
-| 931 | Test fixes (our PR) | 🔵 OPEN (mergeable, CI green) | DHW None + PollingManager build_rq_cmd + test update |
+| 916 | 4a Shadow FSM | ✅ MERGED | L7 ConversationManager built, parity tested |
+| 919 | Schedule/OpenTherm refactor | ✅ MERGED | Schedule and OpenTherm struct standardisation |
+| 920 | 4a.5 Live Parity | ✅ MERGED | Shadow FSM hooked into live pipeline, 100% parity (2126/2126) |
+| 921 | 4b Execution Cutover | ✅ MERGED | Switch live execution to L7 ConversationManager |
+| 924 | 4c.1 Schema Polling | ✅ MERGED | `polling_interval` + `is_battery` traits, `disable_polling` config |
+| 925 | 4c.2 PollingManager Shadow | ✅ MERGED | L7 PollingManager built, shadow parity tested |
+| 926 | 4c.3 Polling Cutover | ✅ MERGED | Live polling switched to L7 PollingManager |
+| 927 | 4c.4 Discovery Purge | ✅ MERGED | Legacy DiscoveryService deleted, passive scan only |
+| 928 | 4d.1 wait_for_reply Deprecation | ✅ MERGED | Scrubbed from application layer |
+| 929 | 4d.2 Transport FSM Streamlining | ✅ MERGED | WantRply state deleted, L3 only tracks Echo |
+| 931 | Test fixes (our PR) | ✅ MERGED | DHW None + PollingManager build_rq_cmd + test update |
+| 932 | Release prep (silverailscolo) | ✅ MERGED | Bump version to 0.59.1 |
 
 ### Verification: ha-sim test suite
 
@@ -589,8 +587,7 @@ asyncio.Queue pipelines — verify ha_sim_test passes after 4.5 merge.
 
 1. **~~Does PR 914 need to merge before Step 2?~~** — **RESOLVED**
    - PR 914 merged to ramses_rf master on Jul 23 2026 (commit `46cdebcc`).
-   - Not yet released (no 0.60.0 tag). Available in `test/pr929-shadow`
-     for ha-sim testing. Steps 1-3 are unblocked.
+   - Shipped in ramses_rf 0.59.1 (Jul 25 2026). Steps 1-3 are unblocked.
 
 2. **Should `.storage[remotes]` be removed?**
    - No — keep as crash recovery cache. Commands are in schema
@@ -626,9 +623,15 @@ asyncio.Queue pipelines — verify ha_sim_test passes after 4.5 merge.
 | Jul 23 2026 | Deprecate `enforce_known_list` before removing | Issue 677 fix may not hold for all real Evohome systems. Deprecate with warning first, remove in later release. |
 | Jul 23 2026 | Phase 3.5 (1FC9 → TopologyChangedEvent) is DONE in 0.59.0 | `_evaluate_rf_bind_rules` in `topology_builder.py` intercepts 1FC9 and emits `BIND_DEVICE`. `CREATE_CONTROLLER` + `CREATE_CIRCUIT` also in enum. Step 5 only needs a small ramses_rf PR to expose the callback externally. |
 | Jul 23 2026 | `load_fan` is still a stub (0.59.0) | `schemas.py:397` has `fan._update_schema(**schema)` commented out. No open PR. Step 6 (HVAC topology) remains blocked. `HvacVentilator` class has `_bound_devices` infrastructure but it's not populated from schema. |
-| Jul 24 2026 | **PR 914 merged to ramses_rf master** | Phase 3.75 "init and go" from schema `_class` is merged (commit `46cdebcc`). Not yet released (no 0.60.0 tag). Steps 1-3 are now unblocked — we can code and test against `test/pr929-shadow` in ha-sim. |
-| Jul 24 2026 | **ramses_rf Phase 4 (issue 915) work complete, PRs open** | PRs 916, 920, 921, 924-929 — issue 915 marks all "✅ COMPLETED" but PRs are still OPEN (most in draft). Verified by ha-sim: 347/347 tests pass. We build ramses_cc Phase 4 as if they were merged. Only Phase 4e (API Modernization: Packet→Message) remains. |
-| Jul 24 2026 | **Steps 1-3 ready to implement** | PR 914 merged (hard blocker resolved). ramses_rf Phase 4 work complete (PRs open, not merged). Can stack on PR 869. Test against `test/pr929-shadow` in ha-sim. Bump manifest pin to 0.60.0 when released (will include PR 914 + Phase 4 PRs). |
+| Jul 24 2026 | **PR 914 merged to ramses_rf master** | Phase 3.75 "init and go" from schema `_class` is merged (commit `46cdebcc`). Steps 1-3 are now unblocked. |
+| Jul 24 2026 | **ramses_rf Phase 4 (issue 915) work complete, PRs open** | PRs 916, 920, 921, 924-929 — issue 915 marks all "✅ COMPLETED" but PRs are still OPEN (most in draft). Verified by ha-sim: 347/347 tests pass. Only Phase 4e (API Modernization: Packet→Message) remains. |
+| Jul 24 2026 | **Steps 1-3 ready to implement** | PR 914 merged (hard blocker resolved). ramses_rf Phase 4 work complete (PRs open, not merged). Can stack on PR 869. |
+| Jul 25 2026 | **ramses_rf Phase 4 PRs all merged** | PRs 916, 919-921, 924-929 all merged to ramses_rf master. PR 931 (our test fixes) merged. Version bumped to 0.59.1 (PR 932). |
+| Jul 25 2026 | **ramses_rf 0.59.1 released** | Includes PR 914 + all Phase 4 PRs + PR 931 test fixes. ramses_cc manifest pin needs bumping from `0.59.0` to `0.59.1`. No 0.60.0 release needed — 0.59.1 contains everything. |
+| Jul 26 2026 | **PR 863: migration safety net added** | v2→v3 config entry migration now saves a deep-copy backup to `.storage/ramses_cc_migration_v2_backup` before the irreversible migration. Allows manual recovery if user downgrades. |
+| Jul 26 2026 | **Release plan: two releases** | ramses_cc 0.59.1: PR 869 (compat) + PR 863 (migration with backup, keeps known_list as fallback). ramses_cc 0.59.2: PR 870 (remove known_list, enforce always-on — breaking change). Split gives production bake time with fallback before removing it. |
+| Jul 26 2026 | **PR 870: finding 2 fix applied** | Aligned `_cleanup_stale_known_list` with `async_migrate_entry` for empty/non-dict known_list entries — both now create `schema[dev_id] = {}` so the device survives `enforce_known_list`. |
+| Jul 26 2026 | **ConversationManager cross-matching issue identified** | ramses_rf `process_msg` matches RP on `(src.id, code)` only, ignoring `correlation_id`. Two concurrent RQs to same device+code can resolve each other's futures with wrong payload. Issue to be filed on ramses_rf. |
 | Jul 24 2026 | ramses_rf Phase 5+ roadmap reviewed (issue 639 comment) | PWhite-Eng's full roadmap goes to Phase 10. Phase 5 directly impacts ramses_cc: Step 5.1 (Event Bus Hardening) = our Step 5 (TopologyChangedEvent subscription). Step 5.3 (DTO Boundary) may break dict access patterns. Step 5.5 (Identity Relocation) will break `DevType`/`DEV_TYPE_MAP`/`DeviceIdT` imports from `ramses_tx`. Added import audit to plan. |
 
 ---
