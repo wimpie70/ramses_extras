@@ -23,7 +23,9 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -61,7 +63,7 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
 
-        ctx.wait(15, "for ramses_cc reload with fresh_start profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
 
         # Inject several 1FC9 heartbeats from the new TRV to trigger discovery
         print(f"  Injecting 1FC9 heartbeats from {new_trv}...")
@@ -193,6 +195,6 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
                     "enable_auto_answer": True,
                 },
             )
-            ctx.wait(15, "for ramses_cc reload + mixed profile")
+            wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         except RuntimeError as e:
             print(f"  Mixed profile reload failed: {e}")

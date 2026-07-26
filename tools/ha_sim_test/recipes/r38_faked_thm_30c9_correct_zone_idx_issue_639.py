@@ -31,6 +31,7 @@ from ..helpers import (
     is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
@@ -53,7 +54,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
         ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=15, msg="for ramses_cc to initialize")
+        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
 
         # 1. Load mixed profile with the zone-03 sensor (01:150003) faked
         sensor_id = "01:150003"

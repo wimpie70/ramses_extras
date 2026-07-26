@@ -23,7 +23,9 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -51,10 +53,8 @@ class R08HvacSchemaCachingMergeUnionOnReload(Recipe):
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
 
-        ctx.wait(15, "for ramses_cc reload with 2 REMs")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Verify both REMs are in the FAN's schema after reload
         schema_r8 = get_schema_retry()
         fan_entry_r8 = schema_r8.get(FAN, {})

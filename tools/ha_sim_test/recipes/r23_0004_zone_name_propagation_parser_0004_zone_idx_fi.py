@@ -23,7 +23,9 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -59,10 +61,8 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with mixed profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 0004 payload format: zone_idx(2) + "00"(2) + name_hex(40, 20 bytes
         # ASCII padded with 00).  Total = 44 hex chars (22 bytes, length 022).
         # Inject "Living Room" for zone 03.
@@ -116,7 +116,7 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for scan engine to process 0004 packets")
+        ctx.wait(5, "for scan engine to process")
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:

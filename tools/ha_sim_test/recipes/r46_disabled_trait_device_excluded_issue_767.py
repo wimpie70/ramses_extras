@@ -17,7 +17,9 @@ from ..helpers import (
     get_entities,
     get_known_list,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     ws_send,
 )
 from ..profile import MIXED_SCHEMA, mixed_yaml
@@ -43,10 +45,8 @@ class R46DisabledTraitDeviceExcludedIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 2. Verify TRV exists before disabling
         entities = get_entities(ctx.token)
         trv_entity = None
@@ -77,10 +77,8 @@ class R46DisabledTraitDeviceExcludedIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with _disabled")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 4. Verify the TRV entity is gone or unavailable
         entities_after = get_entities(ctx.token)
         trv_entity_after = None
@@ -136,10 +134,8 @@ class R46DisabledTraitDeviceExcludedIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 8. Verify TRV entity reappears
         entities_final = get_entities(ctx.token)
         trv_entity_final = None

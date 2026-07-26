@@ -23,7 +23,9 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -71,7 +73,7 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
         }
         fixed_yaml = mixed_yaml(fixed_schema)
         await load_profile_yaml(ctx.token, fixed_yaml, speed=0.01)
-        ctx.wait(5, "for profile reload")
+        wait_for(is_ramses_cc_loaded, timeout=10, msg="for profile reload")
 
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
@@ -82,7 +84,7 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(3, "for save")
+        ctx.wait(5, "for save")
 
         # Check 1: FAN remote entity should NOT have class_mismatch attribute
         entities_fixed = get_entities(ctx.token)

@@ -23,7 +23,9 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -57,10 +59,8 @@ class R22Thm22ZoneBindingVia000a(Recipe):
             print("  fresh_start profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with fresh_start")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Inject RQ 000A from a THM (22:) to the HGI (18:001234)
         # THMs send RQ 000A with just the zone_idx (2 hex) as payload.
         # The dst must be a valid device (not --:------) to avoid PacketInvalid.
@@ -103,7 +103,7 @@ class R22Thm22ZoneBindingVia000a(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(10, "for scan engine to process packets")
+        ctx.wait(3, "for scan engine to process")
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:

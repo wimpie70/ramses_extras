@@ -23,7 +23,9 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -52,10 +54,8 @@ class R10InvalidMainTcsSafetyNet(Recipe):
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
 
-        ctx.wait(15, "for ramses_cc reload with invalid main_tcs")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Debug: check what the config entry looks like
         schema_debug = get_schema()
         schema_keys = list(schema_debug.keys())

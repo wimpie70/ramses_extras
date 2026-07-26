@@ -24,7 +24,9 @@ from ..helpers import (
     get_schema,
     get_schema_retry,
     grep_ha_log,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -62,10 +64,8 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             print("  Profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with foreign HGI profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Verify the foreign HGI is in the schema
         schema_r28_init = get_schema_retry()
         ctx.check(
@@ -100,7 +100,7 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for scan engine to process 0004 RP")
+        ctx.wait(5, "for scan engine to process")
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
@@ -157,7 +157,7 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for scan engine to process 30C9")
+        ctx.wait(5, "for scan engine to process")
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
@@ -167,7 +167,7 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(3, "for save")
+        ctx.wait(5, "for save")
 
         # The foreign HGI should appear in the schema (it was already there
         # from the profile, but the 30C9 should not cause a FILTER EXCEPTION)

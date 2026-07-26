@@ -27,6 +27,8 @@ from ..helpers import (
     is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
+    wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
 )
@@ -60,7 +62,7 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=15, msg="for ramses_cc to initialize")
+        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
 
         # Load mixed profile (has CTL 01:150000 as main_tcs for TCS placement)
         print("  Loading mixed profile (has CTL for TCS placement)...")
@@ -79,10 +81,8 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with mixed profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Activate CTL for heartbeats
         try:
             await ws_send(
@@ -94,7 +94,7 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait(10, "for CTL heartbeats + schema population")
+        wait_for_schema_populated(timeout=15)
 
         # --- BDR 1: broadcasts 3B00 I → appliance_control (FC domain) ---
         bdr_app = "13:834001"
@@ -165,7 +165,7 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # the sim test to avoid the hotwater_valve slot collision (both non-FC
         # BDRs would compete for the single hotwater_valve slot).
 
-        ctx.wait(10, "for scan engine to process packets")
+        ctx.wait(3, "for scan engine to process")
 
         # Accept the two BDRs so they enter the known_list
         print("  Accepting discovered BDRs...")
@@ -188,7 +188,7 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for sync_learned_topology to process")
+        ctx.wait(5, "for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:

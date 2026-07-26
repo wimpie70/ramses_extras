@@ -23,7 +23,11 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ha_ready,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
+    wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
 )
@@ -43,7 +47,7 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
 
         print("  Restarting ha-sim...")
         subprocess.run(["docker", "restart", "ha-sim"], capture_output=True)
-        ctx.wait(20, "for ha-sim to start up")
+        wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
 
         # Reset log baseline — logs are wiped by the restart
         ctx.log_monitor.reset_baseline()
@@ -51,8 +55,6 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
         # Re-authenticate
         print("  Re-authenticating...")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Reload mixed profile — docker restart may reload a stale profile
         # (e.g. fresh_start from a later recipe in a previous test run).
         # Reloading ensures FAN/REM/CO2 are in the known_list and schema.
@@ -72,10 +74,8 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Mixed profile reload failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with mixed profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Re-activate devices (profile reload stops all active devices)
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (CO2, "CO2")]:
             try:
@@ -90,7 +90,7 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
                 print(f"    {name} activated")
             except RuntimeError:
                 pass
-        ctx.wait(10, "for heartbeats + schema population")
+        wait_for_schema_populated(timeout=15)
 
         schema_after_restart = get_schema_retry()
         fan_after_restart = FAN in schema_after_restart

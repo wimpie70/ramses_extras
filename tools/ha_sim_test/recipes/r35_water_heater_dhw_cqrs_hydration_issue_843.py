@@ -9,6 +9,8 @@ from ..const import CTL, DHW
 from ..helpers import (
     call_service,
     get_entities,
+    is_ramses_cc_loaded,
+    wait_for,
     ws_send,
 )
 
@@ -53,10 +55,8 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload with mixed profile")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Activate CTL and DHW for heartbeats
         for dev_id, name in [(CTL, "CTL"), (DHW, "DHW")]:
             try:

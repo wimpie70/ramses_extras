@@ -11,7 +11,10 @@ from ..helpers import (
     call_service,
     get_entities,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA
@@ -115,10 +118,8 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
             )
             return  # can't continue if profile load failed
 
-        ctx.wait(15, "for ramses_cc reload with complex traits")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Activate CTL + FAN + REM for heartbeats
         for dev_id, name in [(CTL, "CTL"), (FAN, "FAN"), (REM, "REM")]:
             try:
@@ -133,7 +134,7 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
                 print(f"    {name} activated")
             except RuntimeError:
                 pass
-        ctx.wait(10, "for heartbeats + schema population")
+        wait_for_schema_populated(timeout=15)
 
         # Trigger sync
         try:

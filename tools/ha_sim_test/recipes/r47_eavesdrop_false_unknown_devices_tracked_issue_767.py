@@ -21,6 +21,8 @@ from ..helpers import (
     call_service,
     get_entities,
     grep_ha_log,
+    is_ramses_cc_loaded,
+    wait_for,
     ws_send,
 )
 
@@ -49,10 +51,8 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 2. Inject a packet from an unknown device
         #    04:999999 is not in any known_list or schema
         unknown_device = "04:999999"

@@ -23,7 +23,9 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -68,10 +70,8 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         }
         mismatch_yaml = _yaml.dump(profile, default_flow_style=False, sort_keys=False)
         await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
-        ctx.wait(15, "for profile reload + entity creation")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for profile reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Inject a 1FC9 heartbeat from the FAN so the scan engine tracks
         # 32:150000 and can detect the _class=DIS mismatch.  The profile
         # reload stops all simulator devices, so without this injection the
@@ -110,7 +110,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(3, "for save")
+        ctx.wait(5, "for save")
 
         # Check 1: FAN remote entity should have class_mismatch attribute
         # The remote entity (remote.fan_32_150000) inherits from RamsesEntity

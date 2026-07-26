@@ -23,7 +23,10 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
+    wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
 )
@@ -77,10 +80,8 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             print("  Profile loaded with _commands dict template")
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
-        ctx.wait(15, "for ramses_cc reload with _commands")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # Activate FAN + REM for heartbeats
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (CO2, "CO2")]:
             try:
@@ -95,7 +96,7 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
                 print(f"    {name} activated")
             except RuntimeError:
                 pass
-        ctx.wait(10, "for heartbeats + schema population")
+        wait_for_schema_populated(timeout=15)
 
         # Trigger sync
         try:

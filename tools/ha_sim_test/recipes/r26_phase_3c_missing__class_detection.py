@@ -60,7 +60,7 @@ class R26Phase3cMissingClassDetection(Recipe):
             )
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for scan engine to process 30C9")
+        ctx.wait(5, "for scan engine to process")
 
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")

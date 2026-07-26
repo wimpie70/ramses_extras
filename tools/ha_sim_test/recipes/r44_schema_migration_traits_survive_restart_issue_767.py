@@ -18,7 +18,9 @@ from ..const import CTL
 from ..helpers import (
     get_known_list,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
     ws_send,
 )
 from ..profile import MIXED_SCHEMA, mixed_yaml
@@ -52,10 +54,8 @@ class R44SchemaMigrationTraitsSurviveRestartIssue767(Recipe):
             )
         except (RuntimeError, OSError) as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 2. Verify schema has _alias trait
         schema = get_schema_retry()
         ctl_entry = schema.get(CTL, {})
@@ -90,10 +90,8 @@ class R44SchemaMigrationTraitsSurviveRestartIssue767(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 4. Verify traits survived the restart
         schema_after = get_schema_retry()
         ctl_entry_after = schema_after.get(CTL, {})

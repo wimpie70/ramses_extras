@@ -19,7 +19,9 @@ from ..const import CO2, FAN, REM
 from ..helpers import (
     docker_exec_python,
     get_schema_retry,
+    is_ramses_cc_loaded,
     load_profile_yaml,
+    wait_for,
 )
 from ..profile import mixed_yaml
 
@@ -76,10 +78,8 @@ except ImportError as e:
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait(15, "for ramses_cc reload")
+        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
         ctx.refresh_token()
-        ctx.wait(5, "for ramses_cc to initialize")
-
         # 2. Verify the config entry schema has HVAC structure
         schema = get_schema_retry()
         fan_entry = schema.get(FAN, {})

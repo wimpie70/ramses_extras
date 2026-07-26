@@ -31,6 +31,7 @@ from .helpers import (
     is_ramses_cc_loaded,
     log_section,
     wait,
+    wait_for,
     ws_send,
 )
 from .log_monitor import LogMonitor
@@ -61,17 +62,8 @@ async def setup(ctx: RecipeContext) -> None:
         print(f"  Profile load failed: {e}")
         # Fall back: the profile may already be loaded
 
-    wait(15, "for ramses_cc reload + init + config entry write")
+    wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload + init")
     ctx.refresh_token()
-    # Event-driven: wait for ramses_cc to be loaded instead of fixed 5s
-    from .helpers import wait_for as _wait_for
-
-    _wait_for(
-        is_ramses_cc_loaded,
-        timeout=15,
-        interval=2,
-        msg="for ramses_cc to initialize",
-    )
 
     # Activate devices via websocket (faster — uses profile config)
     for dev_id, name in [
@@ -99,12 +91,9 @@ async def setup(ctx: RecipeContext) -> None:
                 print(f"    {name} activate failed: {str(e)[:80]}")
 
     # Event-driven: wait for schema to be populated instead of fixed 10s
-    _wait_for(
-        lambda: len(get_schema_retry(max_tries=1)) > 5,
-        timeout=15,
-        interval=2,
-        msg="for fast heartbeats + schema population (100x speed)",
-    )
+    from .helpers import wait_for_schema_populated
+
+    wait_for_schema_populated(min_keys=5, timeout=15)
 
     # Check schema is populated (retry — profile reload may still be writing)
     schema = get_schema_retry()
