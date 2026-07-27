@@ -154,15 +154,29 @@ async def ws_send(token: str, msg: dict) -> dict:
 
     uri = get_current_instance().ws_url
     async with aiohttp.ClientSession() as session:
-        async with session.ws_connect(uri) as ws:
+        async with session.ws_connect(uri, timeout=30, receive_timeout=30) as ws:
+
+            async def _recv_json() -> dict:
+                """Receive a JSON message, handling CLOSE frames gracefully."""
+                import json
+
+                resp = await ws.receive(timeout=30)
+                if resp.type == aiohttp.WSMsgType.CLOSE:
+                    raise RuntimeError(f"WebSocket closed by server (code={resp.data})")
+                if resp.type in (aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED):
+                    raise RuntimeError("WebSocket closed unexpectedly")
+                if resp.type != aiohttp.WSMsgType.TEXT:
+                    raise RuntimeError(f"Unexpected WS message type: {resp.type}")
+                return json.loads(resp.data)
+
             # Wait for auth_required
-            auth_req = await ws.receive_json()
+            auth_req = await _recv_json()
             if auth_req["type"] != "auth_required":
                 raise RuntimeError(f"Expected auth_required, got {auth_req}")
 
             # Send auth
             await ws.send_json({"type": "auth", "access_token": token})
-            auth_resp = await ws.receive_json()
+            auth_resp = await _recv_json()
             if auth_resp["type"] != "auth_ok":
                 raise RuntimeError(f"Auth failed: {auth_resp}")
 
@@ -174,18 +188,7 @@ async def ws_send(token: str, msg: dict) -> dict:
             # HA may close the websocket (e.g. during a reload) — handle
             # CLOSE frames gracefully instead of raising WSMessageTypeError.
             while True:
-                resp = await ws.receive(timeout=30)
-                if resp.type == aiohttp.WSMsgType.CLOSE:
-                    raise RuntimeError(f"WebSocket closed by server (code={resp.data})")
-                if resp.type == aiohttp.WSMsgType.CLOSING:
-                    raise RuntimeError("WebSocket closing")
-                if resp.type == aiohttp.WSMsgType.CLOSED:
-                    raise RuntimeError("WebSocket closed unexpectedly")
-                if resp.type != aiohttp.WSMsgType.TEXT:
-                    raise RuntimeError(f"Unexpected WS message type: {resp.type}")
-                import json
-
-                data = json.loads(resp.data)
+                data = await _recv_json()
                 if data.get("type") == "result" and data.get("id") == 1:
                     if not data.get("success", False):
                         raise RuntimeError(f"WS error: {data.get('error', data)}")
