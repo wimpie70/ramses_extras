@@ -16,6 +16,7 @@ from ..helpers import (
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -44,7 +45,7 @@ class R01ActivateHeatProfileVerifySchemaEntitiesA(Recipe):
         # Load heat_only profile via load_profile_yaml (no docker restart)
         print("  Loading heat_only profile via load_profile_yaml...")
         heat_kl = {
-            HGI: {"class": "HGI"},
+            get_current_instance().hgi_id: {"class": "HGI"},
             CTL: {"class": "CTL"},
             "04:150000": {"class": "TRV"},
             DHW: {"class": "DHW"},

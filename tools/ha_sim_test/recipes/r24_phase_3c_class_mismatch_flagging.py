@@ -29,7 +29,7 @@ from ..helpers import (
     write_ramses_storage,
     ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
+from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl, mixed_yaml
 
 
 class R24Phase3cClassMismatchFlagging(Recipe):
@@ -59,7 +59,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         # known_list, defeating the purpose of the mismatch test.
         import yaml as _yaml
 
-        mismatch_kl = dict(MIXED_KL)
+        mismatch_kl = get_mixed_kl()
         fan_kl = dict(mismatch_kl.get(FAN, {}))
         fan_kl.pop("class", None)
         mismatch_kl[FAN] = fan_kl

@@ -12,6 +12,7 @@ Usage::
 
     python3 -m ha_sim_test              # run all recipes
     python3 -m ha_sim_test R06 R29      # run specific recipes only
+    python3 -m ha_sim_test --parallel 2 # run across 2 containers
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import sys
 import time
 
 from .base import RecipeContext
-from .const import CO2, CTL, FAN, REM, TRV
+from .const import InstanceConfig, make_instances
 from .helpers import (
     delete_test_profiles,
     get_known_list,
@@ -30,6 +31,7 @@ from .helpers import (
     is_ha_ready,
     is_ramses_cc_loaded,
     log_section,
+    set_current_instance,
     wait,
     wait_for,
     ws_send,
@@ -43,35 +45,64 @@ REPORT_PATH = "/tmp/ha_sim_test_log_report.txt"
 
 async def setup(ctx: RecipeContext) -> None:
     """Authenticate, load the mixed profile, and activate devices."""
-    ctx.log_section("Setup: Load mixed profile (100x speed, heat + HVAC)")
+    inst = ctx.instance
+    ctx.log_section(
+        f"Setup [{inst.name}]: Load mixed profile (100x speed, heat + HVAC)"
+    )
+    print(f"  Target: {inst.ha_url} (container: {inst.name}, hgi: {inst.hgi_id})")
     print("  Loading mixed profile via websocket...")
-    try:
-        result = await ws_send(
-            ctx.token,
-            {
-                "type": "ramses_extras/device_simulator/load_profile",
-                "profile": "mixed",
-                "speed": 0.01,  # 100x faster heartbeats
-                "preload_schema": True,
-                "reload_ramses_cc": True,  # Reload to pick up new known_list
-                "enable_auto_answer": True,
-            },
-        )
-        print(f"  Profile loaded: {result.get('actions', [])[:3]}")
-    except RuntimeError as e:
-        print(f"  Profile load failed: {e}")
-        # Fall back: the profile may already be loaded
+    # ramses_extras websocket commands may not be registered yet on a cold
+    # start (takes ~60s after HA is ready).  Retry with backoff.
+    profile_loaded = False
+    for attempt in range(10):
+        try:
+            result = await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/load_profile",
+                    "profile": "mixed",
+                    "speed": 0.01,  # 100x faster heartbeats
+                    "preload_schema": True,
+                    "reload_ramses_cc": True,  # Reload to pick up new known_list
+                    "enable_auto_answer": True,
+                },
+            )
+            print(f"  Profile loaded: {result.get('actions', [])[:3]}")
+            profile_loaded = True
+            break
+        except RuntimeError as e:
+            err = str(e)
+            if "unknown_command" in err:
+                # ramses_extras not ready yet — wait and retry
+                if attempt < 9:
+                    import asyncio as _asyncio
+
+                    delay = min(5 + attempt * 5, 15)  # 5,10,15,15,15,...
+                    print(
+                        f"  ramses_extras not ready (attempt {attempt + 1}), "
+                        f"retrying in {delay}s..."
+                    )
+                    await _asyncio.sleep(delay)
+                    ctx.refresh_token()
+                    continue
+            print(f"  Profile load attempt {attempt + 1} failed: {err}")
+            if attempt < 9:
+                import asyncio as _asyncio
+
+                await _asyncio.sleep(2)
+    if not profile_loaded:
+        print("  Profile load failed after retries — using existing profile")
 
     wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload + init")
     ctx.refresh_token()
 
     # Activate devices via websocket (faster — uses profile config)
     for dev_id, name in [
-        (CTL, "CTL"),
-        (TRV, "TRV"),
-        (FAN, "FAN"),
-        (REM, "REM"),
-        (CO2, "CO2"),
+        (inst.ctl, "CTL"),
+        (inst.trv, "TRV"),
+        (inst.fan, "FAN"),
+        (inst.rem, "REM"),
+        (inst.co2, "CO2"),
     ]:
         print(f"  Activating {name} {dev_id}...")
         try:
@@ -203,12 +234,19 @@ async def teardown(
         sys.exit(0)
 
 
-async def run(recipe_ids: list[str] | None = None) -> None:
-    """Run the full test suite.
+async def run(
+    recipe_ids: list[str] | None = None,
+    *,
+    instance: InstanceConfig | None = None,
+) -> None:
+    """Run the full test suite on a single container.
 
     :param recipe_ids: If given, run only these recipe ids (in seq order).
                        If None, run all registered recipes.
+    :param instance: Instance config (container name, port, URLs).  Defaults
+                     to the standard ``ha-sim`` instance (backward compatible).
     """
+    inst = instance or InstanceConfig.default()
     suite_start_mono = time.monotonic()
     suite_start_wall = time.time()
 
@@ -229,13 +267,14 @@ async def run(recipe_ids: list[str] | None = None) -> None:
         recipes = REGISTRY.sorted()
 
     # Authenticate
-    print("Authenticating to ha-sim...")
+    print(f"Authenticating to {inst.name} ({inst.ha_url})...")
+    set_current_instance(inst)
     token = get_token()
     print(f"Token acquired: {token[:30]}...")
 
-    # Build context
+    # Build context (sets contextvar via __post_init__)
     log_monitor = LogMonitor()
-    ctx = RecipeContext(token=token, log_monitor=log_monitor)
+    ctx = RecipeContext(token=token, log_monitor=log_monitor, instance=inst)
 
     # Start log monitor — captures baseline for error/warning detection
     log_monitor.start()

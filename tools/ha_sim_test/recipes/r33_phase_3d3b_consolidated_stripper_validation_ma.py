@@ -9,6 +9,7 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW, FAN, HGI, REM
 from ..helpers import (
     call_service,
+    get_current_instance,
     get_entities,
     get_schema_retry,
     is_ramses_cc_loaded,
@@ -17,7 +18,7 @@ from ..helpers import (
     wait_for_schema_populated,
     ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA
+from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl
 
 
 class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
@@ -87,7 +88,7 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
         schema_r33[disabled_trv] = {"_disabled": True, "_class": "TRV"}
 
         # Build the profile
-        kl_r33 = dict(MIXED_KL)
+        kl_r33 = get_mixed_kl()
         kl_r33[trait_only_hvac] = {"class": "HUM"}
         kl_r33[disabled_trv] = {"class": "TRV"}
         import yaml as _yaml
@@ -164,7 +165,7 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "grep",
                 "Schema passed to ramses_rf",
                 "/config/home-assistant.log",
@@ -262,7 +263,7 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "grep",
                 r"ERROR.*schema\|ERROR.*validation\|ERROR.*SCH_GLOBAL\|"
                 r"ERROR.*PREVENT_EXTRA\|ERROR.*invalid.*key",

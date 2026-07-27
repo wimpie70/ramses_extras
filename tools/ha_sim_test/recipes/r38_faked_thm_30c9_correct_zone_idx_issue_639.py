@@ -27,6 +27,7 @@ from ..const import CTL
 from ..helpers import (
     call_service,
     clear_cached_state,
+    get_current_instance,
     get_entities,
     is_ha_ready,
     is_ramses_cc_loaded,
@@ -34,7 +35,7 @@ from ..helpers import (
     wait_for,
     ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
+from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl, mixed_yaml
 
 
 class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
@@ -62,7 +63,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
         fake_temp = 22.0
 
         # Build a known_list with faked: true on the sensor
-        faked_kl = dict(MIXED_KL)
+        faked_kl = get_mixed_kl()
         faked_kl[sensor_id] = {"class": "THM", "faked": True}
 
         # Build a schema with the sensor faked
@@ -175,7 +176,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "bash",
                 "-c",
                 f"grep 'Simulator received.*{sensor_id}.*30C9' "

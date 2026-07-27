@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL, FAN, HGI, REM
-from ..helpers import docker_exec_python, wait_for
+from ..helpers import docker_exec_python, get_current_instance, wait_for
 
 
 class R55ConversationManagerIssue921(Recipe):
@@ -37,6 +37,7 @@ class R55ConversationManagerIssue921(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 55: L7 ConversationManager (PR 920)")
 
+        hgi_id = get_current_instance().hgi_id
         code = f"""
 import asyncio
 import json
@@ -82,7 +83,7 @@ try:
     results["cm_pending_count_init"] = cm.pending_count
 
     # ── 3. track_intent registers a pending conversation ──────────────
-    src = Address("{HGI}")
+    src = Address("{hgi_id}")
     dst = Address("{CTL}")
     intent = Command(
         src=src,

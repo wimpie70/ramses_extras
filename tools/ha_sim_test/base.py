@@ -41,7 +41,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from .helpers import get_token
+from .const import InstanceConfig
+from .helpers import get_token, set_current_instance
 from .helpers import log_section as _log_section
 from .helpers import wait_for as _wait_for
 
@@ -58,10 +59,18 @@ class RecipeContext:
     recipes are self-contained.  ``token`` is mutable and refreshed via
     :meth:`refresh_token` (e.g. after a ramses_cc reload).  ``log_monitor``
     is the :class:`~.log_monitor.LogMonitor` instance shared across recipes.
+
+    ``instance`` carries the :class:`InstanceConfig` for the container this
+    context is bound to.  On construction it is propagated to the
+    :mod:`.helpers` contextvar so that all module-level helper functions
+    (``get_schema()``, ``call_service()``, ``docker exec``, etc.) target
+    the correct container.
     """
 
     token: str = ""
     log_monitor: Any = None
+    # Per-instance configuration (container name, port, URLs, device IDs)
+    instance: InstanceConfig = field(default_factory=InstanceConfig.default)
     # Cross-recipe shared state (e.g. faked_rem_id set by R18, read by R20)
     shared: dict[str, Any] = field(default_factory=dict)
     # Check accounting
@@ -70,6 +79,10 @@ class RecipeContext:
     results: list[str] = field(default_factory=list)
     # Per-recipe accounting: {recipe_id: {"passed": N, "failed": N, "duration": float}}
     recipe_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Propagate ``instance`` to the helpers contextvar."""
+        set_current_instance(self.instance)
 
     # -- token -----------------------------------------------------------
     def refresh_token(self) -> str:

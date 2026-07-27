@@ -3,10 +3,19 @@
 These are module-level functions (not methods on RecipeContext) so recipes
 can import exactly what they need.  Functions that require the current HA
 token take it as an explicit parameter — recipes pass ``ctx.token``.
+
+The target container (name, port, URL, config dir) is determined by the
+current :class:`InstanceConfig` stored in a contextvar.  This is set
+automatically when a :class:`RecipeContext` is constructed (see
+:mod:`.base`), and by the parallel runner when it launches a per-container
+asyncio task.  In single-container mode (``--parallel 1``) the default
+instance (``ha-sim`` on port 8124) is used — identical to pre-parallel
+behaviour.
 """
 
 from __future__ import annotations
 
+import contextvars
 import json
 import subprocess
 import time
@@ -15,7 +24,35 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-from .const import HA_PASS, HA_URL, HA_USER
+from .const import InstanceConfig
+
+# ---------------------------------------------------------------------------
+# Current instance contextvar — asyncio-safe per-task instance selection
+# ---------------------------------------------------------------------------
+_current_instance: contextvars.ContextVar[InstanceConfig | None] = (
+    contextvars.ContextVar("ha_sim_instance", default=None)
+)
+
+
+def set_current_instance(
+    inst: InstanceConfig,
+) -> contextvars.Token[InstanceConfig | None]:
+    """Set the current instance for this asyncio task/thread.
+
+    Returns a token that can be used to restore the previous value.
+    The parallel runner calls this at the start of each per-container task.
+    """
+    return _current_instance.set(inst)
+
+
+def get_current_instance() -> InstanceConfig:
+    """Return the current instance config (from contextvar)."""
+    inst = _current_instance.get()
+    if inst is None:
+        from .const import InstanceConfig
+
+        return InstanceConfig.default()
+    return inst
 
 
 def log_section(title: str) -> None:
@@ -29,15 +66,17 @@ def log_section(title: str) -> None:
 # ---------------------------------------------------------------------------
 def get_token() -> str:
     """Authenticate and return a bearer token."""
+    inst = get_current_instance()
+    ha_url = inst.ha_url
     data = json.dumps(
         {
-            "client_id": HA_URL + "/",
+            "client_id": ha_url + "/",
             "handler": ["homeassistant", None],
-            "redirect_uri": HA_URL + "/",
+            "redirect_uri": ha_url + "/",
         }
     ).encode()
     req = urllib.request.Request(
-        HA_URL + "/auth/login_flow",
+        ha_url + "/auth/login_flow",
         data=data,
         headers={"Content-Type": "application/json"},
     )
@@ -45,23 +84,23 @@ def get_token() -> str:
 
     data = json.dumps(
         {
-            "client_id": HA_URL + "/",
-            "username": HA_USER,
-            "password": HA_PASS,
+            "client_id": ha_url + "/",
+            "username": inst.ha_user,
+            "password": inst.ha_pass,
         }
     ).encode()
     req = urllib.request.Request(
-        f"{HA_URL}/auth/login_flow/{flow_id}",
+        f"{ha_url}/auth/login_flow/{flow_id}",
         data=data,
         headers={"Content-Type": "application/json"},
     )
     auth_code = json.loads(urllib.request.urlopen(req).read())["result"]
 
     data = (
-        f"grant_type=authorization_code&code={auth_code}&client_id={HA_URL}/"
+        f"grant_type=authorization_code&code={auth_code}&client_id={ha_url}/"
     ).encode()
     req = urllib.request.Request(
-        HA_URL + "/auth/token",
+        ha_url + "/auth/token",
         data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -76,7 +115,8 @@ def call_service(
     Retries up to 3 times with 5s backoff for transient connection errors
     (HA may be restarting after a profile reload).
     """
-    url = f"{HA_URL}/api/services/{domain}/{service}"
+    ha_url = get_current_instance().ha_url
+    url = f"{ha_url}/api/services/{domain}/{service}"
     body = json.dumps(data or {}).encode()
 
     for attempt in range(3):
@@ -112,7 +152,7 @@ async def ws_send(token: str, msg: dict) -> dict:
     """Send a websocket message and return the response."""
     import aiohttp
 
-    uri = "ws://localhost:8124/api/websocket"
+    uri = get_current_instance().ws_url
     async with aiohttp.ClientSession() as session:
         async with session.ws_connect(uri) as ws:
             # Wait for auth_required
@@ -130,13 +170,26 @@ async def ws_send(token: str, msg: dict) -> dict:
             msg_with_id = {"id": 1, **msg}
             await ws.send_json(msg_with_id)
 
-            # Read responses until we get our result
+            # Read responses until we get our result.
+            # HA may close the websocket (e.g. during a reload) — handle
+            # CLOSE frames gracefully instead of raising WSMessageTypeError.
             while True:
-                resp = await ws.receive_json()
-                if resp.get("type") == "result" and resp.get("id") == 1:
-                    if not resp.get("success", False):
-                        raise RuntimeError(f"WS error: {resp.get('error', resp)}")
-                    return resp.get("result", {})
+                resp = await ws.receive(timeout=30)
+                if resp.type == aiohttp.WSMsgType.CLOSE:
+                    raise RuntimeError(f"WebSocket closed by server (code={resp.data})")
+                if resp.type == aiohttp.WSMsgType.CLOSING:
+                    raise RuntimeError("WebSocket closing")
+                if resp.type == aiohttp.WSMsgType.CLOSED:
+                    raise RuntimeError("WebSocket closed unexpectedly")
+                if resp.type != aiohttp.WSMsgType.TEXT:
+                    raise RuntimeError(f"Unexpected WS message type: {resp.type}")
+                import json
+
+                data = json.loads(resp.data)
+                if data.get("type") == "result" and data.get("id") == 1:
+                    if not data.get("success", False):
+                        raise RuntimeError(f"WS error: {data.get('error', data)}")
+                    return data.get("result", {})
 
 
 async def load_profile_yaml(
@@ -209,7 +262,7 @@ async def delete_test_profiles(token: str) -> int:
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "python3",
                 "-c",
                 """
@@ -253,7 +306,13 @@ def get_schema() -> dict:
     to wait for it to be populated.
     """
     result = subprocess.run(
-        ["docker", "exec", "ha-sim", "cat", "/config/.storage/core.config_entries"],
+        [
+            "docker",
+            "exec",
+            get_current_instance().name,
+            "cat",
+            "/config/.storage/core.config_entries",
+        ],
         capture_output=True,
         text=True,
     )
@@ -305,7 +364,13 @@ def get_known_list() -> dict:
     in coordinator.py produces.
     """
     result = subprocess.run(
-        ["docker", "exec", "ha-sim", "cat", "/config/.storage/core.config_entries"],
+        [
+            "docker",
+            "exec",
+            get_current_instance().name,
+            "cat",
+            "/config/.storage/core.config_entries",
+        ],
         capture_output=True,
         text=True,
     )
@@ -390,7 +455,13 @@ def get_known_list() -> dict:
 def get_ramses_storage() -> dict:
     """Read .storage/ramses_cc directly from the container."""
     result = subprocess.run(
-        ["docker", "exec", "ha-sim", "cat", "/config/.storage/ramses_cc"],
+        [
+            "docker",
+            "exec",
+            get_current_instance().name,
+            "cat",
+            "/config/.storage/ramses_cc",
+        ],
         capture_output=True,
         text=True,
     )
@@ -414,9 +485,10 @@ def write_ramses_storage(data: dict) -> bool:
     # Try docker exec first (works if container is running); fall back to the
     # host bind-mount path (needed when the container is stopped, since
     # `docker exec` requires a running container).
-    storage_path = "/home/willem/docker_files/ha-sim/config/.storage/ramses_cc"
+    inst = get_current_instance()
+    storage_path = f"{inst.storage_path}/ramses_cc"
     result = subprocess.run(
-        ["docker", "exec", "ha-sim", "cat", "/config/.storage/ramses_cc"],
+        ["docker", "exec", inst.name, "cat", "/config/.storage/ramses_cc"],
         capture_output=True,
         text=True,
     )
@@ -436,13 +508,13 @@ def write_ramses_storage(data: dict) -> bool:
         content = result.stdout
     envelope = json.loads(content)
     envelope["data"] = data
-    tmp_path = "/tmp/ramses_cc_storage.json"
+    tmp_path = f"/tmp/ramses_cc_storage_{inst.name}.json"
     with open(tmp_path, "w") as f:
         json.dump(envelope, f, indent=2)
     # Try docker cp first; if the container is stopped, write directly to the
     # host bind-mount path (HA will pick up the file on next start).
     cp = subprocess.run(
-        ["docker", "cp", tmp_path, "ha-sim:/config/.storage/ramses_cc"],
+        ["docker", "cp", tmp_path, f"{inst.name}:/config/.storage/ramses_cc"],
         capture_output=True,
         text=True,
     )
@@ -478,7 +550,13 @@ def find_battery_entity(entities: list, device_id: str) -> dict | None:
 def _get_ramses_cc_entry_id() -> str:
     """Get the config entry ID for ramses_cc from .storage."""
     result = subprocess.run(
-        ["docker", "exec", "ha-sim", "cat", "/config/.storage/core.config_entries"],
+        [
+            "docker",
+            "exec",
+            get_current_instance().name,
+            "cat",
+            "/config/.storage/core.config_entries",
+        ],
         capture_output=True,
         text=True,
     )
@@ -498,7 +576,7 @@ def get_entities(token: str) -> list:
     prefix to narrow matches to ramses_cc entities (e.g. "trv_", "ctl_").
     """
     req = urllib.request.Request(
-        HA_URL + "/api/states",
+        get_current_instance().ha_url + "/api/states",
         headers={"Authorization": f"Bearer {token}"},
     )
     return json.loads(urllib.request.urlopen(req).read())
@@ -616,7 +694,7 @@ def wait_for_entity_state(
 
     def _check() -> bool:
         req = urllib.request.Request(
-            f"{HA_URL}/api/states/{entity_id}",
+            f"{get_current_instance().ha_url}/api/states/{entity_id}",
             headers={"Authorization": f"Bearer {token}"},
         )
         try:
@@ -672,17 +750,18 @@ def grep_ha_log(pattern: str, since_lines: int = 0) -> list[str]:
     :param since_lines: If >0, only search the last N lines of the log.
     :return: List of matching log lines (stripped).
     """
+    inst = get_current_instance()
     if since_lines > 0:
         cmd = [
             "docker",
             "exec",
-            "ha-sim",
+            inst.name,
             "bash",
             "-c",
             f"tail -n {since_lines} /config/home-assistant.log | grep -iE '{pattern}'",
         ]
     else:
-        cmd = ["docker", "exec", "ha-sim", "grep", "-iE", pattern]
+        cmd = ["docker", "exec", inst.name, "grep", "-iE", pattern]
         cmd += ["/config/home-assistant.log"]
     result = subprocess.run(
         cmd,
@@ -708,7 +787,7 @@ def docker_exec_python(code: str, timeout: int = 30) -> dict:
     cmd = [
         "docker",
         "exec",
-        "ha-sim",
+        get_current_instance().name,
         "python3",
         "-c",
         code,
@@ -745,7 +824,7 @@ def is_ha_ready() -> bool:
     401) means the server is up — a connection refused means it's not.
     """
     try:
-        req = urllib.request.Request(HA_URL + "/api/")
+        req = urllib.request.Request(get_current_instance().ha_url + "/api/")
         urllib.request.urlopen(req, timeout=5)
         return True  # 200 (rare for /api/ without auth)
     except urllib.error.HTTPError as e:
@@ -761,6 +840,28 @@ def is_ramses_cc_loaded() -> bool:
     return bool(schema)
 
 
+def is_ramses_extras_ready() -> bool:
+    """Check if ramses_extras websocket commands are registered.
+
+    During a cold start, ramses_extras takes ~60s to load after HA is ready.
+    The ``device_simulator`` websocket commands are only available once
+    ramses_extras' websocket_integration setup completes.
+    """
+    inst = get_current_instance()
+    # HA logs go to stderr; check the full log for the setup-complete line
+    result = subprocess.run(
+        ["docker", "logs", inst.name],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        return False
+    # docker logs output goes to stderr
+    logs = result.stderr or ""
+    return "WebSocket integration setup complete" in logs
+
+
 def clear_cached_state(
     log_monitor: Any = None,
     label: str = "",
@@ -771,29 +872,30 @@ def clear_cached_state(
     any recipe that needs to eliminate cached state from previous tests).
 
     1. ``capture_before_restart`` (if log_monitor given) to save logs.
-    2. ``docker stop ha-sim``
+    2. ``docker stop <instance>``
     3. Delete ``.storage/ramses_cc`` (client state cache).
     4. Delete ``ramses.db`` (message database — replays old packets).
     5. Clear CONF_SCHEMA from ``core.config_entries`` (config entry options).
-    6. ``docker start ha-sim`` (caller then waits for readiness).
+    6. ``docker start <instance>`` (caller then waits for readiness).
     """
     import os
 
+    inst = get_current_instance()
     if log_monitor is not None:
         log_monitor.capture_before_restart(label)
 
-    subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
+    subprocess.run(["docker", "stop", inst.name], capture_output=True)
     time.sleep(2)
 
     # Delete .storage/ramses_cc (client state cache)
-    storage_path = "/home/willem/docker_files/ha-sim/config/.storage/ramses_cc"
+    storage_path = f"{inst.storage_path}/ramses_cc"
     if os.path.exists(storage_path):
         os.remove(storage_path)
 
     # Delete ramses.db (message database — replays old packets)
     for db_path in (
-        "/home/willem/docker_files/ha-sim/config/ramses.db",
-        "/home/willem/docker_files/ha-sim/config/ramses_rf/ramses.db",
+        f"{inst.config_dir}/ramses.db",
+        f"{inst.config_dir}/ramses_rf/ramses.db",
     ):
         if os.path.exists(db_path):
             os.remove(db_path)
@@ -803,9 +905,7 @@ def clear_cached_state(
     # directly from the host.  The container is stopped, so docker exec
     # won't work either.  Use a temporary python container with the config
     # volume mounted to modify the file.
-    ce_path_host = (
-        "/home/willem/docker_files/ha-sim/config/.storage/core.config_entries"
-    )
+    ce_path_host = f"{inst.storage_path}/core.config_entries"
     if os.path.exists(ce_path_host):
         subprocess.run(
             [
@@ -813,7 +913,7 @@ def clear_cached_state(
                 "run",
                 "--rm",
                 "-v",
-                "/home/willem/docker_files/ha-sim/config:/config",
+                f"{inst.config_dir}:/config",
                 "python:3.12-slim",
                 "python3",
                 "-c",
@@ -831,4 +931,4 @@ def clear_cached_state(
             timeout=30,
         )
 
-    subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
+    subprocess.run(["docker", "start", inst.name], capture_output=True)

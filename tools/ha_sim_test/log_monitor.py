@@ -180,8 +180,17 @@ class LogMonitor:
 
     def _get_log_timestamp(self) -> str:
         """Get the timestamp of the most recent log line."""
+        from .helpers import get_current_instance
+
         result = subprocess.run(
-            ["docker", "logs", "ha-sim", "--tail", "1", "--timestamps"],
+            [
+                "docker",
+                "logs",
+                get_current_instance().name,
+                "--tail",
+                "1",
+                "--timestamps",
+            ],
             capture_output=True,
             text=True,
             timeout=10,
@@ -273,10 +282,19 @@ class LogMonitor:
 
     def _fetch_logs(self, since: str) -> str:
         """Fetch ha-sim logs since a timestamp."""
+        from .helpers import get_current_instance
+
         if not since:
             return ""
         result = subprocess.run(
-            ["docker", "logs", "ha-sim", "--since", since, "--timestamps"],
+            [
+                "docker",
+                "logs",
+                get_current_instance().name,
+                "--since",
+                since,
+                "--timestamps",
+            ],
             capture_output=True,
             text=True,
             timeout=30,

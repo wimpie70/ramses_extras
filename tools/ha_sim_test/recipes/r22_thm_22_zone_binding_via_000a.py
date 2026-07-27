@@ -16,6 +16,7 @@ from ..helpers import (
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -65,7 +66,7 @@ class R22Thm22ZoneBindingVia000a(Recipe):
         # THMs send RQ 000A with just the zone_idx (2 hex) as payload.
         # The dst must be a valid device (not --:------) to avoid PacketInvalid.
         thm_r22 = "22:200001"
-        hgi_r22 = HGI  # 18:001234 (the only known device in fresh_start)
+        hgi_r22 = get_current_instance().hgi_id  # the only known device
         print(f"  Injecting RQ 000A from THM {thm_r22} to {hgi_r22} with zone 01...")
         try:
             call_service(

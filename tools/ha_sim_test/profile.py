@@ -5,10 +5,10 @@ Matches the built-in "mixed" profile from system_config.py.
 
 from __future__ import annotations
 
-from .const import CO2, CTL, DHW, FAN, REM
+from .const import CO2, CTL, DHW, FAN, HGI, REM
 
-MIXED_KL = {
-    "18:001234": {"class": "HGI"},
+_MIXED_KL_BASE = {
+    HGI: {"class": "HGI"},
     "32:150000": {"class": "FAN"},
     "37:120000": {"class": "CO2"},
     "37:170000": {"class": "REM"},
@@ -18,8 +18,28 @@ MIXED_KL = {
     "04:150000": {"class": "TRV"},
 }
 for _i in range(3, 9):
-    MIXED_KL[f"01:15000{_i}"] = {"class": "CTL"}
-    MIXED_KL[f"04:15000{_i}"] = {"class": "TRV"}
+    _MIXED_KL_BASE[f"01:15000{_i}"] = {"class": "CTL"}
+    _MIXED_KL_BASE[f"04:15000{_i}"] = {"class": "TRV"}
+
+# Kept for backward compatibility — recipes that import MIXED_KL should
+# migrate to get_mixed_kl() for instance-aware HGI IDs.
+MIXED_KL = _MIXED_KL_BASE
+
+
+def get_mixed_kl() -> dict:
+    """Return a copy of MIXED_KL with the current instance's HGI ID.
+
+    On instance 1 (ha-sim, HGI=18:001234) this is identical to ``MIXED_KL``.
+    On parallel instances, the HGI key is replaced with the instance's HGI ID.
+    """
+    from .helpers import get_current_instance
+
+    hgi_id = get_current_instance().hgi_id
+    kl = dict(_MIXED_KL_BASE)
+    if hgi_id != HGI and HGI in kl:
+        kl[hgi_id] = kl.pop(HGI)
+    return kl
+
 
 _MIXED_ZONES = {}
 for _i in range(3, 9):
@@ -64,7 +84,7 @@ def mixed_yaml(schema_override: dict | None = None) -> str:
     if schema_override:
         schema.update(schema_override)
     profile = {
-        "known_list": dict(MIXED_KL),
+        "known_list": get_mixed_kl(),
         "_enforce_known_list": {"enabled": True},
         "_schema": schema,
     }

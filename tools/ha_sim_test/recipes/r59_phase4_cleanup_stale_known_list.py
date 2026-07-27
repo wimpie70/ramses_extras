@@ -27,7 +27,7 @@ import subprocess
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL
-from ..helpers import get_schema_retry, is_ha_ready, wait_for
+from ..helpers import get_current_instance, get_schema_retry, is_ha_ready, wait_for
 
 
 class R59Phase4CleanupStaleKnownList(Recipe):
@@ -43,7 +43,7 @@ class R59Phase4CleanupStaleKnownList(Recipe):
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "cat",
                 "/config/.storage/core.config_entries",
             ],
@@ -75,7 +75,9 @@ class R59Phase4CleanupStaleKnownList(Recipe):
         # Step 2: Stop ha-sim so we can safely modify .storage
         ctx.log_monitor.capture_before_restart("R59 pre-restart")
         print("  Stopping ha-sim to inject stale keys...")
-        subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
+        subprocess.run(
+            ["docker", "stop", get_current_instance().name], capture_output=True
+        )
         ctx.wait(2, "for container to stop")
 
         # Step 3: Inject stale known_list + enforce_known_list into options
@@ -108,7 +110,7 @@ class R59Phase4CleanupStaleKnownList(Recipe):
                 "docker",
                 "cp",
                 tmp_path,
-                "ha-sim:/config/.storage/core.config_entries",
+                f"{get_current_instance().name}:/config/.storage/core.config_entries",
             ],
             capture_output=True,
             text=True,
@@ -122,14 +124,18 @@ class R59Phase4CleanupStaleKnownList(Recipe):
         )
         if cp_result.returncode != 0:
             # Restart ha-sim to recover
-            subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
+            subprocess.run(
+                ["docker", "start", get_current_instance().name], capture_output=True
+            )
             wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
             return
 
         # Step 4: Start ha-sim — async_setup_entry will run and call
         # _cleanup_stale_known_list, which should strip the stale keys
         print("  Starting ha-sim (triggers _cleanup_stale_known_list)...")
-        subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
+        subprocess.run(
+            ["docker", "start", get_current_instance().name], capture_output=True
+        )
         wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
@@ -140,7 +146,7 @@ class R59Phase4CleanupStaleKnownList(Recipe):
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "cat",
                 "/config/.storage/core.config_entries",
             ],

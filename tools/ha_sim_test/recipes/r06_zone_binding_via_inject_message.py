@@ -16,6 +16,7 @@ from ..helpers import (
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -64,7 +65,7 @@ class R06ZoneBindingViaInjectMessage(Recipe):
                 "device_simulator_inject_message",
                 {
                     "source_id": CTL,
-                    "dst": HGI,
+                    "dst": get_current_instance().hgi_id,
                     "code": "000C",
                     "payload": inject_payload,
                     "verb": "RP",

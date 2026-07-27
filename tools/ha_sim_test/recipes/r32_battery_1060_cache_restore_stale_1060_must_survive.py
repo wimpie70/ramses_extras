@@ -10,12 +10,13 @@ from datetime import UTC, timedelta
 from datetime import datetime as dt
 
 from ..base import Recipe, RecipeContext
-from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
+from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
     call_service,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -173,7 +174,9 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
         ctx.log_monitor.capture_before_restart("R32 pre-restart")
 
         print("  Stopping ha-sim to write aged .storage/ramses_cc...")
-        subprocess.run(["docker", "stop", "ha-sim"], capture_output=True)
+        subprocess.run(
+            ["docker", "stop", get_current_instance().name], capture_output=True
+        )
         ctx.wait(2, "for container to stop")
 
         wrote = write_ramses_storage(storage_r32)
@@ -184,7 +187,9 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
         )
 
         print("  Starting ha-sim to trigger _restore_cached_packets...")
-        subprocess.run(["docker", "start", "ha-sim"], capture_output=True)
+        subprocess.run(
+            ["docker", "start", get_current_instance().name], capture_output=True
+        )
         wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
