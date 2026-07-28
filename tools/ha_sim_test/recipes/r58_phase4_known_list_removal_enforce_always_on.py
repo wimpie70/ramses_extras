@@ -27,7 +27,7 @@ import subprocess
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW, FAN, HGI, REM, TRV
-from ..helpers import get_known_list, get_schema_retry
+from ..helpers import get_current_instance, get_known_list, get_schema_retry
 
 
 class R58Phase4KnownListRemovalEnforceAlwaysOn(Recipe):
@@ -43,7 +43,7 @@ class R58Phase4KnownListRemovalEnforceAlwaysOn(Recipe):
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "cat",
                 "/config/.storage/core.config_entries",
             ],
@@ -90,7 +90,7 @@ class R58Phase4KnownListRemovalEnforceAlwaysOn(Recipe):
         known = get_known_list()
         ctx.check(
             "HGI in derived known_list",
-            HGI in known,
+            get_current_instance().hgi_id in known,
             f"known_list keys: {list(known.keys())[:10]}",
         )
 
@@ -126,7 +126,7 @@ class R58Phase4KnownListRemovalEnforceAlwaysOn(Recipe):
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "cat",
                 "/config/.storage/ramses_cc_migration_v2_backup",
             ],

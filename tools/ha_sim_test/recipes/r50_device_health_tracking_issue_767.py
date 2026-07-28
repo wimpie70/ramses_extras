@@ -19,8 +19,8 @@ import urllib.request
 
 from ..base import Recipe, RecipeContext
 from ..helpers import (
-    HA_URL,
     docker_exec_python,
+    get_current_instance,
     get_ramses_storage,
     get_schema_retry,
     is_ramses_cc_loaded,
@@ -33,7 +33,13 @@ from ..profile import mixed_yaml
 def _get_entry_id() -> str:
     """Get the ramses_cc config entry ID from .storage."""
     raw = subprocess.check_output(
-        ["docker", "exec", "ha-sim", "cat", "/config/.storage/core.config_entries"],
+        [
+            "docker",
+            "exec",
+            get_current_instance().name,
+            "cat",
+            "/config/.storage/core.config_entries",
+        ],
         text=True,
     )
     data = json.loads(raw)["data"]
@@ -45,7 +51,7 @@ def _get_entry_id() -> str:
 
 def _options_flow_start(token: str, entry_id: str) -> dict:
     """Start an options flow via REST API and return the flow result."""
-    url = f"{HA_URL}/api/config/config_entries/options/flow"
+    url = f"{get_current_instance().ha_url}/api/config/config_entries/options/flow"
     body = json.dumps({"handler": entry_id}).encode()
     req = urllib.request.Request(
         url,
@@ -62,7 +68,10 @@ def _options_flow_start(token: str, entry_id: str) -> dict:
 
 def _options_flow_configure(token: str, flow_id: str, user_input: dict) -> dict:
     """Configure an options flow step via REST API and return the result."""
-    url = f"{HA_URL}/api/config/config_entries/options/flow/{flow_id}"
+    url = (
+        f"{get_current_instance().ha_url}"
+        f"/api/config/config_entries/options/flow/{flow_id}"
+    )
     body = json.dumps(user_input).encode()
     req = urllib.request.Request(
         url,
@@ -299,7 +308,7 @@ except Exception as e:
         import subprocess as sp
 
         sp.run(
-            ["docker", "restart", "ha-sim"],
+            ["docker", "restart", get_current_instance().name],
             check=True,
             capture_output=True,
             timeout=60,

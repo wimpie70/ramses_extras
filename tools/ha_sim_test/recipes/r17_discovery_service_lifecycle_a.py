@@ -10,12 +10,13 @@ from datetime import datetime as dt
 from datetime import timedelta
 
 from ..base import Recipe, RecipeContext
-from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
+from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
     call_service,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -86,7 +87,7 @@ class R17DiscoveryServiceLifecycleA(Recipe):
             import aiohttp
 
             async def _get_disc():
-                uri = "ws://localhost:8124/api/websocket"
+                uri = get_current_instance().ws_url
                 async with aiohttp.ClientSession() as session:
                     async with session.ws_connect(uri) as ws:
                         await ws.receive_json()

@@ -29,7 +29,7 @@ from ..helpers import (
     write_ramses_storage,
     ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
+from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl, mixed_yaml
 
 
 class R25Phase3cFixMismatchNotificationDismissed(Recipe):
@@ -56,7 +56,7 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
         fixed_schema = dict(MIXED_SCHEMA)
         # Add _class from the known_list to every device (skip HGI —
         # check_missing_class skips 18: devices).
-        for dev_id, kl_entry in MIXED_KL.items():
+        for dev_id, kl_entry in get_mixed_kl().items():
             if dev_id.startswith("18:"):
                 continue
             kl_class = kl_entry.get("class")

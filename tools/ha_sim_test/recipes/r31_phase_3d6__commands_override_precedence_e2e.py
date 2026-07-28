@@ -10,12 +10,13 @@ from datetime import datetime as dt
 from datetime import timedelta
 
 from ..base import Recipe, RecipeContext
-from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
+from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
     call_service,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -30,7 +31,7 @@ from ..helpers import (
     write_ramses_storage,
     ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
+from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl, mixed_yaml
 
 
 class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
@@ -66,7 +67,7 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
         schema_r31[FAN] = fan_r31
         schema_r31[REM] = {"_faked": True, "_class": "REM", "_bound": FAN}
         profile_r31 = {
-            "known_list": dict(MIXED_KL),
+            "known_list": get_mixed_kl(),
             "_enforce_known_list": {"enabled": True},
             "_schema": schema_r31,
         }
@@ -181,7 +182,7 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
                 [
                     "docker",
                     "exec",
-                    "ha-sim",
+                    get_current_instance().name,
                     "grep",
                     "Intercepted fan_mode",
                     "/config/home-assistant.log",

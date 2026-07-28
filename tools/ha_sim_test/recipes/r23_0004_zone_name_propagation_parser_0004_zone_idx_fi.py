@@ -10,12 +10,13 @@ from datetime import datetime as dt
 from datetime import timedelta
 
 from ..base import Recipe, RecipeContext
-from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
+from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
     call_service,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -138,7 +139,7 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
         # 2. The simulator's auto-answer sends RP 0004 packets with different
         #    names that arrive after our injected I packet, overriding it in
         #    the scan engine's message store (latest wins).
-        log_url = HA_URL + "/api/error_log"
+        log_url = get_current_instance().ha_url + "/api/error_log"
         req = urllib.request.Request(
             log_url,
             headers={"Authorization": f"Bearer {ctx.token}"},

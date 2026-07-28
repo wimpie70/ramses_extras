@@ -10,12 +10,13 @@ from datetime import datetime as dt
 from datetime import timedelta
 
 from ..base import Recipe, RecipeContext
-from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
+from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
     call_service,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -30,7 +31,7 @@ from ..helpers import (
     write_ramses_storage,
     ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
+from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl, mixed_yaml
 
 
 class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
@@ -60,7 +61,7 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
         # Add the second REM to the schema with _faked + _class
         schema_r30[rem2] = {"_faked": True, "_class": "REM", "_bound": FAN}
         # Also add to known_list
-        kl_r30 = dict(MIXED_KL)
+        kl_r30 = get_mixed_kl()
         kl_r30[rem2] = {"class": "REM"}
         # _mixed_yaml uses MIXED_KL internally, so we need a custom YAML
         import yaml as _yaml
@@ -166,7 +167,7 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
             [
                 "docker",
                 "exec",
-                "ha-sim",
+                get_current_instance().name,
                 "grep",
                 "-i",
                 "bound",

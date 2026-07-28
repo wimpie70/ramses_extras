@@ -10,12 +10,13 @@ from datetime import datetime as dt
 from datetime import timedelta
 
 from ..base import Recipe, RecipeContext
-from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
+from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
     call_service,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -64,7 +65,7 @@ class R10InvalidMainTcsSafetyNet(Recipe):
 
         # Check logs for sanitisation warning
         log_result = subprocess.run(
-            ["docker", "logs", "ha-sim", "--since", "30s"],
+            ["docker", "logs", get_current_instance().name, "--since", "30s"],
             capture_output=True,
             text=True,
         )

@@ -10,12 +10,13 @@ from datetime import datetime as dt
 from datetime import timedelta
 
 from ..base import Recipe, RecipeContext
-from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
+from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
     call_service,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -46,7 +47,9 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
         ctx.log_monitor.capture_before_restart("R7b pre-restart")
 
         print("  Restarting ha-sim...")
-        subprocess.run(["docker", "restart", "ha-sim"], capture_output=True)
+        subprocess.run(
+            ["docker", "restart", get_current_instance().name], capture_output=True
+        )
         wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
 
         # Reset log baseline — logs are wiped by the restart

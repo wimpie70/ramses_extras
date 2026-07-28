@@ -16,6 +16,7 @@ from ..helpers import (
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -38,7 +39,12 @@ class R03RemoveDeviceHgiRejection(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 3: remove_device — HGI rejection")
         try:
-            call_service(ctx.token, "ramses_cc", "remove_device", {"device_id": HGI})
+            call_service(
+                ctx.token,
+                "ramses_cc",
+                "remove_device",
+                {"device_id": get_current_instance().hgi_id},
+            )
             ctx.check("HGI removal raises error", False, "(no error raised)")
         except RuntimeError as e:
             ctx.check("HGI removal raises error", True, str(e)[:80])

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -13,8 +14,10 @@ LOGGER: logging.Logger = logging.getLogger(__name__)
 DOMAIN = "device_simulator"
 FEATURE_ID = "device_simulator"
 
-# Simulator HGI (gateway) ID - used for packet routing and identification
-SIMULATOR_HGI_ID = "18:001234"
+# Simulator HGI (gateway) ID - used for packet routing and identification.
+# Overridable via RAMSES_SIM_HGI_ID env var for parallel ha-sim containers
+# (each container needs a unique HGI ID to isolate its MQTT topic namespace).
+SIMULATOR_HGI_ID = os.environ.get("RAMSES_SIM_HGI_ID", "18:001234")
 
 # Simulator topic namespace for MQTT isolation
 SIMULATOR_TOPIC_NS = "RAMSES/GATEWAY_SIM"

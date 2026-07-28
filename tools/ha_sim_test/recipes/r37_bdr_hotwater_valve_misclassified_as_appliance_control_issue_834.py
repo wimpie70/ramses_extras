@@ -50,7 +50,7 @@ from ..helpers import (
     wait_for,
     ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA
+from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl
 
 
 class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
@@ -114,7 +114,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         }
         schema_r37[CTL] = ctl_schema_r37
 
-        kl_r37 = dict(MIXED_KL)
+        kl_r37 = get_mixed_kl()
         kl_r37[otb_id] = {"class": "OTB"}
         kl_r37[bdr_id] = {"class": "BDR"}
         # OTB and BDR must also be in the schema (SSOT mode derives

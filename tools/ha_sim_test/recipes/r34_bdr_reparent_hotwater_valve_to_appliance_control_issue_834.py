@@ -12,6 +12,7 @@ from ..const import CTL, DHW, FAN, HGI, REM
 from ..helpers import (
     call_service,
     clear_cached_state,
+    get_current_instance,
     get_schema_retry,
     is_ha_ready,
     is_ramses_cc_loaded,
@@ -19,7 +20,7 @@ from ..helpers import (
     wait_for,
     ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA
+from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl
 
 
 class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
@@ -89,7 +90,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         ctl_schema_r34["system"] = {}
         schema_r34[CTL] = ctl_schema_r34
 
-        kl_r34 = dict(MIXED_KL)
+        kl_r34 = get_mixed_kl()
         kl_r34[bdr_id] = {"class": "BDR"}
         # Remove the DHW sensor from the known_list — this system has NO DHW,
         # so the DHW sensor should not be present to create a DhwZone
@@ -148,7 +149,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
                 "device_simulator_inject_message",
                 {
                     "source_id": CTL,
-                    "dst": HGI,
+                    "dst": get_current_instance().hgi_id,
                     "code": "000C",
                     "payload": htg_payload,
                     "verb": "RP",
@@ -215,7 +216,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
                 "device_simulator_inject_message",
                 {
                     "source_id": CTL,
-                    "dst": HGI,
+                    "dst": get_current_instance().hgi_id,
                     "code": "000C",
                     "payload": app_payload,
                     "verb": "RP",
