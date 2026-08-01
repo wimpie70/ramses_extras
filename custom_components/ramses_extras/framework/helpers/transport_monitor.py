@@ -143,9 +143,17 @@ class TransportMonitor:
             self._msg_handler_unsub = None
 
         self._client = client
+
+        if client is None:
+            _LOGGER.debug(
+                "_ensure_msg_handler: no client available, "
+                "will retry via _refresh_coordinator"
+            )
+            return
+
         _LOGGER.debug("_ensure_msg_handler: client updated to %s", client)
 
-        add_msg_handler = getattr(client, "add_msg_handler", None) if client else None
+        add_msg_handler = getattr(client, "add_msg_handler", None)
         if callable(add_msg_handler):
             try:
                 self._msg_handler_unsub = add_msg_handler(self._handle_msg)
@@ -155,7 +163,11 @@ class TransportMonitor:
             except Exception as e:
                 _LOGGER.error("Failed to register message handler: %s", e)
         else:
-            _LOGGER.warning("Transport monitor: client has no add_msg_handler method")
+            _LOGGER.warning(
+                "Transport monitor: client %s has no add_msg_handler method "
+                "(ramses_rf may be too old)",
+                type(client).__name__,
+            )
 
     async def _device_timeout_handler(self, device_id: str) -> None:
         """Handle device timeout after 61s with no reply."""
@@ -269,8 +281,8 @@ class TransportMonitor:
 
             client = getattr(self._coordinator, "client", None)
             if client is None:
-                _LOGGER.warning(
-                    "Transport monitor: coordinator has no client, "
+                _LOGGER.info(
+                    "Transport monitor: coordinator has no client yet, "
                     "will retry via _refresh_coordinator"
                 )
             self._ensure_msg_handler(client)

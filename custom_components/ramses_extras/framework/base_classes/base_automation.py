@@ -737,21 +737,36 @@ class ExtrasBaseAutomation(ABC):
     # ==================== TRANSPORT MONITORING ====================
 
     async def _start_transport_monitoring(self) -> None:
-        """Start transport monitoring if ramses_cc is available."""
+        """Start transport monitoring if ramses_cc is available.
+
+        Always starts the monitor loop when a coordinator is found, even if
+        the coordinator's client is not ready yet (common with MQTT
+        transports that connect asynchronously).  The monitor loop calls
+        _refresh_coordinator every 5 s, which will pick up the client once
+        it becomes available and register the message handler at that point.
+        """
         try:
             from ..helpers.ramses_commands import RamsesCommands
 
             commands = RamsesCommands(self.hass)
             coordinator = await commands._get_ramses_cc_coordinator()
 
-            if coordinator and coordinator.client:
+            if coordinator:
                 await self._transport_monitor.start_monitoring(coordinator, self.hass)
-                _LOGGER.info(
-                    "Transport monitoring started for %s automation", self.feature_id
-                )
+                if coordinator.client:
+                    _LOGGER.info(
+                        "Transport monitoring started for %s automation",
+                        self.feature_id,
+                    )
+                else:
+                    _LOGGER.info(
+                        "Transport monitoring loop started for %s automation, "
+                        "waiting for ramses_cc client to become available",
+                        self.feature_id,
+                    )
             else:
                 _LOGGER.debug(
-                    "ramses_cc not available yet, transport monitoring will start later"
+                    "ramses_cc coordinator not found, transport monitoring not started"
                 )
         except Exception as e:
             _LOGGER.debug(

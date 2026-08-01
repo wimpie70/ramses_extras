@@ -86,7 +86,7 @@ async def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
 
 async def _start_transport_monitoring(hass: HomeAssistant) -> None:
     coordinator = await _get_ramses_cc_coordinator(hass)
-    if not coordinator or not getattr(coordinator, "client", None):
+    if not coordinator:
         _LOGGER.debug("ramses_cc coordinator not available for transport monitoring")
         return
 
