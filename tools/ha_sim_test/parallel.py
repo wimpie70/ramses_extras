@@ -824,7 +824,13 @@ async def run_parallel(
     assignments: list[str] | None = None,
     cleanup: bool = False,
 ) -> None:
-    """Run recipes across N containers in parallel."""
+    """Run recipes across N containers in parallel.
+
+    Uses static pre-assignment: recipes are distributed across containers
+    before the run, respecting dependency chains and balancing estimated
+    runtime.  A dynamic work queue was tested but found slower due to
+    resource contention (see comment below).
+    """
     # Discover recipes
     discover_recipes()
     print(f"  Discovered {len(REGISTRY)} recipes")
@@ -868,7 +874,11 @@ async def run_parallel(
     # Start containers
     await ensure_containers(instances)
 
-    # Distribute recipes
+    # Distribute recipes (static pre-assignment)
+    # The dynamic queue was tested and found slower due to resource contention:
+    # when all 4 containers run recipes simultaneously, each recipe takes ~2x
+    # longer (CPU/disk/network).  The static approach lets ha-sim finish early
+    # and reduces contention for the remaining containers.
     groups = distribute_recipes(all_recipe_ids, n_containers, manual_assignments=manual)
     for idx, rids in groups.items():
         inst = instances[idx - 1]
