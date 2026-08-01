@@ -58,7 +58,10 @@ async def test_async_setup_platforms_retries_when_not_loaded(hass) -> None:
         scheduled.append(delay)
         # avoid recursion: mark setup not in progress then invoke callback
         devices._setup_in_progress = False
-        return callback(None)
+        coro = callback(None)
+        # Close the coroutine to avoid "never awaited" warnings
+        coro.close()
+        return MagicMock()
 
     with patch(
         "custom_components.ramses_extras.framework.setup.devices.async_call_later",

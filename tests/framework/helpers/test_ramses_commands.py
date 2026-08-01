@@ -16,7 +16,15 @@ from custom_components.ramses_extras.framework.helpers.ramses_commands import (
 @pytest.fixture
 def hass():
     """Mock Home Assistant."""
-    return MagicMock()
+    hass = MagicMock()
+
+    def _swallow_coro(coro, *args, **kwargs):
+        coro.close()
+        return MagicMock()
+
+    hass.async_create_task = MagicMock(side_effect=_swallow_coro)
+    hass.async_create_background_task = MagicMock(side_effect=_swallow_coro)
+    return hass
 
 
 @pytest.fixture

@@ -12,6 +12,12 @@ from custom_components.ramses_extras.framework.helpers.transport_monitor import 
 )
 
 
+def _swallow_coro(coro, *args, **kwargs):
+    """Side-effect that closes a coroutine to avoid 'never awaited' warnings."""
+    coro.close()
+    return MagicMock()
+
+
 @pytest.fixture
 def monitor():
     """Create a fresh TransportMonitor instance."""
@@ -59,7 +65,7 @@ class TestTransportMonitorCoverage:
     def test_notify_command_sent_starts_timer(self, monitor):
         """Test notify_command_sent starts a timeout timer."""
         hass = MagicMock()
-        hass.async_create_task = MagicMock(return_value=MagicMock())
+        hass.async_create_task = MagicMock(side_effect=_swallow_coro)
         monitor._hass = hass
 
         monitor.notify_command_sent("32_123456")
@@ -84,6 +90,9 @@ class TestTransportMonitorCoverage:
         """Test update_device_message_received cancels timeout timer."""
         hass = MagicMock()
         hass.loop = MagicMock()
+        hass.loop.call_soon_threadsafe = MagicMock(
+            side_effect=lambda func, coro, *a, **kw: coro.close()
+        )
         hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(client=MagicMock())}}
         existing_task = MagicMock()
         existing_task.done.return_value = False
@@ -99,6 +108,11 @@ class TestTransportMonitorCoverage:
         """Test update_device_message_received when no timer exists."""
         hass = MagicMock()
         hass.loop = MagicMock()
+        # call_soon_threadsafe receives async_create_task and a coroutine;
+        # close the coroutine to avoid "never awaited" warnings
+        hass.loop.call_soon_threadsafe = MagicMock(
+            side_effect=lambda func, coro, *a, **kw: coro.close()
+        )
         monitor._hass = hass
 
         # Should not crash
@@ -353,7 +367,9 @@ class TestTransportMonitorCoverage:
         """Test mark_device_offline_immediate."""
         hass = MagicMock()
         monitor._hass = hass
-        hass.loop.call_soon_threadsafe = MagicMock()
+        hass.loop.call_soon_threadsafe = MagicMock(
+            side_effect=lambda func, coro, *a, **kw: coro.close()
+        )
 
         monitor.mark_device_offline_immediate("32_123456")
 
@@ -376,7 +392,9 @@ class TestTransportMonitorCoverage:
         """Test mark_device_offline_immediate cancels existing task."""
         hass = MagicMock()
         monitor._hass = hass
-        hass.loop.call_soon_threadsafe = MagicMock()
+        hass.loop.call_soon_threadsafe = MagicMock(
+            side_effect=lambda func, coro, *a, **kw: coro.close()
+        )
 
         existing_task = MagicMock()
         existing_task.done.return_value = False
@@ -568,6 +586,9 @@ class TestTransportMonitorCoverage:
 
         # Should not crash
         assert monitor._coordinator is coordinator
+
+        # Clean up the monitor task to avoid "never awaited" warnings
+        await monitor.stop_monitoring()
 
     @pytest.mark.asyncio
     async def test_stop_monitoring_cleanup_event_unsub(self, monitor):

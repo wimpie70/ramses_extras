@@ -747,9 +747,18 @@ class TestAsyncSetupPlatforms:
             async_setup_platforms,
         )
 
+        def _swallow_coro(*args, **kwargs):
+            # async_call_later(hass, delay, callback) — close the coroutine
+            # callback to avoid "never awaited" warnings
+            callback = args[2] if len(args) > 2 else kwargs.get("action")
+            if callback is not None and hasattr(callback, "close"):
+                callback.close()
+            return MagicMock()
+
         hass.config.components = set()  # No ramses_cc
         with patch(
-            "custom_components.ramses_extras.framework.setup.devices.async_call_later"
+            "custom_components.ramses_extras.framework.setup.devices.async_call_later",
+            side_effect=_swallow_coro,
         ) as mock_call_later:
             await async_setup_platforms(hass)
             mock_call_later.assert_called_once()

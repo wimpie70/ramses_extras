@@ -356,7 +356,7 @@ class TestPersistFunctions:
         flow = MagicMock()
         flow.config_entry = MagicMock()
         flow.hass = MagicMock()
-        flow.hass.config_entries.async_update_entry = AsyncMock()
+        flow.hass.config_entries.async_update_entry = MagicMock()
         options = {}
         section = {"area_sensors": [{"area_id": "area1"}]}
 
@@ -369,7 +369,7 @@ class TestPersistFunctions:
         flow = MagicMock()
         flow.config_entry = MagicMock()
         flow.hass = MagicMock()
-        flow.hass.config_entries.async_update_entry = AsyncMock()
+        flow.hass.config_entries.async_update_entry = MagicMock()
         flow._refresh_config_entry = MagicMock()
         options = {}
         section = {"rem_devices": [{"rem_id": "32:153290"}]}
@@ -383,7 +383,7 @@ class TestPersistFunctions:
         flow = MagicMock()
         flow.config_entry = MagicMock()
         flow.hass = MagicMock()
-        flow.hass.config_entries.async_update_entry = AsyncMock()
+        flow.hass.config_entries.async_update_entry = MagicMock()
         flow._sensor_control_selected_device = "32:153289"
         options = {}
         section = {"zones": [{"zone_id": "zone1"}]}

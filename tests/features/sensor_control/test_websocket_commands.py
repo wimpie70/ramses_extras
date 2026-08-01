@@ -30,8 +30,8 @@ def hass():
 def connection():
     """Mock websocket connection."""
     conn = MagicMock()
-    conn.send_result = AsyncMock()
-    conn.send_error = AsyncMock()
+    conn.send_result = MagicMock()
+    conn.send_error = MagicMock()
     return conn
 
 

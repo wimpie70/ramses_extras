@@ -435,7 +435,12 @@ class TestGetZoneDemandRegistry:
         # Mock the event loop
         loop = MagicMock()
         call_later = MagicMock()
-        async_create_task = MagicMock()
+
+        def _swallow_coro(coro, *args, **kwargs):
+            coro.close()
+            return MagicMock()
+
+        async_create_task = MagicMock(side_effect=_swallow_coro)
         bus = MagicMock()
         fire_event = MagicMock()
 

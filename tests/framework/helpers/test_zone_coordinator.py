@@ -23,7 +23,12 @@ def hass():
     """Mock Home Assistant instance."""
     hass_mock = MagicMock()
     hass_mock.data = {}
-    hass_mock.async_create_task = MagicMock()
+
+    def _swallow_coro(coro, *args, **kwargs):
+        coro.close()
+        return MagicMock()
+
+    hass_mock.async_create_task = MagicMock(side_effect=_swallow_coro)
     return hass_mock
 
 

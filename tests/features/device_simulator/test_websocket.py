@@ -1,5 +1,6 @@
 """Tests for device simulator WebSocket commands."""
 
+import asyncio
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -53,13 +54,20 @@ from custom_components.ramses_extras.features.device_simulator.websocket_command
 # which don't expose __wrapped__, so we test them as-is
 
 
+def _swallow_coro(coro, *args, **kwargs):
+    """Side-effect that closes a coroutine to avoid 'never awaited' warnings."""
+    coro.close()
+    return MagicMock()
+
+
 @pytest.fixture
 def hass():
     hass = MagicMock()
     hass.data = {}
     hass.config.config_dir = "/tmp/test"
     hass.bus.async_fire = MagicMock()
-    hass.async_create_background_task = MagicMock()
+    hass.async_create_background_task = MagicMock(side_effect=_swallow_coro)
+    hass.async_create_task = MagicMock(side_effect=_swallow_coro)
     return hass
 
 
@@ -605,9 +613,13 @@ class TestWsSetDeviceExcludedCodes:
             "device_id": "37:168270",
             "excluded_codes": ["1FC9"],
         }
-        ws_set_device_excluded_codes(hass, connection, msg)
+        with patch(
+            "custom_components.ramses_extras.features.device_simulator."
+            "websocket_commands.asyncio.create_task",
+            side_effect=_swallow_coro,
+        ):
+            ws_set_device_excluded_codes(hass, connection, msg)
         connection.send_result.assert_called_once()
-        # _fire_device_change_event is called via asyncio.create_task, not awaited
 
     def test_ws_set_device_excluded_codes_not_ready(self, hass, connection):
         hass.data = {}
@@ -883,10 +895,17 @@ class TestWsLoadProfile:
         config_store.get_profile = MagicMock(return_value=profile)
         config_store.set_active_profile = MagicMock()
         config_store.async_save_state = AsyncMock()
-        with patch(
-            "custom_components.ramses_extras.features.device_simulator.websocket_commands.async_apply_profile",
-            new=AsyncMock(return_value={}),
-        ) as mock_apply:
+        with (
+            patch(
+                "custom_components.ramses_extras.features.device_simulator.websocket_commands.async_apply_profile",
+                new=AsyncMock(return_value={}),
+            ) as mock_apply,
+            patch(
+                "custom_components.ramses_extras.features.device_simulator."
+                "websocket_commands.asyncio.create_task",
+                side_effect=_swallow_coro,
+            ),
+        ):
             hass.data = {
                 "ramses_extras": {
                     "device_simulator_engine": engine,
@@ -1255,11 +1274,17 @@ class TestWsSetDeviceEnabled:
         engine._fire_device_change_event = AsyncMock()
         engine.auto_answer_enabled = True
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
-        await _unwrap(ws_set_device_enabled)(
-            hass,
-            connection,
-            {"id": 1, "type": "x", "device_id": "37:168270", "enabled": True},
-        )
+        # Patch asyncio.create_task to close fire-and-forget coroutines
+        with patch(
+            "custom_components.ramses_extras.features.device_simulator."
+            "websocket_commands.asyncio.create_task",
+            side_effect=_swallow_coro,
+        ):
+            await _unwrap(ws_set_device_enabled)(
+                hass,
+                connection,
+                {"id": 1, "type": "x", "device_id": "37:168270", "enabled": True},
+            )
         assert device.enabled is True
         engine.async_activate_device.assert_awaited_once()
         # _fire_device_change_event is called via asyncio.create_task, not awaited
@@ -2528,7 +2553,7 @@ class TestOtherHandlerErrorPaths:
         engine.set_answer_unknown_devices = MagicMock()
         config_store.set_answer_unknown_devices = MagicMock()
         config_store.async_save_state = AsyncMock()
-        hass.async_create_background_task = MagicMock()
+        hass.async_create_background_task = MagicMock(side_effect=_swallow_coro)
         msg = {"id": 1, "type": "test", "enabled": False}
         hass.data = {
             "ramses_extras": {

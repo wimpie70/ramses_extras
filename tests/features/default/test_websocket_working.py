@@ -21,6 +21,12 @@ class TestWebSocketBasic:
                 "devices": [],
             }
         }
+
+        def _swallow_coro(coro, *args, **kwargs):
+            coro.close()
+            return MagicMock()
+
+        hass.async_create_background_task = MagicMock(side_effect=_swallow_coro)
         return hass
 
     @pytest.fixture

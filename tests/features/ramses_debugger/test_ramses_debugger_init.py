@@ -25,6 +25,13 @@ class TestCreateRamsesDebuggerFeature:
         mock_hass.data = {}
         mock_hass.bus = MagicMock()
         mock_hass.bus.async_listen = MagicMock()
+
+        def _swallow_coro(coro, *args, **kwargs):
+            coro.close()
+            return MagicMock()
+
+        mock_hass.async_create_task = MagicMock(side_effect=_swallow_coro)
+        mock_hass.async_create_background_task = MagicMock(side_effect=_swallow_coro)
         return mock_hass
 
     @pytest.fixture

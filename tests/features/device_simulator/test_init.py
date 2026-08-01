@@ -223,7 +223,13 @@ class TestLoadFeature:
         hass = MagicMock()
         config_entry = MagicMock()
 
-        with patch("asyncio.create_task") as mock_create_task:
+        def _swallow_coro(coro, *args, **kwargs):
+            coro.close()
+            return MagicMock()
+
+        with patch(
+            "asyncio.create_task", side_effect=_swallow_coro
+        ) as mock_create_task:
             result = load_feature(hass, config_entry)
 
             assert result["feature_name"] == "device_simulator"
