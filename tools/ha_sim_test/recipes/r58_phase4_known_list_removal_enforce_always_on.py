@@ -26,7 +26,7 @@ import json
 import subprocess
 
 from ..base import Recipe, RecipeContext
-from ..const import CTL, DHW, FAN, HGI, REM, TRV
+from ..const import CTL, DHW, FAN, REM, TRV
 from ..helpers import get_current_instance, get_known_list, get_schema_retry
 
 
