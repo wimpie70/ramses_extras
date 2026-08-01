@@ -18,6 +18,7 @@ Usage::
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 import time
 
@@ -50,6 +51,21 @@ async def setup(ctx: RecipeContext) -> None:
         f"Setup [{inst.name}]: Load mixed profile (100x speed, heat + HVAC)"
     )
     print(f"  Target: {inst.ha_url} (container: {inst.name}, hgi: {inst.hgi_id})")
+
+    # Reset stale state: delete .storage/ramses_cc so ramses_cc starts fresh.
+    # The profile load updates config entry options, but .storage/ramses_cc
+    # may have stale schema from previous recipes (e.g. R58/R59 strip it).
+    # Without this, warm containers have dirty state (main_tcs=null, etc).
+    try:
+        subprocess.run(
+            ["docker", "exec", inst.name, "rm", "-f", "/config/.storage/ramses_cc"],
+            check=False,
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception:
+        pass  # Container might not exist yet on first run
+
     print("  Loading mixed profile via websocket...")
     # ramses_extras websocket commands may not be registered yet on a cold
     # start (takes ~60s after HA is ready).  Retry with backoff.
