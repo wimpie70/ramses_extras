@@ -1,16 +1,14 @@
-# AI Agent Instructions and Guidelines for ramses_extras
+# AI Agent Instructions for ramses_extras
 
-Project-specific rules for the `ramses_extras` codebase. Cross-repo rules
-(venvs, test invocation, typing, PR/commit conventions) live in the global
-rules file.
+The canonical coding standards, guardrails, and behavioural rules for
+AI/LLM contributors live in the repo itself. **You MUST read both of
+these files before working on ramses_extras:**
 
-## Architecture
-
-- **Feature-centric architecture**: The framework provides base classes,
-  helpers, and reusable code. The default feature is always enabled and is a
-  good place for common entities, servicecalls, etc.
-- **Architecture changes**: Before making architecture changes, first read
-  `docs/RAMSES_EXTRAS_ARCHITECTURE.md`.
+- **`LLM_INSTRUCTIONS.md`** (repo root) — behavioural rules, guardrails,
+  identity/tone, no-advertising, wait-for-approval, PR framing,
+  architecture, backward compatibility.
+- **`CONTRIBUTING.md`** (repo root) — coding standards, typing,
+  docstrings, testing, tooling.
 
 ## Test Environments (Home Assistant instances)
 
@@ -21,9 +19,3 @@ rules file.
   feature and runs against this instance.
 - **Production HA**: runs on a separate server. Do not point dev tools or
   tests at it.
-
-## Backward Compatibility
-
-- Backward compatibility is not required for now, **except** for the
-  `get`/`set`/`update` `fan_param` methods/functions/servicecalls, since this
-  is WIP on `ramses_cc`.
