@@ -392,6 +392,9 @@ def get_known_list() -> dict:
 
             dev_id_re = re.compile(r"^\d{2}:[0-9A-Fa-f]{6}$")
             known = {}
+            # Include gateway HGI ID (matching
+            # coordinator._derive_known_list_from_schema)
+            known.setdefault(get_current_instance().hgi_id, {})
             for k, v in schema.items():
                 if dev_id_re.match(str(k)):
                     known[str(k)] = v if isinstance(v, dict) else {}

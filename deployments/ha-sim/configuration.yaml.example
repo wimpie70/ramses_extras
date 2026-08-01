@@ -19,9 +19,35 @@ homeassistant:
 http:
   server_port: 8124
 
-# Enable default integrations
-# This loads a sensible set of default integrations including frontend
-default_config:
+# Enable standard integrations (excluding bluetooth to avoid container permission warnings)
+api:
+automation:
+config:
+counter:
+dhcp:
+energy:
+frontend:
+history:
+homeassistant_hardware:
+input_boolean:
+input_button:
+input_datetime:
+input_number:
+input_select:
+input_text:
+logbook:
+media_source:
+my:
+person:
+scene:
+script:
+select:
+sun:
+system_health:
+tag:
+timer:
+webhook:
+zone:
 
 # Logging configuration
 logger:
