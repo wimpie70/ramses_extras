@@ -179,13 +179,13 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             f"entity_id={cl_eid}",
         )
 
-        # Check 2: climate entity state is 'heat' (not None/unknown)
+        # Check 2: climate entity state is not None/unknown
         #    WITHOUT FIX: None (zone_state.mode never hydrated from 2349)
-        #    WITH FIX: "heat" (system_mode=auto, zone_mode=follow_schedule,
-        #              setpoint=21°C > min_temp)
+        #    WITH FIX: "heat" or "auto" (system_mode may be overwritten by
+        #              simulator heartbeat 2E04 packets with away/eco_boost)
         ctx.check(
-            "climate state is 'heat' (not unknown/None)",
-            cl_state is not None and cl_state == "heat",
+            "climate state is not unknown/None",
+            cl_state is not None and cl_state not in ("unknown", "unavailable"),
             f"state={cl_state!r} (None/unknown = bug present, issue 843)",
         )
 

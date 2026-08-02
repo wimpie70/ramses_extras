@@ -53,15 +53,10 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
-        # KNOWN BUG: the fresh_start profile reload closes the MQTT transport,
-        # but the new transport's _closing flag stays True even after
-        # "Subscribed to status topic" and "device came back online" are
-        # logged.  Injected packets are silently dropped with
-        # "Transport Error: Transport is closing or has closed" and never
-        # reach the DiscoveryScan.  This is a ramses_rf transport lifecycle
-        # bug — the old transport instance is not properly cleaned up during
-        # the reload and its _closing state leaks into the new instance.
-        # See: https://github.com/ramses-rf/ramses_cc/issues/767
+        # The fresh_start profile reload closes the MQTT transport and creates
+        # a new one.  The old transport's paho-mqtt network thread is stopped
+        # via loop_stop() in _close() (PR 969).  Wait for the new transport to
+        # connect and subscribe before injecting.
         ctx.wait(10, "for transport to stabilise after reload")
         # 2. Inject a packet from an unknown device
         #    04:999999 is not in any known_list or schema
