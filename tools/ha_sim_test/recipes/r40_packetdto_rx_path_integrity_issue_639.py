@@ -214,7 +214,7 @@ except Exception as e:
                 call_service(ctx.token, "ramses_cc", "force_update")
             except RuntimeError:
                 pass
-            ctx.wait(3, "for entity state write")
+            ctx.wait(3, "for entity state write", floor=3.0)
 
             # Check that a climate entity for zone 03 exists and has a temp
             entities = get_entities(ctx.token)

@@ -132,7 +132,7 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for entity state write")
+        ctx.wait(5, "for entity state write", floor=3.0)
 
         # 4. Find the climate entity for zone 03
         #    ramses_cc creates climate entities for each zone.  The entity_id

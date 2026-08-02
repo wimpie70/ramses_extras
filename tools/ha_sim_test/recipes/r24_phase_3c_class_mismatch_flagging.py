@@ -105,7 +105,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for mismatch detection")
+        ctx.wait(5, "for mismatch detection", floor=3.0)
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:

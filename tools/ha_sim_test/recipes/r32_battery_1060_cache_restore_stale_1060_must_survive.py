@@ -112,7 +112,7 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for entity state write")
+        ctx.wait(5, "for entity state write", floor=3.0)
 
         # 3. Verify the TRV battery binary sensor has a state before restart
         entities_r32 = get_entities(ctx.token)

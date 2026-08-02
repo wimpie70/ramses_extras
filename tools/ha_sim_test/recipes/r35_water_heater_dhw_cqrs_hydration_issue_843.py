@@ -164,7 +164,7 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for entity state write")
+        ctx.wait(5, "for entity state write", floor=3.0)
 
         # 5. Find the water_heater entity for the DhwZone
         #    The DhwZone ID is CTL + "_HW" (e.g. "01:150000_HW"), but the

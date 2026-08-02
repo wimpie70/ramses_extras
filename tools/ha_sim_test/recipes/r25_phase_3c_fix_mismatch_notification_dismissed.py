@@ -79,7 +79,7 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for mismatch recheck")
+        ctx.wait(5, "for mismatch recheck", floor=3.0)
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
