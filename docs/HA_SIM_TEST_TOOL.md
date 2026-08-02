@@ -69,12 +69,138 @@ To run specific recipes only:
 python3 -m ha_sim_test R06 R29
 ```
 
-The test suite takes ~6 minutes to complete. Output is printed to stdout with:
+The test suite takes ~6 minutes to complete (single container). Output is printed to stdout with:
 - A section header for each recipe
 - `PASS:` / `FAIL:` lines for each check
 - A summary at the end with the total count
 
 Exit code: `0` = all passed, `1` = some failed.
+
+### CLI parameters
+
+```
+usage: ha_sim_test [-h] [--parallel N] [--container-base CONTAINER_BASE]
+                   [--port PORT] [--assign CONTAINER:R1,R2,...] [--cleanup]
+                   [--wait-scale-blind FACTOR] [--wait-scale-poll FACTOR]
+                   [recipes ...]
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `recipes` (positional) | all | Recipe IDs to run (e.g. `R06 R29`). Order is preserved. |
+| `--parallel N` | `1` | Run across N containers in parallel. `1` = sequential on `ha-sim`. See [Parallel mode](#parallel-mode). |
+| `--container-base` | `ha-sim` | Base container name. Instance 1 uses this name directly; instances 2+ get a suffix (e.g. `ha-sim-2`). |
+| `--port PORT` | `8124` | Starting HA port for instance 1. Instances 2+ use `port+1`, `port+2`, etc. |
+| `--assign CONTAINER:R1,R2,...` | (auto) | Manual recipe assignment (advanced). Can be repeated. Unassigned recipes are auto-distributed. Example: `--assign ha-sim-2:R01,R02`. |
+| `--cleanup` | off | Stop and remove parallel containers (instances 2+) and their cloned config dirs after the run. Without this flag, containers are stopped but config dirs are kept for warm restarts. Instance 1 (`ha-sim`) is always left running. |
+| `--wait-scale-blind FACTOR` | `1.0` | Scale factor for fixed `wait()` blind sleeps. See [Wait scaling](#wait-scaling). |
+| `--wait-scale-poll FACTOR` | `1.0` | Scale factor for `wait_for()` timeout ceilings. See [Wait scaling](#wait-scaling). |
+
+### Examples
+
+```bash
+# Run all recipes on the default ha-sim container
+python3 -m ha_sim_test
+
+# Run two specific recipes
+python3 -m ha_sim_test R06 R29
+
+# Run across 4 containers in parallel, clean up afterwards
+python3 -m ha_sim_test --parallel 4 --cleanup
+
+# Run on 2 containers, manually assigning recipes to containers
+python3 -m ha_sim_test --parallel 2 \
+    --assign ha-sim:R01,R02,R03 \
+    --assign ha-sim-2:R04,R05,R06
+
+# Run fast: tighten poll ceilings only (safe, big win on failures)
+python3 -m ha_sim_test --wait-scale-poll 0.1
+
+# Run aggressive: halve blind sleeps AND tighten poll ceilings
+python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-scale-poll 0.1
+
+# Run on 4 containers with aggressive wait scaling
+python3 -m ha_sim_test --parallel 4 --cleanup \
+    --wait-scale-blind 0.5 --wait-scale-poll 0.1
+
+# Pipe to a log file (dashboard auto-disables, plain interleaved output)
+python3 -m ha_sim_test --parallel 4 > /tmp/run.log 2>&1
+```
+
+### Parallel mode
+
+When `--parallel N` is greater than 1, the runner spins up N HA containers
+(`ha-sim`, `ha-sim-2`, ..., `ha-sim-N`) and distributes the recipes across
+them. Each container gets its own config dir (cloned from `ha-sim`'s
+`.storage`) and its own HA port.
+
+- **Container naming:** `--container-base ha-sim` → `ha-sim`,
+  `ha-sim-2`, `ha-sim-3`, ...
+- **Port assignment:** `--port 8124` → 8124, 8125, 8126, ...
+- **Recipe distribution:** recipes are split evenly across containers
+  in seq order. Use `--assign` for manual control.
+- **Warm restarts:** without `--cleanup`, stopped containers keep their
+  config dirs so the next run starts faster (no fresh schema learning).
+  Use `--cleanup` to remove them for a cold start.
+- **Instance 1 (`ha-sim`)** is always left running after the run (it's
+  the dev/debug instance); only instances 2+ are stopped.
+
+### Live dashboard
+
+In parallel mode, when stdout is a real terminal, a live per-container
+dashboard is rendered instead of a wall of interleaved raw prints. Each
+container gets a fixed-height pane showing:
+
+- Current recipe being executed
+- Running pass/fail tally
+- Elapsed time
+- Last few output lines
+
+The panes refresh in place via ANSI cursor movement. Output is
+attributed to the correct container via the existing contextvars-based
+`get_current_instance()` mechanism — not by parsing `[name]` text
+prefixes — so attribution is correct even when containers execute
+concurrently (interleaved at `await` points).
+
+The dashboard auto-disables when stdout isn't a TTY (e.g. piped to a
+file or running in CI), so existing `> file.log 2>&1` + `grep`
+workflows are completely unaffected.
+
+### Wait scaling
+
+The suite has ~138 fixed blind sleeps (`wait(N)`, totalling ~730s) and
+~63 polling waits (`wait_for(timeout=N)`, self-exiting). Two independent
+scale knobs let you trade safety for speed:
+
+- **`--wait-scale-blind FACTOR`** (or `HA_SIM_TEST_WAIT_SCALE_BLIND`):
+  scales every fixed `wait()`/`ctx.wait()` blind sleep. These are the
+  dominant cost — 80 of 138 calls use `wait(5)`, totalling ~400s — and
+  also the riskiest to cut: 5s is already a deliberate "let MQTT/HA
+  settle" pause, so 5→0.5 is a 10x cut on something that may genuinely
+  need 2-3s.
+
+- **`--wait-scale-poll FACTOR`** (or `HA_SIM_TEST_WAIT_SCALE_POLL`):
+  scales every `wait_for()` timeout ceiling. These poll and return as
+  soon as the condition is met, so the timeout is just a safety margin.
+  On the simulator, conditions typically resolve in 2-3s; if they
+  haven't, the test has probably failed. Scaling 30s→3s just tightens
+  the failure ceiling — safe to cut aggressively.
+
+**Precedence:** CLI flag > per-bucket env var > legacy
+`HA_SIM_TEST_WAIT_SCALE` (sets both) > default `1.0`.
+
+| Goal | Blind | Poll | Notes |
+|---|---|---|---|
+| Safe speedup on failures | 1.0 | 0.1 | Only tightens poll ceilings; blind sleeps unchanged |
+| Moderate speedup | 0.5 | 0.1 | Halves blind sleeps too; good for local iteration |
+| Find the minimum | 0.25 | 0.05 | Will likely break something — that's the point |
+| Slow machine / debugging | 2.0 | 2.0 | Give everything more headroom |
+
+**Finding bottlenecks:** the global knobs are good for "can I run the
+suite 2x faster?" and "which recipe breaks first when I push it?" (the
+dashboard shows which container failed). They do *not* tell you which
+specific `wait(15)` should be a `wait(5)` — for that you'd want per-wait
+timing telemetry (not yet implemented).
 
 ## Test report
 
