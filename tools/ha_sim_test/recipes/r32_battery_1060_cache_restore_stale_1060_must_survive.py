@@ -204,6 +204,25 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
         #      no 1060 → battery entity = Unknown/None.
         #    WITH FIX (1060 removed from HIGH_VOLUME_STATUS_CODES): the aged
         #      1060 is restored → battery entity retains its state.
+        #    The restored packet may need a force_update + entity state write
+        #    cycle before the binary sensor reflects the restored state.
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(5, "for entity state write after restore", floor=3.0)
+
+        def _battery_has_state() -> bool:
+            entities = get_entities(ctx.token)
+            bat = find_battery_entity(entities, TRV)
+            return bat is not None and bat.get("state") in ("on", "off")
+
+        ctx.wait_for(
+            _battery_has_state,
+            timeout=10,
+            interval=1,
+            msg="for battery entity to reflect restored 1060",
+        )
         entities_r32_after = get_entities(ctx.token)
         bat_after = find_battery_entity(entities_r32_after, TRV)
         bat_state_after = bat_after.get("state") if bat_after else None

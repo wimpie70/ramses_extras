@@ -79,8 +79,24 @@ class R10InvalidMainTcsSafetyNet(Recipe):
             "sanitisation warning not found in logs",
         )
 
-        # Verify main_tcs is cleared (the invalid value 04:999999 should be gone;
-        # sync_learned_topology may re-derive main_tcs=01:150000 which is valid)
+        # Verify main_tcs is cleared (the invalid value 04:999999 should be
+        # gone; sync_learned_topology may re-derive main_tcs=01:150000 which
+        # is valid).  Poll for the sanitised schema — async_update_entry
+        # schedules an async save to .storage, so the file may not reflect
+        # the sanitisation immediately after reload.
+        def _main_tcs_cleared() -> bool:
+            schema = get_schema()
+            if not schema:
+                return False
+            mt = schema.get("main_tcs")
+            return mt != "04:999999" and "04:999999" not in json.dumps(schema)
+
+        ctx.wait_for(
+            _main_tcs_cleared,
+            timeout=10,
+            interval=1,
+            msg="for sanitised schema to persist",
+        )
         schema_after_sanitise = get_schema_retry()
         main_tcs_after = schema_after_sanitise.get("main_tcs")
         ctx.check(

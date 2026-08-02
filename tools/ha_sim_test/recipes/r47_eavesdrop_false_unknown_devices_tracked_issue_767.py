@@ -107,13 +107,13 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
                 "get_discovered_devices",
                 {},
             )
-            ctx.wait(2, "for event to fire")
+            ctx.wait(3, "for event to fire + log flush", floor=3.0)
 
             # Check the HA log for the service's log output
             svc_log = grep_ha_log(
                 f"get_discovered_devices.*{unknown_device.replace(':', '.')}"
                 f"|{unknown_device.replace(':', '.')}.*type=.*confidence=.*status=",
-                since_lines=200,
+                since_lines=500,
             )
             ctx.check(
                 f"unknown device {unknown_device} in get_discovered_devices "

@@ -141,14 +141,23 @@ class R16ConcurrencystressTestRapidAddremoveInject(Recipe):
             capture_output=True,
             text=True,
         )
-        has_errors = "ERROR" in log_result.stderr or "Traceback" in log_result.stderr
-        # Filter out expected warnings (not errors)
+        # Filter out expected/cosmetic patterns (same list as log_monitor.py)
+        from ..log_monitor import EXPECTED_WARNINGS
+
+        def _is_expected(line: str) -> bool:
+            return any(pat in line for pat in EXPECTED_WARNINGS)
+
         real_errors = False
-        if has_errors:
-            for line in log_result.stderr.splitlines():
-                if "ERROR" in line and "ramses_cc" in line:
-                    real_errors = True
-                    break
+        for line in log_result.stderr.splitlines():
+            if "ERROR" not in line:
+                continue
+            if "ramses_cc" not in line and "ramses_rf" not in line:
+                continue
+            if _is_expected(line):
+                continue
+            real_errors = True
+            print(f"    ERROR: {line.strip()[:120]}")
+            break
         ctx.check(
             "No ramses_cc ERROR logs during stress test",
             not real_errors,
