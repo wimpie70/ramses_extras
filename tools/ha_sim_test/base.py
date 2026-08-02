@@ -150,6 +150,37 @@ class RecipeContext:
 
         return _wait_for_ha_ready(timeout=timeout, msg=msg)
 
+    def wait_for_ramses_cc_loaded(
+        self,
+        timeout: int = 30,
+        msg: str = "for ramses_cc to initialize",
+    ) -> bool:
+        """Wait for ramses_cc to load after a docker restart (floored at 15s).
+
+        See :func:`helpers.wait_for_ramses_cc_loaded` for details.
+        """
+        from .helpers import wait_for_ramses_cc_loaded as _w
+
+        return _w(timeout=timeout, msg=msg)
+
+    def wait_for_schema_stable(
+        self,
+        timeout: int = 10,
+        quiet: float = 1.0,
+        msg: str = "for schema to stabilise",
+    ) -> bool:
+        """Wait until the schema stops changing (polls, exits early).
+
+        Replaces blind ``wait(5, "for sync_learned_topology")`` and
+        ``wait(5, "for save_client_state")`` — typically returns in 1-2s
+        once the schema has been quiet for *quiet* seconds.
+
+        See :func:`helpers.wait_for_schema_stable` for details.
+        """
+        from .helpers import wait_for_schema_stable as _w
+
+        return _w(timeout=timeout, quiet=quiet, msg=msg)
+
     def log_section(self, title: str) -> None:
         """Emit a labelled section banner in the test output."""
         _log_section(title)

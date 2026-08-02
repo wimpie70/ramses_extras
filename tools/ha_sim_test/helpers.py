@@ -777,6 +777,22 @@ def wait_for_ha_ready(timeout: int = 30, msg: str = "for ha-sim to start up") ->
     return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=10.0)
 
 
+def wait_for_ramses_cc_loaded(
+    timeout: int = 30, msg: str = "for ramses_cc to initialize"
+) -> bool:
+    """Wait for ramses_cc to be loaded after a docker restart.
+
+    Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
+    *floor* of 15s — after a docker restart, ramses_cc's async_setup_entry
+    takes 5-10s to complete (MQTT transport init, schema load, entity
+    creation).  Scaling the timeout below 15s causes false TIMEOUTs that
+    cascade into schema/profile load failures in subsequent steps.
+    """
+    return wait_for(
+        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=15.0
+    )
+
+
 # ---------------------------------------------------------------------------
 # Composite wait helpers — poll for common conditions instead of fixed sleeps
 # ---------------------------------------------------------------------------
@@ -793,6 +809,56 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
         interval=2,
         msg=f"for schema to have >= {min_keys} keys",
     )
+
+
+def wait_for_schema_stable(
+    timeout: int = 10,
+    quiet: float = 1.0,
+    msg: str = "for schema to stabilise",
+) -> bool:
+    """Wait until the schema stops changing.
+
+    Polls the schema every 0.5s and returns as soon as two consecutive
+    reads produce the same JSON-serialised content (i.e. the schema has
+    been quiet for *quiet* seconds).  Replaces blind ``wait(5, "for
+    sync_learned_topology")`` and ``wait(5, "for save_client_state")``
+    calls — typically returns in 1-2s instead of sleeping the full 5s.
+
+    The *timeout* is the ceiling (scaled by ``WAIT_SCALE_POLL``); the
+    *quiet* window is the stability threshold (not scaled — it's a
+    real-time poll interval).
+    """
+    import json
+
+    def _schema_hash() -> str:
+        try:
+            return json.dumps(get_schema_retry(max_tries=1), sort_keys=True)
+        except Exception:
+            return ""
+
+    last = _schema_hash()
+    quiet_until = time.monotonic() + quiet
+    scaled_timeout = min(
+        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 3.0)), timeout
+    )
+    print(
+        f"  Waiting up to {timeout}s→{scaled_timeout:g}s {msg}...",
+        end="",
+        flush=True,
+    )
+    deadline = time.monotonic() + scaled_timeout
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        current = _schema_hash()
+        if current == last and current:
+            if time.monotonic() >= quiet_until:
+                print(" done (stable)")
+                return True
+        else:
+            last = current
+            quiet_until = time.monotonic() + quiet
+    print(f" TIMEOUT ({scaled_timeout:g}s)")
+    return False
 
 
 def wait_for_transport_ready(timeout: int = 30) -> bool:

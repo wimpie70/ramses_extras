@@ -124,7 +124,8 @@ python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-scale-poll 0.1
 # RECOMMENDED fast run: scale + floor protects sensitive waits
 # (0 new failures vs baseline, ~9.8 min wall time on 4 containers)
 python3 -m ha_sim_test --parallel 4 --cleanup \
-    --wait-scale-blind 0.5 --wait-scale-poll 0.1 --wait-floor-blind 3
+    --wait-scale-blind 0.5 --wait-scale-poll 0.1 \
+    --wait-floor-blind 3 --wait-floor-poll 5
 
 # Pipe to a log file (dashboard auto-disables, plain interleaved output)
 python3 -m ha_sim_test --parallel 4 > /tmp/run.log 2>&1
@@ -205,12 +206,12 @@ scale knobs let you trade safety for speed:
 `HA_SIM_TEST_WAIT_SCALE` (sets both) > default `1.0`. Floors default to
 0 (no protection); per-call `floor=` takes the max with the global floor.
 
-| Goal | Blind | Poll | Floor blind | Notes |
-|---|---|---|---|---|
-| Safe speedup on failures | 1.0 | 0.1 | 0 | Only tightens poll ceilings |
-| **Recommended fast run** | **0.5** | **0.1** | **3** | **0 new failures, ~9.8 min on 4 containers** |
-| Aggressive | 0.25 | 0.05 | 3 | May still break post-restart hydration |
-| Slow machine / debugging | 2.0 | 2.0 | 0 | Give everything more headroom |
+| Goal | Blind | Poll | Floor blind | Floor poll | Notes |
+|---|---|---|---|---|---|
+| Safe speedup on failures | 1.0 | 0.1 | 0 | 0 | Only tightens poll ceilings |
+| **Recommended fast run** | **0.5** | **0.1** | **3** | **5** | **0 new failures, ~10 min on 4 containers** |
+| Aggressive | 0.25 | 0.05 | 3 | 5 | May still break post-restart hydration |
+| Slow machine / debugging | 2.0 | 2.0 | 0 | 0 | Give everything more headroom |
 
 **Output format:** when a wait is scaled, the output shows both the
 original and actual duration: `Waiting 5s→3s for sync_learned_topology...`

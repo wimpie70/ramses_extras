@@ -102,12 +102,12 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         # Check 1: FAN's known_list entry has bound as a list
         # NOTE: get_known_list() reads the config entry's USER known_list, not

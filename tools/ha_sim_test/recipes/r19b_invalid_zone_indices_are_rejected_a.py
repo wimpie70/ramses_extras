@@ -61,12 +61,12 @@ class R19bInvalidZoneIndicesAreRejectedA(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         schema_r19b = get_schema_retry()
         ctl_r19b = schema_r19b.get(CTL, {})

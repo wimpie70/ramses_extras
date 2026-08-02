@@ -74,7 +74,7 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
         ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # ── Step 1: Inject a faked device into the schema ───────────
         # Phase 4: the schema is the sole source of truth.  Faked devices
@@ -184,7 +184,7 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
         ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
         ctx.wait(5, "for protocol/filter to stabilise")
 
         # ── Step 3: Test send_packet with the faked device ───────────
@@ -382,4 +382,4 @@ except Exception as e:
         subprocess.run(["docker", "start", inst.name], capture_output=True)
         ctx.wait_for_ha_ready(timeout=30)
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
+        ctx.wait_for_ramses_cc_loaded(timeout=30)

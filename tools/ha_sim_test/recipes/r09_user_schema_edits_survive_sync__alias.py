@@ -82,12 +82,12 @@ class R09UserSchemaEditsSurviveSyncAlias(Recipe):
             print("  sync_topology called")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         # Verify _alias survived sync (check config entry schema)
         schema_r9 = get_schema()

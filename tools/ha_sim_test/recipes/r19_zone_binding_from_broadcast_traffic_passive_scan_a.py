@@ -161,12 +161,12 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         # Check that zones were created from broadcast traffic
         schema_r19 = get_schema_retry()

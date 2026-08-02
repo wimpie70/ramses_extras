@@ -72,12 +72,12 @@ class R14InjectRawPacketZoneBindingChangeA(Recipe):
             print("  sync_topology called")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         schema_r14 = get_schema_retry()
         ctl_r14 = schema_r14.get(CTL, {})

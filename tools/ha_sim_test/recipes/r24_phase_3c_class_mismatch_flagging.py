@@ -110,7 +110,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         # Check 1: FAN remote entity should have class_mismatch attribute
         # The remote entity (remote.fan_32_150000) inherits from RamsesEntity
