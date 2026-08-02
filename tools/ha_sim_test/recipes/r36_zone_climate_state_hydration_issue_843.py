@@ -125,7 +125,7 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             print("    2349 I injected")
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for 2349 to process")
+        ctx.wait(5, "for 2349 to process", floor=4.0)
 
         # Force entity state update
         try:

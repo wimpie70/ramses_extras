@@ -113,7 +113,7 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             print("    1260 I injected")
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(3, "for 1260 to process", floor=2.0)
+        ctx.wait(5, "for 1260 to process", floor=4.0)
 
         # 3. Inject 10A0 RP from CTL (01:150000) — DHW params/setpoint
         #    Payload: 00 + setpoint(50.0°C=0x1388) + overrun(00) + diff(10.0°C=0x03E8)

@@ -136,7 +136,7 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
                 print(f"    {trv_id} -> 3150: FAILED - {str(e)[:80]}")
             time.sleep(0.5)
 
-        ctx.wait(3, "for scan engine to process", floor=2.0)
+        ctx.wait(5, "for scan engine to process", floor=4.0)
 
         # Accept the discovered TRVs so they enter the known_list.
         # With the mixed profile (enforce_known_list=True), unknown devices

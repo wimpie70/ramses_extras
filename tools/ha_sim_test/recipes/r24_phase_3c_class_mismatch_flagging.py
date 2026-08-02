@@ -98,14 +98,14 @@ class R24Phase3cClassMismatchFlagging(Recipe):
                     f" {str(e)[:80]}"
                 )
                 ctx.wait(3, "before retry")
-        ctx.wait(5, "for FAN heartbeat to reach scan engine", floor=2.0)
+        ctx.wait(5, "for FAN heartbeat to reach scan engine", floor=4.0)
 
         # Force a sync cycle to trigger mismatch detection
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for mismatch detection", floor=3.0)
+        ctx.wait(5, "for mismatch detection", floor=4.0)
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
