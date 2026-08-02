@@ -799,14 +799,15 @@ def wait_for_ramses_cc_reload(
     """Wait for ramses_cc to reload after a profile change (in-process).
 
     Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
-    *floor* of 5s — profile reloads are in-process (no docker restart),
-    so they're faster than cold starts (typically 2-3s).  At aggressive
-    poll scales (0.1), the 20s ceiling would drop to 2s which is too
-    tight; the 5s floor ensures we don't give up before the reload
-    completes, while still returning early once it's done.
+    *floor* of 8s — profile reloads are in-process (no docker restart),
+    so they're faster than cold starts, but still take 5-7s for the
+    full reload cycle (unload → reload → MQTT reconnect → schema load).
+    At aggressive poll scales (0.1), the 20s ceiling would drop to 2s
+    which is too tight; the 8s floor ensures we don't give up before
+    the reload completes, while still returning early once it's done.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=5.0
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=8.0
     )
 
 
@@ -830,16 +831,22 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
 
 def wait_for_schema_stable(
     timeout: int = 10,
-    quiet: float = 1.0,
+    quiet: float = 1.5,
+    min_keys: int = 5,
     msg: str = "for schema to stabilise",
 ) -> bool:
-    """Wait until the schema stops changing.
+    """Wait until the schema stops changing and has enough keys.
 
     Polls the schema every 0.5s and returns as soon as two consecutive
     reads produce the same JSON-serialised content (i.e. the schema has
-    been quiet for *quiet* seconds).  Replaces blind ``wait(5, "for
+    been quiet for *quiet* seconds) AND the schema has at least
+    *min_keys* entries.  Replaces blind ``wait(5, "for
     sync_learned_topology")`` and ``wait(5, "for save_client_state")``
-    calls — typically returns in 1-2s instead of sleeping the full 5s.
+    calls — typically returns in 2-3s instead of sleeping the full 5s.
+
+    The *min_keys* guard prevents premature "stable" returns when the
+    schema is briefly empty after a profile reload (before heartbeats
+    repopulate it).
 
     The *timeout* is the ceiling (scaled by ``WAIT_SCALE_POLL``); the
     *quiet* window is the stability threshold (not scaled — it's a
@@ -849,7 +856,10 @@ def wait_for_schema_stable(
 
     def _schema_hash() -> str:
         try:
-            return json.dumps(get_schema_retry(max_tries=1), sort_keys=True)
+            schema = get_schema_retry(max_tries=1)
+            if len(schema) < min_keys:
+                return ""  # not enough keys yet — force unstable
+            return json.dumps(schema, sort_keys=True)
         except Exception:
             return ""
 
