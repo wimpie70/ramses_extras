@@ -686,20 +686,25 @@ def find_entity_for_device(
 def wait(seconds: int, msg: str = "", *, floor: float = 0.0) -> None:
     """Wait and print progress (scaled by ``WAIT_SCALE_BLIND``).
 
-    *floor* sets a minimum absolute sleep (seconds, pre-scaling) that the
+    *floor* sets a minimum absolute sleep (seconds, real time) that the
     scaled sleep will not go below — use it for sensitive waits that need
     a hard minimum regardless of the global scale factor::
 
         wait(5, "for scan engine", floor=3)
-        # At WAIT_SCALE_BLIND=0.5: scaled = max(5*0.5, 3) = 3s, not 2.5s
+        # At WAIT_SCALE_BLIND=0.5: scaled = min(max(2.5, 3), 5) = 3s, not 2.5s
+
+    The floor never makes a wait *longer* than its original value — it
+    only protects against scaling too aggressively.  So ``wait(2)`` with
+    floor=3 stays 2s (the floor can't extend it beyond the original).
 
     The global ``WAIT_FLOOR_BLIND`` also applies — the effective floor is
     ``max(floor, WAIT_FLOOR_BLIND)``.
     """
     effective_floor = max(floor, WAIT_FLOOR_BLIND)
-    scaled = max(seconds * WAIT_SCALE_BLIND, effective_floor)
+    scaled = min(max(seconds * WAIT_SCALE_BLIND, effective_floor), seconds)
     if scaled != seconds:
-        print(f"  Waiting {seconds}s→{scaled:.0f}s {msg}...", end="", flush=True)
+        scaled_str = f"{scaled:g}"
+        print(f"  Waiting {seconds}s→{scaled_str}s {msg}...", end="", flush=True)
     else:
         print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
     time.sleep(scaled)
@@ -723,23 +728,27 @@ def wait_for(
     *condition* is met, so scaling down mainly tightens the safety
     margin for genuinely slow conditions.
 
-    *floor* sets a minimum absolute timeout (in seconds, before scaling)
-    that the scaled timeout will not go below.  Use it for waits that
-    have a hard physical minimum (e.g. docker container restart takes
-    ~3-5s regardless of how aggressively you scale)::
+    *floor* sets a minimum absolute timeout (in seconds, real time) that
+    the scaled timeout will not go below.  Use it for waits that have a
+    hard physical minimum (e.g. docker container restart takes ~3-5s
+    regardless of how aggressively you scale)::
 
         wait_for(is_ha_ready, timeout=30, floor=10, msg="for HA to start")
-        # At WAIT_SCALE_POLL=0.05: scaled = max(30*0.05, 10) = 10s, not 1.5s
+        # At WAIT_SCALE_POLL=0.05: scaled = min(max(1.5, 10), 30) = 10s
+
+    The floor never makes the timeout *longer* than the original value —
+    it only protects against scaling too aggressively.
 
     The global ``WAIT_FLOOR_POLL`` also applies — the effective floor is
     ``max(floor, WAIT_FLOOR_POLL)``.
     """
     effective_floor = max(floor, WAIT_FLOOR_POLL)
-    scaled_timeout = max(timeout * WAIT_SCALE_POLL, effective_floor)
+    scaled_timeout = min(max(timeout * WAIT_SCALE_POLL, effective_floor), timeout)
     scaled_interval = max(0.1, interval * WAIT_SCALE_POLL)
     if scaled_timeout != timeout:
+        scaled_str = f"{scaled_timeout:g}"
         print(
-            f"  Waiting up to {timeout}s→{scaled_timeout:.0f}s {msg}...",
+            f"  Waiting up to {timeout}s→{scaled_str}s {msg}...",
             end="",
             flush=True,
         )
@@ -754,7 +763,7 @@ def wait_for(
         except Exception:
             pass  # condition may fail while HA is reloading
         time.sleep(scaled_interval)
-    print(f" TIMEOUT ({scaled_timeout:.0f}s)")
+    print(f" TIMEOUT ({scaled_timeout:g}s)")
     return False
 
 
