@@ -23,6 +23,7 @@ from ..helpers import (
     grep_ha_log,
     is_ramses_cc_loaded,
     wait_for,
+    wait_for_transport_ready,
     ws_send,
 )
 
@@ -53,6 +54,11 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect — the fresh_start reload
+        # closes the transport and injected packets are silently dropped
+        # ("Transport Error: Transport is closing or has closed") until it
+        # reconnects (~15-20s).
+        wait_for_transport_ready(timeout=30)
         # 2. Inject a packet from an unknown device
         #    04:999999 is not in any known_list or schema
         unknown_device = "04:999999"

@@ -222,6 +222,7 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             timeout=10,
             interval=1,
             msg="for battery entity to reflect restored 1060",
+            floor=5.0,
         )
         entities_r32_after = get_entities(ctx.token)
         bat_after = find_battery_entity(entities_r32_after, TRV)
