@@ -98,7 +98,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
                     f" {str(e)[:80]}"
                 )
                 ctx.wait(3, "before retry")
-        ctx.wait(5, "for FAN heartbeat to reach scan engine")
+        ctx.wait(5, "for FAN heartbeat to reach scan engine", floor=2.0)
 
         # Force a sync cycle to trigger mismatch detection
         try:

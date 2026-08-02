@@ -57,7 +57,7 @@ class R19c18HgiDevicesTrackedButNoZoneBindingsA(Recipe):
         except RuntimeError as e:
             print(f"  Inject failed: {e}")
 
-        ctx.wait(5, "for scan engine to process")
+        ctx.wait(5, "for scan engine to process", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:

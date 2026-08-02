@@ -158,7 +158,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for 000C HTG processing")
+        ctx.wait(5, "for 000C HTG processing", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
@@ -225,7 +225,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for 000C APP processing")
+        ctx.wait(5, "for 000C APP processing", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:

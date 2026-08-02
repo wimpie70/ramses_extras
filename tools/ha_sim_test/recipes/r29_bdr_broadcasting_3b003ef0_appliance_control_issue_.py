@@ -164,7 +164,7 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # the sim test to avoid the hotwater_valve slot collision (both non-FC
         # BDRs would compete for the single hotwater_valve slot).
 
-        ctx.wait(3, "for scan engine to process")
+        ctx.wait(3, "for scan engine to process", floor=2.0)
 
         # Accept the two BDRs so they enter the known_list
         print("  Accepting discovered BDRs...")

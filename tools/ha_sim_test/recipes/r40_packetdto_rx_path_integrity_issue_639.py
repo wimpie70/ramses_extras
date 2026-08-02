@@ -207,7 +207,7 @@ except Exception as e:
                 print("    30C9 I injected")
             except RuntimeError as e:
                 print(f"    Inject failed: {str(e)[:80]}")
-            ctx.wait(5, "for 30C9 to process")
+            ctx.wait(5, "for 30C9 to process", floor=2.0)
 
             # Force entity state update
             try:

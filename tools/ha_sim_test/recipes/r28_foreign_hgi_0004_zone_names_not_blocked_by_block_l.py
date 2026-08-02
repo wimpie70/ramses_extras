@@ -100,7 +100,7 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for scan engine to process")
+        ctx.wait(5, "for scan engine to process", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
@@ -157,7 +157,7 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for scan engine to process")
+        ctx.wait(5, "for scan engine to process", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:

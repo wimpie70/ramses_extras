@@ -163,7 +163,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
                 f"(expected): {str(e)[:60]}"
             )
 
-        ctx.wait(5, "for 30C9 packet to appear in log")
+        ctx.wait(5, "for 30C9 packet to appear in log", floor=2.0)
 
         # 5. Read the HA log for the 30C9 packet from our faked device.
         #    The faked device sends a 30C9 I broadcast via MQTT.  The

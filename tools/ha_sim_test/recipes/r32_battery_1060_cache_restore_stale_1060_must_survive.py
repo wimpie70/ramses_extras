@@ -107,7 +107,7 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             print("    1060 I injected")
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for 1060 to process")
+        ctx.wait(5, "for 1060 to process", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:

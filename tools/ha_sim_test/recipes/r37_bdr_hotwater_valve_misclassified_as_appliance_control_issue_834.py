@@ -245,7 +245,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(3, "for scan engine to process")
+        ctx.wait(3, "for scan engine to process", floor=2.0)
 
         # Accept both discovered devices so they enter the known_list
         print("  Accepting discovered OTB and BDR...")

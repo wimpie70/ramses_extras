@@ -65,7 +65,7 @@ class R14InjectRawPacketZoneBindingChangeA(Recipe):
             print("  000C packet injected")
         except RuntimeError as e:
             print(f"  Inject failed: {e}")
-        ctx.wait(5, "for 000C packet processing")
+        ctx.wait(5, "for 000C packet processing", floor=2.0)
 
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
