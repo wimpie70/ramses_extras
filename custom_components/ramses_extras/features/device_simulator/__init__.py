@@ -627,7 +627,7 @@ async def create_device_simulator_feature(
 
     _LOGGER.info("Creating new MqttEndpoint...")
     registry["device_simulator_endpoint"] = MqttEndpoint(
-        hass, topic_base=SIMULATOR_TOPIC_NS
+        hass, gateway_id=SIMULATOR_HGI_ID, topic_base=SIMULATOR_TOPIC_NS
     )
     _LOGGER.info(
         "Created MqttEndpoint instance: %s", id(registry["device_simulator_endpoint"])

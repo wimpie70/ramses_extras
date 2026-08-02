@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import os
 import subprocess
 import time
 import urllib.error
@@ -25,6 +26,36 @@ from collections.abc import Callable
 from typing import Any
 
 from .const import InstanceConfig
+
+#: Scale factors for the two kinds of waits in the test suite.
+#:
+#: * ``WAIT_SCALE_BLIND`` — applied to every fixed ``wait()``/``ctx.wait()``
+#:   blind sleep.  These are the dominant cost (80 of 138 calls use 5s,
+#:   totalling ~400s), and also the riskiest to cut: 5s is already a
+#:   deliberate "let MQTT/HA settle" pause, so 5→0.5 is a 10x cut on
+#:   something that may genuinely need 2-3s.
+#:
+#: * ``WAIT_SCALE_POLL`` — applied to every ``wait_for()`` timeout ceiling.
+#:   These poll and return as soon as the condition is met, so the
+#:   timeout is just a safety margin.  On the simulator, conditions
+#:   typically resolve in 2-3s; if they haven't, the test has probably
+#:   failed.  Scaling 30s→3s just tightens the failure ceiling — safe to
+#:   cut aggressively.
+#:
+#: Both default to ``HA_SIM_TEST_WAIT_SCALE`` (the legacy single knob) if
+#: set, otherwise 1.0.  The per-bucket env vars take precedence when set.
+WAIT_SCALE_BLIND: float = float(
+    os.environ.get(
+        "HA_SIM_TEST_WAIT_SCALE_BLIND",
+        os.environ.get("HA_SIM_TEST_WAIT_SCALE", "1.0"),
+    )
+)
+WAIT_SCALE_POLL: float = float(
+    os.environ.get(
+        "HA_SIM_TEST_WAIT_SCALE_POLL",
+        os.environ.get("HA_SIM_TEST_WAIT_SCALE", "1.0"),
+    )
+)
 
 # ---------------------------------------------------------------------------
 # Current instance contextvar — asyncio-safe per-task instance selection
@@ -148,8 +179,40 @@ def call_service(
 # ---------------------------------------------------------------------------
 # Websocket API helpers (for profile loading)
 # ---------------------------------------------------------------------------
-async def ws_send(token: str, msg: dict) -> dict:
-    """Send a websocket message and return the response."""
+async def ws_send(token: str, msg: dict, *, retries: int = 2) -> dict:
+    """Send a websocket message and return the response.
+
+    Retries up to *retries* times with 3s backoff for transient timeouts
+    and connection errors (common under parallel container contention
+    where HA may be too busy to respond within the 30s websocket timeout).
+    """
+    import aiohttp
+
+    last_err: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return await _ws_send_once(token, msg)
+        except (TimeoutError, aiohttp.ClientError, RuntimeError) as e:
+            last_err = e
+            err = str(e)
+            # Don't retry on "unknown_command" (ramses_extras not loaded yet)
+            # or on genuine WS error responses — only retry on timeouts and
+            # connection issues.
+            if "unknown_command" in err or "WS error:" in err:
+                raise
+            if attempt < retries:
+                import asyncio as _asyncio
+
+                print(
+                    f"  ws_send: retry {attempt + 1}/{retries}"
+                    f" ({type(e).__name__}: {err[:60]})"
+                )
+                await _asyncio.sleep(3)
+    raise last_err  # type: ignore[misc]
+
+
+async def _ws_send_once(token: str, msg: dict) -> dict:
+    """Single websocket send attempt (no retry)."""
     import aiohttp
 
     uri = get_current_instance().ws_url
@@ -605,9 +668,10 @@ def find_entity_for_device(
 
 
 def wait(seconds: int, msg: str = "") -> None:
-    """Wait and print progress."""
+    """Wait and print progress (scaled by ``WAIT_SCALE_BLIND``)."""
+    scaled = max(0.0, seconds * WAIT_SCALE_BLIND)
     print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
-    time.sleep(seconds)
+    time.sleep(scaled)
     print(" done")
 
 
@@ -621,19 +685,24 @@ def wait_for(
 
     Checks *condition* every *interval* seconds.  Returns True if the
     condition was met within *timeout* seconds, False otherwise.
-    Prints progress like :func:`wait`.
+    Prints progress like :func:`wait`.  Both *timeout* and *interval*
+    are scaled by ``WAIT_SCALE_POLL`` — polling still exits as soon as
+    *condition* is met, so scaling down mainly tightens the safety
+    margin for genuinely slow conditions.
     """
+    scaled_timeout = max(0.0, timeout * WAIT_SCALE_POLL)
+    scaled_interval = max(0.1, interval * WAIT_SCALE_POLL)
     print(f"  Waiting up to {timeout}s {msg}...", end="", flush=True)
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + scaled_timeout
     while time.monotonic() < deadline:
         try:
             if condition():
-                print(f" done ({timeout - int(deadline - time.monotonic())}s)")
+                print(f" done ({int(scaled_timeout - (deadline - time.monotonic()))}s)")
                 return True
         except Exception:
             pass  # condition may fail while HA is reloading
-        time.sleep(interval)
-    print(f" TIMEOUT ({timeout}s)")
+        time.sleep(scaled_interval)
+    print(f" TIMEOUT ({scaled_timeout:.0f}s)")
     return False
 
 
@@ -652,6 +721,38 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
         timeout=timeout,
         interval=2,
         msg=f"for schema to have >= {min_keys} keys",
+    )
+
+
+def wait_for_transport_ready(timeout: int = 30) -> bool:
+    """Wait until the ramses_rf MQTT transport has reconnected after a reload.
+
+    After a profile reload with ``reload_ramses_cc=True``, the ramses_rf
+    transport closes and takes ~15-20s to reconnect.  Injected packets are
+    silently dropped ("Transport Error: Transport is closing or has closed")
+    during this window.  This helper polls the HA log for the
+    ``Subscribed to status topic`` message that indicates the MQTT transport
+    has reconnected and the FSM is back in ``IsInIdle``.
+    """
+    inst = get_current_instance()
+
+    def _check() -> bool:
+        result = subprocess.run(
+            ["docker", "logs", "--since", "5s", inst.name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
+        logs = result.stderr or ""
+        # The MQTT transport logs this when it (re)subscribes after connecting.
+        # Use a short --since window so we only catch the reconnection after
+        # the profile reload, not the initial startup message.
+        return "Subscribed to status topic" in logs
+
+    return wait_for(
+        _check, timeout=timeout, interval=3, msg="for transport to reconnect"
     )
 
 

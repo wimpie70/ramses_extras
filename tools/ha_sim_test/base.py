@@ -36,7 +36,6 @@ Two registration styles are supported (see :mod:`.registry`):
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -44,6 +43,7 @@ from typing import Any
 from .const import InstanceConfig
 from .helpers import get_token, set_current_instance
 from .helpers import log_section as _log_section
+from .helpers import wait as _wait
 from .helpers import wait_for as _wait_for
 
 
@@ -103,10 +103,8 @@ class RecipeContext:
             print(f"  FAIL: {label} {detail}")
 
     def wait(self, seconds: int, msg: str = "") -> None:
-        """Wait and print progress (mirrors helpers.wait)."""
-        print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
-        time.sleep(seconds)
-        print(" done")
+        """Wait and print progress (delegates to helpers.wait)."""
+        _wait(seconds, msg)
 
     def wait_for(
         self,

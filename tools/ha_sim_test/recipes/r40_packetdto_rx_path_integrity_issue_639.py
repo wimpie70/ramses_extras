@@ -59,6 +59,9 @@ except ImportError as e:
         field_names = set(result["fields"])
 
         # Allowed L1/L2 fields per issue 639
+        # is_tx was added to distinguish inbound (RX) vs outbound (TX)
+        # packets as part of the OSI layer decoupling — it is a legitimate
+        # L1/L2 transport field, not an application-layer field.
         allowed_fields = {
             "timestamp",
             "rssi",
@@ -70,6 +73,7 @@ except ImportError as e:
             "code",
             "length",
             "payload",
+            "is_tx",
         }
 
         ctx.check(

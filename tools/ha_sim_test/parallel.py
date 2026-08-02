@@ -18,6 +18,7 @@ The runner:
 from __future__ import annotations
 
 import asyncio
+import functools
 import os
 import re
 import subprocess
@@ -28,6 +29,7 @@ from typing import Any
 
 from .base import RecipeContext
 from .const import InstanceConfig, make_instances
+from .dashboard import LiveDashboard
 from .helpers import (
     _current_instance as _current_instance_var,
 )
@@ -888,12 +890,28 @@ async def run_parallel(
             f" {', '.join(rids[:10])}{'...' if len(rids) > 10 else ''}"
         )
 
-    # Run in parallel
+    # Run in parallel, with a live per-container status dashboard (falls
+    # back to plain interleaved prints when stdout isn't a real terminal,
+    # e.g. piped to a log file).
     log_section("Parallel: Running recipes")
-    tasks = [
-        run_single_instance(instances[idx - 1], groups[idx]) for idx in sorted(groups)
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    ordered_instances = [instances[idx - 1] for idx in sorted(groups)]
+    dash = LiveDashboard([inst.name for inst in ordered_instances])
+    tasks: list[asyncio.Task[InstanceResult]] = []
+
+    def _on_done(_task: asyncio.Task[InstanceResult], name: str) -> None:
+        dash.mark_done(name)
+
+    for idx in sorted(groups):
+        inst = instances[idx - 1]
+        task = asyncio.ensure_future(run_single_instance(inst, groups[idx]))
+        task.add_done_callback(functools.partial(_on_done, name=inst.name))
+        tasks.append(task)
+
+    dash.start()
+    try:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        await dash.stop()
 
     # Handle exceptions from gather
     final_results: list[InstanceResult] = []

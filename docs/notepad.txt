@@ -352,3 +352,77 @@ age the cached 1060 timestamps in `.storage/ramses_cc` before restarting.
 - tools/ha_sim_test.py — append Recipe 32 after Recipe 31 (line ~3645)
 - ramses_rf: src/ramses_rf/const.py — remove `Code._1060,` from
   HIGH_VOLUME_STATUS_CODES (the actual fix; separate PR, references 840)
+
+## ha_sim_test 4-container parallel suite — remaining failures (Aug 1 2026)
+Baseline after landing the ramses_rf HVC-default-class fix (PR
+https://github.com/ramses-rf/ramses_rf/pull/968 — "not a valid value
+@ data['bound']" during fresh_start reloads): 380 passed / 8 failed
+(down from 17 failed before the fix). ha-sim-2 (previously the most
+flaky — R22/R20 fresh_start reload timeouts) now 100% passes. Remaining
+8 are unrelated pre-existing bugs, to investigate one at a time:
+
+1. `[ha-sim]` R47ish: "unknown device 04:999999 in get_discovered_devices
+   (log output)" — device not found in get_discovered_devices log
+   output. Possibly a timing/log-scrape flake rather than a real bug.
+2. `[ha-sim-3]` "Invalid main_tcs cleared after sanitisation" —
+   main_tcs=04:999999 not cleared as expected.
+3. `[ha-sim-3]` "Invalid main_tcs persisted to config entry" — config
+   entry still references 04:999999 (companion to #2, same root cause
+   likely — sanitisation not persisting/re-running after config entry
+   write).
+4. `[ha-sim-3]` "No ramses_cc ERROR logs during stress test" — ERROR
+   logs found during R16 concurrency/stress test (rapid add/remove +
+   inject). Need to capture which ERROR specifically.
+5. `[ha-sim-3]` R36 (issue 843): "climate state is 'heat' (not
+   unknown/None)" — state='unknown'/None; target_temperature not
+   hydrated from 2349 (21.0°C). Known/tracked issue 843, pre-existing.
+6. `[ha-sim-4]` "Zone 03 has _name set (0004 RP to foreign HGI not
+   blocked)" — _name=None, meaning the 0004 RP was blocked by
+   block_list when the test expected it to pass through (or vice
+   versa — re-check R37/R34-adjacent foreign-HGI block_list recipe
+   intent).
+7. `[ha-sim-4]` R32 (issue 840): "TRV battery binary sensor retained
+   state after restart (stale 1060)" — state=None after aging cached
+   packets 2h and restarting. This is the documented Recipe 32 PREP
+   above (section "PREP: Recipe 32 — Battery (1060) cache restore
+   regression") — fix is `ramses_rf/src/ramses_rf/const.py`: remove
+   `Code._1060,` from `HIGH_VOLUME_STATUS_CODES` (separate PR).
+8. (duplicate-ish of #1) R47 `get_discovered_devices` log-output
+   flakiness — confirm whether #1 and this are the same failure
+   reported by two different assertions in the same recipe.
+
+Suggested order: #7 (already scoped, known fix) → #5 (issue 843,
+likely same discovery/hydration family as #7) → #2/#3 (same recipe,
+investigate together) → #6 → #4/#1/#8 (flakier, investigate last).
+
+## ha_sim_test speed & live feedback improvements (Aug 1 2026)
+- Added `HA_SIM_TEST_WAIT_SCALE` env var (default `1.0`) in
+  `tools/ha_sim_test/helpers.py` — scales every fixed `wait()`/
+  `ctx.wait()` sleep and every `wait_for()` timeout/interval ceiling.
+  `ctx.wait()` in `base.py` now delegates to `helpers.wait()` so it
+  gets scaling for free. Try `HA_SIM_TEST_WAIT_SCALE=0.5 python -m
+  ha_sim_test ...` to see which recipes tolerate faster runs, then
+  consider lowering literal `ctx.wait(N, ...)` values in the recipes
+  that turn out to be over-conservative (138 fixed `ctx.wait()` calls
+  across recipes currently sum to ~730s of pure sleep time — the
+  dominant cost in a full single-container run).
+- Added `tools/ha_sim_test/dashboard.py` (`LiveDashboard`): live,
+  in-place-updating per-container status panes (7 lines each: header
+  with current recipe + pass/fail tally + elapsed time, plus 6 lines
+  of recent output) during `--parallel N` runs. Attributes stdout
+  lines to the correct container via the existing
+  `get_current_instance()` contextvar (not by parsing `[name]`
+  prefixes), so it works correctly even though asyncio interleaves
+  containers at arbitrary points. Auto-disables (falls back to the
+  original plain interleaved prints) when stdout isn't a real TTY —
+  e.g. piped to a log file — so `> file.log` capture for `grep`-based
+  analysis is unaffected. Wired into `run_parallel()` in `parallel.py`.
+- Confirmed (by grepping interleaved `>>> Running` markers across all
+  4 containers in a full run) that containers genuinely run
+  concurrently, not sequentially — despite no explicit
+  `asyncio.to_thread`/threading in the codebase. This works because
+  some helpers (e.g. `ws_send` over aiohttp) have real `await` points
+  that yield control between blocking sections; worth keeping in mind
+  since long stretches of pure `ctx.wait()`/`time.sleep()` inside one
+  recipe will still stall other containers' progress until the next
+  yield point.

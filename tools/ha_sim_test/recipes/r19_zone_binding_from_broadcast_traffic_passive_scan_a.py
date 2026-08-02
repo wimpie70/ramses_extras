@@ -49,6 +49,11 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
         # the mixed profile (which has CTL + FAN + REM) instead of fresh_start.
 
         # Load mixed profile (has CTL for zone creation)
+        # Use reload_ramses_cc=False to avoid restarting the ramses_rf MQTT
+        # transport, which can destabilise on warm-started containers (the
+        # broker disconnects the new client before the old one is cleaned up).
+        # The mixed profile is already loaded in the setup phase; this reload
+        # just ensures a clean schema without breaking the transport.
         print("  Loading mixed profile (has CTL for zone creation)...")
         try:
             await ws_send(
@@ -58,7 +63,7 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
                     "profile": "mixed",
                     "speed": 0.01,
                     "preload_schema": True,
-                    "reload_ramses_cc": True,
+                    "reload_ramses_cc": False,
                     "enable_auto_answer": True,
                 },
             )

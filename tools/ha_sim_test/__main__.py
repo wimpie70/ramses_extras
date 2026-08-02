@@ -6,6 +6,8 @@ Usage::
     python3 -m ha_sim_test R06 R29      # run specific recipes by id
     python3 -m ha_sim_test --parallel 2 # run across 2 containers
     python3 -m ha_sim_test --parallel 4 --cleanup
+    python3 -m ha_sim_test --wait-scale-poll 0.1          # tighten poll ceilings
+    python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-scale-poll 0.1
 """
 
 from __future__ import annotations
@@ -61,7 +63,36 @@ def main() -> None:
         "are stopped but config dirs are kept for warm restarts. "
         "Instance 1 (ha-sim) is always left running.",
     )
+    parser.add_argument(
+        "--wait-scale-blind",
+        type=float,
+        default=None,
+        metavar="FACTOR",
+        help="Scale factor for fixed wait() blind sleeps (default: 1.0, or "
+        "HA_SIM_TEST_WAIT_SCALE_BLIND if set). E.g. 0.5 halves all 5s/10s/..."
+        " sleeps. The dominant cost is 80 calls to wait(5) totalling ~400s.",
+    )
+    parser.add_argument(
+        "--wait-scale-poll",
+        type=float,
+        default=None,
+        metavar="FACTOR",
+        help="Scale factor for wait_for() timeout ceilings (default: 1.0, or "
+        "HA_SIM_TEST_WAIT_SCALE_POLL if set). Polling returns early, so this "
+        "only tightens the failure ceiling. Safe to cut aggressively on the "
+        "simulator (e.g. 0.1 -> 30s ceiling becomes 3s).",
+    )
     args = parser.parse_args()
+
+    # Apply CLI wait-scale overrides (env vars are read at import time in
+    # helpers.py; CLI flags take precedence and update the module vars).
+    if args.wait_scale_blind is not None or args.wait_scale_poll is not None:
+        from . import helpers
+
+        if args.wait_scale_blind is not None:
+            helpers.WAIT_SCALE_BLIND = args.wait_scale_blind
+        if args.wait_scale_poll is not None:
+            helpers.WAIT_SCALE_POLL = args.wait_scale_poll
 
     recipe_ids = args.recipes or None
 
