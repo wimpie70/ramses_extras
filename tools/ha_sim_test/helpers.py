@@ -57,6 +57,22 @@ WAIT_SCALE_POLL: float = float(
     )
 )
 
+#: Global minimum floors (seconds, pre-scaling) that all scaled waits respect.
+#: Unlike the per-call ``floor=`` parameter (which takes the max with these),
+#: these apply to *every* wait in the suite.  Set via env var or CLI flag.
+#:
+#: ``WAIT_FLOOR_BLIND`` ensures every blind sleep is at least N seconds real
+#: time, regardless of ``WAIT_SCALE_BLIND``.  Useful when running at aggressive
+#: scale factors: e.g. ``--wait-scale-blind 0.5 --wait-floor-blind 3`` means
+#: ``wait(5)`` → max(2.5, 3) = 3s, ``wait(10)`` → max(5, 3) = 5s, but
+#: ``wait(2)`` → max(1, 3) = 3s (slightly over, but safe).
+#:
+#: ``WAIT_FLOOR_POLL`` does the same for ``wait_for()`` timeout ceilings.
+#: The per-call ``floor=`` parameter (e.g. ``wait_for_ha_ready`` uses floor=10)
+#: takes the max with this global floor.
+WAIT_FLOOR_BLIND: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_BLIND", "0"))
+WAIT_FLOOR_POLL: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_POLL", "0"))
+
 # ---------------------------------------------------------------------------
 # Current instance contextvar — asyncio-safe per-task instance selection
 # ---------------------------------------------------------------------------
@@ -667,10 +683,25 @@ def find_entity_for_device(
     return None
 
 
-def wait(seconds: int, msg: str = "") -> None:
-    """Wait and print progress (scaled by ``WAIT_SCALE_BLIND``)."""
-    scaled = max(0.0, seconds * WAIT_SCALE_BLIND)
-    print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
+def wait(seconds: int, msg: str = "", *, floor: float = 0.0) -> None:
+    """Wait and print progress (scaled by ``WAIT_SCALE_BLIND``).
+
+    *floor* sets a minimum absolute sleep (seconds, pre-scaling) that the
+    scaled sleep will not go below — use it for sensitive waits that need
+    a hard minimum regardless of the global scale factor::
+
+        wait(5, "for scan engine", floor=3)
+        # At WAIT_SCALE_BLIND=0.5: scaled = max(5*0.5, 3) = 3s, not 2.5s
+
+    The global ``WAIT_FLOOR_BLIND`` also applies — the effective floor is
+    ``max(floor, WAIT_FLOOR_BLIND)``.
+    """
+    effective_floor = max(floor, WAIT_FLOOR_BLIND)
+    scaled = max(seconds * WAIT_SCALE_BLIND, effective_floor)
+    if scaled != seconds:
+        print(f"  Waiting {seconds}s→{scaled:.0f}s {msg}...", end="", flush=True)
+    else:
+        print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
     time.sleep(scaled)
     print(" done")
 
@@ -680,6 +711,8 @@ def wait_for(
     timeout: int = 30,
     interval: float = 1.0,
     msg: str = "",
+    *,
+    floor: float = 0.0,
 ) -> bool:
     """Poll a condition until True or timeout.
 
@@ -689,10 +722,29 @@ def wait_for(
     are scaled by ``WAIT_SCALE_POLL`` — polling still exits as soon as
     *condition* is met, so scaling down mainly tightens the safety
     margin for genuinely slow conditions.
+
+    *floor* sets a minimum absolute timeout (in seconds, before scaling)
+    that the scaled timeout will not go below.  Use it for waits that
+    have a hard physical minimum (e.g. docker container restart takes
+    ~3-5s regardless of how aggressively you scale)::
+
+        wait_for(is_ha_ready, timeout=30, floor=10, msg="for HA to start")
+        # At WAIT_SCALE_POLL=0.05: scaled = max(30*0.05, 10) = 10s, not 1.5s
+
+    The global ``WAIT_FLOOR_POLL`` also applies — the effective floor is
+    ``max(floor, WAIT_FLOOR_POLL)``.
     """
-    scaled_timeout = max(0.0, timeout * WAIT_SCALE_POLL)
+    effective_floor = max(floor, WAIT_FLOOR_POLL)
+    scaled_timeout = max(timeout * WAIT_SCALE_POLL, effective_floor)
     scaled_interval = max(0.1, interval * WAIT_SCALE_POLL)
-    print(f"  Waiting up to {timeout}s {msg}...", end="", flush=True)
+    if scaled_timeout != timeout:
+        print(
+            f"  Waiting up to {timeout}s→{scaled_timeout:.0f}s {msg}...",
+            end="",
+            flush=True,
+        )
+    else:
+        print(f"  Waiting up to {timeout}s {msg}...", end="", flush=True)
     deadline = time.monotonic() + scaled_timeout
     while time.monotonic() < deadline:
         try:
@@ -704,6 +756,16 @@ def wait_for(
         time.sleep(scaled_interval)
     print(f" TIMEOUT ({scaled_timeout:.0f}s)")
     return False
+
+
+def wait_for_ha_ready(timeout: int = 30, msg: str = "for ha-sim to start up") -> bool:
+    """Wait for HA to be ready after a docker restart.
+
+    Like :func:`wait_for` with :func:`is_ha_ready`, but with a *floor*
+    of 10s — docker restarts take a hard 3-5s minimum before the API is
+    even reachable, so scaling the timeout below 10s makes no sense.
+    """
+    return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=10.0)
 
 
 # ---------------------------------------------------------------------------

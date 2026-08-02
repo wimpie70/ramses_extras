@@ -27,7 +27,7 @@ import subprocess
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL
-from ..helpers import get_current_instance, get_schema_retry, is_ha_ready, wait_for
+from ..helpers import get_current_instance, get_schema_retry, wait_for_ha_ready
 
 
 class R59Phase4CleanupStaleKnownList(Recipe):
@@ -127,7 +127,7 @@ class R59Phase4CleanupStaleKnownList(Recipe):
             subprocess.run(
                 ["docker", "start", get_current_instance().name], capture_output=True
             )
-            wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+            wait_for_ha_ready(timeout=30)
             return
 
         # Step 4: Start ha-sim — async_setup_entry will run and call
@@ -136,7 +136,7 @@ class R59Phase4CleanupStaleKnownList(Recipe):
         subprocess.run(
             ["docker", "start", get_current_instance().name], capture_output=True
         )
-        wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
         ctx.wait(10, "for ramses_cc to initialize + run cleanup")

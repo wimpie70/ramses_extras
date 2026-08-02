@@ -95,6 +95,8 @@ usage: ha_sim_test [-h] [--parallel N] [--container-base CONTAINER_BASE]
 | `--cleanup` | off | Stop and remove parallel containers (instances 2+) and their cloned config dirs after the run. Without this flag, containers are stopped but config dirs are kept for warm restarts. Instance 1 (`ha-sim`) is always left running. |
 | `--wait-scale-blind FACTOR` | `1.0` | Scale factor for fixed `wait()` blind sleeps. See [Wait scaling](#wait-scaling). |
 | `--wait-scale-poll FACTOR` | `1.0` | Scale factor for `wait_for()` timeout ceilings. See [Wait scaling](#wait-scaling). |
+| `--wait-floor-blind SECONDS` | `0` | Global minimum (real-time seconds) for all blind `wait()` sleeps. Protects sensitive waits when using aggressive scale factors. |
+| `--wait-floor-poll SECONDS` | `0` | Global minimum for all `wait_for()` timeout ceilings. Per-call `floor=` (e.g. `wait_for_ha_ready` uses 10s) takes the max with this. |
 
 ### Examples
 
@@ -119,9 +121,10 @@ python3 -m ha_sim_test --wait-scale-poll 0.1
 # Run aggressive: halve blind sleeps AND tighten poll ceilings
 python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-scale-poll 0.1
 
-# Run on 4 containers with aggressive wait scaling
+# RECOMMENDED fast run: scale + floor protects sensitive waits
+# (0 new failures vs baseline, ~9.8 min wall time on 4 containers)
 python3 -m ha_sim_test --parallel 4 --cleanup \
-    --wait-scale-blind 0.5 --wait-scale-poll 0.1
+    --wait-scale-blind 0.5 --wait-scale-poll 0.1 --wait-floor-blind 3
 
 # Pipe to a log file (dashboard auto-disables, plain interleaved output)
 python3 -m ha_sim_test --parallel 4 > /tmp/run.log 2>&1
@@ -186,21 +189,38 @@ scale knobs let you trade safety for speed:
   haven't, the test has probably failed. Scaling 30s→3s just tightens
   the failure ceiling — safe to cut aggressively.
 
+- **`--wait-floor-blind SECONDS`** (or `HA_SIM_TEST_WAIT_FLOOR_BLIND`):
+  global minimum (real-time seconds) that all blind sleeps respect,
+  regardless of the scale factor. When using aggressive scale factors,
+  this protects sensitive waits (scan engine processing, sync operations,
+  entity hydration) that need a hard minimum of ~3s. The output shows
+  both the original and scaled values: `Waiting 5s→3s for sync...`.
+
+- **`--wait-floor-poll SECONDS`** (or `HA_SIM_TEST_WAIT_FLOOR_POLL`):
+  same for `wait_for()` timeout ceilings. The per-call `floor=` parameter
+  (e.g. `wait_for_ha_ready` uses floor=10 for docker restarts) takes the
+  max with this global floor.
+
 **Precedence:** CLI flag > per-bucket env var > legacy
-`HA_SIM_TEST_WAIT_SCALE` (sets both) > default `1.0`.
+`HA_SIM_TEST_WAIT_SCALE` (sets both) > default `1.0`. Floors default to
+0 (no protection); per-call `floor=` takes the max with the global floor.
 
-| Goal | Blind | Poll | Notes |
-|---|---|---|---|
-| Safe speedup on failures | 1.0 | 0.1 | Only tightens poll ceilings; blind sleeps unchanged |
-| Moderate speedup | 0.5 | 0.1 | Halves blind sleeps too; good for local iteration |
-| Find the minimum | 0.25 | 0.05 | Will likely break something — that's the point |
-| Slow machine / debugging | 2.0 | 2.0 | Give everything more headroom |
+| Goal | Blind | Poll | Floor blind | Notes |
+|---|---|---|---|---|
+| Safe speedup on failures | 1.0 | 0.1 | 0 | Only tightens poll ceilings |
+| **Recommended fast run** | **0.5** | **0.1** | **3** | **0 new failures, ~9.8 min on 4 containers** |
+| Aggressive | 0.25 | 0.05 | 3 | May still break post-restart hydration |
+| Slow machine / debugging | 2.0 | 2.0 | 0 | Give everything more headroom |
 
-**Finding bottlenecks:** the global knobs are good for "can I run the
-suite 2x faster?" and "which recipe breaks first when I push it?" (the
-dashboard shows which container failed). They do *not* tell you which
-specific `wait(15)` should be a `wait(5)` — for that you'd want per-wait
-timing telemetry (not yet implemented).
+**Output format:** when a wait is scaled, the output shows both the
+original and actual duration: `Waiting 5s→3s for sync_learned_topology...`
+or `Waiting up to 30s→10s for ha-sim to start up...`. This makes it
+visible which waits are being shortened and by how much.
+
+**Docker restart floors:** `wait_for_ha_ready()` has a built-in floor of
+10s — docker restarts take a hard 3-5s minimum before the API is
+reachable, so scaling below 10s makes no sense. This is separate from
+the global `--wait-floor-poll` (the effective floor is the max of both).
 
 ## Test report
 

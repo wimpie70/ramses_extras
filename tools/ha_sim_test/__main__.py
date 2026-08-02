@@ -8,6 +8,7 @@ Usage::
     python3 -m ha_sim_test --parallel 4 --cleanup
     python3 -m ha_sim_test --wait-scale-poll 0.1          # tighten poll ceilings
     python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-scale-poll 0.1
+    python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-floor-blind 3  # safe fast
 """
 
 from __future__ import annotations
@@ -82,17 +83,39 @@ def main() -> None:
         "only tightens the failure ceiling. Safe to cut aggressively on the "
         "simulator (e.g. 0.1 -> 30s ceiling becomes 3s).",
     )
+    parser.add_argument(
+        "--wait-floor-blind",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="Global minimum (seconds, real time) for all blind wait() sleeps. "
+        "Protects sensitive waits (scan engine, sync, entity hydration) when "
+        "using aggressive --wait-scale-blind. E.g. --wait-scale-blind 0.5 "
+        "--wait-floor-blind 3 means wait(5)->3s, wait(10)->5s, wait(2)->3s.",
+    )
+    parser.add_argument(
+        "--wait-floor-poll",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="Global minimum (seconds) for all wait_for() timeout ceilings. "
+        "The per-call floor= parameter (e.g. wait_for_ha_ready uses floor=10) "
+        "takes the max with this.",
+    )
     args = parser.parse_args()
 
-    # Apply CLI wait-scale overrides (env vars are read at import time in
-    # helpers.py; CLI flags take precedence and update the module vars).
-    if args.wait_scale_blind is not None or args.wait_scale_poll is not None:
-        from . import helpers
+    # Apply CLI wait-scale/floor overrides (env vars are read at import time
+    # in helpers.py; CLI flags take precedence and update the module vars).
+    from . import helpers
 
-        if args.wait_scale_blind is not None:
-            helpers.WAIT_SCALE_BLIND = args.wait_scale_blind
-        if args.wait_scale_poll is not None:
-            helpers.WAIT_SCALE_POLL = args.wait_scale_poll
+    if args.wait_scale_blind is not None:
+        helpers.WAIT_SCALE_BLIND = args.wait_scale_blind
+    if args.wait_scale_poll is not None:
+        helpers.WAIT_SCALE_POLL = args.wait_scale_poll
+    if args.wait_floor_blind is not None:
+        helpers.WAIT_FLOOR_BLIND = args.wait_floor_blind
+    if args.wait_floor_poll is not None:
+        helpers.WAIT_FLOOR_POLL = args.wait_floor_poll
 
     recipe_ids = args.recipes or None
 

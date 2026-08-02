@@ -24,10 +24,10 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
-    is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_ha_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -190,7 +190,7 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
         subprocess.run(
             ["docker", "start", get_current_instance().name], capture_output=True
         )
-        wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
         wait_for(

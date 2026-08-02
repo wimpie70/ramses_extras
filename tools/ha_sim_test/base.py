@@ -102,9 +102,9 @@ class RecipeContext:
             self.results.append(f"  FAIL: {label} {detail}")
             print(f"  FAIL: {label} {detail}")
 
-    def wait(self, seconds: int, msg: str = "") -> None:
+    def wait(self, seconds: int, msg: str = "", *, floor: float = 0.0) -> None:
         """Wait and print progress (delegates to helpers.wait)."""
-        _wait(seconds, msg)
+        _wait(seconds, msg, floor=floor)
 
     def wait_for(
         self,
@@ -112,6 +112,8 @@ class RecipeContext:
         timeout: int = 30,
         interval: float = 1.0,
         msg: str = "",
+        *,
+        floor: float = 0.0,
     ) -> bool:
         """Poll a condition until it returns True or timeout is reached.
 
@@ -119,6 +121,10 @@ class RecipeContext:
         Checks ``condition`` every ``interval`` seconds.  Returns True
         if the condition was met within ``timeout`` seconds, False
         otherwise.  Prints progress like :meth:`wait`.
+
+        *floor* sets a minimum absolute timeout (seconds, pre-scaling)
+        that the scaled timeout won't go below — use it for waits with
+        a hard physical minimum (e.g. docker restarts).
 
         Example::
 
@@ -129,7 +135,20 @@ class RecipeContext:
             ):
                 ...
         """
-        return _wait_for(condition, timeout, interval, msg)
+        return _wait_for(condition, timeout, interval, msg, floor=floor)
+
+    def wait_for_ha_ready(
+        self,
+        timeout: int = 30,
+        msg: str = "for ha-sim to start up",
+    ) -> bool:
+        """Wait for HA to be ready after a docker restart (floored at 10s).
+
+        See :func:`helpers.wait_for_ha_ready` for details.
+        """
+        from .helpers import wait_for_ha_ready as _wait_for_ha_ready
+
+        return _wait_for_ha_ready(timeout=timeout, msg=msg)
 
     def log_section(self, title: str) -> None:
         """Emit a labelled section banner in the test output."""

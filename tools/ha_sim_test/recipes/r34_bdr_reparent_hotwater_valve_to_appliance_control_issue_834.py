@@ -14,7 +14,6 @@ from ..helpers import (
     clear_cached_state,
     get_current_instance,
     get_schema_retry,
-    is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
@@ -71,7 +70,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         # a truly clean state for this race condition test.
         print("  Stopping ha-sim and clearing cached state...")
         clear_cached_state(ctx.log_monitor, label="R34 pre-restart")
-        ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
         ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")

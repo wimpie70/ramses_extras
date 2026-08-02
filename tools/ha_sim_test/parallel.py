@@ -294,7 +294,9 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
             finally:
                 _current_instance_reset(token)
 
-        ready = wait_for(_ready, timeout=120, interval=3, msg=f"[{inst.name}] HA ready")
+        ready = wait_for(
+            _ready, timeout=120, interval=3, msg=f"[{inst.name}] HA ready", floor=15.0
+        )
         if not ready:
             raise RuntimeError(f"[{inst.name}] HA did not become ready within 120s")
         print(f"  [{inst.name}] HA is ready")
