@@ -2,13 +2,10 @@
 
 Usage::
 
-    python3 -m ha_sim_test              # run all recipes in seq order
+    python3 -m ha_sim_test              # run all recipes (defaults: 0.5/0.08/3)
     python3 -m ha_sim_test R06 R29      # run specific recipes by id
-    python3 -m ha_sim_test --parallel 2 # run across 2 containers
-    python3 -m ha_sim_test --parallel 4 --cleanup
-    python3 -m ha_sim_test --wait-scale-poll 0.1          # tighten poll ceilings
-    python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-scale-poll 0.1
-    python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-floor-blind 3  # safe fast
+    python3 -m ha_sim_test --parallel 4 --cleanup  # fast: ~9 min, 0 new fails
+    python3 -m ha_sim_test --wait-scale-blind 1.0 --wait-scale-poll 1.0  # safe
 """
 
 from __future__ import annotations
@@ -69,7 +66,7 @@ def main() -> None:
         type=float,
         default=None,
         metavar="FACTOR",
-        help="Scale factor for fixed wait() blind sleeps (default: 1.0, or "
+        help="Scale factor for fixed wait() blind sleeps (default: 0.5, or "
         "HA_SIM_TEST_WAIT_SCALE_BLIND if set). E.g. 0.5 halves all 5s/10s/..."
         " sleeps. The dominant cost is 80 calls to wait(5) totalling ~400s.",
     )
@@ -78,20 +75,21 @@ def main() -> None:
         type=float,
         default=None,
         metavar="FACTOR",
-        help="Scale factor for wait_for() timeout ceilings (default: 1.0, or "
+        help="Scale factor for wait_for() timeout ceilings (default: 0.08, or "
         "HA_SIM_TEST_WAIT_SCALE_POLL if set). Polling returns early, so this "
         "only tightens the failure ceiling. Safe to cut aggressively on the "
-        "simulator (e.g. 0.1 -> 30s ceiling becomes 3s).",
+        "simulator (e.g. 0.08 -> 30s ceiling becomes 2.4s).",
     )
     parser.add_argument(
         "--wait-floor-blind",
         type=float,
         default=None,
         metavar="SECONDS",
-        help="Global minimum (seconds, real time) for all blind wait() sleeps. "
-        "Protects sensitive waits (scan engine, sync, entity hydration) when "
-        "using aggressive --wait-scale-blind. E.g. --wait-scale-blind 0.5 "
-        "--wait-floor-blind 3 means wait(5)->3s, wait(10)->5s, wait(2)->3s.",
+        help="Global minimum (seconds, real time) for all blind wait() sleeps "
+        "(default: 3). Protects sensitive waits (scan engine, sync, entity "
+        "hydration) when using aggressive --wait-scale-blind. E.g. "
+        "--wait-scale-blind 0.5 --wait-floor-blind 3 means wait(5)->3s, "
+        "wait(10)->5s, wait(2)->3s.",
     )
     parser.add_argument(
         "--wait-floor-poll",

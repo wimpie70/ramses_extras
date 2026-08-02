@@ -47,13 +47,13 @@ from .const import InstanceConfig
 WAIT_SCALE_BLIND: float = float(
     os.environ.get(
         "HA_SIM_TEST_WAIT_SCALE_BLIND",
-        os.environ.get("HA_SIM_TEST_WAIT_SCALE", "1.0"),
+        os.environ.get("HA_SIM_TEST_WAIT_SCALE", "0.5"),
     )
 )
 WAIT_SCALE_POLL: float = float(
     os.environ.get(
         "HA_SIM_TEST_WAIT_SCALE_POLL",
-        os.environ.get("HA_SIM_TEST_WAIT_SCALE", "1.0"),
+        os.environ.get("HA_SIM_TEST_WAIT_SCALE", "0.08"),
     )
 )
 
@@ -70,7 +70,7 @@ WAIT_SCALE_POLL: float = float(
 #: ``WAIT_FLOOR_POLL`` does the same for ``wait_for()`` timeout ceilings.
 #: The per-call ``floor=`` parameter (e.g. ``wait_for_ha_ready`` uses floor=10)
 #: takes the max with this global floor.
-WAIT_FLOOR_BLIND: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_BLIND", "0"))
+WAIT_FLOOR_BLIND: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_BLIND", "3"))
 WAIT_FLOOR_POLL: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_POLL", "0"))
 
 # ---------------------------------------------------------------------------

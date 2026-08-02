@@ -115,16 +115,11 @@ python3 -m ha_sim_test --parallel 2 \
     --assign ha-sim:R01,R02,R03 \
     --assign ha-sim-2:R04,R05,R06
 
-# Run fast: tighten poll ceilings only (safe, big win on failures)
-python3 -m ha_sim_test --wait-scale-poll 0.1
+# Run fast: defaults are already 0.5/0.08/3 — no flags needed
+python3 -m ha_sim_test --parallel 4 --cleanup
 
-# Run aggressive: halve blind sleeps AND tighten poll ceilings
-python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-scale-poll 0.1
-
-# RECOMMENDED fast run: scale + floor protects sensitive waits
-# (0 new failures vs baseline, ~9 min wall time on 4 containers)
-python3 -m ha_sim_test --parallel 4 --cleanup \
-    --wait-scale-blind 0.5 --wait-scale-poll 0.08 --wait-floor-blind 3
+# Run safe (no scaling, full waits)
+python3 -m ha_sim_test --wait-scale-blind 1.0 --wait-scale-poll 1.0 --wait-floor-blind 0
 
 # Pipe to a log file (dashboard auto-disables, plain interleaved output)
 python3 -m ha_sim_test --parallel 4 > /tmp/run.log 2>&1
