@@ -62,7 +62,7 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 0004 payload format: zone_idx(2) + "00"(2) + name_hex(40, 20 bytes
         # ASCII padded with 00).  Total = 44 hex chars (22 bytes, length 022).

@@ -79,7 +79,7 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
             print("  Profile loaded with list-valued _bound")
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate FAN + both REMs for heartbeats
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (rem2, "REM2")]:

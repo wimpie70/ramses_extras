@@ -163,6 +163,19 @@ class RecipeContext:
 
         return _w(timeout=timeout, msg=msg)
 
+    def wait_for_ramses_cc_reload(
+        self,
+        timeout: int = 20,
+        msg: str = "for ramses_cc reload",
+    ) -> bool:
+        """Wait for ramses_cc reload after profile change (floored at 5s).
+
+        See :func:`helpers.wait_for_ramses_cc_reload` for details.
+        """
+        from .helpers import wait_for_ramses_cc_reload as _w
+
+        return _w(timeout=timeout, msg=msg)
+
     def wait_for_schema_stable(
         self,
         timeout: int = 10,

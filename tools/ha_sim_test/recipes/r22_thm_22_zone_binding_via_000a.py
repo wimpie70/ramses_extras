@@ -60,7 +60,7 @@ class R22Thm22ZoneBindingVia000a(Recipe):
             print("  fresh_start profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Inject RQ 000A from a THM (22:) to the HGI (18:001234)
         # THMs send RQ 000A with just the zone_idx (2 hex) as payload.

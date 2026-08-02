@@ -793,6 +793,23 @@ def wait_for_ramses_cc_loaded(
     )
 
 
+def wait_for_ramses_cc_reload(
+    timeout: int = 20, msg: str = "for ramses_cc reload"
+) -> bool:
+    """Wait for ramses_cc to reload after a profile change (in-process).
+
+    Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
+    *floor* of 5s — profile reloads are in-process (no docker restart),
+    so they're faster than cold starts (typically 2-3s).  At aggressive
+    poll scales (0.1), the 20s ceiling would drop to 2s which is too
+    tight; the 5s floor ensures we don't give up before the reload
+    completes, while still returning early once it's done.
+    """
+    return wait_for(
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=5.0
+    )
+
+
 # ---------------------------------------------------------------------------
 # Composite wait helpers — poll for common conditions instead of fixed sleeps
 # ---------------------------------------------------------------------------

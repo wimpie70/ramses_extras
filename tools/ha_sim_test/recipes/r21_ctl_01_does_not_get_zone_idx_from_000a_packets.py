@@ -60,7 +60,7 @@ class R21Ctl01DoesNotGetZoneIdxFrom000aPackets(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Inject 000A from CTL with zone 02 payload
         # 000A I payload: zone_idx(2) + bitmap(2) + min_temp(4) + max_temp(4) = 12 hex

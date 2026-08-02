@@ -139,7 +139,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             print("  Profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
 
         # Activate CTL for heartbeats

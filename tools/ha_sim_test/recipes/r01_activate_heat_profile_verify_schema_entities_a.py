@@ -71,7 +71,7 @@ class R01ActivateHeatProfileVerifySchemaEntitiesA(Recipe):
             print("  heat_only profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate CTL, TRV, DHW
         for dev, slug in [(CTL, "CTL"), ("04:150000", "TRV"), (DHW, "DHW")]:

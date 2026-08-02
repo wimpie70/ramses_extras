@@ -119,7 +119,7 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
             )
             return  # can't continue if profile load failed
 
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate CTL + FAN + REM for heartbeats
         for dev_id, name in [(CTL, "CTL"), (FAN, "FAN"), (REM, "REM")]:

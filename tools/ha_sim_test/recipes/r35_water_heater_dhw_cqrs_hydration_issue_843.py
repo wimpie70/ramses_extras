@@ -55,7 +55,7 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate CTL and DHW for heartbeats
         for dev_id, name in [(CTL, "CTL"), (DHW, "DHW")]:

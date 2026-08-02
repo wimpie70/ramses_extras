@@ -81,7 +81,7 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             print("  Profile loaded with _commands dict template")
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate FAN + REM for heartbeats
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (CO2, "CO2")]:

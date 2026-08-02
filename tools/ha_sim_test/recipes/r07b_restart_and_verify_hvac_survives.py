@@ -77,7 +77,7 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Mixed profile reload failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Re-activate devices (profile reload stops all active devices)
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (CO2, "CO2")]:

@@ -63,7 +63,7 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
 
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
 
         # Inject several 1FC9 heartbeats from the new TRV to trigger discovery
         print(f"  Injecting 1FC9 heartbeats from {new_trv}...")
@@ -195,6 +195,6 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
                     "enable_auto_answer": True,
                 },
             )
-            wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+            ctx.wait_for_ramses_cc_reload(timeout=20)
         except RuntimeError as e:
             print(f"  Mixed profile reload failed: {e}")
