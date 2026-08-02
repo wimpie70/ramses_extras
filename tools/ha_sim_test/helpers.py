@@ -826,6 +826,7 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
         timeout=timeout,
         interval=2,
         msg=f"for schema to have >= {min_keys} keys",
+        floor=3.0,
     )
 
 

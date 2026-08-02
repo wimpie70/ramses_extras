@@ -70,7 +70,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         }
         mismatch_yaml = _yaml.dump(profile, default_flow_style=False, sort_keys=False)
         await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for profile reload")
+        ctx.wait_for_ramses_cc_reload(msg="for profile reload")
         ctx.refresh_token()
         # Inject a 1FC9 heartbeat from the FAN so the scan engine tracks
         # 32:150000 and can detect the _class=DIS mismatch.  The profile

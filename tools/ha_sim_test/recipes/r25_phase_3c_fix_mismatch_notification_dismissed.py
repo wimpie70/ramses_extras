@@ -73,7 +73,7 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
         }
         fixed_yaml = mixed_yaml(fixed_schema)
         await load_profile_yaml(ctx.token, fixed_yaml, speed=0.01)
-        wait_for(is_ramses_cc_loaded, timeout=10, msg="for profile reload")
+        ctx.wait_for_ramses_cc_reload(msg="for profile reload")
 
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
