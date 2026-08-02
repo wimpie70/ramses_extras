@@ -238,12 +238,35 @@ def generate_compose_file(instances: list[InstanceConfig]) -> str:
 async def ensure_containers(instances: list[InstanceConfig]) -> None:
     """Start all parallel containers.
 
-    Instance 1 (ha-sim) is assumed to be already running.
-    Instances 2+ are cloned from the base config and started via docker-compose.
+    Instance 1 (ha-sim) is assumed to be already running, but we verify
+    it's reachable and wait up to 30s if not.  Instances 2+ are cloned
+    from the base config and started via docker-compose.
     If a container is already running and healthy, it is reused as-is
     (warm start — skips clone and HA readiness wait).
     """
     log_section("Parallel: Starting containers")
+
+    # Verify instance 1 (ha-sim) is reachable — it's not started by us
+    inst1 = instances[0]
+    print(f"  [{inst1.name}] Verifying HA is reachable on port {inst1.port}...")
+
+    def _ready1(inst: InstanceConfig = inst1) -> bool:
+        token = set_current_instance(inst)
+        try:
+            return is_ha_ready()
+        finally:
+            _current_instance_reset(token)
+
+    ready1 = wait_for(
+        _ready1, timeout=30, interval=2, msg=f"[{inst1.name}] HA ready", floor=10.0
+    )
+    if not ready1:
+        raise RuntimeError(
+            f"[{inst1.name}] is not reachable on port {inst1.port}. "
+            f"Start it first: cd ~/docker_files/ha-sim && docker compose up -d"
+        )
+    print(f"  [{inst1.name}] HA is ready")
+
     parallel_instances = instances[1:]
     if not parallel_instances:
         return
