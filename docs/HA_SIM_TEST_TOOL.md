@@ -122,9 +122,9 @@ python3 -m ha_sim_test --wait-scale-poll 0.1
 python3 -m ha_sim_test --wait-scale-blind 0.5 --wait-scale-poll 0.1
 
 # RECOMMENDED fast run: scale + floor protects sensitive waits
-# (0 new failures vs baseline, ~10 min wall time on 4 containers)
+# (0 new failures vs baseline, ~9 min wall time on 4 containers)
 python3 -m ha_sim_test --parallel 4 --cleanup \
-    --wait-scale-blind 0.5 --wait-scale-poll 0.1 --wait-floor-blind 3
+    --wait-scale-blind 0.5 --wait-scale-poll 0.08 --wait-floor-blind 3
 
 # Pipe to a log file (dashboard auto-disables, plain interleaved output)
 python3 -m ha_sim_test --parallel 4 > /tmp/run.log 2>&1
@@ -208,15 +208,24 @@ scale knobs let you trade safety for speed:
 | Goal | Blind | Poll | Floor blind | Notes |
 |---|---|---|---|---|
 | Safe speedup on failures | 1.0 | 0.1 | 0 | Only tightens poll ceilings |
-| **Recommended fast run** | **0.5** | **0.1** | **3** | **0 new failures, ~10 min on 4 containers** |
-| Aggressive | 0.25 | 0.05 | 3 | May still break post-restart hydration |
+| **Recommended fast run** | **0.5** | **0.08** | **3** | **0 new failures, ~9 min on 4 containers** |
+| Aggressive | 0.5 | 0.05 | 3 | 2-3 new flaky fails (R11/R24/R36 race conditions) |
 | Slow machine / debugging | 2.0 | 2.0 | 0 | Give everything more headroom |
+
+Going below 0.08 poll scale introduces flaky failures from timing-sensitive
+operations (scan engine processing, entity state writes, class_mismatch
+detection) that can't be fixed with floors alone — they're inherent race
+conditions in the HA entity state machine.
 
 Per-call floors (built into helpers, no CLI flag needed):
 ``wait_for_ha_ready``: floor=10s (docker restart)
 ``wait_for_ramses_cc_loaded``: floor=15s (docker restart cold start)
-``wait_for_ramses_cc_reload``: floor=5s (in-process profile reload)
+``wait_for_ramses_cc_reload``: floor=8s (in-process profile reload)
 ``wait_for_schema_stable``: floor=3s (polls schema, exits early when stable)
+``wait_for_schema_populated``: floor=3s (polls schema key count)
+``wait_for_schema_has``: floor=3s (polls for specific device in schema)
+``wait_for_entity_state``: floor=3s (polls entity state via REST)
+``wait_for_transport_reconnect``: floor=3s (polls MQTT subscription log)
 
 **Output format:** when a wait is scaled, the output shows both the
 original and actual duration: `Waiting 5s→3s for sync_learned_topology...`
