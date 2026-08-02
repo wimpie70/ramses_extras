@@ -54,7 +54,7 @@ class R44SchemaMigrationTraitsSurviveRestartIssue767(Recipe):
             )
         except (RuntimeError, OSError) as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 2. Verify schema has _alias trait
         schema = get_schema_retry()
@@ -90,7 +90,7 @@ class R44SchemaMigrationTraitsSurviveRestartIssue767(Recipe):
             )
         except RuntimeError:
             pass
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 4. Verify traits survived the restart
         schema_after = get_schema_retry()

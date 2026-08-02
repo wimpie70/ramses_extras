@@ -10,6 +10,12 @@ import custom_components.ramses_extras.features.default.websocket_commands as we
 import custom_components.ramses_extras.features.sensor_control.config_flow as config_flow  # noqa: E501
 
 
+def _swallow_coro(coro, *args, **kwargs):
+    """Side-effect that closes a coroutine to avoid 'never awaited' warnings."""
+    coro.close()
+    return MagicMock()
+
+
 class TestServicesFullCoverage:
     """Full coverage tests for services."""
 
@@ -54,6 +60,7 @@ class TestWebSocketFullCoverage:
         """Test websocket commands to get coverage."""
         hass = MagicMock()
         hass.data = {}
+        hass.async_create_background_task = MagicMock(side_effect=_swallow_coro)
         connection = MagicMock()
         connection.send_message = MagicMock()
         connection.send_error = MagicMock()

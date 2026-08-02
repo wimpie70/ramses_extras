@@ -29,10 +29,10 @@ from ..helpers import (
     clear_cached_state,
     get_current_instance,
     get_entities,
-    is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl, mixed_yaml
@@ -52,10 +52,10 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
         #    queue and preventing the 30C9 I packet from being transmitted).
         print("  Stopping ha-sim and clearing cached state...")
         clear_cached_state(ctx.log_monitor, label="R38 pre-clean")
-        ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # 1. Load mixed profile with the zone-03 sensor (01:150003) faked
         sensor_id = "01:150003"
@@ -90,7 +90,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
 
         # Activate CTL for heartbeats
@@ -106,11 +106,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
             pass
         from ..helpers import get_schema_retry
 
-        ctx.wait_for(
-            lambda: len(get_schema_retry(max_tries=1)) > 5,
-            timeout=15,
-            msg="for CTL heartbeats + schema population",
-        )
+        wait_for_schema_populated(timeout=15)
 
         # 2. Find the temperature sensor entity for 01:150003
         entities = get_entities(ctx.token)
@@ -164,7 +160,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
                 f"(expected): {str(e)[:60]}"
             )
 
-        ctx.wait(5, "for 30C9 packet to appear in log")
+        ctx.wait(5, "for 30C9 packet to appear in log", floor=2.0)
 
         # 5. Read the HA log for the 30C9 packet from our faked device.
         #    The faked device sends a 30C9 I broadcast via MQTT.  The

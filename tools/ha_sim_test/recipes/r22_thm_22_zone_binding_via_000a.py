@@ -60,7 +60,7 @@ class R22Thm22ZoneBindingVia000a(Recipe):
             print("  fresh_start profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Inject RQ 000A from a THM (22:) to the HGI (18:001234)
         # THMs send RQ 000A with just the zone_idx (2 hex) as payload.
@@ -104,17 +104,17 @@ class R22Thm22ZoneBindingVia000a(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(3, "for scan engine to process")
+        ctx.wait(3, "for scan engine to process", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         schema_r22 = get_schema_retry()
         comments_r22 = schema_r22.get("device_comments", {})

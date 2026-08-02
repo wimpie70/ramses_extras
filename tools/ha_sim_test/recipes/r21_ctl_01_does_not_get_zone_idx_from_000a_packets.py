@@ -60,7 +60,7 @@ class R21Ctl01DoesNotGetZoneIdxFrom000aPackets(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Inject 000A from CTL with zone 02 payload
         # 000A I payload: zone_idx(2) + bitmap(2) + min_temp(4) + max_temp(4) = 12 hex
@@ -102,17 +102,17 @@ class R21Ctl01DoesNotGetZoneIdxFrom000aPackets(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for scan engine to process")
+        ctx.wait(5, "for scan engine to process", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         schema_r21 = get_schema_retry()
         comments_r21 = schema_r21.get("device_comments", {})

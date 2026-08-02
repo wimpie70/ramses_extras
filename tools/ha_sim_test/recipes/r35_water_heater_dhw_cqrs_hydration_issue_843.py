@@ -55,7 +55,7 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate CTL and DHW for heartbeats
         for dev_id, name in [(CTL, "CTL"), (DHW, "DHW")]:
@@ -113,7 +113,7 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             print("    1260 I injected")
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(3, "for 1260 to process")
+        ctx.wait(5, "for 1260 to process", floor=4.0)
 
         # 3. Inject 10A0 RP from CTL (01:150000) — DHW params/setpoint
         #    Payload: 00 + setpoint(50.0°C=0x1388) + overrun(00) + diff(10.0°C=0x03E8)
@@ -136,7 +136,7 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             print("    10A0 I injected")
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(3, "for 10A0 to process")
+        ctx.wait(3, "for 10A0 to process", floor=2.0)
 
         # 4. Inject 1F41 I from CTL (01:150000) — DHW mode
         #    Payload: 00 + active(00=False) + mode(00=follow_schedule) + FFFFFF
@@ -157,14 +157,14 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             print("    1F41 I injected")
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for 1F41 to process")
+        ctx.wait(5, "for 1F41 to process", floor=2.0)
 
         # Force entity state update
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for entity state write")
+        ctx.wait(5, "for entity state write", floor=3.0)
 
         # 5. Find the water_heater entity for the DhwZone
         #    The DhwZone ID is CTL + "_HW" (e.g. "01:150000_HW"), but the

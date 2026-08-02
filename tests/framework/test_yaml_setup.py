@@ -94,7 +94,10 @@ async def test_async_setup_yaml_config_logs_exception(hass, caplog) -> None:
     failing_flow = AsyncMock()
     hass.config_entries.flow.async_init = failing_flow
 
-    def _raise_on_create_task(_: Any) -> None:  # type: ignore[override]
+    def _raise_on_create_task(coro: Any) -> None:  # type: ignore[override]
+        # Close the coroutine to avoid "never awaited" warnings
+        if hasattr(coro, "close"):
+            coro.close()
         raise RuntimeError("boom")
 
     hass.async_create_task = _raise_on_create_task  # type: ignore[assignment]

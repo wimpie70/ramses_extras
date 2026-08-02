@@ -60,6 +60,21 @@ from custom_components.ramses_extras.features.device_simulator.scenarios.timeout
 )
 
 
+def _make_create_task_side_effect() -> callable:
+    """Return a side_effect that schedules coroutines instead of swallowing them.
+
+    Using ``async def`` as a ``side_effect`` on a ``MagicMock`` causes the
+    coroutine to never be awaited (MagicMock calls it but doesn't await the
+    returned coroutine).  This helper returns a regular function that
+    schedules the coroutine as a task on the running event loop.
+    """
+
+    def _create_task(coro, name=None, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        return asyncio.ensure_future(coro)
+
+    return _create_task
+
+
 class TestScenarioResult:
     """Test ScenarioResult dataclass."""
 
@@ -254,15 +269,18 @@ class TestScenarioContext:
         async def mock_coro():
             pass
 
+        coro = mock_coro()
         hass.async_create_background_task = MagicMock(return_value=MagicMock())
         engine = MagicMock()
 
         context = ScenarioContext(hass, engine)
 
-        result = context.schedule_background_task(mock_coro(), name="test")
+        result = context.schedule_background_task(coro, name="test")
 
         hass.async_create_background_task.assert_called_once()
         assert result is not None
+        # Close the coroutine to avoid "never awaited" RuntimeWarning
+        coro.close()
 
     @pytest.mark.asyncio
     async def test_cancel_existing(self):
@@ -875,12 +893,9 @@ class TestDeviceUnavailability:
         engine._active_devices = {"37:168270": MagicMock()}
         engine.async_cancel_scenario = AsyncMock()
 
-        async def mock_create_task(coro, name):
-            # Actually await the coroutine to avoid warnings
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
         context = ScenarioContext(hass, engine)
 
         params = {"device_id": "37:168270"}
@@ -898,11 +913,9 @@ class TestDeviceUnavailability:
         engine._active_devices = {"37:168270": MagicMock()}
         engine.async_cancel_scenario = AsyncMock()
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
         context = ScenarioContext(hass, engine)
 
         params = {"targets": ["37:168270"]}
@@ -920,11 +933,9 @@ class TestDeviceUnavailability:
         engine._active_devices = {"37:168270": MagicMock()}
         engine.async_cancel_scenario = AsyncMock()
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
         context = ScenarioContext(hass, engine)
 
         params = {"targets": "37:168270"}
@@ -999,11 +1010,9 @@ class TestDiscoveryTest:
         engine = MagicMock()
         engine.async_cancel_scenario = AsyncMock()
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
         context = ScenarioContext(hass, engine)
 
         params = {"device_id": "37:168270"}
@@ -1027,11 +1036,9 @@ class TestDiscoveryTest:
         context = ScenarioContext(hass, engine)
         context.device_db.find_response = MagicMock(return_value=None)
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
 
         result = await discovery_test_run(context, {"slug": "fan"})
 
@@ -1061,11 +1068,9 @@ class TestDiscoveryTest:
 
         context.device_db.find_response = MagicMock(side_effect=_find_response)
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
 
         result = await discovery_test_run(context, {"slug": "FAN"})
 
@@ -1080,11 +1085,9 @@ class TestDiscoveryTest:
         engine.async_cancel_scenario = AsyncMock()
         context = ScenarioContext(hass, engine)
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
 
         # Mock fingerprint lookup
         context.device_db.get_fingerprint_payload = MagicMock(return_value="ABCDEF")
@@ -1249,11 +1252,9 @@ class TestFloodingTest:
         entry.payloads = ["000000"]
         context.device_db.get_periodic = MagicMock(return_value=[entry])
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
 
         params = {"device_id": "37:168270", "code": "22F7", "count": 10}
 
@@ -1363,11 +1364,9 @@ class TestHvacDeviceLoss:
         engine.async_cancel_scenario = AsyncMock()
         context = ScenarioContext(hass, engine)
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
 
         params = {"device_id": "37:168270"}
 
@@ -1453,11 +1452,9 @@ class TestTimeoutTest:
         engine.async_cancel_scenario = AsyncMock()
         context = ScenarioContext(hass, engine)
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
 
         params = {"device_id": "37:168270"}
 
@@ -1476,11 +1473,9 @@ class TestTimeoutTest:
         engine.async_cancel_scenario = AsyncMock()
         context = ScenarioContext(hass, engine)
 
-        async def mock_create_task(coro, name):
-            await coro
-            return MagicMock()
-
-        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+        hass.async_create_background_task = MagicMock(
+            side_effect=_make_create_task_side_effect()
+        )
 
         params = {"device_id": "37:168270", "drop_codes": ["1FC9", "31DA"]}
 

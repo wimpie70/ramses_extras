@@ -78,7 +78,7 @@ except ImportError as e:
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 2. Verify the config entry schema has HVAC structure
         schema = get_schema_retry()

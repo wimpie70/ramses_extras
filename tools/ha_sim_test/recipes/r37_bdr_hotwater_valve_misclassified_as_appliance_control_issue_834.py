@@ -44,10 +44,10 @@ from ..helpers import (
     call_service,
     clear_cached_state,
     get_schema_retry,
-    is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl
@@ -90,10 +90,10 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         # old 000C packets.  We need a truly clean slate.
         print("  Stopping ha-sim and clearing cached state...")
         clear_cached_state(ctx.log_monitor, label="R37 pre-restart")
-        ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # --- Build a custom profile with OTB + BDR + DHW sensor ---
         # The schema declares:
@@ -140,7 +140,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             print("  Profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
 
         # Activate CTL for heartbeats
@@ -154,11 +154,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait_for(
-            lambda: len(get_schema_retry(max_tries=1)) > 5,
-            timeout=15,
-            msg="for CTL heartbeats + schema population",
-        )
+        wait_for_schema_populated(timeout=15)
 
         # --- Step 1: Both OTB and BDR broadcast 3B00 I (TPI loop) ---
         # In peternash's system, both relays broadcast 3B00/3EF0 as I.
@@ -246,7 +242,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(3, "for scan engine to process")
+        ctx.wait(3, "for scan engine to process", floor=2.0)
 
         # Accept both discovered devices so they enter the known_list
         print("  Accepting discovered OTB and BDR...")
@@ -269,12 +265,12 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         schema_r37 = get_schema_retry()
         ctl_r37 = schema_r37.get(CTL, {})
@@ -345,7 +341,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         schema_r37_2 = get_schema_retry()
         ctl_r37_2 = schema_r37_2.get(CTL, {})

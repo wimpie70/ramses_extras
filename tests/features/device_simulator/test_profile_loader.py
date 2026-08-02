@@ -19,6 +19,12 @@ from custom_components.ramses_extras.features.device_simulator.profile_loader im
 )
 
 
+def _swallow_coro(coro, *args, **kwargs):
+    """Side-effect that closes a coroutine to avoid 'never awaited' warnings."""
+    coro.close()
+    return MagicMock()
+
+
 class TestEnsureHgiEntry:
     """Test _ensure_hgi_entry function."""
 
@@ -350,7 +356,7 @@ class TestUpdateKnownListAndReload:
         hass.config_entries.async_entries = MagicMock(return_value=[entry])
         hass.config_entries.async_update_entry = MagicMock()
         hass.config_entries.async_setup = AsyncMock()
-        hass.async_create_task = MagicMock()
+        hass.async_create_task = MagicMock(side_effect=_swallow_coro)
 
         with patch("homeassistant.helpers.storage.Store") as mock_store_class:
             mock_store = MagicMock()

@@ -57,7 +57,7 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
         except RuntimeError as e:
             print(f"  force_update failed: {e}")
 
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         storage = get_ramses_storage()
         hvac_schema = storage.get("hvac_schema", {})

@@ -22,6 +22,7 @@ from ..helpers import (
     get_entities,
     is_ramses_cc_loaded,
     wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 
@@ -59,6 +60,9 @@ except ImportError as e:
         field_names = set(result["fields"])
 
         # Allowed L1/L2 fields per issue 639
+        # is_tx was added to distinguish inbound (RX) vs outbound (TX)
+        # packets as part of the OSI layer decoupling — it is a legitimate
+        # L1/L2 transport field, not an application-layer field.
         allowed_fields = {
             "timestamp",
             "rssi",
@@ -70,6 +74,7 @@ except ImportError as e:
             "code",
             "length",
             "payload",
+            "is_tx",
         }
 
         ctx.check(
@@ -138,13 +143,9 @@ except Exception as e:
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
-        ctx.wait_for(
-            is_ramses_cc_loaded,
-            timeout=20,
-            msg="for ramses_cc to initialize",
-        )
+        ctx.wait_for_ramses_cc_loaded(timeout=20, msg="for ramses_cc to initialize")
 
         # Activate CTL
         try:
@@ -162,11 +163,7 @@ except Exception as e:
         # the preloaded schema and created entities)
         from ..helpers import get_schema_retry
 
-        ctx.wait_for(
-            lambda: len(get_schema_retry(max_tries=1)) > 5,
-            timeout=20,
-            msg="for CTL heartbeats + schema population",
-        )
+        wait_for_schema_populated(timeout=20)
 
         # Inject a 30C9 I packet from the CTL (01:150000) for zone 03
         #    payload: 03 + hex_for_temp(22.0)
@@ -203,14 +200,14 @@ except Exception as e:
                 print("    30C9 I injected")
             except RuntimeError as e:
                 print(f"    Inject failed: {str(e)[:80]}")
-            ctx.wait(5, "for 30C9 to process")
+            ctx.wait(5, "for 30C9 to process", floor=2.0)
 
             # Force entity state update
             try:
                 call_service(ctx.token, "ramses_cc", "force_update")
             except RuntimeError:
                 pass
-            ctx.wait(3, "for entity state write")
+            ctx.wait(3, "for entity state write", floor=3.0)
 
             # Check that a climate entity for zone 03 exists and has a temp
             entities = get_entities(ctx.token)

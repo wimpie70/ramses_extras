@@ -14,10 +14,10 @@ from ..helpers import (
     clear_cached_state,
     get_current_instance,
     get_schema_retry,
-    is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl
@@ -71,10 +71,10 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         # a truly clean state for this race condition test.
         print("  Stopping ha-sim and clearing cached state...")
         clear_cached_state(ctx.log_monitor, label="R34 pre-restart")
-        ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # --- Build a custom profile without DHW sensor ---
         # The mixed profile has stored_hotwater: {sensor: DHW}.  We remove
@@ -115,7 +115,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
             print("  Profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
 
         # Activate CTL for heartbeats
@@ -129,11 +129,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait_for(
-            lambda: len(get_schema_retry(max_tries=1)) > 5,
-            timeout=15,
-            msg="for CTL heartbeats + schema population",
-        )
+        wait_for_schema_populated(timeout=15)
 
         # --- Step 1: Inject 000C RP with HTG role (0E) ---
         # This binds the BDR as hotwater_valve (domain FA) to a DhwZone.
@@ -159,17 +155,17 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for 000C HTG processing")
+        ctx.wait(5, "for 000C HTG processing", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         schema_step1 = get_schema_retry()
         ctl_step1 = schema_step1.get(CTL, {})
@@ -226,17 +222,17 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for 000C APP processing")
+        ctx.wait(5, "for 000C APP processing", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         schema_step2 = get_schema_retry()
         ctl_step2 = schema_step2.get(CTL, {})

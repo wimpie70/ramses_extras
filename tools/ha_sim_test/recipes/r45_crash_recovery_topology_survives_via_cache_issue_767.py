@@ -45,7 +45,7 @@ class R45CrashRecoveryTopologySurvivesViaCacheIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 2. Activate CTL for heartbeats
         try:
@@ -114,7 +114,7 @@ class R45CrashRecoveryTopologySurvivesViaCacheIssue767(Recipe):
             )
         except RuntimeError:
             pass
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 5. Verify entities reappear from cached schema
         entities_after = get_entities(ctx.token)

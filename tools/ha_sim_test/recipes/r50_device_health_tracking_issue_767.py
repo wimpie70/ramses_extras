@@ -111,7 +111,7 @@ class R50DeviceHealthTrackingIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 2. Verify schema loaded
         schema = get_schema_retry()
@@ -318,7 +318,7 @@ except Exception as e:
         ctx.wait(30, "for HA container to restart")
         ctx.refresh_token()
         ctx.wait(10, "for ramses_cc to initialize")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         ctx.wait(5, "for discovery manager to initialize")
 

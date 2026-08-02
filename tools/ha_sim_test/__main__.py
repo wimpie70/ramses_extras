@@ -2,10 +2,10 @@
 
 Usage::
 
-    python3 -m ha_sim_test              # run all recipes in seq order
+    python3 -m ha_sim_test              # run all recipes (defaults: 0.5/0.08/3)
     python3 -m ha_sim_test R06 R29      # run specific recipes by id
-    python3 -m ha_sim_test --parallel 2 # run across 2 containers
-    python3 -m ha_sim_test --parallel 4 --cleanup
+    python3 -m ha_sim_test --parallel 4 --cleanup  # fast: ~9 min, 0 new fails
+    python3 -m ha_sim_test --wait-scale-blind 1.0 --wait-scale-poll 1.0  # safe
 """
 
 from __future__ import annotations
@@ -61,7 +61,59 @@ def main() -> None:
         "are stopped but config dirs are kept for warm restarts. "
         "Instance 1 (ha-sim) is always left running.",
     )
+    parser.add_argument(
+        "--wait-scale-blind",
+        type=float,
+        default=None,
+        metavar="FACTOR",
+        help="Scale factor for fixed wait() blind sleeps (default: 0.5, or "
+        "HA_SIM_TEST_WAIT_SCALE_BLIND if set). E.g. 0.5 halves all 5s/10s/..."
+        " sleeps. The dominant cost is 80 calls to wait(5) totalling ~400s.",
+    )
+    parser.add_argument(
+        "--wait-scale-poll",
+        type=float,
+        default=None,
+        metavar="FACTOR",
+        help="Scale factor for wait_for() timeout ceilings (default: 0.08, or "
+        "HA_SIM_TEST_WAIT_SCALE_POLL if set). Polling returns early, so this "
+        "only tightens the failure ceiling. Safe to cut aggressively on the "
+        "simulator (e.g. 0.08 -> 30s ceiling becomes 2.4s).",
+    )
+    parser.add_argument(
+        "--wait-floor-blind",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="Global minimum (seconds, real time) for all blind wait() sleeps "
+        "(default: 3). Protects sensitive waits (scan engine, sync, entity "
+        "hydration) when using aggressive --wait-scale-blind. E.g. "
+        "--wait-scale-blind 0.5 --wait-floor-blind 3 means wait(5)->3s, "
+        "wait(10)->5s, wait(2)->3s.",
+    )
+    parser.add_argument(
+        "--wait-floor-poll",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="Global minimum (seconds) for all wait_for() timeout ceilings. "
+        "The per-call floor= parameter (e.g. wait_for_ha_ready uses floor=10) "
+        "takes the max with this.",
+    )
     args = parser.parse_args()
+
+    # Apply CLI wait-scale/floor overrides (env vars are read at import time
+    # in helpers.py; CLI flags take precedence and update the module vars).
+    from . import helpers
+
+    if args.wait_scale_blind is not None:
+        helpers.WAIT_SCALE_BLIND = args.wait_scale_blind
+    if args.wait_scale_poll is not None:
+        helpers.WAIT_SCALE_POLL = args.wait_scale_poll
+    if args.wait_floor_blind is not None:
+        helpers.WAIT_FLOOR_BLIND = args.wait_floor_blind
+    if args.wait_floor_poll is not None:
+        helpers.WAIT_FLOOR_POLL = args.wait_floor_poll
 
     recipe_ids = args.recipes or None
 

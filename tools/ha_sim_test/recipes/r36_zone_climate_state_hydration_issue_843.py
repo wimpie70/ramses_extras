@@ -55,7 +55,7 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate CTL for heartbeats
         try:
@@ -125,14 +125,14 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             print("    2349 I injected")
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for 2349 to process")
+        ctx.wait(5, "for 2349 to process", floor=4.0)
 
         # Force entity state update
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for entity state write")
+        ctx.wait(5, "for entity state write", floor=3.0)
 
         # 4. Find the climate entity for zone 03
         #    ramses_cc creates climate entities for each zone.  The entity_id

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import os
 import subprocess
 import time
 import urllib.error
@@ -25,6 +26,52 @@ from collections.abc import Callable
 from typing import Any
 
 from .const import InstanceConfig
+
+#: Scale factors for the two kinds of waits in the test suite.
+#:
+#: * ``WAIT_SCALE_BLIND`` — applied to every fixed ``wait()``/``ctx.wait()``
+#:   blind sleep.  These are the dominant cost (80 of 138 calls use 5s,
+#:   totalling ~400s), and also the riskiest to cut: 5s is already a
+#:   deliberate "let MQTT/HA settle" pause, so 5→0.5 is a 10x cut on
+#:   something that may genuinely need 2-3s.
+#:
+#: * ``WAIT_SCALE_POLL`` — applied to every ``wait_for()`` timeout ceiling.
+#:   These poll and return as soon as the condition is met, so the
+#:   timeout is just a safety margin.  On the simulator, conditions
+#:   typically resolve in 2-3s; if they haven't, the test has probably
+#:   failed.  Scaling 30s→3s just tightens the failure ceiling — safe to
+#:   cut aggressively.
+#:
+#: Both default to ``HA_SIM_TEST_WAIT_SCALE`` (the legacy single knob) if
+#: set, otherwise 1.0.  The per-bucket env vars take precedence when set.
+WAIT_SCALE_BLIND: float = float(
+    os.environ.get(
+        "HA_SIM_TEST_WAIT_SCALE_BLIND",
+        os.environ.get("HA_SIM_TEST_WAIT_SCALE", "0.5"),
+    )
+)
+WAIT_SCALE_POLL: float = float(
+    os.environ.get(
+        "HA_SIM_TEST_WAIT_SCALE_POLL",
+        os.environ.get("HA_SIM_TEST_WAIT_SCALE", "0.08"),
+    )
+)
+
+#: Global minimum floors (seconds, pre-scaling) that all scaled waits respect.
+#: Unlike the per-call ``floor=`` parameter (which takes the max with these),
+#: these apply to *every* wait in the suite.  Set via env var or CLI flag.
+#:
+#: ``WAIT_FLOOR_BLIND`` ensures every blind sleep is at least N seconds real
+#: time, regardless of ``WAIT_SCALE_BLIND``.  Useful when running at aggressive
+#: scale factors: e.g. ``--wait-scale-blind 0.5 --wait-floor-blind 3`` means
+#: ``wait(5)`` → max(2.5, 3) = 3s, ``wait(10)`` → max(5, 3) = 5s, but
+#: ``wait(2)`` → max(1, 3) = 3s (slightly over, but safe).
+#:
+#: ``WAIT_FLOOR_POLL`` does the same for ``wait_for()`` timeout ceilings.
+#: The per-call ``floor=`` parameter (e.g. ``wait_for_ha_ready`` uses floor=10)
+#: takes the max with this global floor.
+WAIT_FLOOR_BLIND: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_BLIND", "3"))
+WAIT_FLOOR_POLL: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_POLL", "0"))
 
 # ---------------------------------------------------------------------------
 # Current instance contextvar — asyncio-safe per-task instance selection
@@ -148,8 +195,40 @@ def call_service(
 # ---------------------------------------------------------------------------
 # Websocket API helpers (for profile loading)
 # ---------------------------------------------------------------------------
-async def ws_send(token: str, msg: dict) -> dict:
-    """Send a websocket message and return the response."""
+async def ws_send(token: str, msg: dict, *, retries: int = 2) -> dict:
+    """Send a websocket message and return the response.
+
+    Retries up to *retries* times with 3s backoff for transient timeouts
+    and connection errors (common under parallel container contention
+    where HA may be too busy to respond within the 30s websocket timeout).
+    """
+    import aiohttp
+
+    last_err: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return await _ws_send_once(token, msg)
+        except (TimeoutError, aiohttp.ClientError, RuntimeError) as e:
+            last_err = e
+            err = str(e)
+            # Don't retry on "unknown_command" (ramses_extras not loaded yet)
+            # or on genuine WS error responses — only retry on timeouts and
+            # connection issues.
+            if "unknown_command" in err or "WS error:" in err:
+                raise
+            if attempt < retries:
+                import asyncio as _asyncio
+
+                print(
+                    f"  ws_send: retry {attempt + 1}/{retries}"
+                    f" ({type(e).__name__}: {err[:60]})"
+                )
+                await _asyncio.sleep(3)
+    raise last_err  # type: ignore[misc]
+
+
+async def _ws_send_once(token: str, msg: dict) -> dict:
+    """Single websocket send attempt (no retry)."""
     import aiohttp
 
     uri = get_current_instance().ws_url
@@ -604,10 +683,31 @@ def find_entity_for_device(
     return None
 
 
-def wait(seconds: int, msg: str = "") -> None:
-    """Wait and print progress."""
-    print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
-    time.sleep(seconds)
+def wait(seconds: int, msg: str = "", *, floor: float = 0.0) -> None:
+    """Wait and print progress (scaled by ``WAIT_SCALE_BLIND``).
+
+    *floor* sets a minimum absolute sleep (seconds, real time) that the
+    scaled sleep will not go below — use it for sensitive waits that need
+    a hard minimum regardless of the global scale factor::
+
+        wait(5, "for scan engine", floor=3)
+        # At WAIT_SCALE_BLIND=0.5: scaled = min(max(2.5, 3), 5) = 3s, not 2.5s
+
+    The floor never makes a wait *longer* than its original value — it
+    only protects against scaling too aggressively.  So ``wait(2)`` with
+    floor=3 stays 2s (the floor can't extend it beyond the original).
+
+    The global ``WAIT_FLOOR_BLIND`` also applies — the effective floor is
+    ``max(floor, WAIT_FLOOR_BLIND)``.
+    """
+    effective_floor = max(floor, WAIT_FLOOR_BLIND)
+    scaled = min(max(seconds * WAIT_SCALE_BLIND, effective_floor), seconds)
+    if scaled != seconds:
+        scaled_str = f"{scaled:g}"
+        print(f"  Waiting {seconds}s→{scaled_str}s {msg}...", end="", flush=True)
+    else:
+        print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
+    time.sleep(scaled)
     print(" done")
 
 
@@ -616,25 +716,99 @@ def wait_for(
     timeout: int = 30,
     interval: float = 1.0,
     msg: str = "",
+    *,
+    floor: float = 0.0,
 ) -> bool:
     """Poll a condition until True or timeout.
 
     Checks *condition* every *interval* seconds.  Returns True if the
     condition was met within *timeout* seconds, False otherwise.
-    Prints progress like :func:`wait`.
+    Prints progress like :func:`wait`.  Both *timeout* and *interval*
+    are scaled by ``WAIT_SCALE_POLL`` — polling still exits as soon as
+    *condition* is met, so scaling down mainly tightens the safety
+    margin for genuinely slow conditions.
+
+    *floor* sets a minimum absolute timeout (in seconds, real time) that
+    the scaled timeout will not go below.  Use it for waits that have a
+    hard physical minimum (e.g. docker container restart takes ~3-5s
+    regardless of how aggressively you scale)::
+
+        wait_for(is_ha_ready, timeout=30, floor=10, msg="for HA to start")
+        # At WAIT_SCALE_POLL=0.05: scaled = min(max(1.5, 10), 30) = 10s
+
+    The floor never makes the timeout *longer* than the original value —
+    it only protects against scaling too aggressively.
+
+    The global ``WAIT_FLOOR_POLL`` also applies — the effective floor is
+    ``max(floor, WAIT_FLOOR_POLL)``.
     """
-    print(f"  Waiting up to {timeout}s {msg}...", end="", flush=True)
-    deadline = time.monotonic() + timeout
+    effective_floor = max(floor, WAIT_FLOOR_POLL)
+    scaled_timeout = min(max(timeout * WAIT_SCALE_POLL, effective_floor), timeout)
+    scaled_interval = max(0.1, interval * WAIT_SCALE_POLL)
+    if scaled_timeout != timeout:
+        scaled_str = f"{scaled_timeout:g}"
+        print(
+            f"  Waiting up to {timeout}s→{scaled_str}s {msg}...",
+            end="",
+            flush=True,
+        )
+    else:
+        print(f"  Waiting up to {timeout}s {msg}...", end="", flush=True)
+    deadline = time.monotonic() + scaled_timeout
     while time.monotonic() < deadline:
         try:
             if condition():
-                print(f" done ({timeout - int(deadline - time.monotonic())}s)")
+                print(f" done ({int(scaled_timeout - (deadline - time.monotonic()))}s)")
                 return True
         except Exception:
             pass  # condition may fail while HA is reloading
-        time.sleep(interval)
-    print(f" TIMEOUT ({timeout}s)")
+        time.sleep(scaled_interval)
+    print(f" TIMEOUT ({scaled_timeout:g}s)")
     return False
+
+
+def wait_for_ha_ready(timeout: int = 30, msg: str = "for ha-sim to start up") -> bool:
+    """Wait for HA to be ready after a docker restart.
+
+    Like :func:`wait_for` with :func:`is_ha_ready`, but with a *floor*
+    of 10s — docker restarts take a hard 3-5s minimum before the API is
+    even reachable, so scaling the timeout below 10s makes no sense.
+    """
+    return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=10.0)
+
+
+def wait_for_ramses_cc_loaded(
+    timeout: int = 30, msg: str = "for ramses_cc to initialize"
+) -> bool:
+    """Wait for ramses_cc to be loaded after a docker restart.
+
+    Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
+    *floor* of 15s — after a docker restart, ramses_cc's async_setup_entry
+    takes 5-10s to complete (MQTT transport init, schema load, entity
+    creation).  Scaling the timeout below 15s causes false TIMEOUTs that
+    cascade into schema/profile load failures in subsequent steps.
+    """
+    return wait_for(
+        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=15.0
+    )
+
+
+def wait_for_ramses_cc_reload(
+    timeout: int = 20, msg: str = "for ramses_cc reload"
+) -> bool:
+    """Wait for ramses_cc to reload after a profile change (in-process).
+
+    Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
+    *floor* of 8s — profile reloads are in-process (no docker restart),
+    so they're faster than cold starts, but still take 5-7s for the
+    full reload cycle (unload → reload → MQTT reconnect → schema load).
+    At aggressive poll scales (0.1), the 20s ceiling would drop to 2s
+    which is too tight; the 8s floor ensures we don't give up before
+    the reload completes, while still returning early once it's done.
+    """
+    return wait_for(
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=8.0
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -652,6 +826,102 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
         timeout=timeout,
         interval=2,
         msg=f"for schema to have >= {min_keys} keys",
+        floor=3.0,
+    )
+
+
+def wait_for_schema_stable(
+    timeout: int = 10,
+    quiet: float = 1.5,
+    min_keys: int = 5,
+    msg: str = "for schema to stabilise",
+) -> bool:
+    """Wait until the schema stops changing and has enough keys.
+
+    Polls the schema every 0.5s and returns as soon as two consecutive
+    reads produce the same JSON-serialised content (i.e. the schema has
+    been quiet for *quiet* seconds) AND the schema has at least
+    *min_keys* entries.  Replaces blind ``wait(5, "for
+    sync_learned_topology")`` and ``wait(5, "for save_client_state")``
+    calls — typically returns in 2-3s instead of sleeping the full 5s.
+
+    The *min_keys* guard prevents premature "stable" returns when the
+    schema is briefly empty after a profile reload (before heartbeats
+    repopulate it).
+
+    The *timeout* is the ceiling (scaled by ``WAIT_SCALE_POLL``); the
+    *quiet* window is the stability threshold (not scaled — it's a
+    real-time poll interval).
+    """
+    import json
+
+    def _schema_hash() -> str:
+        try:
+            schema = get_schema_retry(max_tries=1)
+            if len(schema) < min_keys:
+                return ""  # not enough keys yet — force unstable
+            return json.dumps(schema, sort_keys=True)
+        except Exception:
+            return ""
+
+    last = _schema_hash()
+    quiet_until = time.monotonic() + quiet
+    scaled_timeout = min(
+        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 3.0)), timeout
+    )
+    print(
+        f"  Waiting up to {timeout}s→{scaled_timeout:g}s {msg}...",
+        end="",
+        flush=True,
+    )
+    deadline = time.monotonic() + scaled_timeout
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        current = _schema_hash()
+        if current == last and current:
+            if time.monotonic() >= quiet_until:
+                print(" done (stable)")
+                return True
+        else:
+            last = current
+            quiet_until = time.monotonic() + quiet
+    print(f" TIMEOUT ({scaled_timeout:g}s)")
+    return False
+
+
+def wait_for_transport_ready(timeout: int = 30) -> bool:
+    """Wait until the ramses_rf MQTT transport has reconnected after a reload.
+
+    After a profile reload with ``reload_ramses_cc=True``, the ramses_rf
+    transport closes and takes ~15-20s to reconnect.  Injected packets are
+    silently dropped ("Transport Error: Transport is closing or has closed")
+    during this window.  This helper polls the HA log for the
+    ``Subscribed to status topic`` message that indicates the MQTT transport
+    has reconnected and the FSM is back in ``IsInIdle``.
+    """
+    inst = get_current_instance()
+
+    def _check() -> bool:
+        result = subprocess.run(
+            ["docker", "logs", "--since", "2s", inst.name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
+        logs = result.stderr or ""
+        # The MQTT transport logs this when it (re)subscribes after connecting.
+        # Use a short --since window (2s) so we only catch the reconnection
+        # after the profile reload, not a stale message from a previous reload.
+        return "Subscribed to status topic" in logs
+
+    return wait_for(
+        _check,
+        timeout=timeout,
+        interval=3,
+        msg="for transport to reconnect",
+        floor=15.0,
     )
 
 
@@ -677,7 +947,11 @@ def wait_for_schema_has(
         return True
 
     return wait_for(
-        _check, timeout=timeout, interval=2, msg=f"for {device_id} in schema"
+        _check,
+        timeout=timeout,
+        interval=2,
+        msg=f"for {device_id} in schema",
+        floor=3.0,
     )
 
 
@@ -722,6 +996,7 @@ def wait_for_entity_state(
         interval=1,
         msg=f"for {entity_id} state"
         + (f" == {expected!r}" if expected else " to be set"),
+        floor=3.0,
     )
 
 

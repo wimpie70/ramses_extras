@@ -45,7 +45,7 @@ class R46DisabledTraitDeviceExcludedIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 2. Verify TRV exists before disabling
         entities = get_entities(ctx.token)
@@ -77,7 +77,7 @@ class R46DisabledTraitDeviceExcludedIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 4. Verify the TRV entity is gone or unavailable
         entities_after = get_entities(ctx.token)
@@ -134,7 +134,7 @@ class R46DisabledTraitDeviceExcludedIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 8. Verify TRV entity reappears
         entities_final = get_entities(ctx.token)

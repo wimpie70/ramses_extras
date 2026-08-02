@@ -81,7 +81,7 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             print("  Profile loaded with _commands dict template")
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate FAN + REM for heartbeats
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (CO2, "CO2")]:
@@ -104,12 +104,12 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         # Check 1: FAN schema has _commands with dict template for "low"
         schema_after_r31 = get_schema_retry()

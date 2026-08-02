@@ -76,7 +76,7 @@ class R06ZoneBindingViaInjectMessage(Recipe):
             print(f"  Inject failed: {e}")
 
         # Wait for the 000C packet to be received and processed by ramses_rf
-        ctx.wait(5, "for 000C packet to be processed by ramses_rf")
+        ctx.wait(5, "for 000C packet to be processed by ramses_rf", floor=2.0)
 
         # Trigger sync_topology to process the injected packet
         try:
@@ -85,14 +85,14 @@ class R06ZoneBindingViaInjectMessage(Recipe):
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
 
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
 
         # Trigger a save to persist the synced schema to .storage
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         # Use cached schema (more reliable than config entry during sync)
         schema_after_inject = get_cached_schema()

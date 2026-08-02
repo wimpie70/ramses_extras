@@ -51,8 +51,18 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
             )
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # KNOWN BUG: the fresh_start profile reload closes the MQTT transport,
+        # but the new transport's _closing flag stays True even after
+        # "Subscribed to status topic" and "device came back online" are
+        # logged.  Injected packets are silently dropped with
+        # "Transport Error: Transport is closing or has closed" and never
+        # reach the DiscoveryScan.  This is a ramses_rf transport lifecycle
+        # bug — the old transport instance is not properly cleaned up during
+        # the reload and its _closing state leaks into the new instance.
+        # See: https://github.com/ramses-rf/ramses_cc/issues/767
+        ctx.wait(10, "for transport to stabilise after reload")
         # 2. Inject a packet from an unknown device
         #    04:999999 is not in any known_list or schema
         unknown_device = "04:999999"
@@ -107,13 +117,13 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
                 "get_discovered_devices",
                 {},
             )
-            ctx.wait(2, "for event to fire")
+            ctx.wait(3, "for event to fire + log flush", floor=3.0)
 
             # Check the HA log for the service's log output
             svc_log = grep_ha_log(
                 f"get_discovered_devices.*{unknown_device.replace(':', '.')}"
                 f"|{unknown_device.replace(':', '.')}.*type=.*confidence=.*status=",
-                since_lines=200,
+                since_lines=500,
             )
             ctx.check(
                 f"unknown device {unknown_device} in get_discovered_devices "

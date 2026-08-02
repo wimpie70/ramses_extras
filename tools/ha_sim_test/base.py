@@ -36,7 +36,6 @@ Two registration styles are supported (see :mod:`.registry`):
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -44,6 +43,7 @@ from typing import Any
 from .const import InstanceConfig
 from .helpers import get_token, set_current_instance
 from .helpers import log_section as _log_section
+from .helpers import wait as _wait
 from .helpers import wait_for as _wait_for
 
 
@@ -102,11 +102,9 @@ class RecipeContext:
             self.results.append(f"  FAIL: {label} {detail}")
             print(f"  FAIL: {label} {detail}")
 
-    def wait(self, seconds: int, msg: str = "") -> None:
-        """Wait and print progress (mirrors helpers.wait)."""
-        print(f"  Waiting {seconds}s {msg}...", end="", flush=True)
-        time.sleep(seconds)
-        print(" done")
+    def wait(self, seconds: int, msg: str = "", *, floor: float = 0.0) -> None:
+        """Wait and print progress (delegates to helpers.wait)."""
+        _wait(seconds, msg, floor=floor)
 
     def wait_for(
         self,
@@ -114,6 +112,8 @@ class RecipeContext:
         timeout: int = 30,
         interval: float = 1.0,
         msg: str = "",
+        *,
+        floor: float = 0.0,
     ) -> bool:
         """Poll a condition until it returns True or timeout is reached.
 
@@ -121,6 +121,10 @@ class RecipeContext:
         Checks ``condition`` every ``interval`` seconds.  Returns True
         if the condition was met within ``timeout`` seconds, False
         otherwise.  Prints progress like :meth:`wait`.
+
+        *floor* sets a minimum absolute timeout (seconds, pre-scaling)
+        that the scaled timeout won't go below — use it for waits with
+        a hard physical minimum (e.g. docker restarts).
 
         Example::
 
@@ -131,7 +135,64 @@ class RecipeContext:
             ):
                 ...
         """
-        return _wait_for(condition, timeout, interval, msg)
+        return _wait_for(condition, timeout, interval, msg, floor=floor)
+
+    def wait_for_ha_ready(
+        self,
+        timeout: int = 30,
+        msg: str = "for ha-sim to start up",
+    ) -> bool:
+        """Wait for HA to be ready after a docker restart (floored at 10s).
+
+        See :func:`helpers.wait_for_ha_ready` for details.
+        """
+        from .helpers import wait_for_ha_ready as _wait_for_ha_ready
+
+        return _wait_for_ha_ready(timeout=timeout, msg=msg)
+
+    def wait_for_ramses_cc_loaded(
+        self,
+        timeout: int = 30,
+        msg: str = "for ramses_cc to initialize",
+    ) -> bool:
+        """Wait for ramses_cc to load after a docker restart (floored at 15s).
+
+        See :func:`helpers.wait_for_ramses_cc_loaded` for details.
+        """
+        from .helpers import wait_for_ramses_cc_loaded as _w
+
+        return _w(timeout=timeout, msg=msg)
+
+    def wait_for_ramses_cc_reload(
+        self,
+        timeout: int = 20,
+        msg: str = "for ramses_cc reload",
+    ) -> bool:
+        """Wait for ramses_cc reload after profile change (floored at 5s).
+
+        See :func:`helpers.wait_for_ramses_cc_reload` for details.
+        """
+        from .helpers import wait_for_ramses_cc_reload as _w
+
+        return _w(timeout=timeout, msg=msg)
+
+    def wait_for_schema_stable(
+        self,
+        timeout: int = 10,
+        quiet: float = 1.0,
+        msg: str = "for schema to stabilise",
+    ) -> bool:
+        """Wait until the schema stops changing (polls, exits early).
+
+        Replaces blind ``wait(5, "for sync_learned_topology")`` and
+        ``wait(5, "for save_client_state")`` — typically returns in 1-2s
+        once the schema has been quiet for *quiet* seconds.
+
+        See :func:`helpers.wait_for_schema_stable` for details.
+        """
+        from .helpers import wait_for_schema_stable as _w
+
+        return _w(timeout=timeout, quiet=quiet, msg=msg)
 
     def log_section(self, title: str) -> None:
         """Emit a labelled section banner in the test output."""

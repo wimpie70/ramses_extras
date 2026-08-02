@@ -24,7 +24,6 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
-    is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
@@ -59,10 +58,10 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # hold the appliance_control/hotwater_valve slots.
         print("  Stopping ha-sim and clearing cached state...")
         clear_cached_state(ctx.log_monitor, label="R29 pre-restart")
-        ctx.wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for(is_ramses_cc_loaded, timeout=30, msg="for ramses_cc to initialize")
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # Load mixed profile (has CTL 01:150000 as main_tcs for TCS placement)
         print("  Loading mixed profile (has CTL for TCS placement)...")
@@ -81,7 +80,7 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate CTL for heartbeats
         try:
@@ -165,7 +164,7 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # the sim test to avoid the hotwater_valve slot collision (both non-FC
         # BDRs would compete for the single hotwater_valve slot).
 
-        ctx.wait(3, "for scan engine to process")
+        ctx.wait(3, "for scan engine to process", floor=2.0)
 
         # Accept the two BDRs so they enter the known_list
         print("  Accepting discovered BDRs...")
@@ -188,12 +187,12 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         schema_r29 = get_schema_retry()
         ctl_r29 = schema_r29.get(CTL, {})

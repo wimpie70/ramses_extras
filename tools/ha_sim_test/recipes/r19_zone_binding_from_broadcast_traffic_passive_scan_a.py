@@ -49,6 +49,11 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
         # the mixed profile (which has CTL + FAN + REM) instead of fresh_start.
 
         # Load mixed profile (has CTL for zone creation)
+        # Use reload_ramses_cc=False to avoid restarting the ramses_rf MQTT
+        # transport, which can destabilise on warm-started containers (the
+        # broker disconnects the new client before the old one is cleaned up).
+        # The mixed profile is already loaded in the setup phase; this reload
+        # just ensures a clean schema without breaking the transport.
         print("  Loading mixed profile (has CTL for zone creation)...")
         try:
             await ws_send(
@@ -58,14 +63,14 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
                     "profile": "mixed",
                     "speed": 0.01,
                     "preload_schema": True,
-                    "reload_ramses_cc": True,
+                    "reload_ramses_cc": False,
                     "enable_auto_answer": True,
                 },
             )
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Activate CTL for heartbeats
         try:
@@ -131,7 +136,7 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
                 print(f"    {trv_id} -> 3150: FAILED - {str(e)[:80]}")
             time.sleep(0.5)
 
-        ctx.wait(3, "for scan engine to process")
+        ctx.wait(5, "for scan engine to process", floor=4.0)
 
         # Accept the discovered TRVs so they enter the known_list.
         # With the mixed profile (enforce_known_list=True), unknown devices
@@ -156,12 +161,12 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save_client_state")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         # Check that zones were created from broadcast traffic
         schema_r19 = get_schema_retry()

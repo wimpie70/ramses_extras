@@ -24,10 +24,10 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
-    is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_ha_ready,
     wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
@@ -50,7 +50,7 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
         subprocess.run(
             ["docker", "restart", get_current_instance().name], capture_output=True
         )
-        wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        wait_for_ha_ready(timeout=30)
 
         # Reset log baseline — logs are wiped by the restart
         ctx.log_monitor.reset_baseline()
@@ -77,7 +77,7 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Mixed profile reload failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Re-activate devices (profile reload stops all active devices)
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (CO2, "CO2")]:

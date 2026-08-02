@@ -70,7 +70,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         }
         mismatch_yaml = _yaml.dump(profile, default_flow_style=False, sort_keys=False)
         await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for profile reload")
+        ctx.wait_for_ramses_cc_reload(msg="for profile reload")
         ctx.refresh_token()
         # Inject a 1FC9 heartbeat from the FAN so the scan engine tracks
         # 32:150000 and can detect the _class=DIS mismatch.  The profile
@@ -98,19 +98,19 @@ class R24Phase3cClassMismatchFlagging(Recipe):
                     f" {str(e)[:80]}"
                 )
                 ctx.wait(3, "before retry")
-        ctx.wait(5, "for FAN heartbeat to reach scan engine")
+        ctx.wait(5, "for FAN heartbeat to reach scan engine", floor=4.0)
 
         # Force a sync cycle to trigger mismatch detection
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for mismatch detection")
+        ctx.wait(5, "for mismatch detection", floor=4.0)
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         # Check 1: FAN remote entity should have class_mismatch attribute
         # The remote entity (remote.fan_32_150000) inherits from RamsesEntity

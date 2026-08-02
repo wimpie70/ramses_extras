@@ -24,10 +24,11 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
-    is_ha_ready,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_ha_ready,
+    wait_for_ramses_cc_loaded,
     write_ramses_storage,
     ws_send,
 )
@@ -71,7 +72,7 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         for dev_id, name in [(CTL, "CTL"), (TRV, "TRV"), (DHW, "DHW")]:
             try:
@@ -107,12 +108,12 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             print("    1060 I injected")
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for 1060 to process")
+        ctx.wait(5, "for 1060 to process", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for entity state write")
+        ctx.wait(5, "for entity state write", floor=3.0)
 
         # 3. Verify the TRV battery binary sensor has a state before restart
         entities_r32 = get_entities(ctx.token)
@@ -190,13 +191,11 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
         subprocess.run(
             ["docker", "start", get_current_instance().name], capture_output=True
         )
-        wait_for(is_ha_ready, timeout=30, msg="for ha-sim to start up")
+        wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        wait_for(
-            is_ramses_cc_loaded,
-            timeout=15,
-            msg="for ramses_cc to restore cached packets",
+        wait_for_ramses_cc_loaded(
+            timeout=15, msg="for ramses_cc to restore cached packets"
         )
 
         # 5. Check the battery binary sensor state after restart.
@@ -205,6 +204,26 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
         #      no 1060 → battery entity = Unknown/None.
         #    WITH FIX (1060 removed from HIGH_VOLUME_STATUS_CODES): the aged
         #      1060 is restored → battery entity retains its state.
+        #    The restored packet may need a force_update + entity state write
+        #    cycle before the binary sensor reflects the restored state.
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(5, "for entity state write after restore", floor=3.0)
+
+        def _battery_has_state() -> bool:
+            entities = get_entities(ctx.token)
+            bat = find_battery_entity(entities, TRV)
+            return bat is not None and bat.get("state") in ("on", "off")
+
+        ctx.wait_for(
+            _battery_has_state,
+            timeout=10,
+            interval=1,
+            msg="for battery entity to reflect restored 1060",
+            floor=5.0,
+        )
         entities_r32_after = get_entities(ctx.token)
         bat_after = find_battery_entity(entities_r32_after, TRV)
         bat_state_after = bat_after.get("state") if bat_after else None

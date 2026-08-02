@@ -62,7 +62,7 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # 0004 payload format: zone_idx(2) + "00"(2) + name_hex(40, 20 bytes
         # ASCII padded with 00).  Total = 44 hex chars (22 bytes, length 022).
@@ -117,17 +117,17 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for scan engine to process")
+        ctx.wait(5, "for scan engine to process", floor=2.0)
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
             pass
-        ctx.wait(5, "for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(5, "for save")
+        ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         # Check: the 0004 packets were processed by the scan engine.
         # We check the HA log for the dispatcher entries showing our injected
