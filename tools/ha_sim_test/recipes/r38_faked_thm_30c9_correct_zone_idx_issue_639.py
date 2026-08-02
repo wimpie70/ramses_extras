@@ -32,6 +32,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl, mixed_yaml
@@ -105,11 +106,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
             pass
         from ..helpers import get_schema_retry
 
-        ctx.wait_for(
-            lambda: len(get_schema_retry(max_tries=1)) > 5,
-            timeout=15,
-            msg="for CTL heartbeats + schema population",
-        )
+        wait_for_schema_populated(timeout=15)
 
         # 2. Find the temperature sensor entity for 01:150003
         entities = get_entities(ctx.token)

@@ -917,7 +917,11 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
         return "Subscribed to status topic" in logs
 
     return wait_for(
-        _check, timeout=timeout, interval=3, msg="for transport to reconnect"
+        _check,
+        timeout=timeout,
+        interval=3,
+        msg="for transport to reconnect",
+        floor=3.0,
     )
 
 
@@ -943,7 +947,11 @@ def wait_for_schema_has(
         return True
 
     return wait_for(
-        _check, timeout=timeout, interval=2, msg=f"for {device_id} in schema"
+        _check,
+        timeout=timeout,
+        interval=2,
+        msg=f"for {device_id} in schema",
+        floor=3.0,
     )
 
 
@@ -988,6 +996,7 @@ def wait_for_entity_state(
         interval=1,
         msg=f"for {entity_id} state"
         + (f" == {expected!r}" if expected else " to be set"),
+        floor=3.0,
     )
 
 

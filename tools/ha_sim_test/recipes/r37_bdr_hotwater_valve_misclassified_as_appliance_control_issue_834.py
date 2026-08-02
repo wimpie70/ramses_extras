@@ -47,6 +47,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl
@@ -153,11 +154,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait_for(
-            lambda: len(get_schema_retry(max_tries=1)) > 5,
-            timeout=15,
-            msg="for CTL heartbeats + schema population",
-        )
+        wait_for_schema_populated(timeout=15)
 
         # --- Step 1: Both OTB and BDR broadcast 3B00 I (TPI loop) ---
         # In peternash's system, both relays broadcast 3B00/3EF0 as I.

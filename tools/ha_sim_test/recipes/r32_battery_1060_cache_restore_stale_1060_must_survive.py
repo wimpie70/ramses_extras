@@ -28,6 +28,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_ha_ready,
+    wait_for_ramses_cc_loaded,
     write_ramses_storage,
     ws_send,
 )
@@ -193,10 +194,8 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
         wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        wait_for(
-            is_ramses_cc_loaded,
-            timeout=15,
-            msg="for ramses_cc to restore cached packets",
+        wait_for_ramses_cc_loaded(
+            timeout=15, msg="for ramses_cc to restore cached packets"
         )
 
         # 5. Check the battery binary sensor state after restart.
