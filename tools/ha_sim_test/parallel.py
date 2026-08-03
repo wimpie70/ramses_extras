@@ -859,7 +859,7 @@ async def run_parallel(
     resource contention (see comment below).
     """
     # Discover recipes
-    discover_recipes()
+    discover_recipes(__name__.rsplit(".", 1)[0] + ".recipes")
     print(f"  Discovered {len(REGISTRY)} recipes")
 
     # Select recipes

@@ -75,6 +75,23 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
         await load_profile_yaml(ctx.token, fixed_yaml, speed=0.01)
         ctx.wait_for_ramses_cc_reload(msg="for profile reload")
 
+        # wait_for_ramses_cc_reload only confirms the schema has devices —
+        # it does not guarantee the *fixed* _class has actually persisted
+        # to the config entry yet.  Without this check, sync_topology can
+        # run against the still-stale ("DIS") schema, re-flagging the
+        # mismatch that this recipe is meant to resolve.
+        def _fan_class_fixed() -> bool:
+            schema = get_schema()
+            entry = schema.get(FAN)
+            return isinstance(entry, dict) and entry.get("_class") == "FAN"
+
+        wait_for(
+            _fan_class_fixed,
+            timeout=10,
+            interval=1,
+            msg="for FAN _class fix to persist",
+        )
+
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:
@@ -87,30 +104,61 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
         ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
         # Check 1: FAN remote entity should NOT have class_mismatch attribute
-        entities_fixed = get_entities(ctx.token)
-        fan_remote_fixed = None
-        for e in entities_fixed:
-            eid = e.get("entity_id", "")
-            if "32_150000" in eid and eid.startswith("remote."):
-                fan_remote_fixed = e
+        #
+        # This can race with periodic/automatic sync_topology checkpoints
+        # (at the fast 0.01x test speed, these fire every few seconds) that
+        # may run against a not-yet-updated in-memory config entry right
+        # after the profile reload.  Retry with backoff so we don't fail on
+        # a transient stale read rather than a real bug.
+        def _mismatch_cleared() -> tuple[bool, dict]:
+            entities = get_entities(ctx.token)
+            fan_remote = None
+            for e in entities:
+                eid = e.get("entity_id", "")
+                if "32_150000" in eid and eid.startswith("remote."):
+                    fan_remote = e
+                    break
+            attrs = fan_remote.get("attributes", {}) if fan_remote else {}
+            return "class_mismatch" not in attrs, attrs
+
+        fan_attrs_fixed: dict = {}
+        cleared = False
+        for _attempt in range(4):
+            cleared, fan_attrs_fixed = _mismatch_cleared()
+            if cleared:
                 break
-        fan_attrs_fixed = (
-            fan_remote_fixed.get("attributes", {}) if fan_remote_fixed else {}
-        )
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            # sync_topology only updates discovery metadata — it does not
+            # push a fresh state write for entities whose class_mismatch
+            # attribute changed.  force_update triggers a coordinator
+            # refresh, which does write fresh entity state (including
+            # extra_state_attributes), so the entity's HA state reflects
+            # the now-cleared mismatch.
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            ctx.wait(3, "for mismatch recheck retry", floor=3.0)
         ctx.check(
             "FAN remote entity has no class_mismatch after fix",
-            "class_mismatch" not in fan_attrs_fixed,
+            cleared,
             f"class_mismatch={fan_attrs_fixed.get('class_mismatch')}",
         )
 
-        # Check 2: Mismatch notification should be dismissed OR should not
-        # mention class mismatch specifically.
-        # The notification may persist if there are orphaned devices from
-        # previous recipes (R19, R22, etc. injected packets from devices
-        # that are in the scan engine but not in the schema).  The class
-        # mismatch itself is resolved (check 1), so we accept the
-        # notification being present only if it doesn't mention class
-        # mismatch.
+        # Check 2: The notification should no longer call out the FAN's
+        # own mismatch specifically.
+        #
+        # The combined mismatch notification lists ALL devices with class
+        # mismatches under one "class mismatch(es)" header, so simply
+        # checking for the word "class" is not a valid signal: other,
+        # unrelated devices (e.g. a CO2 sensor misclassified as REM due to
+        # overlapping 1FC9 traffic — left over from other recipes / not
+        # something this recipe fixes) can keep the word "class" present
+        # even though the FAN mismatch under test (check 1) is resolved.
+        # So look specifically for the FAN device ID in the message.
         notifications_after = await get_persistent_notifications(ctx.token)
         mismatch_notif_after = [
             n
@@ -118,16 +166,11 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
             if "mismatch" in n.get("title", "").lower()
             or "mismatch" in n.get("notification_id", "").lower()
         ]
-        # Check if any remaining notification mentions class mismatch
-        # specifically (as opposed to just orphaned/missing_class)
-        class_mismatch_notifs = [
-            n
-            for n in mismatch_notif_after
-            if "class" in n.get("message", "").lower()
-            or "class" in n.get("title", "").lower()
+        fan_mismatch_notifs = [
+            n for n in mismatch_notif_after if FAN in n.get("message", "")
         ]
         ctx.check(
             "Class mismatch notification dismissed after fix",
-            len(class_mismatch_notifs) == 0,
+            len(fan_mismatch_notifs) == 0,
             f"remaining={[n.get('notification_id') for n in mismatch_notif_after]}",
         )

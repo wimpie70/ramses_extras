@@ -267,7 +267,7 @@ async def run(
     suite_start_wall = time.time()
 
     # Discover all recipe modules so they self-register
-    discover_recipes()
+    discover_recipes(__name__.rsplit(".", 1)[0] + ".recipes")
     print(f"  Discovered {len(REGISTRY)} recipes")
 
     # Select recipes to run

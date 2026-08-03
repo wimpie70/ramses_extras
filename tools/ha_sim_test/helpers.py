@@ -189,6 +189,14 @@ def call_service(
                 time.sleep(5)
                 continue
             raise RuntimeError(f"Connection failed after 3 retries: {e}") from e
+        except TimeoutError as e:
+            # socket.timeout (== TimeoutError) can be raised directly by
+            # urlopen during the read phase, not wrapped in URLError.
+            if attempt < 2:
+                print(f"  call_service: retry {attempt + 1}/3 (timeout)")
+                time.sleep(5)
+                continue
+            raise RuntimeError(f"Service call timed out after 3 retries: {e}") from e
     return {}  # unreachable
 
 
@@ -224,7 +232,11 @@ async def ws_send(token: str, msg: dict, *, retries: int = 2) -> dict:
                     f" ({type(e).__name__}: {err[:60]})"
                 )
                 await _asyncio.sleep(3)
-    raise last_err  # type: ignore[misc]
+    # Wrap as RuntimeError so callers that catch RuntimeError (the common
+    # pattern in recipes) also handle timeouts and connection errors.
+    raise RuntimeError(
+        f"ws_send failed after {retries + 1} attempts: {last_err}"
+    ) from last_err
 
 
 async def _ws_send_once(token: str, msg: dict) -> dict:
@@ -659,12 +671,24 @@ def get_entities(token: str) -> list:
 
     Returns all states — caller should use find_entity_for_device with a
     prefix to narrow matches to ramses_cc entities (e.g. "trv_", "ctl_").
+
+    Retries up to 3 times with 5s backoff for transient timeouts (common
+    under memory pressure when the host is swapping).
     """
     req = urllib.request.Request(
         get_current_instance().ha_url + "/api/states",
         headers={"Authorization": f"Bearer {token}"},
     )
-    return json.loads(urllib.request.urlopen(req).read())
+    for attempt in range(3):
+        try:
+            return json.loads(urllib.request.urlopen(req, timeout=60).read())
+        except TimeoutError as e:
+            if attempt < 2:
+                print(f"  get_entities: retry {attempt + 1}/3 (timeout)")
+                time.sleep(5)
+                continue
+            raise RuntimeError(f"get_entities timed out after 3 retries: {e}") from e
+    return []  # unreachable
 
 
 def find_entity_for_device(
