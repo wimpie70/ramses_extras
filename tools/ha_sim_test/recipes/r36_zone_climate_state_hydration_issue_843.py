@@ -71,6 +71,25 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             pass
         wait_for_schema_populated(timeout=15)
 
+        # 1b. Silence the CTL's periodic 2309/2349 emitters to prevent them
+        #     from overwriting the setpoint we inject below.  The CTL emits
+        #     2309 I packets every ~150s with setpoints like 18.5°C for zone
+        #     03, which would race with our 2349 inject (21.0°C).
+        print(f"  Silencing CTL {CTL} periodic emitters to prevent overwrite...")
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/silence_devices",
+                    "device_ids": [CTL],
+                    "set_suppress": False,
+                },
+            )
+            print(f"    CTL {CTL} emitter silenced")
+        except RuntimeError as e:
+            print(f"    Silence failed (continuing): {str(e)[:80]}")
+        ctx.wait(2, "for emitter cancellation to take effect")
+
         # 2. Inject 2E04 I from CTL (01:150000) — system_mode = auto
         #    Payload: 00 + FFFFFFFFFFFF00 (16 hex chars, len=8)
         #    This sets the system mode to "auto" so hvac_mode doesn't

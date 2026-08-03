@@ -157,14 +157,18 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             f"found {n_1060} 1060 in cache (need at least 1)",
         )
 
-        aged_ts = (dt.now(tz=UTC) - timedelta(hours=2)).isoformat(
-            timespec="microseconds"
-        )
+        aged_base = dt.now(tz=UTC) - timedelta(hours=2)
         new_packets_r32: dict = {}
+        aged_idx = 0
         for ts, pkt in packets_r32.items():
             if isinstance(pkt, dict) and pkt.get("code") == "1060":
-                # Collapse all 1060 to one aged timestamp (only the latest
-                # matters for restore — ramses_cc keeps the newest per code)
+                # Age each 1060 to ~2h ago with a unique timestamp (offset by
+                # 1us per packet) so multiple 1060 packets from different
+                # devices don't collapse to the same dict key.
+                aged_ts = (aged_base + timedelta(microseconds=aged_idx)).isoformat(
+                    timespec="microseconds"
+                )
+                aged_idx += 1
                 new_packets_r32[aged_ts] = pkt
             else:
                 new_packets_r32[ts] = pkt

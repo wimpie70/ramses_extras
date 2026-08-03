@@ -49,7 +49,7 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
                     "enable_auto_answer": True,
                 },
             )
-        except RuntimeError as e:
+        except (RuntimeError, TimeoutError) as e:
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
@@ -58,6 +58,23 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
         # via loop_stop() in _close() (PR 969).  Wait for the new transport to
         # connect and subscribe before injecting.
         ctx.wait(10, "for transport to stabilise after reload")
+
+        # Wait for the DiscoveryManager to be running before injecting.
+        # The DiscoveryManager starts during coordinator setup, which happens
+        # AFTER the initial ramses_cc load.  Without this wait, the 3150 packet
+        # may be injected before the passive scan observer is registered,
+        # causing the device to not appear in get_discovered_devices.
+        def _discovery_scan_running() -> bool:
+            lines = grep_ha_log("DiscoveryScan: started")
+            return len(lines) > 0
+
+        ctx.wait_for(
+            _discovery_scan_running,
+            timeout=30,
+            interval=2,
+            msg="for DiscoveryScan to start",
+            floor=10.0,
+        )
         # 2. Inject a packet from an unknown device
         #    04:999999 is not in any known_list or schema
         unknown_device = "04:999999"
@@ -93,7 +110,14 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
 
         # 4. Check the HA log for discovery scan entries about this device
         #    The device ID in the log may use : or . separators
-        log_lines = grep_ha_log(unknown_device.replace(":", "."))
+        #    Retry with backoff — under parallel load, the HA log file may
+        #    not be flushed by the time we check.
+        log_lines: list[str] = []
+        for _attempt in range(3):
+            log_lines = grep_ha_log(unknown_device.replace(":", "."))
+            if log_lines:
+                break
+            ctx.wait(3, "for HA log to flush", floor=3.0)
         ctx.check(
             f"unknown device {unknown_device} appears in HA log "
             f"(discovery scan tracking)",
