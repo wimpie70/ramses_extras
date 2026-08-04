@@ -25,6 +25,7 @@ from ..helpers import (
     get_schema,
     get_schema_retry,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -95,28 +96,27 @@ class R06ZoneBindingViaInjectMessage(Recipe):
         ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         # Use cached schema (more reliable than config entry during sync).
-        # Retry up to 3 times: under parallel load, the 000C packet may not
-        # be processed by ramses_rf before the first schema read.
-        zones_after: dict = {}
-        for attempt in range(3):
-            schema_after_inject = get_cached_schema()
-            ctl_schema_after = schema_after_inject.get(CTL, {})
-            zones_after = (
-                ctl_schema_after.get("zones", {})
-                if isinstance(ctl_schema_after, dict)
-                else {}
-            )
-            if target_zone in zones_after:
-                break
-            if attempt < 2:
-                print(
-                    f"  Zone {target_zone} not in zones yet, retry {attempt + 1}/3..."
-                )
-                try:
-                    call_service(ctx.token, "ramses_cc", "sync_topology")
-                except RuntimeError:
-                    pass
-                ctx.wait(3, "for sync_learned_topology", floor=2.0)
+        # Poll until the 000C packet is processed by ramses_rf and zone
+        # appears in schema (event-driven wait, not fixed sleep + retry).
+        def _zone_created() -> bool:
+            schema = get_cached_schema()
+            ctl = schema.get(CTL, {})
+            return isinstance(ctl, dict) and target_zone in ctl.get("zones", {})
+
+        wait_for(
+            _zone_created,
+            timeout=15,
+            interval=2,
+            msg=f"for zone {target_zone} to appear in schema",
+            floor=3.0,
+        )
+        schema_after_inject = get_cached_schema()
+        ctl_schema_after = schema_after_inject.get(CTL, {})
+        zones_after = (
+            ctl_schema_after.get("zones", {})
+            if isinstance(ctl_schema_after, dict)
+            else {}
+        )
         print(f"  Zones after inject: {list(zones_after.keys())}")
 
         # Check that zone 09 was created by the injected 000C packet.

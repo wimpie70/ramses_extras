@@ -15,6 +15,7 @@ behaviour.
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import json
 import os
@@ -22,7 +23,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .const import InstanceConfig
@@ -787,6 +788,43 @@ def wait_for(
         except Exception:
             pass  # condition may fail while HA is reloading
         time.sleep(scaled_interval)
+    print(f" TIMEOUT ({scaled_timeout:g}s)")
+    return False
+
+
+async def wait_for_async(
+    condition: Callable[[], Awaitable[bool]],
+    timeout: int = 30,
+    interval: float = 1.0,
+    msg: str = "",
+    *,
+    floor: float = 0.0,
+) -> bool:
+    """Async poll a coroutine condition until True or timeout.
+
+    Like :func:`wait_for` but for async conditions (e.g. websocket calls).
+    """
+    effective_floor = max(floor, WAIT_FLOOR_POLL)
+    scaled_timeout = min(max(timeout * WAIT_SCALE_POLL, effective_floor), timeout)
+    scaled_interval = max(0.1, interval * WAIT_SCALE_POLL)
+    if scaled_timeout != timeout:
+        scaled_str = f"{scaled_timeout:g}"
+        print(
+            f"  Waiting up to {timeout}s→{scaled_str}s {msg}...",
+            end="",
+            flush=True,
+        )
+    else:
+        print(f"  Waiting up to {timeout}s {msg}...", end="", flush=True)
+    deadline = time.monotonic() + scaled_timeout
+    while time.monotonic() < deadline:
+        try:
+            if await condition():
+                print(f" done ({int(scaled_timeout - (deadline - time.monotonic()))}s)")
+                return True
+        except Exception:
+            pass
+        await asyncio.sleep(scaled_interval)
     print(f" TIMEOUT ({scaled_timeout:g}s)")
     return False
 

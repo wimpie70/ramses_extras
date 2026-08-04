@@ -112,26 +112,38 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             pass
         ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
-        # Retry the _name check up to 3 times: under parallel load, the 0004
-        # RP packet may not be processed by ramses_rf before the first read.
-        zone_03_r28: dict | None = None
-        zone_03_name: str | None = None
-        for attempt in range(3):
-            schema_r28 = get_schema_retry()
-            ctl_zones_r28 = schema_r28.get(CTL, {}).get("zones", {})
-            zone_03_r28 = ctl_zones_r28.get(zone_r28, {})
-            zone_03_name = (
-                zone_03_r28.get("_name") if isinstance(zone_03_r28, dict) else None
-            )
-            if zone_03_name is not None:
-                break
-            if attempt < 2:
-                print(f"    zone {zone_r28} _name not set, retry {attempt + 1}/3...")
+        # Poll until the 0004 RP packet is processed and _name appears.
+        # Re-trigger sync_topology periodically to force packet processing.
+        _sync_retry_count = 0
+
+        def _zone_has_name() -> bool:
+            nonlocal _sync_retry_count
+            schema = get_schema_retry()
+            zones = schema.get(CTL, {}).get("zones", {})
+            z = zones.get(zone_r28, {})
+            if isinstance(z, dict) and z.get("_name") is not None:
+                return True
+            _sync_retry_count += 1
+            if _sync_retry_count % 2 == 0:
                 try:
                     call_service(ctx.token, "ramses_cc", "sync_topology")
                 except RuntimeError:
                     pass
-                ctx.wait(3, "for sync_learned_topology", floor=2.0)
+            return False
+
+        wait_for(
+            _zone_has_name,
+            timeout=30,
+            interval=3,
+            msg=f"for zone {zone_r28} _name to appear",
+            floor=12.0,
+        )
+        schema_r28 = get_schema_retry()
+        ctl_zones_r28 = schema_r28.get(CTL, {}).get("zones", {})
+        zone_03_r28 = ctl_zones_r28.get(zone_r28, {})
+        zone_03_name = (
+            zone_03_r28.get("_name") if isinstance(zone_03_r28, dict) else None
+        )
 
         # Check 1: zone 03 should have a _name set — proving the 0004 RP was
         # eavesdropped (not blocked by the foreign HGI block_list).
