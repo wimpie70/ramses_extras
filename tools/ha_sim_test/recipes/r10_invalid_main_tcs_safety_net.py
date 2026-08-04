@@ -12,6 +12,7 @@ from datetime import timedelta
 from ..base import Recipe, RecipeContext
 from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
+    _get_ramses_cc_entry_id,
     call_service,
     find_battery_entity,
     find_entity_for_device,
@@ -62,6 +63,31 @@ class R10InvalidMainTcsSafetyNet(Recipe):
         schema_keys = list(schema_debug.keys())
         main_tcs = schema_debug.get("main_tcs")
         print(f"  DEBUG: schema keys={schema_keys}, main_tcs={main_tcs}")
+
+        # Under parallel load, the profile loader's async_unload may fail,
+        # leaving the entry in LOADED state.  async_setup is then a no-op,
+        # so _async_setup (which contains the sanitisation) never runs.
+        # Force a fresh reload via the HA REST API to guarantee
+        # _async_setup is called with the invalid schema.
+        if main_tcs == "04:999999":
+            print("  main_tcs still 04:999999 — forcing reload via REST API...")
+            entry_id = _get_ramses_cc_entry_id()
+            if entry_id:
+                try:
+                    call_service(
+                        ctx.token,
+                        "homeassistant",
+                        "reload_config_entry",
+                        {"entry_id": entry_id},
+                    )
+                    print("  Forced reload triggered")
+                except RuntimeError as e:
+                    print(f"  Forced reload failed: {str(e)[:80]}")
+                ctx.wait_for_ramses_cc_reload(timeout=20)
+                ctx.refresh_token()
+                schema_debug = get_schema()
+                main_tcs = schema_debug.get("main_tcs")
+                print(f"  After forced reload: main_tcs={main_tcs}")
 
         # Check logs for sanitisation warning — retry with a wider time window
         # under parallel load (the reload may take longer than 30s when 4
