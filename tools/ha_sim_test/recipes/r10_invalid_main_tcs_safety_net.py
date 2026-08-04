@@ -12,6 +12,7 @@ from datetime import timedelta
 from ..base import Recipe, RecipeContext
 from ..const import CO2, CTL, DHW, FAN, HGI, REM, TRV
 from ..helpers import (
+    _get_ramses_cc_entry_id,
     call_service,
     find_battery_entity,
     find_entity_for_device,
@@ -63,9 +64,31 @@ class R10InvalidMainTcsSafetyNet(Recipe):
         main_tcs = schema_debug.get("main_tcs")
         print(f"  DEBUG: schema keys={schema_keys}, main_tcs={main_tcs}")
 
-        # The profile loader now forces NOT_LOADED when async_unload fails,
-        # so _async_setup (which contains the sanitisation) always runs.
-        # No need for a force-reload workaround anymore.
+        # The profile loader forces NOT_LOADED when async_unload fails, so
+        # _async_setup (which contains the sanitisation) should always run.
+        # However, the profile_loader's _reload_ramses_cc is fire-and-forget
+        # (async_create_task), so under parallel load the reload may not
+        # complete before we check.  If the invalid main_tcs is still present,
+        # force a reload via the HA REST API to guarantee _async_setup runs.
+        if main_tcs == "04:999999":
+            print("  main_tcs still 04:999999 — forcing reload via REST API...")
+            entry_id = _get_ramses_cc_entry_id()
+            if entry_id:
+                try:
+                    call_service(
+                        ctx.token,
+                        "homeassistant",
+                        "reload_config_entry",
+                        {"entry_id": entry_id},
+                    )
+                    print("  Forced reload triggered")
+                except RuntimeError as e:
+                    print(f"  Forced reload failed: {str(e)[:80]}")
+                ctx.wait_for_ramses_cc_reload(timeout=20)
+                ctx.refresh_token()
+                schema_debug = get_schema()
+                main_tcs = schema_debug.get("main_tcs")
+                print(f"  After forced reload: main_tcs={main_tcs}")
 
         # Check logs for sanitisation warning.
         sanitised = False
@@ -99,9 +122,10 @@ class R10InvalidMainTcsSafetyNet(Recipe):
 
         ctx.wait_for(
             _main_tcs_cleared,
-            timeout=10,
-            interval=1,
+            timeout=30,
+            interval=2,
             msg="for sanitised schema to persist",
+            floor=10.0,
         )
         schema_after_sanitise = get_schema_retry()
         main_tcs_after = schema_after_sanitise.get("main_tcs")

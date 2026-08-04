@@ -24,6 +24,7 @@ from ..helpers import (
     get_schema,
     get_schema_retry,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -55,7 +56,21 @@ class R02RemoveDeviceRemoveATrv(Recipe):
                     ctx.token, "ramses_cc", "remove_device", {"device_id": TRV}
                 )
                 print("  remove_device call succeeded")
-                ctx.wait(3, "for coordinator refresh")
+
+                # Poll until the TRV is removed from the config entry schema.
+                # Under parallel load, the removal may not propagate to
+                # .storage within the initial 3s wait.
+                def _trv_removed() -> bool:
+                    schema = get_schema()
+                    return TRV not in json.dumps(schema)
+
+                wait_for(
+                    _trv_removed,
+                    timeout=15,
+                    interval=2,
+                    msg=f"for {TRV} to be removed from schema",
+                    floor=5.0,
+                )
 
                 # Check config entry schema (remove_device updates this directly).
                 # The cached schema (.storage/ramses_cc) may still have the device
