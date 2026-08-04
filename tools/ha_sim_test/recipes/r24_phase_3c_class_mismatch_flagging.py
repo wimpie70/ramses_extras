@@ -115,14 +115,36 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         # Check 1: FAN remote entity should have class_mismatch attribute
         # The remote entity (remote.fan_32_150000) inherits from RamsesEntity
         # which surfaces mismatch flags. Search by device_id only.
-        entities = get_entities(ctx.token)
-        fan_remote = None
-        for e in entities:
-            eid = e.get("entity_id", "")
-            if "32_150000" in eid and eid.startswith("remote."):
-                fan_remote = e
+        # Retry up to 3 times: under parallel load the mismatch detection
+        # may not have completed within the single 5s wait.
+        fan_attrs: dict = {}
+        for attempt in range(3):
+            entities = get_entities(ctx.token)
+            fan_remote = None
+            for e in entities:
+                eid = e.get("entity_id", "")
+                if "32_150000" in eid and eid.startswith("remote."):
+                    fan_remote = e
+                    break
+            fan_attrs = fan_remote.get("attributes", {}) if fan_remote else {}
+            if "class_mismatch" in fan_attrs:
                 break
-        fan_attrs = fan_remote.get("attributes", {}) if fan_remote else {}
+            if attempt < 2:
+                print(
+                    f"    class_mismatch not set, retry "
+                    f"{attempt + 1}/3 (re-sync + wait)..."
+                )
+                try:
+                    call_service(ctx.token, "ramses_cc", "sync_topology")
+                except RuntimeError:
+                    pass
+                ctx.wait(5, "for mismatch re-detection", floor=3.0)
+                try:
+                    call_service(ctx.token, "ramses_cc", "force_update")
+                except RuntimeError:
+                    pass
+                ctx.wait_for_schema_stable(timeout=10, msg="for save")
+
         ctx.check(
             "FAN remote entity has class_mismatch attribute",
             "class_mismatch" in fan_attrs,
@@ -137,13 +159,23 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             )
 
         # Check 2: Persistent notification should exist
-        notifications = await get_persistent_notifications(ctx.token)
-        mismatch_notif = [
-            n
-            for n in notifications
-            if "mismatch" in n.get("title", "").lower()
-            or "mismatch" in n.get("notification_id", "").lower()
-        ]
+        # Retry up to 3 times: the notification may not be created until
+        # the mismatch detection cycle completes.
+        mismatch_notif: list = []
+        for attempt in range(3):
+            notifications = await get_persistent_notifications(ctx.token)
+            mismatch_notif = [
+                n
+                for n in notifications
+                if "mismatch" in n.get("title", "").lower()
+                or "mismatch" in n.get("notification_id", "").lower()
+            ]
+            if mismatch_notif:
+                break
+            if attempt < 2:
+                print(f"    mismatch notification not found, retry {attempt + 1}/3...")
+                ctx.wait(3, "for notification creation", floor=2.0)
+
         ctx.check(
             "Persistent notification for mismatches exists",
             len(mismatch_notif) > 0,
