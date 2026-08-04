@@ -202,7 +202,7 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             if (
                 state is not None
                 and state not in ("unknown", "unavailable")
-                and temp is not None
+                and temp == setpoint_temp
             ):
                 return True
             _force_update_count += 1
