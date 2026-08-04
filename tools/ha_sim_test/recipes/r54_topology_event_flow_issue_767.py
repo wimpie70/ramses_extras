@@ -100,12 +100,19 @@ try:
     mock_pkt = MagicMock()
     mock_pkt.payload = bind_payload
 
+    # The binding handler reads msg._dto.payload (not msg._pkt.payload)
+    mock_dto = MagicMock()
+    mock_dto.payload = bind_payload
+
     mock_msg = MagicMock()
     mock_msg.header.verb = " I"  # I_ broadcast
     mock_msg.header.code = Code._1FC9
     mock_msg.src.id = "{CTL}"
+    mock_msg.src.type = "01"  # CTL type — triggers CREATE_CONTROLLER
     mock_msg.dst.id = "18:765432"  # gateway
+    mock_msg.dst.type = "18"  # HGI type
     mock_msg._pkt = mock_pkt
+    mock_msg._dto = mock_dto  # binding handler reads _dto.payload
 
     # Process the message (consume is async)
     import asyncio
