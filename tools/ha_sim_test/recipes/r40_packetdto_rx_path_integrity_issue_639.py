@@ -63,6 +63,9 @@ except ImportError as e:
         # is_tx was added to distinguish inbound (RX) vs outbound (TX)
         # packets as part of the OSI layer decoupling — it is a legitimate
         # L1/L2 transport field, not an application-layer field.
+        # comment was added by PR 964 (typing/linting refactor) as a
+        # metadata field for log annotations — it carries no decoded
+        # payload data, just an optional human-readable comment string.
         allowed_fields = {
             "timestamp",
             "rssi",
@@ -75,6 +78,7 @@ except ImportError as e:
             "length",
             "payload",
             "is_tx",
+            "comment",
         }
 
         ctx.check(
