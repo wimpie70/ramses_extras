@@ -626,7 +626,14 @@ async def _reload_ramses_cc(
         try:
             await hass.config_entries.async_unload(entry_id)
         except Exception as err:  # noqa: BLE001
-            LOGGER.warning("Profile load: async_unload failed: %s, continuing", err)
+            LOGGER.warning(
+                "Profile load: async_unload failed: %s, forcing NOT_LOADED", err
+            )
+            # async_setup is a no-op when the entry is still in LOADED state.
+            # Force the state to NOT_LOADED so the subsequent async_setup
+            # actually runs _async_setup (which contains sanitisation, etc.).
+            if entry:
+                entry._async_set_state(hass, ConfigEntryState.NOT_LOADED, None)
 
     if wipe_schema:
         dev_reg = dr.async_get(hass)
