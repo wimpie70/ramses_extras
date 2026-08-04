@@ -166,11 +166,52 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             pass
         ctx.wait(5, "for entity state write", floor=3.0)
 
-        # 5. Find the water_heater entity for the DhwZone
-        #    The DhwZone ID is CTL + "_HW" (e.g. "01:150000_HW"), but the
-        #    HA entity_id is slugified from the device name, which is
-        #    "stored_hw" (ramses_cc uses has_entity_name=True with name=None,
-        #    so HA derives the slug from the device name, not the unique_id).
+        # 5. Poll until the water_heater entity's current_temperature is
+        #    hydrated from 1260 (not None).  Re-inject 1260 + force_update
+        #    periodically because the scan engine may drop packets under
+        #    parallel load.
+        _1260_retry_count = 0
+
+        def _wh_current_temp_hydrated() -> bool:
+            nonlocal _1260_retry_count
+            entities = get_entities(ctx.token)
+            for e in entities:
+                if not e["entity_id"].startswith("water_heater."):
+                    continue
+                attrs = e.get("attributes", {})
+                if attrs.get("current_temperature") is not None:
+                    return True
+            _1260_retry_count += 1
+            if _1260_retry_count % 2 == 0:
+                try:
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": DHW,
+                            "code": "1260",
+                            "payload": "00157C",
+                            "verb": "I",
+                        },
+                    )
+                except RuntimeError:
+                    pass
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            return False
+
+        wait_for(
+            _wh_current_temp_hydrated,
+            timeout=30,
+            interval=3,
+            msg="for water_heater current_temperature to hydrate from 1260",
+            floor=10.0,
+        )
+
+        # 6. Read final entity state
         entities = get_entities(ctx.token)
         wh_entity = None
         for e in entities:
