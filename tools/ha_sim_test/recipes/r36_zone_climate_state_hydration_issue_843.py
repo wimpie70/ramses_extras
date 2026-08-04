@@ -157,32 +157,72 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
         #    ramses_cc creates climate entities for each zone.  The entity_id
         #    is climate.<slugified_zone_name>.  We search for any climate
         #    entity whose attributes reference zone_idx 03.
-        entities = get_entities(ctx.token)
-        climate_entity = None
-        for e in entities:
-            if not e["entity_id"].startswith("climate."):
-                continue
-            attrs = e.get("attributes", {})
-            # ramses_cc stores the zone_idx in the entity's device or
-            # attributes.  Check the unique_id pattern (CTL_zone_idx).
-            # Also check if the entity has a temperature attribute (zones
-            # do, other climate entities like DHW don't).
-            if attrs.get("zone_idx") == zone_idx:
-                climate_entity = e
-                break
 
-        # Fallback: if no zone_idx attribute, look for the first climate
-        # entity that has a temperature attribute (not the DHW water_heater).
-        if climate_entity is None:
+        def _find_climate_entity() -> dict | None:
+            entities = get_entities(ctx.token)
+            for e in entities:
+                if not e["entity_id"].startswith("climate."):
+                    continue
+                attrs = e.get("attributes", {})
+                if attrs.get("zone_idx") == zone_idx:
+                    return e
+            # Fallback: first climate entity with a temperature attribute
             for e in entities:
                 if not e["entity_id"].startswith("climate."):
                     continue
                 attrs = e.get("attributes", {})
                 if "temperature" in attrs or "current_temperature" in attrs:
-                    climate_entity = e
-                    break
+                    return e
+            return None
 
+        climate_entity = _find_climate_entity()
+
+        # Check 1: climate entity exists
         cl_eid = climate_entity["entity_id"] if climate_entity else "None"
+        ctx.check(
+            "climate entity exists for zone 03",
+            climate_entity is not None,
+            f"entity_id={cl_eid}",
+        )
+
+        # 5. Poll until the climate entity state is hydrated from 2349.
+        #    Under parallel load, the 2349 packet + force_update may not
+        #    propagate to the entity state within the initial 5s wait.
+        #    Re-trigger force_update periodically to push the state write.
+        _force_update_count = 0
+
+        def _climate_hydrated() -> bool:
+            nonlocal _force_update_count
+            entity = _find_climate_entity()
+            if not entity:
+                return False
+            state = entity.get("state")
+            attrs = entity.get("attributes", {})
+            temp = attrs.get("temperature")
+            if (
+                state is not None
+                and state not in ("unknown", "unavailable")
+                and temp is not None
+            ):
+                return True
+            _force_update_count += 1
+            if _force_update_count % 2 == 0:
+                try:
+                    call_service(ctx.token, "ramses_cc", "force_update")
+                except RuntimeError:
+                    pass
+            return False
+
+        wait_for(
+            _climate_hydrated,
+            timeout=30,
+            interval=3,
+            msg="for climate entity state to hydrate from 2349",
+            floor=12.0,
+        )
+
+        # Read final state for the checks
+        climate_entity = _find_climate_entity()
         cl_state = climate_entity.get("state") if climate_entity else None
         cl_attrs = climate_entity.get("attributes", {}) if climate_entity else {}
         target_temp = cl_attrs.get("temperature")
@@ -190,13 +230,6 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
         print(f"  climate entity: {cl_eid}")
         print(f"  state={cl_state!r}  target_temp={target_temp!r}")
         print(f"  attrs={json.dumps(cl_attrs)[:200]}")
-
-        # Check 1: climate entity exists
-        ctx.check(
-            "climate entity exists for zone 03",
-            climate_entity is not None,
-            f"entity_id={cl_eid}",
-        )
 
         # Check 2: climate entity state is not None/unknown
         #    WITHOUT FIX: None (zone_state.mode never hydrated from 2349)
