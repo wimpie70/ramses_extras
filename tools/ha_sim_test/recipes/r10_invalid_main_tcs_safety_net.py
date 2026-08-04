@@ -63,16 +63,22 @@ class R10InvalidMainTcsSafetyNet(Recipe):
         main_tcs = schema_debug.get("main_tcs")
         print(f"  DEBUG: schema keys={schema_keys}, main_tcs={main_tcs}")
 
-        # Check logs for sanitisation warning
-        log_result = subprocess.run(
-            ["docker", "logs", get_current_instance().name, "--since", "30s"],
-            capture_output=True,
-            text=True,
-        )
-        sanitised = (
-            "Sanitising invalid main_tcs" in log_result.stdout
-            or "Sanitising invalid main_tcs" in log_result.stderr
-        )
+        # Check logs for sanitisation warning — retry with a wider time window
+        # under parallel load (the reload may take longer than 30s when 4
+        # containers share the host).
+        sanitised = False
+        for log_window in ("30s", "60s", "120s"):
+            log_result = subprocess.run(
+                ["docker", "logs", get_current_instance().name, "--since", log_window],
+                capture_output=True,
+                text=True,
+            )
+            if (
+                "Sanitising invalid main_tcs" in log_result.stdout
+                or "Sanitising invalid main_tcs" in log_result.stderr
+            ):
+                sanitised = True
+                break
         ctx.check(
             "Coordinator sanitises invalid main_tcs",
             sanitised,
