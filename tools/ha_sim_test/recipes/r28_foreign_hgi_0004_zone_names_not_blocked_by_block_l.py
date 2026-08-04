@@ -112,8 +112,26 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             pass
         ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
-        schema_r28 = get_schema_retry()
-        ctl_zones_r28 = schema_r28.get(CTL, {}).get("zones", {})
+        # Retry the _name check up to 3 times: under parallel load, the 0004
+        # RP packet may not be processed by ramses_rf before the first read.
+        zone_03_r28: dict | None = None
+        zone_03_name: str | None = None
+        for attempt in range(3):
+            schema_r28 = get_schema_retry()
+            ctl_zones_r28 = schema_r28.get(CTL, {}).get("zones", {})
+            zone_03_r28 = ctl_zones_r28.get(zone_r28, {})
+            zone_03_name = (
+                zone_03_r28.get("_name") if isinstance(zone_03_r28, dict) else None
+            )
+            if zone_03_name is not None:
+                break
+            if attempt < 2:
+                print(f"    zone {zone_r28} _name not set, retry {attempt + 1}/3...")
+                try:
+                    call_service(ctx.token, "ramses_cc", "sync_topology")
+                except RuntimeError:
+                    pass
+                ctx.wait(3, "for sync_learned_topology", floor=2.0)
 
         # Check 1: zone 03 should have a _name set — proving the 0004 RP was
         # eavesdropped (not blocked by the foreign HGI block_list).
@@ -125,10 +143,6 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
         # expected to override an existing I-set name.  The foreign HGI
         # block_list fix (issue 822) is verified by the other 3 checks below
         # (foreign HGI in schema, 30C9 processed, no FILTER EXCEPTION).
-        zone_03_r28 = ctl_zones_r28.get(zone_r28, {})
-        zone_03_name = (
-            zone_03_r28.get("_name") if isinstance(zone_03_r28, dict) else None
-        )
         ctx.check(
             f"Zone {zone_r28} has _name set (0004 RP to foreign HGI not blocked)",
             isinstance(zone_03_r28, dict) and zone_03_name is not None,
