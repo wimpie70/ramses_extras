@@ -182,57 +182,84 @@ except Exception as e:
         # exposing this pre-existing routing gap.  Injecting from the CTL
         # works because the CTL's TCS has zone 03.
         # TODO: fix _resolve_logical_targets to look up zones by sensor ID.
-        temp = None
-        zone_climate = None
-        for attempt in range(5):
-            if attempt > 0:
-                print(f"  Retry {attempt}: re-injecting 30C9 I from 01:150000...")
-            else:
-                print("  Injecting 30C9 I from 01:150000 (zone 03, 22.0°C)...")
-            try:
-                call_service(
-                    ctx.token,
-                    "ramses_extras",
-                    "device_simulator_inject_message",
-                    {
-                        "source_id": "01:150000",
-                        "code": "30C9",
-                        "payload": "030AC0",
-                        "verb": "I",
-                    },
-                )
-                print("    30C9 I injected")
-            except RuntimeError as e:
-                print(f"    Inject failed: {str(e)[:80]}")
-            ctx.wait(5, "for 30C9 to process", floor=2.0)
+        # Poll until the 30C9 packet is processed and the climate entity
+        # for zone 03 exists.  Re-inject + force_update periodically because
+        # the scan engine may drop packets under parallel load.
+        print("  Injecting 30C9 I from 01:150000 (zone 03, 22.0°C)...")
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": "01:150000",
+                    "code": "30C9",
+                    "payload": "030AC0",
+                    "verb": "I",
+                },
+            )
+            print("    30C9 I injected")
+        except RuntimeError as e:
+            print(f"    Inject failed: {str(e)[:80]}")
+        ctx.wait(5, "for 30C9 to process", floor=2.0)
 
-            # Force entity state update
-            try:
-                call_service(ctx.token, "ramses_cc", "force_update")
-            except RuntimeError:
-                pass
-            ctx.wait(3, "for entity state write", floor=3.0)
+        _30c9_retry_count = 0
 
-            # Check that a climate entity for zone 03 exists and has a temp
+        def _zone_climate_exists() -> bool:
+            nonlocal _30c9_retry_count
             entities = get_entities(ctx.token)
-            zone_climate = None
             for e in entities:
                 if not e["entity_id"].startswith("climate."):
                     continue
                 attrs = e.get("attributes", {})
                 if attrs.get("zone_idx") == "03":
-                    zone_climate = e
-                    break
+                    return True
+            _30c9_retry_count += 1
+            if _30c9_retry_count % 2 == 0:
+                try:
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": "01:150000",
+                            "code": "30C9",
+                            "payload": "030AC0",
+                            "verb": "I",
+                        },
+                    )
+                except RuntimeError:
+                    pass
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            return False
 
-            if zone_climate:
-                temp = zone_climate.get("attributes", {}).get("current_temperature")
-                if temp is not None:
-                    break
-                print(f"    current_temperature still None after attempt {attempt + 1}")
-            else:
-                print(
-                    f"    zone 03 climate entity not found after attempt {attempt + 1}"
-                )
+        wait_for(
+            _zone_climate_exists,
+            timeout=60,
+            interval=5,
+            msg="for zone 03 climate entity to appear after 30C9 RX",
+            floor=20.0,
+        )
+
+        # Read final state
+        entities = get_entities(ctx.token)
+        zone_climate = None
+        for e in entities:
+            if not e["entity_id"].startswith("climate."):
+                continue
+            attrs = e.get("attributes", {})
+            if attrs.get("zone_idx") == "03":
+                zone_climate = e
+                break
+
+        temp = (
+            zone_climate.get("attributes", {}).get("current_temperature")
+            if zone_climate
+            else None
+        )
 
         ctx.check(
             "climate entity for zone 03 exists after 30C9 RX",

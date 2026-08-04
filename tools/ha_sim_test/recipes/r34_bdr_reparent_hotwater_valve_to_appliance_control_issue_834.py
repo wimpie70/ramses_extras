@@ -155,42 +155,20 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        # Retry the 000C HTG inject + sync cycle up to 3 times, as the
-        # scan engine may not process the packet fast enough under
-        # parallel load (4 containers sharing the MQTT broker).
-        dhw_step1: dict = {}
-        system_step1: dict = {}
-        for attempt in range(3):
-            ctx.wait(5, "for 000C HTG processing", floor=2.0)
-            try:
-                call_service(ctx.token, "ramses_cc", "sync_topology")
-            except RuntimeError as e:
-                print(f"  sync_topology failed: {e}")
-            ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
-            try:
-                call_service(ctx.token, "ramses_cc", "force_update")
-            except RuntimeError:
-                pass
-            ctx.wait_for_schema_stable(timeout=10, msg="for save")
+        # Poll until the 000C HTG packet is processed and the BDR is bound
+        # as hotwater_valve.  Re-inject + sync periodically because the
+        # scan engine may drop packets under parallel load.
+        _htg_retry_count = 0
 
-            schema_step1 = get_schema_retry()
-            ctl_step1 = schema_step1.get(CTL, {})
-            system_step1 = (
-                ctl_step1.get("system", {}) if isinstance(ctl_step1, dict) else {}
-            )
-            dhw_step1 = (
-                ctl_step1.get("stored_hotwater", {})
-                if isinstance(ctl_step1, dict)
-                else {}
-            )
-
-            if dhw_step1.get("hotwater_valve") == bdr_id:
-                break
-            if attempt < 2:
-                print(
-                    f"    hotwater_valve not set after attempt "
-                    f"{attempt + 1}, re-injecting 000C HTG..."
-                )
+        def _htg_bound() -> bool:
+            nonlocal _htg_retry_count
+            schema = get_schema_retry()
+            ctl = schema.get(CTL, {})
+            dhw = ctl.get("stored_hotwater", {}) if isinstance(ctl, dict) else {}
+            if dhw.get("hotwater_valve") == bdr_id:
+                return True
+            _htg_retry_count += 1
+            if _htg_retry_count % 2 == 0:
                 try:
                     call_service(
                         ctx.token,
@@ -206,6 +184,28 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
                     )
                 except RuntimeError:
                     pass
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            return False
+
+        wait_for(
+            _htg_bound,
+            timeout=30,
+            interval=3,
+            msg="for 000C HTG to bind BDR as hotwater_valve",
+            floor=10.0,
+        )
+
+        schema_step1 = get_schema_retry()
+        ctl_step1 = schema_step1.get(CTL, {})
+        system_step1 = (
+            ctl_step1.get("system", {}) if isinstance(ctl_step1, dict) else {}
+        )
+        dhw_step1 = (
+            ctl_step1.get("stored_hotwater", {}) if isinstance(ctl_step1, dict) else {}
+        )
 
         print("  After HTG inject:")
         print(f"    system = {json.dumps(system_step1)[:120]}")
@@ -253,41 +253,19 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        # Retry the 000C APP inject + sync cycle up to 3 times, as the
-        # re-parenting may not complete fast enough under parallel load.
-        system_step2: dict = {}
-        dhw_step2: dict = {}
-        for attempt in range(3):
-            ctx.wait(5, "for 000C APP processing", floor=2.0)
-            try:
-                call_service(ctx.token, "ramses_cc", "sync_topology")
-            except RuntimeError as e:
-                print(f"  sync_topology failed: {e}")
-            ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
-            try:
-                call_service(ctx.token, "ramses_cc", "force_update")
-            except RuntimeError:
-                pass
-            ctx.wait_for_schema_stable(timeout=10, msg="for save")
+        # Poll until the 000C APP packet is processed and the BDR is
+        # re-parented to appliance_control.  Re-inject + sync periodically.
+        _app_retry_count = 0
 
-            schema_step2 = get_schema_retry()
-            ctl_step2 = schema_step2.get(CTL, {})
-            system_step2 = (
-                ctl_step2.get("system", {}) if isinstance(ctl_step2, dict) else {}
-            )
-            dhw_step2 = (
-                ctl_step2.get("stored_hotwater", {})
-                if isinstance(ctl_step2, dict)
-                else {}
-            )
-
-            if system_step2.get("appliance_control") == bdr_id:
-                break
-            if attempt < 2:
-                print(
-                    f"    re-parenting not complete after attempt "
-                    f"{attempt + 1}, re-injecting 000C APP..."
-                )
+        def _app_reparented() -> bool:
+            nonlocal _app_retry_count
+            schema = get_schema_retry()
+            ctl = schema.get(CTL, {})
+            system = ctl.get("system", {}) if isinstance(ctl, dict) else {}
+            if system.get("appliance_control") == bdr_id:
+                return True
+            _app_retry_count += 1
+            if _app_retry_count % 2 == 0:
                 try:
                     call_service(
                         ctx.token,
@@ -303,6 +281,28 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
                     )
                 except RuntimeError:
                     pass
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            return False
+
+        wait_for(
+            _app_reparented,
+            timeout=30,
+            interval=3,
+            msg="for 000C APP to re-parent BDR to appliance_control",
+            floor=10.0,
+        )
+
+        schema_step2 = get_schema_retry()
+        ctl_step2 = schema_step2.get(CTL, {})
+        system_step2 = (
+            ctl_step2.get("system", {}) if isinstance(ctl_step2, dict) else {}
+        )
+        dhw_step2 = (
+            ctl_step2.get("stored_hotwater", {}) if isinstance(ctl_step2, dict) else {}
+        )
 
         print("  After APP inject:")
         print(f"    system = {json.dumps(system_step2)[:120]}")
