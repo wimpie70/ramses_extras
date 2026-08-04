@@ -21,6 +21,7 @@ See: https://github.com/ramses-rf/ramses_rf/issues/639
 from __future__ import annotations
 
 import subprocess
+import time
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL
@@ -168,25 +169,33 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
         #      "Simulator received from ramses_rf:  I --- <src> ... 30C9 ..."
         #    We filter for our specific device to avoid matching other
         #    traffic.
-        result = subprocess.run(
-            [
-                "docker",
-                "exec",
-                get_current_instance().name,
-                "bash",
-                "-c",
-                f"grep 'Simulator received.*{sensor_id}.*30C9' "
-                "/config/home-assistant.log | tail -10",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        tx_lines = []
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            tx_lines.append(line)
+        #    Retry up to 3 times: under parallel load the HA log buffer
+        #    may not have flushed the 30C9 entry yet.
+        tx_lines: list[str] = []
+        for attempt in range(3):
+            result = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    get_current_instance().name,
+                    "bash",
+                    "-c",
+                    f"grep 'Simulator received.*{sensor_id}.*30C9' "
+                    "/config/home-assistant.log | tail -10",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                tx_lines.append(line)
+            if tx_lines:
+                break
+            if attempt < 2:
+                print(f"    30C9 not in log yet, retry {attempt + 1}/3...")
+                time.sleep(3)
 
         ctx.check(
             "30C9 packet found in HA log",
