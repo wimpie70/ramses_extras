@@ -184,7 +184,7 @@ except Exception as e:
         # TODO: fix _resolve_logical_targets to look up zones by sensor ID.
         temp = None
         zone_climate = None
-        for attempt in range(3):
+        for attempt in range(5):
             if attempt > 0:
                 print(f"  Retry {attempt}: re-injecting 30C9 I from 01:150000...")
             else:
