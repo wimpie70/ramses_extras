@@ -155,26 +155,57 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for 000C HTG processing", floor=2.0)
-        try:
-            call_service(ctx.token, "ramses_cc", "sync_topology")
-        except RuntimeError as e:
-            print(f"  sync_topology failed: {e}")
-        ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
-        try:
-            call_service(ctx.token, "ramses_cc", "force_update")
-        except RuntimeError:
-            pass
-        ctx.wait_for_schema_stable(timeout=10, msg="for save")
+        # Retry the 000C HTG inject + sync cycle up to 3 times, as the
+        # scan engine may not process the packet fast enough under
+        # parallel load (4 containers sharing the MQTT broker).
+        dhw_step1: dict = {}
+        system_step1: dict = {}
+        for attempt in range(3):
+            ctx.wait(5, "for 000C HTG processing", floor=2.0)
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError as e:
+                print(f"  sync_topology failed: {e}")
+            ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
-        schema_step1 = get_schema_retry()
-        ctl_step1 = schema_step1.get(CTL, {})
-        system_step1 = (
-            ctl_step1.get("system", {}) if isinstance(ctl_step1, dict) else {}
-        )
-        dhw_step1 = (
-            ctl_step1.get("stored_hotwater", {}) if isinstance(ctl_step1, dict) else {}
-        )
+            schema_step1 = get_schema_retry()
+            ctl_step1 = schema_step1.get(CTL, {})
+            system_step1 = (
+                ctl_step1.get("system", {}) if isinstance(ctl_step1, dict) else {}
+            )
+            dhw_step1 = (
+                ctl_step1.get("stored_hotwater", {})
+                if isinstance(ctl_step1, dict)
+                else {}
+            )
+
+            if dhw_step1.get("hotwater_valve") == bdr_id:
+                break
+            if attempt < 2:
+                print(
+                    f"    hotwater_valve not set after attempt "
+                    f"{attempt + 1}, re-injecting 000C HTG..."
+                )
+                try:
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": CTL,
+                            "dst": get_current_instance().hgi_id,
+                            "code": "000C",
+                            "payload": htg_payload,
+                            "verb": "RP",
+                        },
+                    )
+                except RuntimeError:
+                    pass
 
         print("  After HTG inject:")
         print(f"    system = {json.dumps(system_step1)[:120]}")
@@ -222,26 +253,56 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for 000C APP processing", floor=2.0)
-        try:
-            call_service(ctx.token, "ramses_cc", "sync_topology")
-        except RuntimeError as e:
-            print(f"  sync_topology failed: {e}")
-        ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
-        try:
-            call_service(ctx.token, "ramses_cc", "force_update")
-        except RuntimeError:
-            pass
-        ctx.wait_for_schema_stable(timeout=10, msg="for save")
+        # Retry the 000C APP inject + sync cycle up to 3 times, as the
+        # re-parenting may not complete fast enough under parallel load.
+        system_step2: dict = {}
+        dhw_step2: dict = {}
+        for attempt in range(3):
+            ctx.wait(5, "for 000C APP processing", floor=2.0)
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError as e:
+                print(f"  sync_topology failed: {e}")
+            ctx.wait_for_schema_stable(timeout=15, msg="for sync_learned_topology")
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
-        schema_step2 = get_schema_retry()
-        ctl_step2 = schema_step2.get(CTL, {})
-        system_step2 = (
-            ctl_step2.get("system", {}) if isinstance(ctl_step2, dict) else {}
-        )
-        dhw_step2 = (
-            ctl_step2.get("stored_hotwater", {}) if isinstance(ctl_step2, dict) else {}
-        )
+            schema_step2 = get_schema_retry()
+            ctl_step2 = schema_step2.get(CTL, {})
+            system_step2 = (
+                ctl_step2.get("system", {}) if isinstance(ctl_step2, dict) else {}
+            )
+            dhw_step2 = (
+                ctl_step2.get("stored_hotwater", {})
+                if isinstance(ctl_step2, dict)
+                else {}
+            )
+
+            if system_step2.get("appliance_control") == bdr_id:
+                break
+            if attempt < 2:
+                print(
+                    f"    re-parenting not complete after attempt "
+                    f"{attempt + 1}, re-injecting 000C APP..."
+                )
+                try:
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": CTL,
+                            "dst": get_current_instance().hgi_id,
+                            "code": "000C",
+                            "payload": app_payload,
+                            "verb": "RP",
+                        },
+                    )
+                except RuntimeError:
+                    pass
 
         print("  After APP inject:")
         print(f"    system = {json.dumps(system_step2)[:120]}")
