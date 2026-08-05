@@ -80,7 +80,20 @@ class R05NoResurrectionAfterRestart(Recipe):
                     print(f"    {name} removed")
                 except RuntimeError as e:
                     print(f"    {name} remove failed: {str(e)[:80]}")
-            ctx.wait(3, "for coordinator refresh")
+
+            # Poll until both devices are actually removed from known_list.
+            # Under parallel load, the removal may take >3s to propagate.
+            def _devices_removed() -> bool:
+                kl = get_known_list()
+                return TRV not in kl and CTL not in kl
+
+            wait_for(
+                _devices_removed,
+                timeout=15,
+                interval=2,
+                msg="for TRV+CTL removal to propagate",
+                floor=5.0,
+            )
         else:
             print(
                 "  Devices already absent (standalone run without R07b)"

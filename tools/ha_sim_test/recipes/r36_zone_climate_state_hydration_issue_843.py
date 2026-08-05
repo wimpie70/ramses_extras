@@ -278,6 +278,10 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
                 except RuntimeError:
                     pass
                 try:
+                    call_service(ctx.token, "ramses_cc", "sync_topology")
+                except RuntimeError:
+                    pass
+                try:
                     call_service(ctx.token, "ramses_cc", "force_update")
                 except RuntimeError:
                     pass
