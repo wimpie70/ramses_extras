@@ -664,3 +664,99 @@ python -m tools.ha_sim_test.mqtt_monitor --duration 60 --verbose
 
 ### Already proper fixes (not camouflage):
 - R23: check zone_idx only, not name (auto-answer RP overwrites name)
+
+## 2026-08-05 — Local MQTT broker + parallel container connectivity fix
+
+### Root cause of parallel container failures
+
+The parallel containers (ha-sim-2/3/4) use **bridge networking** (not
+`network_mode: host` like ha-sim), so `localhost:1884` inside those
+containers refers to the container itself — not the host.  The local
+MQTT broker (mosquitto with `network_mode: host`) listens on the host's
+`0.0.0.0:1884`, which is unreachable from bridge containers via
+`localhost`.
+
+This caused ramses_cc to fail with "Transport did not bind to Protocol
+within 60.0 secs" on all parallel containers, leading to:
+- 0 climate entities created (ramses_cc stuck in SETUP_IN_PROGRESS)
+- "Simulator not initialized" errors from ramses_extras
+- R36, R40, and other recipes failing on ha-sim-2
+
+### Fix (committed e45ca8f)
+
+1. **`const.py`**: `mqtt_url` property now uses `host.docker.internal`
+   instead of `localhost` for instances 2+ (bridge networking).
+2. **`parallel.py`**: SERVICE_TEMPLATE adds
+   `extra_hosts: ["host.docker.internal:host-gateway"]` for hostname
+   resolution inside bridge containers.
+3. **`parallel.py`**: `patch_mqtt_url_in_config` now also patches the
+   HA MQTT integration broker from `localhost` to `host.docker.internal`
+   (previously only patched the ramses_cc serial port URL).
+4. **`runner.py`**: retry logic now handles `"not_ready"` /
+   `"Simulator not initialized"` errors (not just `"unknown_command"`).
+5. **R10**: cleanup reload at end to restore ramses_cc state for
+   subsequent recipes on the same container.
+6. **R36**: inject 2309 I alongside 2349 I (climate entity reads
+   `temp_state.setpoint`, not `zone_state.setpoint`); re-inject both
+   in wait_for poll to overwrite RP responses from auto-answer;
+   `_find_climate_entity` matches by entity_id pattern instead of
+   fallback to FAN entity.
+
+### Full parallel run results (4 containers, 62 recipes)
+
+**383/386 passes (99.2%)** in 12.1 min wall time.
+
+| Container | Pass | Fail | Time | Status |
+|-----------|------|------|------|--------|
+| ha-sim    | 214  | 1    | 471.5s | FAIL |
+| ha-sim-2  | 64   | 0    | 615.5s | PASS |
+| ha-sim-3  | 53   | 0    | 403.5s | PASS |
+| ha-sim-4  | 52   | 2    | 724.3s | FAIL |
+
+### MQTT monitor results
+
+Ran `mqtt_monitor.py` alongside the full parallel run (900s duration).
+All 4 HGI topics (18:001234 through 18:004234) were present on the
+broker.  1022 rx messages and 190 tx messages logged.  No packets
+were dropped on the broker side — all injected packets (000C, 30C9,
+1260, 1FC9, 2349, 2309, 2E04) appeared for all 4 HGI topics.
+
+**Conclusion**: The previous "lost MQTT messages" hypothesis was wrong.
+Packets always reach the broker.  The failures were on the consumer
+side (ramses_cc not connected to the broker due to the localhost
+vs host.docker.internal issue).
+
+### R17 — PASSED (no longer intermittent)
+
+R17 (discovery_service_lifecycle) passed 7/7 on ha-sim-4 in the full
+parallel run.  The previous intermittent failure ("get_discovered_devices
+returns empty") did not occur.  This may be because the local broker
+has lower latency than the remote broker at 192.168.40.11:1883.
+
+### Remaining 3 failures (pre-existing, not MQTT-related)
+
+1. **R11 on ha-sim** (1 fail): "TRV not in discovery list" —
+   `accept_discovered_device` can't find the TRV in the discovery list.
+   This is a pre-existing issue with the discovery flow, not related to
+   MQTT.  The R11 remove_device wait was converted to wait_for() polling
+   (committed 2cb1892), but the discovery issue remains.
+2. **R24 on ha-sim-4** (2 fails): "class_mismatch attribute" not
+   appearing on FAN remote entity after 30s timeout.  The mismatch
+   detection (`check_class_mismatches`) isn't setting the attribute.
+   Floor increased from 20s to 30s (committed 2cb1892), but the
+   detection issue remains.  These are pre-existing intermittent
+   failures noted in the 2026-08-04 session.
+
+### Commits this session (2026-08-05)
+- e45ca8f: parallel container MQTT + R36 climate hydration
+- 2cb1892: R11 remove_device wait_for + R24 floor increase
+
+### Next steps
+1. Investigate R11 discovery flow — why is the TRV not in the discovery
+   list after 1FC9 heartbeat injection?  Check if the scan engine
+   processes the heartbeat and adds the device to the discovery queue.
+2. Investigate R24 class_mismatch detection — why isn't
+   `check_class_mismatches` setting the attribute on the remote entity?
+   Check if the sync_topology cycle actually triggers mismatch detection.
+3. Consider adding a `--ensure-mqtt` flag to the runner that checks
+   the broker is reachable before starting tests (and starts it if not).

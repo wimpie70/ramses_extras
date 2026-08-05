@@ -18,6 +18,60 @@ Each test recipe lives in its own module under `tools/ha_sim_test/recipes/` and 
   - Long-lived access token configured (or the test authenticates via login flow)
 - HA websocket on `ws://localhost:8124/api/websocket`
 - HA REST API on `http://localhost:8124/api/`
+- A local MQTT broker on port 1884 (see [Local MQTT broker](#local-mqtt-broker)
+  below)
+
+### Local MQTT broker
+
+The ha_sim_test tool uses a **local MQTT broker** on port 1884 (isolated
+from any production broker on port 1883).  This is required for both
+single-container and parallel runs — ramses_cc's serial port is configured
+as `mqtt://localhost:1884/RAMSES/GATEWAY_SIM/<hgi_id>`.
+
+**Setup** (one-time):
+
+```bash
+cd /home/willem/docker_files/ha-sim
+docker compose -f docker-compose.mqtt.yml up -d
+```
+
+This starts an `eclipse-mosquitto:1.6` container (`ha-sim-mqtt`) with
+`network_mode: host`, listening on `0.0.0.0:1884`.  The config file is at
+`/home/willem/docker_files/ha-sim/mosquitto.conf`.
+
+**Verify**:
+
+```bash
+docker exec ha-sim sh -c "nc -z localhost 1884 && echo OK || echo FAIL"
+# Should print: OK
+```
+
+**Logs**:
+
+```bash
+docker logs -f ha-sim-mqtt
+```
+
+**Parallel containers**: Instance 1 (`ha-sim`) uses `network_mode: host`
+and connects to `localhost:1884`.  Instances 2+ (`ha-sim-2`, `ha-sim-3`,
+...) use bridge networking and connect to `host.docker.internal:1884`.
+The `parallel.py` runner automatically patches both the ramses_cc serial
+port URL and the HA MQTT integration broker address during config dir
+cloning.  The docker-compose template includes
+`extra_hosts: ["host.docker.internal:host-gateway"]` for hostname
+resolution inside bridge containers.
+
+**MQTT monitor**: To verify packets are reaching the broker, run the
+monitor in a separate terminal while tests are running:
+
+```bash
+source ~/venvs/extras/bin/activate
+python -m tools.ha_sim_test.mqtt_monitor --duration 600 --verbose
+```
+
+This subscribes to `RAMSES/GATEWAY_SIM/#` and logs every message with
+timestamp, topic, and payload.  Useful for diagnosing whether dropped
+packets are a broker-side or consumer-side issue.
 
 ### Testing with a local ramses_rf (PYTHONPATH)
 
@@ -142,6 +196,13 @@ them. Each container gets its own config dir (cloned from `ha-sim`'s
   Use `--cleanup` to remove them for a cold start.
 - **Instance 1 (`ha-sim`)** is always left running after the run (it's
   the dev/debug instance); only instances 2+ are stopped.
+- **MQTT connectivity:** Instance 1 uses `network_mode: host` and
+  connects to the local MQTT broker at `localhost:1884`.  Instances 2+
+  use bridge networking with `extra_hosts: ["host.docker.internal:host-gateway"]`
+  and connect to `host.docker.internal:1884`.  The runner automatically
+  patches both the ramses_cc serial port URL and the HA MQTT integration
+  broker address during config dir cloning.  See [Local MQTT broker](#local-mqtt-broker)
+  for setup instructions.
 
 ### Live dashboard
 
