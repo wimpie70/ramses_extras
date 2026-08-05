@@ -147,7 +147,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             timeout=60,
             interval=5,
             msg="for class_mismatch attribute to appear",
-            floor=20.0,
+            floor=30.0,
         )
         # Read final state for the check
         entities = get_entities(ctx.token)

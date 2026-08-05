@@ -160,7 +160,17 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
                     },
                 )
                 print("  remove_device succeeded")
-                ctx.wait(3, "for coordinator refresh")
+
+                def _trv_removed() -> bool:
+                    schema = get_schema_retry()
+                    return new_trv not in json.dumps(schema)
+
+                wait_for(
+                    _trv_removed,
+                    timeout=15,
+                    interval=1,
+                    desc=f"TRV {new_trv} to be removed from schema",
+                )
 
                 schema_after_remove = get_schema_retry()
                 entities_after_remove = get_entities(ctx.token)
