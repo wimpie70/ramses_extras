@@ -60,6 +60,31 @@ class R17DiscoveryServiceLifecycleA(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+
+        # Wait for the DiscoveryManager to start before injecting heartbeats.
+        # The fresh_start profile reload triggers a new DiscoveryScan that
+        # replaces the old one.  If 1FC9 heartbeats are injected before the
+        # new scan starts, they're detected by the old scan and lost when
+        # the new scan starts (it only imports devices from the schema).
+        def _discovery_started() -> bool:
+            inst = get_current_instance()
+            result = subprocess.run(
+                ["docker", "logs", inst.name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            logs = (result.stderr or "") + (result.stdout or "")
+            return "DiscoveryManager: started (passive scan running)" in logs
+
+        wait_for(
+            _discovery_started,
+            timeout=30,
+            interval=2,
+            msg="for DiscoveryManager to start",
+            floor=10.0,
+        )
+
         # Inject heartbeat from a new device to trigger discovery
         disc_dev = "04:500001"
 
