@@ -72,7 +72,11 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
         # the heartbeats are detected by the old scan and lost when the new
         # scan starts (it only imports devices from the schema, which doesn't
         # include the new TRV).
-        def _discovery_started() -> bool:
+        #
+        # Count the "started" lines before the reload and wait for the
+        # count to increase — otherwise the wait_for would match stale
+        # "started" lines from previous recipes in the docker logs.
+        def _count_discovery_starts() -> int:
             inst = get_current_instance()
             result = subprocess.run(
                 ["docker", "logs", inst.name],
@@ -81,8 +85,12 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
                 timeout=15,
             )
             logs = (result.stderr or "") + (result.stdout or "")
-            # Look for the DiscoveryManager start line AFTER the profile reload
-            return "DiscoveryManager: started (passive scan running)" in logs
+            return logs.count("DiscoveryManager: started (passive scan running)")
+
+        _discovery_count_before = _count_discovery_starts()
+
+        def _discovery_started() -> bool:
+            return _count_discovery_starts() > _discovery_count_before
 
         wait_for(
             _discovery_started,

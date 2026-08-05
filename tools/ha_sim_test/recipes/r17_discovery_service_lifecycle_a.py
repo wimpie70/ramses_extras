@@ -66,7 +66,11 @@ class R17DiscoveryServiceLifecycleA(Recipe):
         # replaces the old one.  If 1FC9 heartbeats are injected before the
         # new scan starts, they're detected by the old scan and lost when
         # the new scan starts (it only imports devices from the schema).
-        def _discovery_started() -> bool:
+        #
+        # Count the "started" lines before the reload and wait for the
+        # count to increase — otherwise the wait_for would match stale
+        # "started" lines from previous recipes in the docker logs.
+        def _count_discovery_starts() -> int:
             inst = get_current_instance()
             result = subprocess.run(
                 ["docker", "logs", inst.name],
@@ -75,7 +79,12 @@ class R17DiscoveryServiceLifecycleA(Recipe):
                 timeout=15,
             )
             logs = (result.stderr or "") + (result.stdout or "")
-            return "DiscoveryManager: started (passive scan running)" in logs
+            return logs.count("DiscoveryManager: started (passive scan running)")
+
+        _discovery_count_before = _count_discovery_starts()
+
+        def _discovery_started() -> bool:
+            return _count_discovery_starts() > _discovery_count_before
 
         wait_for(
             _discovery_started,
