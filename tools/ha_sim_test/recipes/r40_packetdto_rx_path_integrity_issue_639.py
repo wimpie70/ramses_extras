@@ -215,38 +215,39 @@ except Exception as e:
                 if attrs.get("zone_idx") == "03":
                     return True
             _30c9_retry_count += 1
-            if _30c9_retry_count % 2 == 0:
-                # Re-inject 30C9 (for RX path test) + 2349 (to hydrate
-                # zone_idx on the climate entity — without a 2349/2309
-                # packet, the climate entity's zone_idx stays None).
-                try:
-                    call_service(
-                        ctx.token,
-                        "ramses_extras",
-                        "device_simulator_inject_message",
-                        {
-                            "source_id": "01:150000",
-                            "code": "30C9",
-                            "payload": "030AC0",
-                            "verb": "I",
-                        },
-                    )
-                except RuntimeError:
-                    pass
-                try:
-                    call_service(
-                        ctx.token,
-                        "ramses_extras",
-                        "device_simulator_inject_message",
-                        {
-                            "source_id": "01:150000",
-                            "code": "2349",
-                            "payload": "03076C00FFFFFF",
-                            "verb": "I",
-                        },
-                    )
-                except RuntimeError:
-                    pass
+            # Re-inject 30C9 (for RX path test) + 2349 (to hydrate
+            # zone_idx on the climate entity — without a 2349/2309
+            # packet, the climate entity's zone_idx stays None).
+            # Inject every poll because the MQTT connection may be
+            # unstable and drop packets.
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": "01:150000",
+                        "code": "30C9",
+                        "payload": "030AC0",
+                        "verb": "I",
+                    },
+                )
+            except RuntimeError:
+                pass
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": "01:150000",
+                        "code": "2349",
+                        "payload": "03076C00FFFFFF",
+                        "verb": "I",
+                    },
+                )
+            except RuntimeError:
+                pass
             try:
                 call_service(ctx.token, "ramses_cc", "force_update")
             except RuntimeError:

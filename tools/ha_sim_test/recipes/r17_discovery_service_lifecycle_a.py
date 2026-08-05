@@ -62,69 +62,82 @@ class R17DiscoveryServiceLifecycleA(Recipe):
         ctx.refresh_token()
         # Inject heartbeat from a new device to trigger discovery
         disc_dev = "04:500001"
-        print(f"  Injecting heartbeat from {disc_dev}...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": disc_dev,
-                    "code": "1FC9",
-                    "payload": "0030C912E294",
-                    "verb": "I",
-                },
-            )
-        except RuntimeError as e:
-            print(f"  Inject failed: {e}")
-        ctx.wait(10, "for discovery scan to detect the new device")
 
-        # Test get_discovered_devices (fires a bus event)
-        print("  Calling get_discovered_devices...")
-        disc_devices = []
-        try:
-            # Subscribe to the event and call the service
-            import aiohttp
+        # Retry 1FC9 injection + get_discovered_devices up to 3 times.
+        # The MQTT connection may be unstable after the profile reload
+        # (disconnect/reconnect cycle), so the first 1FC9 injection might
+        # be lost.  Re-injecting ensures the scan engine picks up the
+        # device once MQTT stabilises.
+        disc_devices: list[dict] = []
+        for attempt in range(3):
+            print(f"  Injecting heartbeat from {disc_dev} (attempt {attempt + 1})...")
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": disc_dev,
+                        "code": "1FC9",
+                        "payload": "0030C912E294",
+                        "verb": "I",
+                    },
+                )
+            except RuntimeError as e:
+                print(f"  Inject failed: {str(e)[:60]}")
+            ctx.wait(8, "for discovery scan to detect the new device", floor=5.0)
 
-            async def _get_disc():
-                uri = get_current_instance().ws_url
-                async with aiohttp.ClientSession() as session:
-                    async with session.ws_connect(uri) as ws:
-                        await ws.receive_json()
-                        await ws.send_json({"type": "auth", "access_token": ctx.token})
-                        await ws.receive_json()
-                        # Subscribe to the discovered_devices event
-                        await ws.send_json(
-                            {
-                                "id": 1,
-                                "type": "subscribe_events",
-                                "event_type": "ramses_cc_discovered_devices",
-                            }
-                        )
-                        resp = await ws.receive_json()
-                        if not resp.get("success"):
-                            raise RuntimeError(f"subscribe failed: {resp}")
-                        # Now call the service via REST
-                        call_service(
-                            ctx.token, "ramses_cc", "get_discovered_devices", {}
-                        )
-                        # Wait for the event
-                        import asyncio as _aio
+            # Test get_discovered_devices (fires a bus event)
+            print("  Calling get_discovered_devices...")
+            try:
+                # Subscribe to the event and call the service
+                import aiohttp
 
-                        try:
-                            event_msg = await _aio.wait_for(
-                                ws.receive_json(), timeout=10
+                async def _get_disc():
+                    uri = get_current_instance().ws_url
+                    async with aiohttp.ClientSession() as session:
+                        async with session.ws_connect(uri) as ws:
+                            await ws.receive_json()
+                            await ws.send_json(
+                                {"type": "auth", "access_token": ctx.token}
                             )
-                            if event_msg.get("type") == "event":
-                                disc_devices.extend(
-                                    event_msg["event"]["data"].get("devices", [])
-                                )
-                        except TimeoutError:
-                            pass
+                            await ws.receive_json()
+                            # Subscribe to the discovered_devices event
+                            await ws.send_json(
+                                {
+                                    "id": 1,
+                                    "type": "subscribe_events",
+                                    "event_type": "ramses_cc_discovered_devices",
+                                }
+                            )
+                            resp = await ws.receive_json()
+                            if not resp.get("success"):
+                                raise RuntimeError(f"subscribe failed: {resp}")
+                            # Now call the service via REST
+                            call_service(
+                                ctx.token, "ramses_cc", "get_discovered_devices", {}
+                            )
+                            # Wait for the event
+                            import asyncio as _aio
 
-            await _get_disc()
-        except Exception as e:
-            print(f"  get_discovered_devices failed: {e}")
+                            try:
+                                event_msg = await _aio.wait_for(
+                                    ws.receive_json(), timeout=10
+                                )
+                                if event_msg.get("type") == "event":
+                                    disc_devices.extend(
+                                        event_msg["event"]["data"].get("devices", [])
+                                    )
+                            except TimeoutError:
+                                pass
+
+                await _get_disc()
+            except Exception as e:
+                print(f"  get_discovered_devices failed: {str(e)[:60]}")
+
+            if disc_devices:
+                break
+            print("  No devices discovered yet, retrying...")
 
         disc_ids = [d.get("device_id") for d in disc_devices]
         print(f"  Discovered devices: {disc_ids}")
