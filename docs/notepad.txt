@@ -752,11 +752,57 @@ has lower latency than the remote broker at 192.168.40.11:1883.
 - 2cb1892: R11 remove_device wait_for + R24 floor increase
 
 ### Next steps
-1. Investigate R11 discovery flow — why is the TRV not in the discovery
-   list after 1FC9 heartbeat injection?  Check if the scan engine
-   processes the heartbeat and adds the device to the discovery queue.
-2. Investigate R24 class_mismatch detection — why isn't
-   `check_class_mismatches` setting the attribute on the remote entity?
-   Check if the sync_topology cycle actually triggers mismatch detection.
-3. Consider adding a `--ensure-mqtt` flag to the runner that checks
+### Next steps
+1. Investigate the MQTT "malformed packet" root cause — mosquitto 2.x
+   disconnects paho-mqtt 2.x clients with "malformed packet" after
+   sending the retained "online" PUBLISH.  This causes a disconnect/
+   reconnect cycle that can lose packets.  All recipe fixes above are
+   workarounds (re-injection in polls).  The root cause is likely a
+   paho-mqtt 2.x / mosquitto 2.x interaction bug.
+2. Consider adding a `--ensure-mqtt` flag to the runner that checks
    the broker is reachable before starting tests (and starts it if not).
+
+### Final result (2026-08-05, run 7)
+**387/387 — ALL TESTS PASSED** across 4 containers, 62 recipes.
+
+| Container | Pass | Fail | Time | Status |
+|-----------|------|------|------|--------|
+| ha-sim    | 215  | 0    | 706.4s | PASS |
+| ha-sim-2  | 64   | 0    | 541.0s | PASS |
+| ha-sim-3  | 53   | 0    | 541.8s | PASS |
+| ha-sim-4  | 55   | 0    | 656.8s | PASS |
+
+### Root cause analysis for all fixed regressions
+
+All regressions were caused by the MQTT "malformed packet" disconnect/
+reconnect cycle.  When ramses_cc's MQTT transport reconnects after a
+profile reload, the broker sends the retained "online" PUBLISH, then
+the client disconnects with "malformed packet".  This causes a 5-10s
+window where packets are lost.
+
+The fixes follow two patterns:
+
+1. **Wait for DiscoveryManager before injecting** (R11, R17):
+   The fresh_start profile reload triggers a new DiscoveryScan that
+   replaces the old one.  If 1FC9 heartbeats are injected before the
+   new scan starts, they're detected by the old scan and lost when
+   the new scan starts.  Fix: wait for "DiscoveryManager: started"
+   in the docker logs before injecting.
+
+2. **Re-inject in wait_for polls** (R24, R28, R36, R40):
+   The initial packet injection might be lost due to the MQTT
+   disconnect/reconnect cycle.  Re-injecting in the poll function
+   ensures fresh data reaches the scan engine once MQTT stabilises.
+   Also add sync_topology to force entity re-initialization.
+
+3. **wait_for instead of fixed waits** (R05, R11):
+   Convert fixed ctx.wait(N) calls to wait_for() polling with
+   appropriate floors to handle parallel load timing.
+
+### Commits (2026-08-05 session 2)
+- dd1dd32: R11 discovery wait + R24 1FC9 re-injection
+- 06328e2: R28 re-inject 0004 RP in poll
+- d3196ad: R40 inject 2349 I to hydrate zone_idx
+- 8dcdecb: R17 retry 1FC9 + R40 inject every poll
+- 68cb229: R17 wait for DiscoveryManager before 1FC9 inject
+- a917818: R05 wait_for removal + R36 sync_topology in poll
