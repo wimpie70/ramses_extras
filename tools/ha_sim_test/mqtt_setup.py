@@ -37,7 +37,7 @@ def publish_retained_online_messages(hgi_ids: list[str]) -> None:
     client = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,
         client_id=f"ha_sim_mqtt_setup_{int(__import__('time').time())}",
-        protocol=mqtt.MQTTv311,
+        protocol=mqtt.MQTTv5,
     )
     if username:
         client.username_pw_set(username, password)

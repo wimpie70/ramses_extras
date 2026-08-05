@@ -123,26 +123,8 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             z = zones.get(zone_r28, {})
             if isinstance(z, dict) and z.get("_name") is not None:
                 return True
-            # Re-inject 0004 RP + re-trigger sync every other poll — the
-            # MQTT connection may be unstable after the profile reload,
-            # so the initial injection might have been lost.
             _sync_retry_count += 1
             if _sync_retry_count % 2 == 0:
-                try:
-                    call_service(
-                        ctx.token,
-                        "ramses_extras",
-                        "device_simulator_inject_message",
-                        {
-                            "source_id": CTL,
-                            "dst": foreign_hgi_r28,
-                            "code": "0004",
-                            "payload": payload_r28,
-                            "verb": "RP",
-                        },
-                    )
-                except RuntimeError:
-                    pass
                 try:
                     call_service(ctx.token, "ramses_cc", "sync_topology")
                 except RuntimeError:
