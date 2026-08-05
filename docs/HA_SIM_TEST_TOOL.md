@@ -35,7 +35,7 @@ cd /home/willem/docker_files/ha-sim
 docker compose -f docker-compose.mqtt.yml up -d
 ```
 
-This starts an `eclipse-mosquitto:1.6` container (`ha-sim-mqtt`) with
+This starts an `eclipse-mosquitto:2` container (`ha-sim-mqtt`) with
 `network_mode: host`, listening on `0.0.0.0:1884`.  The config file is at
 `/home/willem/docker_files/ha-sim/mosquitto.conf`.
 

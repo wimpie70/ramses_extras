@@ -118,6 +118,10 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         # which surfaces mismatch flags. Search by device_id only.
         # Poll until the mismatch attribute appears.  Re-trigger sync_topology
         # periodically because mismatch detection only runs during sync cycles.
+        # Also re-inject 1FC9 heartbeats — the MQTT connection may be unstable
+        # after the profile reload (disconnect/reconnect cycle), so the initial
+        # heartbeats might be lost.  Re-injecting ensures the scan engine has
+        # fresh data for 32:150000 once MQTT stabilises.
         _sync_retry_count = 0
 
         def _has_class_mismatch() -> bool:
@@ -128,10 +132,24 @@ class R24Phase3cClassMismatchFlagging(Recipe):
                 if "32_150000" in eid and eid.startswith("remote."):
                     if "class_mismatch" in e.get("attributes", {}):
                         return True
-            # Re-trigger sync + force_update every other poll to force
-            # mismatch detection and entity state write
+            # Re-inject 1FC9 + re-trigger sync + force_update every other
+            # poll to force mismatch detection and entity state write.
             _sync_retry_count += 1
             if _sync_retry_count % 2 == 0:
+                try:
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": FAN,
+                            "code": "1FC9",
+                            "payload": "00",
+                            "verb": "I",
+                        },
+                    )
+                except RuntimeError:
+                    pass
                 try:
                     call_service(ctx.token, "ramses_cc", "sync_topology")
                 except RuntimeError:

@@ -16,6 +16,7 @@ from ..helpers import (
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -64,6 +65,32 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
             print(f"  Profile load failed: {e}")
 
         ctx.wait_for_ramses_cc_reload(timeout=20)
+
+        # Wait for the DiscoveryManager to start before injecting heartbeats.
+        # The fresh_start profile reload triggers a new DiscoveryScan that
+        # replaces the old one.  If we inject 1FC9 before the new scan starts,
+        # the heartbeats are detected by the old scan and lost when the new
+        # scan starts (it only imports devices from the schema, which doesn't
+        # include the new TRV).
+        def _discovery_started() -> bool:
+            inst = get_current_instance()
+            result = subprocess.run(
+                ["docker", "logs", inst.name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            logs = (result.stderr or "") + (result.stdout or "")
+            # Look for the DiscoveryManager start line AFTER the profile reload
+            return "DiscoveryManager: started (passive scan running)" in logs
+
+        wait_for(
+            _discovery_started,
+            timeout=30,
+            interval=2,
+            msg="for DiscoveryManager to start",
+            floor=10.0,
+        )
 
         # Inject several 1FC9 heartbeats from the new TRV to trigger discovery
         print(f"  Injecting 1FC9 heartbeats from {new_trv}...")
@@ -169,7 +196,8 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
                     _trv_removed,
                     timeout=15,
                     interval=1,
-                    desc=f"TRV {new_trv} to be removed from schema",
+                    msg=f"TRV {new_trv} to be removed from schema",
+                    floor=5.0,
                 )
 
                 schema_after_remove = get_schema_retry()
