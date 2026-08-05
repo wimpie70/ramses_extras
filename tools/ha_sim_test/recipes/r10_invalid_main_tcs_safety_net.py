@@ -147,3 +147,14 @@ class R10InvalidMainTcsSafetyNet(Recipe):
             len(entities_check) >= 0,
             "API not responding",
         )
+
+        # Cleanup: reload the mixed profile to restore ramses_cc to a
+        # clean state for subsequent recipes on the same container.
+        # R10's forced reload can leave ramses_cc in a partially
+        # initialised state that prevents later recipes (e.g. R36)
+        # from hydrating climate entities.
+        try:
+            await load_profile_yaml(ctx.token, mixed_yaml(MIXED_SCHEMA))
+            ctx.wait_for_ramses_cc_reload(timeout=20)
+        except Exception as e:
+            print(f"  Cleanup reload failed (non-fatal): {str(e)[:80]}")

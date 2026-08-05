@@ -43,6 +43,7 @@ from .helpers import (
     wait_for,
 )
 from .log_monitor import LogMonitor
+from .mqtt_setup import publish_retained_online_messages
 from .registry import REGISTRY, discover_recipes
 from .runner import setup, teardown
 
@@ -61,6 +62,8 @@ SERVICE_TEMPLATE = """\
     container_name: {name}
     ports:
       - "{port}:{port}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - TZ=Europe/Amsterdam
       - HASSIO_PORT={port}
@@ -180,7 +183,13 @@ def patch_port_in_config(inst: InstanceConfig) -> None:
 
 
 def patch_mqtt_url_in_config(inst: InstanceConfig) -> None:
-    """Patch the ramses_cc serial_port MQTT URL in the cloned config entries."""
+    """Patch the ramses_cc serial_port MQTT URL in the cloned config entries.
+
+    Also patches the HA MQTT integration's broker address to use
+    ``host.docker.internal`` instead of ``localhost`` so that parallel
+    containers (which use bridge networking) can reach the host's MQTT
+    broker.
+    """
     ce_path = f"{inst.storage_path}/core.config_entries"
     if not os.path.exists(ce_path):
         return
@@ -199,10 +208,14 @@ def patch_mqtt_url_in_config(inst: InstanceConfig) -> None:
             f"import json; "
             f"p='/config/.storage/core.config_entries'; "
             f"d=json.load(open(p)); "
+            f"entries = d.get('data',{{}}).get('entries',[]); "
             f"[e.get('options',{{}}).get('serial_port',{{}}).update("
             f"{{'port_name': '{mqtt_url}'}}) "
-            f"for e in d.get('data',{{}}).get('entries',[]) "
-            f"if e.get('domain')=='ramses_cc']; "
+            f"for e in entries if e.get('domain')=='ramses_cc']; "
+            f"[e.get('data',{{}}).update({{'broker': 'host.docker.internal'}}) "
+            f"or print('Patched HA MQTT broker -> host.docker.internal') "
+            f"for e in entries if e.get('domain')=='mqtt' "
+            f"and e.get('data',{{}}).get('broker')=='localhost']; "
             f"json.dump(d, open(p,'w'), indent=2); "
             f"print('Patched MQTT URL')",
         ],
@@ -245,6 +258,16 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
     (warm start — skips clone and HA readiness wait).
     """
     log_section("Parallel: Starting containers")
+
+    # Publish retained "online" messages to the MQTT broker for each HGI
+    # topic.  ramses_rf's MQTT transport requires this to set _topic_pub
+    # (the publish topic).  Without it, the first publish fails.
+    hgi_ids = [inst.hgi_id for inst in instances]
+    try:
+        publish_retained_online_messages(hgi_ids)
+        print(f"  Published retained 'online' messages for {len(hgi_ids)} HGI(s)")
+    except Exception as err:  # noqa: BLE001
+        print(f"  WARNING: could not publish retained online messages: {err}")
 
     # Verify instance 1 (ha-sim) is reachable — it's not started by us
     inst1 = instances[0]

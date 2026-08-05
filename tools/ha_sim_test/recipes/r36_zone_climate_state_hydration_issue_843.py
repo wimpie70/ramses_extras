@@ -146,6 +146,39 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             print(f"    Inject failed: {str(e)[:80]}")
         ctx.wait(5, "for 2349 to process", floor=4.0)
 
+        # 3b. Also inject a 2309 I packet with the same setpoint.
+        #     The climate entity's target_temperature reads from
+        #     zone.temp_state.setpoint (not zone_state.setpoint).
+        #     2349 updates zone_state, and the CQRS pipeline also
+        #     updates temp_state for 2349 — but ramses_cc's polling
+        #     cycle sends RQ 2349 and the simulator's RP response
+        #     (with a default setpoint) can overwrite temp_state
+        #     AFTER our I 2349.  Injecting 2309 I as well provides
+        #     a second, direct update to temp_state.setpoint that
+        #     is processed after the RP response.
+        setpoint_hex_2309 = f"{int(setpoint_temp * 100):04X}"
+        payload_2309 = f"{zone_idx}{setpoint_hex_2309}"
+        print(
+            f"  Injecting 2309 I from CTL {CTL} "
+            f"(zone={zone_idx}, setpoint={setpoint_temp}°C)..."
+        )
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": CTL,
+                    "code": "2309",
+                    "payload": payload_2309,
+                    "verb": "I",
+                },
+            )
+            print("    2309 I injected")
+        except RuntimeError as e:
+            print(f"    Inject failed: {str(e)[:80]}")
+        ctx.wait(3, "for 2309 to process")
+
         # Force entity state update
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
@@ -160,18 +193,23 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
 
         def _find_climate_entity() -> dict | None:
             entities = get_entities(ctx.token)
+            # 1. Match by zone_idx attribute (most reliable)
             for e in entities:
                 if not e["entity_id"].startswith("climate."):
                     continue
                 attrs = e.get("attributes", {})
                 if attrs.get("zone_idx") == zone_idx:
                     return e
-            # Fallback: first climate entity with a temperature attribute
+            # 2. Match by entity_id pattern: climate.<ctl>_<zone_idx>
+            #    e.g. climate.01_150000_03 for CTL 01:150000, zone 03
+            ctl_suffix = CTL.replace(":", "_")
+            pattern = f"climate.{ctl_suffix}_{zone_idx}"
             for e in entities:
-                if not e["entity_id"].startswith("climate."):
-                    continue
-                attrs = e.get("attributes", {})
-                if "temperature" in attrs or "current_temperature" in attrs:
+                if e["entity_id"] == pattern:
+                    return e
+            # 3. Match by entity_id prefix (handles _2 suffix duplicates)
+            for e in entities:
+                if e["entity_id"].startswith(pattern):
                     return e
             return None
 
@@ -188,7 +226,11 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
         # 5. Poll until the climate entity state is hydrated from 2349.
         #    Under parallel load, the 2349 packet + force_update may not
         #    propagate to the entity state within the initial 5s wait.
-        #    Re-trigger force_update periodically to push the state write.
+        #    Re-inject 2349/2309 and re-trigger force_update periodically
+        #    to push the state write.  The re-injection is needed because
+        #    ramses_cc's polling cycle sends RQ 2349 and the simulator's
+        #    RP response (with a default setpoint) can overwrite our
+        #    injected value.
         _force_update_count = 0
 
         def _climate_hydrated() -> bool:
@@ -207,6 +249,34 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
                 return True
             _force_update_count += 1
             if _force_update_count % 2 == 0:
+                # Re-inject 2349 and 2309 to overwrite any RP responses
+                # from the simulator's auto-answer that may have set
+                # temp_state.setpoint back to the default (19.0).
+                try:
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": CTL,
+                            "code": "2349",
+                            "payload": payload_2349,
+                            "verb": "I",
+                        },
+                    )
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": CTL,
+                            "code": "2309",
+                            "payload": payload_2309,
+                            "verb": "I",
+                        },
+                    )
+                except RuntimeError:
+                    pass
                 try:
                     call_service(ctx.token, "ramses_cc", "force_update")
                 except RuntimeError:

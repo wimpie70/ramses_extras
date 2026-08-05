@@ -52,6 +52,15 @@ async def setup(ctx: RecipeContext) -> None:
     )
     print(f"  Target: {inst.ha_url} (container: {inst.name}, hgi: {inst.hgi_id})")
 
+    # Publish retained "online" message for this instance's HGI topic.
+    # ramses_rf's MQTT transport requires this to set _topic_pub.
+    try:
+        from .mqtt_setup import publish_retained_online_messages
+
+        publish_retained_online_messages([inst.hgi_id])
+    except Exception as err:  # noqa: BLE001
+        print(f"  WARNING: could not publish retained online message: {err}")
+
     # Reset stale state: delete .storage/ramses_cc so ramses_cc starts fresh.
     # The profile load updates config entry options, but .storage/ramses_cc
     # may have stale schema from previous recipes (e.g. R58/R59 strip it).
@@ -88,7 +97,11 @@ async def setup(ctx: RecipeContext) -> None:
             break
         except RuntimeError as e:
             err = str(e)
-            if "unknown_command" in err:
+            if (
+                "unknown_command" in err
+                or "not_ready" in err
+                or "Simulator not initialized" in err
+            ):
                 # ramses_extras not ready yet — wait and retry
                 if attempt < 9:
                     import asyncio as _asyncio

@@ -22,7 +22,13 @@ HA_SIM_CONFIG_DIR = "/home/willem/docker_files/ha-sim/config"
 
 # MQTT broker connection string (shared across instances — topic isolation
 # is via the HGI ID in the topic path).
-MQTT_BROKER_URL = "mqtt://slimmemeter:j@diebla@@192.168.40.11:1883"
+#
+# Local broker (port 1884) — isolated from production broker at
+# 192.168.40.11:1883.
+# Start:  cd ~/docker_files/ha-sim && \
+#   docker compose -f docker-compose.mqtt.yml up -d
+# Logs:   docker logs -f ha-sim-mqtt
+MQTT_BROKER_URL = "mqtt://localhost:1884"
 MQTT_TOPIC_NS = "RAMSES/GATEWAY_SIM"
 
 # Sim device IDs (from system_config.py) — same across all parallel instances
@@ -69,8 +75,18 @@ class InstanceConfig:
 
     @property
     def mqtt_url(self) -> str:
-        """Full MQTT URL for this instance's ramses_cc serial port."""
-        return f"{MQTT_BROKER_URL}/{self.mqtt_topic_ns}/{self.hgi_id}"
+        """Full MQTT URL for this instance's ramses_cc serial port.
+
+        Instance 1 (ha-sim) uses ``network_mode: host`` and can reach
+        the broker at ``localhost:1884``.  Parallel instances (2+) use
+        bridge networking and must use ``host.docker.internal:1884``.
+        """
+        broker = (
+            MQTT_BROKER_URL
+            if self.index <= 1
+            else MQTT_BROKER_URL.replace("localhost", "host.docker.internal")
+        )
+        return f"{broker}/{self.mqtt_topic_ns}/{self.hgi_id}"
 
     @property
     def ws_url(self) -> str:
