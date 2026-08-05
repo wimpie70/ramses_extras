@@ -806,3 +806,93 @@ The fixes follow two patterns:
 - 8dcdecb: R17 retry 1FC9 + R40 inject every poll
 - 68cb229: R17 wait for DiscoveryManager before 1FC9 inject
 - a917818: R05 wait_for removal + R36 sync_topology in poll
+
+## 2026-08-05 — Session 3: MQTT race fix + PRs + upstream compat shim
+
+### Root cause fix: ramses_rf MQTT transport race (committed)
+
+**File:** `src/ramses_tx/transport/mqtt.py`
+**Commit:** db931e8d (pushed to wimpie70/ramses_rf, PR 993 open)
+
+The "malformed packet" disconnect was caused by a race in
+`_on_connect`: it calls `_establish_connection` which triggers
+`protocol.connection_made()` and the FSM may immediately publish
+(e.g. RQ 2349).  But `_topic_pub` was still empty — it was only set
+when the retained "online" status message arrived later in
+`_create_connection`.  Publishing to an empty topic caused the
+broker to disconnect with "malformed packet".
+
+Fix: set `_topic_pub` and `_topic_sub` from `_topic_base` in
+`_on_connect` (when specific, not wildcard) BEFORE calling
+`_establish_connection`.  Also added safety guard in `_publish` to
+skip if `_topic_pub` is still empty.
+
+### Workarounds reverted (committed)
+
+After the root cause fix, all recipe-level re-injection workarounds
+were reverted as no longer needed:
+- R17: retry loop for 1FC9 (kept DiscoveryManager wait)
+- R24: 1FC9 re-injection in poll
+- R28: 0004 RP re-injection in poll
+- R36: sync_topology in poll
+- R40: 2349 I injection + "every poll" change
+- mqtt_setup.py: protocol back to MQTTv5
+
+**Commit:** c93e6c8 (ramses_extras)
+
+### DiscoveryManager wait fix (committed)
+
+The DiscoveryManager wait_for in R11/R17 was matching stale "started"
+lines from previous recipes in the docker logs.  Fix: count the
+"started" lines before the profile reload and wait for the count to
+increase.
+
+**Commit:** f4e7dd5 (ramses_extras)
+
+### PRs created
+
+- **ramses_rf PR 993**: fix(mqtt): set _topic_pub/_topic_sub in
+  _on_connect before _establish_connection
+  https://github.com/ramses-rf/ramses_rf/pull/993
+  (rebased on latest upstream master, all tests pass)
+
+- **ramses_extras**: feat(ha_sim_test): local MQTT broker support +
+  recipe robustness for parallel runs
+  (pushed to origin/master, 12 commits ahead)
+
+### Upstream compatibility issue discovered (2026-08-05 end of day)
+
+After `make all` deployed the latest ramses_rf (with upstream
+dispatcher refactoring) to the containers, ha_sim_test started
+failing with ImportError:
+
+    cannot import name 'SZ_BYPASS_POSITION' from 'ramses_tx.const'
+
+**Root cause:** Upstream PR 987 (refactor(const): Decouple L7
+application payload constants to ramses_rf) moved 81 SZ_* constants
+from `ramses_tx.const` to `ramses_rf.const`, but ramses_cc still
+imports 24 of them from `ramses_tx.const`.  This breaks the
+binary_sensor platform, which cascades to climate and other platforms.
+
+**Planned fix:** ramses-rf/ramses_rf#992 (Phase 5) includes
+"ramses_cc PR 2 (DTO Alignment)" which will update ramses_cc to
+import directly from `ramses_rf.const`.  But this hasn't been started
+yet — no open PRs or branches on ramses_cc for this.
+
+**Temporary fix applied:** Added backward-compatibility re-exports
+in `ramses_tx/const.py` for all 81 relocated symbols.  This is
+committed locally (15006d80) but NOT yet pushed or tested against
+ha_sim_test.  The re-exports have a TODO comment referencing Phase 5.
+
+### TODO for next session
+
+1. **Push the const re-export fix** to wimpie70/ramses_rf and update
+   PR 993 (or create a separate PR for the compat shim)
+2. **Run ha_sim_test** with the const re-export fix to verify all
+   recipes pass again
+3. **Consider:** should the const re-export be a separate PR from the
+   MQTT fix?  They're independent fixes.
+4. **Check** if PWhite-Eng plans to update ramses_cc soon — if so,
+   the compat shim may only be needed briefly
+5. The ramses_extras PR is ready but blocked on the ramses_rf fixes
+   being merged first (both the MQTT fix and the const re-export)
