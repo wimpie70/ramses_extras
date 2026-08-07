@@ -874,25 +874,31 @@ from `ramses_tx.const` to `ramses_rf.const`, but ramses_cc still
 imports 24 of them from `ramses_tx.const`.  This breaks the
 binary_sensor platform, which cascades to climate and other platforms.
 
-**Planned fix:** ramses-rf/ramses_rf#992 (Phase 5) includes
-"ramses_cc PR 2 (DTO Alignment)" which will update ramses_cc to
-import directly from `ramses_rf.const`.  But this hasn't been started
-yet — no open PRs or branches on ramses_cc for this.
+**NOT our fix to make:** PWhite-Eng has a coordinated Phase 5 PR
+stack on ramses_rf that handles this properly:
+- PR 994: const layering cleanup (OPEN)
+- PR 995: polling API relocation (DRAFT)
+- PR 996: DTO boundary enforcement (DRAFT)
+- PR 997: event bus + handshake (DRAFT)
+- PR 998: Phase 5 gaps completion (DRAFT)
+- PR 999: relocate domain payload constants (DRAFT, stacked on 998)
+PR 999 is the proper version of the const relocation, and the
+ramses_cc side ("DTO Alignment") will be handled as part of the
+Phase 5 sequence.
 
-**Temporary fix applied:** Added backward-compatibility re-exports
-in `ramses_tx/const.py` for all 81 relocated symbols.  This is
-committed locally (15006d80) but NOT yet pushed or tested against
-ha_sim_test.  The re-exports have a TODO comment referencing Phase 5.
+**Action taken:** We briefly added a compat shim (re-exports in
+ramses_tx.const) but reverted it — the fix should come from the
+upstream Phase 5 effort, not from us.  PR 987 is not in the latest
+pre-release (0.59.2), so there's no urgency.
+
+**NOTE:** Do NOT run `make all` with the current ramses_rf master
+deployed to containers — it has PR 987 merged but ramses_cc hasn't
+been updated yet.  Use the 0.59.2 tag or wait for Phase 5 to complete.
 
 ### TODO for next session
 
-1. **Push the const re-export fix** to wimpie70/ramses_rf and update
-   PR 993 (or create a separate PR for the compat shim)
-2. **Run ha_sim_test** with the const re-export fix to verify all
-   recipes pass again
-3. **Consider:** should the const re-export be a separate PR from the
-   MQTT fix?  They're independent fixes.
-4. **Check** if PWhite-Eng plans to update ramses_cc soon — if so,
-   the compat shim may only be needed briefly
-5. The ramses_extras PR is ready but blocked on the ramses_rf fixes
-   being merged first (both the MQTT fix and the const re-export)
+1. **Do NOT deploy ramses_rf master to containers** until Phase 5
+   is complete and ramses_cc is updated
+2. The ramses_extras PR is ready but ha_sim_test can only be verified
+   against ramses_rf 0.59.2 (or once Phase 5 lands)
+3. Monitor PR 994-999 for merge status
