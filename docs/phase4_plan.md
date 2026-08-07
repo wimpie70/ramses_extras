@@ -1,19 +1,21 @@
 # Phase 4 Plan: known_list Removal + Event-Driven Topology
 
 **Created:** Jul 23 2026
-**Updated:** Jul 26 2026
-**Status:** Steps 1-3 IMPLEMENTED (PR 863 + PR 870). ramses_rf 0.59.1 released with all Phase 4 PRs merged. Steps 5-6 still blocked on ramses_rf subscription API / `load_fan`.
+**Updated:** Aug 6 2026
+**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. Steps 5-6 still blocked on ramses_rf Phase 5 (issue 992). ramses_rf Phase 4 fully complete (incl. 4e, shipped 0.59.2). ramses_rf Phase 5 STARTED (PRs 986, 987 in 0.59.3 milestone). **ha-sim test Aug 6 (cc 0.59.2 tag + rf 0.59.2 tag): 355/377 pass, 19 fail, 3 skip — persistent fails need triage.**
 **Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED, shipped in ramses_rf 0.59.1)
 **Blocks:** nothing (this is the final phase for schema-as-SSOT)
 
 > **Naming note:** There are several "Phase 4"s:
 > - **ramses_cc Phase 4** (this doc) — remove `known_list` from config,
 >   make `enforce_known_list` always-on, event-driven topology updates.
+>   **Steps 1-3 are DONE** (shipped via PR 863 + PR 882, not PR 870
+>   which was closed unmerged and superseded by PR 882).
 > - **ramses_rf Phase 4** (PWhite-Eng, issue 915) — FSM
 >   Conversational Parity & Passive Ingestion. 5-PR strangler fig:
->   **MERGED to ramses_rf 0.59.1** (PRs 916, 919-921, 924-929 all
->   merged Jul 25 2026). Only Phase 4e (API Modernization:
->   Packet→Message) remains.
+>   **FULLY COMPLETE, including Phase 4e** (API Modernization:
+>   Packet→Message, PR 951 shipped in ramses_rf 0.59.2, Aug 4 2026).
+>   All PRs merged (916, 919-921, 924-929, 931, 932, 951).
 > - **RF Binding Handshake Phase 4** (protocol level) — RATIFY step
 >   (10E0 device info exchange). Not a development phase.
 
@@ -85,12 +87,13 @@ confusion, and prepares the ground for event-driven topology updates
 
 | What | Where | Why it exists | Step |
 |---|---|---|---|
-| `known_list` in config entry options | `core.config_entries` | Fallback for users who haven't migrated to schema | Step 2 |
-| `enforce_known_list` config option | config flow | Workaround for issue 677 (now fixed in 0.57.6) | Step 3 |
-| `known_list[dev][commands]` | config entry | Legacy command storage (superseded by `_commands`) | Step 2 |
+| ~~`known_list` in config entry options~~ | ~~`core.config_entries`~~ | ~~Fallback for users who haven't migrated to schema~~ | ~~Step 2~~ **DONE (PR 882)** — stripped idempotently in `__init__.py` |
+| ~~`enforce_known_list` config option~~ | ~~config flow~~ | ~~Workaround for issue 677 (now fixed in 0.57.6)~~ | ~~Step 3~~ **DONE (PR 882)** — hardcoded `True` in `coordinator.py:271`, removed from voluptuous schema |
+| ~~`known_list[dev][commands]`~~ | ~~config entry~~ | ~~Legacy command storage (superseded by `_commands`)~~ | ~~Step 2~~ **DONE (PR 882)** |
 | `.storage[remotes]` | `.storage/ramses_cc` | Command cache (kept for crash recovery) | Keep |
-| 5-min polling for topology sync | `coordinator.py` | No event-driven alternative yet | Step 5 (blocked) |
+| 5-min polling for topology sync | `coordinator.py` | No event-driven alternative yet | Step 5 (blocked on rf Phase 5.1) |
 | `asyncio.sleep(0)` for entity updates | `coordinator.py` | Interim solution (issue 794) | Step 7 (future) |
+| Stale `enforce_known_list` text in `translations/{en,nl}.json` | translations | Cosmetic — toggle no longer rendered | Cleanup (minor) |
 
 ---
 
@@ -120,39 +123,51 @@ confusion, and prepares the ground for event-driven topology updates
 
 | Dependency | Status | Notes |
 |---|---|---|
-| ramses_rf 0.59.1 | **RELEASED** (Jul 25 2026) | Includes PR 914 + all Phase 4 PRs (916-929) + PR 931 test fixes. ramses_cc manifest pin needs bumping from `0.59.0` to `0.59.1`. |
+| ramses_rf 0.59.1 | **RELEASED** (Jul 25 2026) | Includes PR 914 + all Phase 4 PRs (916-929) + PR 931 test fixes. |
+| ramses_rf 0.59.2 | **RELEASED** (Aug 4 2026) | Includes Phase 4e (PR 951 Packet→Message) + Phase 5.5-adjacent work (PR 977 DevType enums, PR 964 decouple Message from `_pkt` shim, PR 952-954 typing/cast removal). **ramses_cc pin still at 0.59.1 — needs bumping + compat check.** |
+| ramses_rf 0.59.3 (milestone) | **IN PROGRESS** | Phase 5 PRs 986 (RamsesProtocolT export) + 987 (L7 payload constants → ramses_rf.const) merged. Identity constants (`DevType`, `DEV_TYPE_MAP`, etc.) NOT yet relocated — still in `ramses_tx/const.py:291-514`. Backward-compat re-exports added (commit `15006d80`). |
 | Phase 3a-3e complete | DONE | All sub-phases merged |
 | PR 914 (Phase 3.75) | **MERGED, shipped in 0.59.1** | "init and go" from schema `_class` — ensures device class is correct without known_list fallback. |
-| Issue 677 fix (0.57.6) | DONE | `enforce_known_list` bug fixed — verify on real Evohome before Step 3 |
+| Issue 677 fix (0.57.6) | DONE | `enforce_known_list` bug fixed — verified, Step 3 shipped |
 | ramses_rf Phase 3.5 (1FC9 → TopologyChangedEvent) | **DONE in 0.59.0** (issue #911, closed) | `_evaluate_rf_bind_rules` in `topology_builder.py` intercepts 1FC9, emits `BIND_DEVICE` events. `CREATE_CONTROLLER` + `CREATE_CIRCUIT` actions also in enum. |
-| TopologyChangedEvent public subscription API | **MISSING** | Events flow internally (TopologyBuilder → DeviceRegistry). No public callback for ramses_cc to subscribe. Needs ramses_rf PR. Blocks Step 5. |
+| TopologyChangedEvent public subscription API | **MISSING** | Events flow internally (TopologyBuilder → DeviceRegistry). No public callback for ramses_cc to subscribe. **Tracked by ramses_rf Phase 5 PR 3 (issue 992).** Blocks Step 5. |
 | ramses_rf HVAC topology (`load_fan`) | **STILL A STUB** | `load_fan()` in `schemas.py:397` has `fan._update_schema(**schema)` commented out. No open PR. Blocks Step 6. |
-| ramses_rf Phase 4 (issue #915) | **MERGED to 0.59.1** (Jul 25 2026) | 5-PR strangler fig: Shadow FSM → Live Parity → Execution Cutover → Active Discovery Removal → Transport FSM Streamlining. All PRs merged (916, 919-921, 924-929). Only Phase 4e (API Modernization: Packet→Message) remains. |
+| ramses_rf Phase 4 (issue #915) | **FULLY COMPLETE** (incl. 4e) | 5-PR strangler fig + Phase 4e (PR 951, Packet→Message). All merged: 916, 919-921, 924-929, 931, 932, 951. |
+| ramses_rf Phase 5 (issue #992) | **OPEN — STARTED** | Client API & Consumer DTO Boundary Enforcement. PRs 986, 987 merged (0.59.3 milestone). Remaining: PR 1 remainder (identity constants, polling API), PR 2 (DTO boundary — breaking for cc), PR 3 (event bus + handshake = our Step 5 unblock). |
 | ramses_rf PR 931 (test fixes) | **MERGED** | Our fixes on top of PR 929: DHW None handling + PollingManager build_rq_cmd + test update. Merged Jul 25 2026. |
-| ramses_cc PR 869 (compat fixes) | **OPEN** (mergeable, CI green) | Our compatibility fixes: merge_schemas traits + sentinel packet + discovery removal + resolve_async_attr cooldown. Target: ramses_cc 0.59.1. |
-| ramses_cc PR 863 (migration + backup) | **OPEN** (mergeable) | Phase 4 Step 1: config entry v2→v3 migration with safety net backup. Target: ramses_cc 0.59.1. |
-| ramses_cc PR 870 (known_list removal) | **OPEN** (stacked on 869) | Phase 4 Steps 1-3: migration + remove known_list + enforce always-on. Target: ramses_cc 0.59.2 (after 863 bakes in production). |
+| ramses_cc PR 869 (compat fixes) | **MERGED** (Jul 26 2026) | Compatibility fixes: merge_schemas traits + sentinel packet + discovery removal + resolve_async_attr cooldown. Shipped in ramses_cc 0.59.1. |
+| ramses_cc PR 863 (migration + backup) | **MERGED** (Jul 26 2026) | Phase 4 Step 1: config entry v2→v3 migration with safety net backup. Shipped in ramses_cc 0.59.1. |
+| ramses_cc PR 870 (known_list removal) | **CLOSED unmerged** (Jul 30 2026) | Superseded by PR 882. Had merge-conflict issues + failing tests (stale assertions, missing backup logic). |
+| ramses_cc PR 882 (superseding) | **MERGED** (Jul 30 2026) | PWhite-Eng: "all Phase 4 commits from PR #870 plus the fixes required to pass all CI checks." Restored backup_store logic + updated test assertions. **This is the PR that shipped Steps 2-3.** Shipped in ramses_cc 0.59.2. |
+| ramses_cc PR 881 (migration follow-ups) | **MERGED** (Jul 30 2026) | PWhite-Eng: Phase 4 config migration follow-ups + tech debt (issue 880). |
+| ramses_cc manifest pin | **at `ramses-rf==0.59.2`** (0.59.2 release) | Updated to 0.59.2 in ramses_cc 0.59.2 release. ha-sim test Aug 6 against rf 0.59.2 tag + cc 0.59.2 tag: 355/377 pass, 19 fail (need triage). No const fixes needed (PR 987 is in 0.59.3, not 0.59.2). |
 
 ### Critical path
 
 ```
-ramses_rf 0.59.1 (RELEASED) ──→ PR 869 (compat) ──→ PR 863 (migration + backup)
-                                                            │
-                                                            ├──→ PR 870 (remove known_list) → Step 3 (enforce always-on)
-                                                            ├──→ Step 4 (shrink _commands)
+ramses_rf 0.59.1 (RELEASED) ──→ PR 869 (compat) ✅ MERGED ──→ PR 863 (migration) ✅ MERGED
+                                                                     │
+                                                                     └──→ PR 870 CLOSED ──→ PR 882 ✅ MERGED (Steps 2-3 shipped in cc 0.59.2)
+                                                                                 │
+                                                                                 └──→ Step 4 (shrink _commands) — optional, not done
 
-ramses_rf: expose subscription API ──→ Step 5 (TopologyChangedEvent)  [blocked]
-ramses_rf: implement load_fan        ──→ Step 6 (HVAC topology)       [blocked]
+ramses_rf 0.59.2 (RELEASED Aug 4) -- cc pin at 0.59.2 (release) -- ha-sim test: 355/377 pass, 19 fail [TRIAGE NEEDED]
+ramses_rf Phase 5 PR 3 (issue 992) ──→ Step 5 (TopologyChangedEvent)             [blocked]
+ramses_rf: implement load_fan        ──→ Step 6 (HVAC topology)                  [blocked]
 ```
 
-**Steps 1-3 are implemented** (PR 863 + PR 870). Release plan:
-- ramses_cc 0.59.1: PR 869 (compat) + PR 863 (migration with backup, keeps known_list as fallback)
-- ramses_cc 0.59.2: PR 870 (remove known_list, enforce always-on — breaking change)
-- Bump ramses_cc manifest pin from `ramses-rf==0.59.0` to `ramses-rf==0.59.1`
+**Steps 1-3 are SHIPPED** (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Remaining:
+- **Step 4** (shrink `_commands`) — optional, non-breaking, not done
+- **Step 5** (TopologyChangedEvent) — blocked on ramses_rf Phase 5 PR 3 (issue 992)
+- **Step 6** (HVAC topology) — blocked on ramses_rf `load_fan` (still a stub)
+- **Step 7** (StateUpdatedEvent) — future upgrade
 
-Step 5 needs a small ramses_rf PR to expose the topology event callback
-(the events themselves already exist in 0.59.0). Step 6 needs `load_fan`
-implementation (still a stub, no open PR).
+**Immediate TODO:** triage the 19 persistent ha-sim test failures from
+the Aug 6 run (cc 0.59.2 tag + rf 0.59.2 tag). Most likely 0.59.2
+regressions: R36/R40 (Message API affecting 2349/30C9 parsing), R24
+(class_mismatch attribute), R20 (add_faked_rem service validation).
+R02/R08/R16 are timing-sensitive (only in release tag run). See ha-sim
+test section below for full details.
 
 ---
 
@@ -160,7 +175,7 @@ implementation (still a stub, no open PR).
 ## Implementation Plan
 
 <a id="step-1-storage-version-bump-v1v2"></a>
-### Step 1: Storage version bump v1→v2
+### Step 1: Storage version bump v1→v2  ✅ DONE (PR 863 + PR 882)
 
 **What:** Bump `STORAGE_VERSION` from 1 to 2 in `RamsesCcStore`.
 Add a real migration function that strips `known_list` from the
@@ -204,10 +219,14 @@ migration is additive (merges into schema), so data is preserved.
 
 **Test:** ha_sim_test recipe verifying migration from v1 → v2.
 
+**Status:** Shipped in ramses_cc 0.59.1 (PR 863) + 0.59.2 (PR 882
+restored backup_store logic that was lost in a merge conflict).
+PR 881 (PWhite-Eng) addressed follow-up tech debt (issue 880).
+
 ---
 
 <a id="step-2-remove-known_list-from-config-entry"></a>
-### Step 2: Remove known_list from config entry
+### Step 2: Remove known_list from config entry  ✅ DONE (PR 882)
 
 **What:** Stop storing `known_list` in `core.config_entries`. Derive
 it in-memory from schema at startup via
@@ -239,10 +258,15 @@ correctly from the derived known_list.
 **Test:** ha_sim_test recipes R02, R04, R05, R11 (device removal)
 verify known_list is derived correctly after schema changes.
 
+**Status:** Shipped in ramses_cc 0.59.2 (PR 882). `schemas.py` no
+longer has `enforce_known_list`/`SZ_KNOWN_LIST` in the voluptuous
+schema. `__init__.py` strips stale `known_list`/`enforce_known_list`
+from options idempotently (lines 214, 287, 370-374, 390-424).
+
 ---
 
 <a id="step-3-make-enforce_known_list-always-on"></a>
-### Step 3: Make enforce_known_list always-on
+### Step 3: Make enforce_known_list always-on  ✅ DONE (PR 882)
 
 **What:** Remove the `enforce_known_list` config option. It becomes
 always-on (no toggle).
@@ -266,6 +290,13 @@ real-world testing is needed.
 **Risk:** If any users still rely on the disable-workaround (issue 677),
 they would be forced to enforce. Mitigation: log a warning if the
 config entry has `enforce_known_list=False` and override to `True`.
+
+**Status:** Shipped in ramses_cc 0.59.2 (PR 882). `coordinator.py:271`
+hardcodes `enforce_known_list = True  # Phase 4: always-on`. Toggle
+removed from voluptuous schema and config flow. `config_flow.py:1396`
+strips `enforce_known_list` from `ramses_rf` sub-dict. Stale text
+remains in `translations/{en,nl}.json` (cosmetic — toggle no longer
+rendered).
 
 ---
 
@@ -326,8 +357,10 @@ Event-driven subscription:
 - **No public subscription API** — events flow internally only.
   ramses_cc needs `gwy.add_topology_callback(cb)` or similar to
   receive `TopologyChangedEvent` without polling.
-- This is a small PR — the infrastructure exists, just needs an
-  external callback hook.
+- **Tracked by ramses_rf Phase 5 PR 3 (issue 992)** — "Event Bus &
+  Handshake": harden `TopologyChangedEvent` with typed payload
+  dataclasses + define `SchemaUpdatedCallback` in `interfaces.py`.
+  This is the planned delivery mechanism for our Step 5.
 
 **Changes (ramses_cc side):**
 - `coordinator.py`: register a callback with ramses_rf gateway for
@@ -417,7 +450,8 @@ pass). This is a quality-of-life upgrade.
 ramses_rf Phase 4 (issue 915, PWhite-Eng) is a 5-PR strangler fig
 that moves RQ/RP tracking from L3 FSM to L7 event bus and removes
 active discovery probing. **All PRs merged to ramses_rf 0.59.1**
-(Jul 25 2026).
+(Jul 25 2026). **Phase 4e (API Modernization: Packet→Message)
+completed in 0.59.2** (PR 951, Aug 4 2026).
 
 ### ramses_rf Phase 4 PR status
 
@@ -435,6 +469,9 @@ active discovery probing. **All PRs merged to ramses_rf 0.59.1**
 | 929 | 4d.2 Transport FSM Streamlining | ✅ MERGED | WantRply state deleted, L3 only tracks Echo |
 | 931 | Test fixes (our PR) | ✅ MERGED | DHW None + PollingManager build_rq_cmd + test update |
 | 932 | Release prep (silverailscolo) | ✅ MERGED | Bump version to 0.59.1 |
+| 951 | 4e API Modernization (Packet→Message) | ✅ MERGED (0.59.2) | L7 domain API contracts modernised to Message |
+| 964 | 4.5.1 Decouple Message from `_pkt` shim | ✅ MERGED (0.59.2) | Strict typing, remove legacy `Message._pkt` property |
+| 977 | 4.5.x DevType enums replace string slicing | ✅ MERGED (0.59.2) | Address type checking via `DevType` enums (Phase 5.5-adjacent) |
 
 ### Verification: ha-sim test suite
 
@@ -454,14 +491,17 @@ All recipes pass, including R55 (ConversationManager), R56
 (PollingManager), R57 (schema polling traits), R40 (PacketDTO RX
 path), R35 (DHW CQRS hydration), R37 (BDR re-parent loop prevention).
 
-### Impact on ramses_cc — RESOLVED (pending PR merges)
+### Impact on ramses_cc — RESOLVED (PRs merged)
 
 | ramses_rf Phase 4 PR | ramses_cc impact | Status |
 |----------------------|------------------|--------|
 | 4a/4a.5 (Shadow FSM) | None — passive observer | ✅ Verified (ha-sim) |
 | 4b (Execution Cutover) | Low — `gwy.send_cmd()` abstracts execution | ✅ Verified (R55 passes) |
-| 4c (Active Discovery Removal) | **HIGH** — removed active polling | ✅ Verified (R56, R47 pass). Passive scan + warm restart covers all use cases. ramses_cc compatibility fix in PR 869 (services.py: handle `dev.discovery` removal). |
-| 4d (Transport FSM Streamlining) | Low — `wait_for_reply` scrubbed | ✅ Verified (R55 passes). ramses_cc compatibility fix in PR 869 (services.py: sentinel packet migration). |
+| 4c (Active Discovery Removal) | **HIGH** — removed active polling | ✅ Verified (R56, R47 pass). Passive scan + warm restart covers all use cases. ramses_cc compatibility fix in PR 869 (services.py: handle `dev.discovery` removal). **PR 869 MERGED.** |
+| 4d (Transport FSM Streamlining) | Low — `wait_for_reply` scrubbed | ✅ Verified (R55 passes). ramses_cc compatibility fix in PR 869 (services.py: sentinel packet migration). **PR 869 MERGED.** |
+| 4e (Packet→Message, PR 951) | **MEDIUM** — L7 API contracts changed | ⚠️ Shipped in rf 0.59.2. **cc pin still at 0.59.1 — compat not yet verified.** |
+| 4.5.1 (Message decouple, PR 964) | **MEDIUM** — `Message._pkt` shim removed | ⚠️ Shipped in rf 0.59.2. **cc pin still at 0.59.1 — compat not yet verified.** |
+| 4.5.x (DevType enums, PR 977) | **HIGH** — Phase 5.5-adjacent | ⚠️ Shipped in rf 0.59.2. See import audit below. **cc pin still at 0.59.1 — compat not yet verified.** |
 
 ### Polling configuration in schema
 
@@ -473,22 +513,162 @@ entities in HA UI (Step 4 territory).
 
 ---
 
+<a id="ha-sim-test-0.59.2"></a>
+## ha-sim test: ramses_cc 0.59.2 + ramses_rf 0.59.2 (Aug 6 2026)
+
+**Test date:** Aug 6 2026
+**ha_sim_test tool:** ramses_extras master (commit `3dc3b7a`, includes
+PRs 114-125 — all recipe fixes: R11/R17 DiscoveryManager counting,
+R05/R36 wait_for, R28 re-inject, R24 1FC9 re-injection, etc.)
+**Container:** ha-sim (port 8124), ramses_rf loaded via PYTHONPATH
+bind-mount, ramses_cc from bind-mounted `custom_components/`
+
+Two runs were performed to isolate ramses_rf 0.59.2 compat issues from
+unreleased ramses_cc refactors:
+
+### Run 1: cc upstream/master + rf 0.59.2 tag
+
+**Tested:** ramses_cc upstream/master (`a77d40d`, includes unreleased
+PRs 897-903 = #896/#900 refactors) + ramses_rf 0.59.2 tag (`ade6ce7e`)
+
+```
+Passed:   356
+Failed:    17
+Skipped:    3  (R41, R42, R43 — load_fan/HVAC topology, blocked on rf)
+Total:    376
+```
+
+### Run 2: cc 0.59.2 release tag + rf 0.59.2 tag  (canonical)
+
+**Tested:** ramses_cc 0.59.2 release tag (`9c354c3`, includes our
+PR 888 `resolve_async_attr` cooldown fix — the only wimpie70 PR since
+Aug 1) + ramses_rf 0.59.2 tag (`ade6ce7e`)
+
+```
+Passed:   355
+Failed:    19
+Skipped:    3  (R41, R42, R43 — load_fan/HVAC topology, blocked on rf)
+Total:    377
+```
+
+**No const fixes needed:** ramses_rf 0.59.2 still has all SZ_*
+constants in `ramses_tx/const.py` (PR 987 const relocation is in the
+0.59.3 milestone, not 0.59.2). Our re-export fix (commit `15006d80`)
+is only needed for 0.59.3.
+
+### Comparison between runs
+
+| Recipe | Run 1 (cc master) | Run 2 (cc 0.59.2 tag) | Notes |
+|--------|-------------------|----------------------|-------|
+| R06 | FAIL | **PASS** | Fixed by unreleased #896 refactor? Or timing |
+| R28 | FAIL | **PASS** | Fixed by unreleased #896 refactor? Or timing |
+| R02 | PASS | **FAIL** (2) | New timing issue — TRV removal timeout |
+| R08 | PASS | **FAIL** (1) | New — 37:180000 not in FAN remotes |
+| R16 | PASS | **FAIL** (1) | New — ERROR logs during stress test |
+| R17 | FAIL | FAIL | Same — discovery timing |
+| R20 | FAIL (4) | FAIL (4) | Same — add_faked_rem HTTP 400 |
+| R22 | FAIL (2) | FAIL (2) | Same — THM 000A zone binding |
+| R24 | FAIL (2) | FAIL (2) | Same — class_mismatch attribute |
+| R31 | FAIL | FAIL | Same — Intercepted fan_mode |
+| R33 | FAIL | FAIL | Same — WS 'Simulator not initialized' |
+| R36 | FAIL | FAIL | Same — climate target_temp 19.0 vs 21.0 |
+| R40 | FAIL | FAIL | Same — climate entity missing after 30C9 RX |
+| Final | FAIL (2) | FAIL (2) | Same — unexpected errors/warnings |
+
+**Key finding:** The unreleased #896/#900 refactors (PRs 897-903) fixed
+R06 and R28 but the 0.59.2 release has 3 new timing-sensitive fails
+(R02, R08, R16). The persistent fails (R17, R20, R22, R24, R31, R33,
+R36, R40) exist in **both** runs — they are NOT caused by the
+unreleased refactors.
+
+### Persistent failures (in both runs — need investigation)
+
+| Recipe | Fails | Symptom | Likely cause |
+|--------|-------|---------|--------------|
+| R36 | 1 | climate target_temperature 19.0C vs expected 21.0C from 2349 | Issue 843 — PR 951 (Message API) may affect 2349 parsing/hydration |
+| R40 | 1 | climate entity for zone 03 not found after 30C9 RX | PR 964 (Message decouple) may affect RX path entity creation |
+| R24 | 2 | class_mismatch attribute not appearing on FAN remote entity | PR 977 (DevType enums) may affect entity attribute exposure |
+| R20 | 4 | add_faked_rem HTTP 400 — REM not added to schema | Service validation — pre-existing in 0.59.2 release |
+| R31 | 1 | 'Intercepted fan_mode' not found in log | Fan handler intercept path |
+| R33 | 1 | Config_flow validation — WS 'Simulator not initialized' | Timing — ha-sim not ready when config_flow validation runs |
+| R17 | 1 | 04:500001 not in discovered devices | Discovery service timing |
+| R22 | 2 | THM 22:200001 comment doesn't include zone 01 / bound_to | 000A zone binding for 22: devices — pre-existing |
+| Final | 2 | unexpected ERROR/WARNING logs | Profile reload race: `async_config_entry_first_refresh` on NOT_LOADED entry |
+
+### Skipped (3)
+
+| Recipe | Reason |
+|--------|--------|
+| R41 | `load_fan` is still a stub — pending ramses_rf (our Step 6) |
+| R42 | `TopologyBuilder._evaluate_hvac_rules` not importable — pending ramses_rf |
+| R43 | dual-role CO2+REM not supported — pending ramses_rf 'init and go' |
+
+### Comparison with Jul 25 run
+
+| Run | Date | rf version | cc version | Checks | Pass | Fail | Skip |
+|-----|------|-----------|-----------|--------|------|------|------|
+| Jul 25 | Jul 25 2026 | 0.59.1 (PR stack) | PR 869+870 | 347 | 347 | 0 | 0 |
+| Aug 6 (run 1) | Aug 6 2026 | 0.59.2 (tag) | master (unreleased) | 376 | 356 | 17 | 3 |
+| Aug 6 (run 2) | Aug 6 2026 | 0.59.2 (tag) | 0.59.2 (tag) | 377 | 355 | 19 | 3 |
+
+The Jul 25 run was against the PR stack (not released code) with a
+smaller suite (347 checks). The Aug 6 runs test the actual released
+versions with a larger suite (~377 checks). The check count difference
+(347 to 377) is because recipes R33-R60 were added since Jul 25.
+
+### Action items
+
+1. **Triage R36/R40** — most likely 0.59.2 regressions (Message API
+   changes affecting 2349/30C9 parsing). Check if PR 951/964 changed
+   how zone climate state is hydrated.
+2. **Triage R20** — add_faked_rem HTTP 400 is pre-existing in 0.59.2
+   release (not caused by unreleased refactors).
+3. **Triage R24** — class_mismatch attribute may be affected by PR 977
+   (DevType enums replacing string slicing).
+4. **R02/R08/R16** — timing-sensitive, only in release tag run. Re-run
+   individually to confirm.
+5. **R22** — THM 000A zone binding, pre-existing. May need a recipe fix
+   or a ramses_rf topology handler fix.
+6. **Profile reload race** — `async_config_entry_first_refresh` on
+   NOT_LOADED entry. Not a 0.59.2 regression but worth investigating.
+
+---
+
 <a id="ramses_rf-phase-5-impact"></a>
-## ramses_rf Phase 5+ impact (issue 639 comment)
+## ramses_rf Phase 5+ impact (issue 992, issue 639 comment)
 
 PWhite-Eng's full roadmap (issue 639 comment, updated Jul 23 2026)
 goes beyond Phase 4 to Phase 10. **Phase 5 directly impacts ramses_cc.**
 
-### ramses_rf Phase 5: Client API & Consumer DTO Boundary Enforcement
+**Phase 5 is now tracked as issue 992** ("Client API & Consumer DTO
+Boundary Enforcement") and has **STARTED** — two PRs merged into the
+rf 0.59.3 milestone (PR 986, PR 987). The coordinating issue is OPEN.
 
-| Step | What | ramses_cc impact | Action needed |
-|------|------|------------------|---------------|
-| 5.1 Event Bus Hardening | `TopologyChangedEvent` queued and delivered reliably to consumer | **This is our Step 5** — the public subscription API we need | Coordinate with PWhite-Eng. When this lands, implement our Step 5. |
-| 5.2 Ingestion Handshake | API contract for ramses_cc → ramses_rf schema updates + warm-restart safety | Relevant to our known_list removal — defines how schema updates flow back | Monitor. Our `_strip_schema_extensions` + config entry update path may need adjustment. |
-| 5.3 DTO Boundary Enforcement | Remove legacy dict shims; getters return native CQRS dataclasses | **MEDIUM RISK** — ramses_cc uses `resolve_async_attr` for `heat_demands` (attribute access, safe). But other getters may use dict patterns. | Audit ramses_cc for dict access on device properties. See audit below. |
-| 5.4 Shim Removal | Remove L7 proxy shims in `ramses_tx/address.py` | Low — ramses_cc doesn't touch address parsing | None |
-| 5.5 Identity Constant Relocation | Move `DevType`, `DevRole`, `ZoneRole`, `DEV_TYPE_MAP`, `DEV_ROLE_MAP`, `DEVICE_ID_REGEX` from `ramses_tx` to `ramses_rf` | **HIGH RISK** — ramses_cc imports `DevType`, `DEV_TYPE_MAP` from `ramses_tx.const`, `DeviceIdT` from `ramses_tx.typing` | Update imports when Phase 5.5 lands. See audit below. |
-| 5.6 Final Polish | Mypy/Ruff/Pytest sweeps | None | None |
+### ramses_rf Phase 5: Client API & Consumer DTO Boundary Enforcement (issue 992)
+
+| Step | What | ramses_cc impact | Status |
+|------|------|------------------|--------|
+| 5.1 Event Bus Hardening | `TopologyChangedEvent` queued and delivered reliably to consumer | **This is our Step 5** — the public subscription API we need | **NOT STARTED** — Phase 5 PR 3 territory. Blocks our Step 5. |
+| 5.2 Ingestion Handshake | API contract for ramses_cc → ramses_rf schema updates + warm-restart safety | Relevant to our known_list removal — defines how schema updates flow back | **NOT STARTED** — Phase 5 PR 3 territory. Monitor. |
+| 5.3 DTO Boundary Enforcement | Remove legacy dict shims; getters return native CQRS dataclasses | **MEDIUM RISK** — ramses_cc uses `resolve_async_attr` for `heat_demands` (attribute access, safe). But other getters may use dict patterns. | **NOT STARTED** — Phase 5 PR 2. This is the breaking change for cc. |
+| 5.4 Shim Removal | Remove L7 proxy shims in `ramses_tx/address.py` | Low — ramses_cc doesn't touch address parsing | **PARTIALLY DONE** — PR 977 (0.59.2) replaced string slicing with DevType enums. PR 986 (0.59.3) exported `RamsesProtocolT`. |
+| 5.5 Identity Constant Relocation | Move `DevType`, `DevRole`, `ZoneRole`, `DEV_TYPE_MAP`, `DEV_ROLE_MAP`, `DEVICE_ID_REGEX` from `ramses_tx` to `ramses_rf` | **HIGH RISK** — ramses_cc imports `DevType`, `DEV_TYPE_MAP` from `ramses_tx.const`, `DeviceIdT` from `ramses_tx.typing` | **PARTIALLY DONE** — PR 987 (0.59.3) relocated L7 *payload* constants (HVAC 31DA, OpenTherm, schedule keys) from `ramses_tx.const` to `ramses_rf.const`. **Identity constants (`DevType`, `DEV_TYPE_MAP`, etc.) NOT yet relocated** — still in `ramses_tx/const.py:291-514`. Backward-compat re-exports added (commit `15006d80`) so cc doesn't break yet. Update imports when full 5.5 lands. |
+| 5.6 Final Polish | Mypy/Ruff/Pytest sweeps | None | N/A |
+
+### Phase 5 PRs merged into rf 0.59.3 milestone
+
+| PR | Title | Phase 5 step |
+|----|-------|--------------|
+| 986 | Export `RamsesProtocolT` + importlinter layer contracts | 5.4 prep (layer decoupling) |
+| 987 | Decouple L7 application payload constants to `ramses_rf` | 5.5 partial (payload constants only) |
+
+**Not yet started (per issue 992's plan):**
+- Phase 5 PR 1 remainder: identity constants relocation (`DevType` etc.),
+  `DeviceTraitsT`/`DeviceListT`, L7 proxy shim deletion, polling API
+  (`effective_polling_interval`, `set_polling_interval`)
+- Phase 5 PR 2: DTO Boundary (return CQRS dataclasses) — **breaking for cc**
+- Phase 5 PR 3: Event Bus & Handshake — **unblocks our Step 5**
+- All three ramses_cc consumer PRs (Schedules, DTO Alignment, Polling Diagnostics)
 
 ### ramses_cc import audit (for Phase 5.5)
 
@@ -514,12 +694,13 @@ the constants for backward compatibility. But we should update our
 imports to point to `ramses_rf` directly. The `SZ_*` string constants
 are unlikely to move (they're schema keys, not identity constants).
 
-### ramses_rf Phase 4.5: Domain Layer Decommissioning
+### ramses_rf Phase 4.5: Domain Layer Decommissioning  ✅ DONE (PR 978, 0.59.2)
 
-Deletes `_handle_msg` methods and legacy synchronous routing. ramses_cc
-doesn't call `_handle_msg` directly, so impact is low. But the removal
-of `call_soon(dev._handle_msg)` routing means all data flows through
-asyncio.Queue pipelines — verify ha_sim_test passes after 4.5 merge.
+Deletes `_handle_msg` methods and legacy synchronous routing (PR 978,
+"decommission legacy _handle_msg routing (Step 4.5.7)", shipped 0.59.2).
+ramses_cc doesn't call `_handle_msg` directly, so impact is low. All
+data now flows through asyncio.Queue pipelines. Related: PRs 980-982,
+984 (dispatcher modularisation, #979) also shipped in 0.59.2.
 
 ### ramses_rf Phase 6-10: Future enhancements
 
@@ -594,14 +775,16 @@ asyncio.Queue pipelines — verify ha_sim_test passes after 4.5 merge.
      `_commands`, but `.storage[remotes]` provides a fast restore
      path without waiting for config entry write.
 
-3. **Should `enforce_known_list` be removed or deprecated?**
-   - Deprecate first (log warning if False, override to True), remove
-     in a later release. Gives users time to verify the fix works.
+3. **~~Should `enforce_known_list` be removed or deprecated?~~** — **RESOLVED**
+   - Shipped as always-on (hardcoded `True` in `coordinator.py:271`).
+     Stale entries stripped idempotently. Toggle removed from config
+     flow. Shipped in ramses_cc 0.59.2 (PR 882).
 
 4. **When will ramses_rf expose TopologyChangedEvent to external consumers?**
-   - The events already fire internally (0.59.0). A small ramses_rf PR
-     is needed to add `gwy.add_topology_callback(cb)`. Coordinate with
-     PWhite-Eng — the infrastructure exists, just needs an external hook.
+   - The events already fire internally (0.59.0). **Tracked by ramses_rf
+     Phase 5 PR 3 (issue 992)** — "Event Bus & Handshake": harden
+     `TopologyChangedEvent` with typed payload dataclasses + define
+     `SchemaUpdatedCallback` in `interfaces.py`. Not yet started.
 
 5. **Should `_commands` entries matching native builders be auto-removed?**
    - No — `_commands` is the user override layer. Even if a native
@@ -633,6 +816,14 @@ asyncio.Queue pipelines — verify ha_sim_test passes after 4.5 merge.
 | Jul 26 2026 | **PR 870: finding 2 fix applied** | Aligned `_cleanup_stale_known_list` with `async_migrate_entry` for empty/non-dict known_list entries — both now create `schema[dev_id] = {}` so the device survives `enforce_known_list`. |
 | Jul 26 2026 | **ConversationManager cross-matching issue identified** | ramses_rf `process_msg` matches RP on `(src.id, code)` only, ignoring `correlation_id`. Two concurrent RQs to same device+code can resolve each other's futures with wrong payload. Issue to be filed on ramses_rf. |
 | Jul 24 2026 | ramses_rf Phase 5+ roadmap reviewed (issue 639 comment) | PWhite-Eng's full roadmap goes to Phase 10. Phase 5 directly impacts ramses_cc: Step 5.1 (Event Bus Hardening) = our Step 5 (TopologyChangedEvent subscription). Step 5.3 (DTO Boundary) may break dict access patterns. Step 5.5 (Identity Relocation) will break `DevType`/`DEV_TYPE_MAP`/`DeviceIdT` imports from `ramses_tx`. Added import audit to plan. |
+| Jul 26 2026 | **PR 869 + PR 863 MERGED** | Compat fixes + migration shipped to ramses_cc 0.59.1. |
+| Jul 30 2026 | **PR 870 CLOSED unmerged, superseded by PR 882** | PR 870 had merge-conflict issues (mangled imports, stale test assertions, missing backup_store logic). PWhite-Eng created PR 882 with "all Phase 4 commits from PR #870 plus the fixes required to pass all CI checks." silverailscolo closed 870: "Closed and replaced by #882". |
+| Jul 30 2026 | **PR 882 MERGED — Steps 2-3 SHIPPED** | The actual known_list removal + enforce always-on shipped via PR 882, not PR 870. Shipped in ramses_cc 0.59.2. PR 881 (PWhite-Eng) addressed follow-up tech debt (issue 880). |
+| Aug 4 2026 | **ramses_rf 0.59.2 released** | Ships Phase 4e (PR 951 Packet→Message) + Phase 4.5.x (PR 964 Message decouple, PR 978 _handle_msg decommission, PRs 980-982/984 dispatcher modularisation) + Phase 5.5-adjacent (PR 977 DevType enums). ramses_rf Phase 4 is now FULLY complete. |
+| Aug 5 2026 | **ramses_rf Phase 5 STARTED (issue 992)** | PRs 986 (RamsesProtocolT export) + 987 (L7 payload constants → ramses_rf.const) merged into 0.59.3 milestone. Identity constants NOT yet relocated. Backward-compat re-exports added (commit `15006d80`) so ramses_cc doesn't break yet. |
+| Aug 5 2026 | **ramses_cc 0.59.2 pre-release** | Includes PR 882 (Steps 2-3) + PR 881 (migration follow-ups) + #896 typing refactors + #900 exception hierarchy. Does NOT include Phase 5 consumer-side work. |
+| Aug 6 2026 | **Plan document updated to reflect reality** | Corrected stale PR statuses (869/863 merged, 870 closed, 882 is the real ship PR). Added rf 0.59.2/0.59.3 + Phase 5 (issue 992) status. Marked Steps 1-3 as DONE. Phase 4 (cc) actionable work is complete; remaining steps blocked on rf. **Next TODO: bump cc pin 0.59.1→0.59.2 + compat check.** |
+| Aug 6 2026 | **ha-sim test run: cc 0.59.2 tag + rf 0.59.2 tag** | 355 PASS / 19 FAIL / 3 SKIP (377 total). Two runs performed: (1) cc upstream/master + rf 0.59.2 tag = 356/17/3, (2) cc 0.59.2 release tag + rf 0.59.2 tag = 355/19/3. Persistent fails in both runs: R36/R40 (Message API 2349/30C9), R24 (class_mismatch), R20 (add_faked_rem HTTP 400), R31, R33, R17, R22. No const fixes needed (PR 987 is in 0.59.3, not 0.59.2). ramses_cc 0.59.2 release includes our PR 888 fix. |
 
 ---
 
