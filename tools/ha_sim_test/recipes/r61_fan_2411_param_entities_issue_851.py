@@ -84,6 +84,31 @@ class R61Fan2411ParamEntitiesIssue851(Recipe):
             f"schema keys={list(schema.keys())}",
         )
 
+        # 1b. Activate the FAN device so it starts sending messages.
+        #     The initialized callback fires when the FAN sends its first
+        #     31DA packet, which triggers create_parameter_entities.
+        #     On fresh containers (parallel runs), the FAN is not yet
+        #     active and no messages have been received.
+        from ..helpers import ws_send
+
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": FAN,
+                },
+            )
+            print(f"  FAN {FAN} activated")
+        except RuntimeError as e:
+            if "already_active" in str(e):
+                print(f"  FAN {FAN} already active")
+            else:
+                print(f"  FAN activate failed: {str(e)[:80]}")
+
+        # Wait for the FAN to send a 31DA and trigger the callback
+        ctx.wait(8, "for FAN 31DA + initialized callback", floor=4.0)
+
         # 2. Structural check: _handle_initialized_callback must NOT
         #    require supports_2411 (the guard was removed in the fix).
         #    We inspect the source code inside the container to verify.
