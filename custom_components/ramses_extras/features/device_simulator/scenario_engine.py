@@ -386,7 +386,7 @@ class ScenarioEngine:
 
         known_list = profile.device_configs.get("_known_list") or {}
         entry = known_list.get(device_id)
-        if not entry:
+        if entry is None:
             return None
         return self._build_profile_device_entry(profile, device_id, entry)
 
