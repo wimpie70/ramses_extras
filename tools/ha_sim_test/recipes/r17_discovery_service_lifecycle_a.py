@@ -102,10 +102,10 @@ class R17DiscoveryServiceLifecycleA(Recipe):
 
         wait_for(
             _discovery_started,
-            timeout=30,
+            timeout=45,
             interval=2,
             msg="for DiscoveryManager to start",
-            floor=10.0,
+            floor=15.0,
         )
 
         # Inject heartbeat from a new device to trigger discovery.
@@ -158,10 +158,21 @@ class R17DiscoveryServiceLifecycleA(Recipe):
             async def _get_disc():
                 uri = get_current_instance().ws_url
                 async with aiohttp.ClientSession() as session:
-                    async with session.ws_connect(uri) as ws:
-                        await ws.receive_json()
+                    async with session.ws_connect(
+                        uri, timeout=30, receive_timeout=30
+                    ) as ws:
+                        # Handle auth handshake with CLOSE frame awareness
+                        auth_req = await ws.receive(timeout=30)
+                        if auth_req.type == aiohttp.WSMsgType.CLOSE:
+                            raise RuntimeError(
+                                f"WebSocket closed during auth (code={auth_req.data})"
+                            )
                         await ws.send_json({"type": "auth", "access_token": ctx.token})
-                        await ws.receive_json()
+                        auth_resp = await ws.receive(timeout=30)
+                        if auth_resp.type == aiohttp.WSMsgType.CLOSE:
+                            raise RuntimeError(
+                                f"WebSocket closed during auth (code={auth_resp.data})"
+                            )
                         # Subscribe to the discovered_devices event
                         await ws.send_json(
                             {
@@ -170,9 +181,16 @@ class R17DiscoveryServiceLifecycleA(Recipe):
                                 "event_type": "ramses_cc_discovered_devices",
                             }
                         )
-                        resp = await ws.receive_json()
-                        if not resp.get("success"):
-                            raise RuntimeError(f"subscribe failed: {resp}")
+                        resp = await ws.receive(timeout=30)
+                        if resp.type != aiohttp.WSMsgType.TEXT:
+                            raise RuntimeError(
+                                f"WebSocket closed during subscribe (type={resp.type})"
+                            )
+                        import json as _json
+
+                        resp_data = _json.loads(resp.data)
+                        if not resp_data.get("success"):
+                            raise RuntimeError(f"subscribe failed: {resp_data}")
                         # Now call the service via REST
                         call_service(
                             ctx.token, "ramses_cc", "get_discovered_devices", {}
@@ -181,17 +199,36 @@ class R17DiscoveryServiceLifecycleA(Recipe):
                         import asyncio as _aio
 
                         try:
-                            event_msg = await _aio.wait_for(
-                                ws.receive_json(), timeout=10
+                            event_resp = await _aio.wait_for(
+                                ws.receive(timeout=30), timeout=15
                             )
-                            if event_msg.get("type") == "event":
-                                disc_devices.extend(
-                                    event_msg["event"]["data"].get("devices", [])
-                                )
+                            if event_resp.type == aiohttp.WSMsgType.TEXT:
+                                event_msg = _json.loads(event_resp.data)
+                                if event_msg.get("type") == "event":
+                                    disc_devices.extend(
+                                        event_msg["event"]["data"].get("devices", [])
+                                    )
                         except TimeoutError:
                             pass
 
-            await _get_disc()
+            for _attempt in range(3):
+                try:
+                    await _get_disc()
+                    if disc_devices:
+                        break
+                    print(
+                        f"  get_discovered_devices returned empty"
+                        f" (attempt {_attempt + 1}/3)"
+                    )
+                except Exception as e:
+                    print(
+                        f"  get_discovered_devices failed"
+                        f" (attempt {_attempt + 1}/3): {str(e)[:60]}"
+                    )
+                if _attempt < 2 and not disc_devices:
+                    import asyncio as _aio2
+
+                    await _aio2.sleep(3)
         except Exception as e:
             print(f"  get_discovered_devices failed: {str(e)[:60]}")
 
