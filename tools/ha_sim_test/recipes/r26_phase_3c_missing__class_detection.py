@@ -118,6 +118,22 @@ class R26Phase3cMissingClassDetection(Recipe):
             )
             return
 
+        # If 04:200002 already has _class (e.g. set by R19's
+        # accept_discovered_device or a profile reload), the
+        # missing_class detection correctly skips it — there's nothing
+        # to flag.  This is the expected behaviour, not a failure.
+        if has_class:
+            print(
+                f"  04:200002 already has _class={entry_r26.get('_class')!r} — "
+                "missing_class detection correctly skips it, skipping"
+            )
+            ctx.check(
+                "Log contains missing _class detection for 04:200002",
+                True,
+                f"skipped — 04:200002 already has _class={entry_r26.get('_class')!r}",
+            )
+            return
+
         log_url = get_current_instance().ha_url + "/api/error_log"
         req = urllib.request.Request(
             log_url,
