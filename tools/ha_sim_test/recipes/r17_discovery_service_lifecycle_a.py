@@ -24,6 +24,7 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    grep_ha_log,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
@@ -121,7 +122,18 @@ class R17DiscoveryServiceLifecycleA(Recipe):
                     ctx.wait(3, "before retry")
         if not inject_ok:
             print("  WARN: all 1FC9 inject attempts failed")
-        ctx.wait(10, "for discovery scan to detect the new device")
+
+        # Poll for the device appearing in discovery scan logs
+        def _device_discovered() -> bool:
+            return len(grep_ha_log(disc_dev.replace(":", "_"), since_lines=200)) > 0
+
+        wait_for(
+            _device_discovered,
+            timeout=20,
+            interval=2,
+            msg="for discovery scan to detect the new device",
+            floor=3.0,
+        )
 
         # Test get_discovered_devices (fires a bus event)
         print("  Calling get_discovered_devices...")
@@ -232,7 +244,13 @@ class R17DiscoveryServiceLifecycleA(Recipe):
                     },
                 )
                 print("  accept succeeded")
-                ctx.wait(5, "for ramses_rf include list update")
+                wait_for(
+                    lambda: disc_dev in get_known_list(),
+                    timeout=10,
+                    interval=1,
+                    msg="for ramses_rf include list update",
+                    floor=2.0,
+                )
                 ctx.check("accept_discovered_device succeeds", True, "")
             except RuntimeError as e:
                 ctx.check("accept_discovered_device succeeds", False, str(e)[:80])

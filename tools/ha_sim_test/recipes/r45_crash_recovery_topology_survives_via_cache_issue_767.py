@@ -17,6 +17,7 @@ from ..helpers import (
     get_schema_retry,
     is_ramses_cc_loaded,
     wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 
@@ -58,7 +59,7 @@ class R45CrashRecoveryTopologySurvivesViaCacheIssue767(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait(10, "for CTL heartbeats + topology learning")
+        wait_for_schema_populated(min_keys=5, timeout=20)
 
         # 3. Capture the learned topology (entities + schema)
         entities_before = get_entities(ctx.token)

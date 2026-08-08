@@ -24,6 +24,7 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    grep_ha_log,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
@@ -119,7 +120,17 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
                 print(f"  Inject {i} failed: {str(e)[:60]}")
             time.sleep(2)
 
-        ctx.wait(10, "for discovery scan to detect the new TRV")
+        # Poll for the TRV appearing in discovery scan logs
+        def _trv_discovered() -> bool:
+            return len(grep_ha_log(new_trv.replace(":", "_"), since_lines=200)) > 0
+
+        wait_for(
+            _trv_discovered,
+            timeout=20,
+            interval=2,
+            msg="for discovery scan to detect the new TRV",
+            floor=3.0,
+        )
 
         # Try to accept the discovered device
         print(f"  Accepting discovered device {new_trv}...")
@@ -146,7 +157,13 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
 
         if accept_ok:
             # Wait for the ramses_rf client to update its include list
-            ctx.wait(5, "for ramses_rf include list update")
+            wait_for(
+                lambda: new_trv in get_known_list(),
+                timeout=10,
+                interval=1,
+                msg="for ramses_rf include list update",
+                floor=2.0,
+            )
 
             # Inject a temperature packet so the entity gets a state
             print(f"  Injecting 30C9 temperature from {new_trv}...")
@@ -165,7 +182,18 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
             except RuntimeError:
                 pass
 
-            ctx.wait(8, "for entity creation + state propagation")
+            # Poll for the TRV entity to appear
+            def _trv_entity_created() -> bool:
+                entities = get_entities(ctx.token)
+                return find_entity_for_device(entities, new_trv) is not None
+
+            wait_for(
+                _trv_entity_created,
+                timeout=15,
+                interval=2,
+                msg="for entity creation + state propagation",
+                floor=3.0,
+            )
 
             # Verify TRV is now in schema (known_list is auto-derived from schema)
             schema_after_accept = get_schema_retry()

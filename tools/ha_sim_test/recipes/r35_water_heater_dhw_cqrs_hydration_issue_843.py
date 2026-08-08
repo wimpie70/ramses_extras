@@ -11,6 +11,7 @@ from ..helpers import (
     get_entities,
     is_ramses_cc_loaded,
     wait_for,
+    wait_for_schema_populated,
     ws_send,
 )
 
@@ -71,7 +72,7 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
                 print(f"    {name} activated")
             except RuntimeError:
                 pass
-        ctx.wait(10, "for CTL/DHW heartbeats + schema population")
+        wait_for_schema_populated(min_keys=5, timeout=20)
 
         # Silence the DHW sensor's periodic emitter before injecting, to
         # reduce noise from the sim's own 1260 heartbeats at 100x speed.

@@ -94,13 +94,20 @@ class R18AddFakedRemServiceCreatesFakedRemBoundToF(Recipe):
                 },
             )
             print("  add_faked_rem service call succeeded")
-            ctx.wait(3, "for schema merge + entity creation")
+            # Poll for the faked REM appearing in schema
+            wait_for(
+                lambda: faked_rem_id in get_schema_retry(),
+                timeout=10,
+                interval=1,
+                msg="for schema merge + entity creation",
+                floor=2.0,
+            )
             # Force a save cycle to persist the config entry
             try:
                 call_service(ctx.token, "ramses_cc", "force_update")
             except RuntimeError:
                 pass
-            ctx.wait(5, "for config entry persistence")
+            ctx.wait(3, "for config entry persistence")
             ctx.check("add_faked_rem service call succeeds", True, "")
         except RuntimeError as e:
             ctx.check("add_faked_rem service call succeeds", False, str(e)[:80])

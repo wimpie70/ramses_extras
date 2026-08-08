@@ -43,6 +43,7 @@ from ..const import CTL, DHW, HGI
 from ..helpers import (
     call_service,
     clear_cached_state,
+    get_known_list,
     get_schema_retry,
     is_ramses_cc_loaded,
     load_profile_yaml,
@@ -257,7 +258,13 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
                 print(f"    {dev_id} accepted")
             except RuntimeError as e:
                 print(f"    {dev_id} accept failed: {str(e)[:80]}")
-        ctx.wait(5, "for ramses_rf include list update")
+        wait_for(
+            lambda: otb_id in get_known_list() and bdr_id in get_known_list(),
+            timeout=10,
+            interval=1,
+            msg="for ramses_rf include list update",
+            floor=2.0,
+        )
 
         # Trigger sync_topology to update the schema
         print("  Triggering sync_topology...")
