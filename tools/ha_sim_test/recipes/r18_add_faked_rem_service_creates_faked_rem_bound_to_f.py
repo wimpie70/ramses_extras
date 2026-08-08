@@ -16,6 +16,7 @@ from ..helpers import (
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -24,6 +25,7 @@ from ..helpers import (
     get_schema,
     get_schema_retry,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -37,6 +39,22 @@ class R18AddFakedRemServiceCreatesFakedRemBoundToF(Recipe):
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 18: add_faked_rem service")
+
+        # Ensure ramses_cc is fully loaded and the FAN is in the schema.
+        # On fresh containers (parallel runs), the previous recipe may have
+        # triggered a profile reload and ramses_cc services may not be
+        # registered yet.
+        def _fan_in_schema() -> bool:
+            schema = get_schema_retry()
+            return FAN in schema
+
+        wait_for(
+            _fan_in_schema,
+            timeout=20,
+            interval=3,
+            msg="for FAN to be in schema",
+            floor=5.0,
+        )
 
         # add_faked_rem creates a virtual REM device bound to a FAN.
         # It should:

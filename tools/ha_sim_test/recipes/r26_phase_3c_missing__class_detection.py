@@ -100,6 +100,12 @@ class R26Phase3cMissingClassDetection(Recipe):
         # case, we skip the check with a warning.
         schema_r26 = get_schema_retry()
         has_200002 = "04:200002" in schema_r26
+        entry_r26 = schema_r26.get("04:200002", {})
+        has_class = isinstance(entry_r26, dict) and bool(entry_r26.get("_class"))
+        print(
+            f"  04:200002 in schema: {has_200002}, "
+            f"has _class: {has_class}, entry: {entry_r26}"
+        )
         if not has_200002:
             print(
                 "  WARN: 04:200002 not in schema after profile reloads — "
@@ -118,6 +124,14 @@ class R26Phase3cMissingClassDetection(Recipe):
             headers={"Authorization": f"Bearer {ctx.token}"},
         )
         log_text = urllib.request.urlopen(req).read().decode()
+        # Also check docker logs for scan engine state
+        docker_logs = subprocess.run(
+            ["docker", "logs", get_current_instance().name, "--since", "60s"],
+            capture_output=True,
+            text=True,
+        ).stdout
+        scan_has_200002 = "04:200002" in docker_logs
+        print(f"  04:200002 in docker logs: {scan_has_200002}")
         # The DEBUG message is "missing _class for 04:200002" but only
         # appears at DEBUG level.  The INFO message is "N device(s) in
         # schema have no _class but discovery has a suggestion: 04:200002".
