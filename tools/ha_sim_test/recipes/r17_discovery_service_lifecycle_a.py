@@ -94,23 +94,33 @@ class R17DiscoveryServiceLifecycleA(Recipe):
             floor=10.0,
         )
 
-        # Inject heartbeat from a new device to trigger discovery
+        # Inject heartbeat from a new device to trigger discovery.
+        # Retry up to 3 times — on cold containers the ramses_extras
+        # services may not be registered yet after the reload (HTTP 400).
         disc_dev = "04:500001"
         print(f"  Injecting heartbeat from {disc_dev}...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": disc_dev,
-                    "code": "1FC9",
-                    "payload": "0030C912E294",
-                    "verb": "I",
-                },
-            )
-        except RuntimeError as e:
-            print(f"  Inject failed: {str(e)[:60]}")
+        inject_ok = False
+        for attempt in range(3):
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": disc_dev,
+                        "code": "1FC9",
+                        "payload": "0030C912E294",
+                        "verb": "I",
+                    },
+                )
+                inject_ok = True
+                break
+            except RuntimeError as e:
+                print(f"    Inject attempt {attempt + 1} failed: {str(e)[:60]}")
+                if attempt < 2:
+                    ctx.wait(3, "before retry")
+        if not inject_ok:
+            print("  WARN: all 1FC9 inject attempts failed")
         ctx.wait(10, "for discovery scan to detect the new device")
 
         # Test get_discovered_devices (fires a bus event)
