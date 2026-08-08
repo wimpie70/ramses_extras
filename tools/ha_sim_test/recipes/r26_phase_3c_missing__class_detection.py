@@ -46,7 +46,26 @@ class R26Phase3cMissingClassDetection(Recipe):
         # wiped them from the scan engine, so we re-inject a 30C9 packet
         # to get 04:200002 back into the scan engine before checking.
 
-        print("  Re-injecting 30C9 from 04:200002 to re-populate scan engine...")
+        print("  Re-injecting 000A + 30C9 from 04:200002 to re-populate scan engine...")
+        # 000A is a zone binding code — it gets the device into the scan
+        # engine with high confidence and sets likely_type=TRV (via the
+        # 04: prefix fallback in _classify).
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": "04:200002",
+                    "code": "000A",
+                    "payload": "0200FF",
+                    "verb": "I",
+                },
+            )
+        except RuntimeError as e:
+            print(f"    000A inject failed: {str(e)[:80]}")
+        ctx.wait(2, "between injects")
+        # Also inject 30C9 (temperature) for additional evidence
         try:
             call_service(
                 ctx.token,
@@ -60,8 +79,8 @@ class R26Phase3cMissingClassDetection(Recipe):
                 },
             )
         except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for scan engine to process", floor=2.0)
+            print(f"    30C9 inject failed: {str(e)[:80]}")
+        ctx.wait(5, "for scan engine to process", floor=3.0)
 
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")

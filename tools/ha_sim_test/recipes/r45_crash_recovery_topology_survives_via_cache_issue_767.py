@@ -114,9 +114,37 @@ class R45CrashRecoveryTopologySurvivesViaCacheIssue767(Recipe):
             )
         except RuntimeError:
             pass
-        ctx.wait_for_ramses_cc_reload(timeout=20)
+        ctx.wait_for_ramses_cc_reload(timeout=30)
         ctx.refresh_token()
-        # 5. Verify entities reappear from cached schema
+        # 5. Verify entities reappear from cached schema.
+        #    On fresh containers, the entity platform setup may not have
+        #    completed yet — poll for entities to appear.
+
+        def _entities_reappeared() -> bool:
+            entities = get_entities(ctx.token)
+            count = len(
+                [
+                    e
+                    for e in entities
+                    if any(
+                        dev in e.get("entity_id", "")
+                        for dev in [
+                            CTL.replace(":", "_"),
+                            TRV.replace(":", "_"),
+                            DHW.replace(":", "_"),
+                        ]
+                    )
+                ]
+            )
+            return count > 0
+
+        wait_for(
+            _entities_reappeared,
+            timeout=30,
+            interval=3,
+            msg="for entities to reappear after reload",
+            floor=5.0,
+        )
         entities_after = get_entities(ctx.token)
         schema_after = get_schema_retry()
 
