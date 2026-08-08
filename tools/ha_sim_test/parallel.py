@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .base import RecipeContext
+from .colors import bold, color_status, green, red
 from .const import InstanceConfig, make_instances
 from .dashboard import LiveDashboard
 from .helpers import (
@@ -816,16 +817,19 @@ def merge_results(results: list[InstanceResult]) -> int:
     print(f"\n  {'Container':<15} {'Pass':>5} {'Fail':>5} {'Time':>8}  Status")
     print(f"  {'-' * 14} {'-' * 5} {'-' * 5} {'-' * 8}  {'-' * 20}")
     for r in results:
-        status = "ERROR" if r.error else ("PASS" if r.failed == 0 else "FAIL")
+        status_raw = "ERROR" if r.error else ("PASS" if r.failed == 0 else "FAIL")
+        status = color_status(status_raw)
+        fail_str = red(str(r.failed)) if r.failed else str(r.failed)
         print(
-            f"  {r.instance.name:<15} {r.passed:>5} {r.failed:>5}"
+            f"  {r.instance.name:<15} {r.passed:>5} {fail_str:>5}"
             f" {r.elapsed:>7.1f}s  {status}"
         )
         if r.error:
             print(f"    Error: {r.error[:100]}")
 
-    print(f"\n  Total passed: {total_passed}")
-    print(f"  Total failed: {total_failed}")
+    print(f"\n  Total passed: {green(str(total_passed))}")
+    fail_total = red(str(total_failed)) if total_failed else str(total_failed)
+    print(f"  Total failed: {fail_total}")
     print(f"  Wall time:    {total_elapsed:.1f}s ({total_elapsed / 60:.1f} min)")
     print()
 
@@ -852,7 +856,9 @@ def merge_results(results: list[InstanceResult]) -> int:
             f = s.get("failed", 0)
             title = s.get("title", "")[:40]
             container = s.get("container", "?")[:11]
-            print(f"    {rid:<8} {container:<12} {p:>5} {f:>5} {dur:>7.1f}s  {title}")
+            fail_str = red(str(f)) if f else str(f)
+            line = f"    {rid:<8} {container:<12} {p:>5} {fail_str:>5}"
+            print(f"{line} {dur:>7.1f}s  {title}")
         print()
 
     # Print all result lines
@@ -861,9 +867,9 @@ def merge_results(results: list[InstanceResult]) -> int:
             print(f"  [{r.instance.name}] {line}")
 
     if total_failed > 0:
-        print("\n  *** SOME TESTS FAILED ***")
+        print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")
         return 1
-    print("\n  *** ALL TESTS PASSED ***")
+    print(f"\n  {bold(green('*** ALL TESTS PASSED ***'))}")
     return 0
 
 
