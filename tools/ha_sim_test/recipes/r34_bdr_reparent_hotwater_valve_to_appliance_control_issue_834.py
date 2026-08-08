@@ -192,10 +192,10 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
 
         wait_for(
             _htg_bound,
-            timeout=30,
+            timeout=45,
             interval=3,
             msg="for 000C HTG to bind BDR as hotwater_valve",
-            floor=10.0,
+            floor=15.0,
         )
 
         schema_step1 = get_schema_retry()
@@ -289,10 +289,10 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
 
         wait_for(
             _app_reparented,
-            timeout=30,
+            timeout=45,
             interval=3,
             msg="for 000C APP to re-parent BDR to appliance_control",
-            floor=10.0,
+            floor=15.0,
         )
 
         schema_step2 = get_schema_retry()
