@@ -204,14 +204,18 @@ def call_service(
 # ---------------------------------------------------------------------------
 # Websocket API helpers (for profile loading)
 # ---------------------------------------------------------------------------
-async def ws_send(token: str, msg: dict, *, retries: int = 2) -> dict:
+async def ws_send(token: str, msg: dict, *, retries: int = 3) -> dict:
     """Send a websocket message and return the response.
 
-    Retries up to *retries* times with 3s backoff for transient timeouts
-    and connection errors (common under parallel container contention
-    where HA may be too busy to respond within the 30s websocket timeout).
+    Retries up to *retries* times with exponential backoff for transient
+    timeouts and connection errors (common under parallel container
+    contention where HA may be too busy to respond within the 30s
+    websocket timeout, or may close the connection during a reload).
     """
     import aiohttp
+
+    # Exponential backoff: 3s, 5s, 8s
+    _backoff = (3, 5, 8)
 
     last_err: Exception | None = None
     for attempt in range(retries + 1):
@@ -228,11 +232,12 @@ async def ws_send(token: str, msg: dict, *, retries: int = 2) -> dict:
             if attempt < retries:
                 import asyncio as _asyncio
 
+                delay = _backoff[min(attempt, len(_backoff) - 1)]
                 print(
                     f"  ws_send: retry {attempt + 1}/{retries}"
                     f" ({type(e).__name__}: {err[:60]})"
                 )
-                await _asyncio.sleep(3)
+                await _asyncio.sleep(delay)
     # Wrap as RuntimeError so callers that catch RuntimeError (the common
     # pattern in recipes) also handle timeouts and connection errors.
     raise RuntimeError(
@@ -302,24 +307,41 @@ async def load_profile_yaml(
 
     The created profile is tracked in the module-level ``_CREATED_PROFILES``
     set so it can be cleaned up by :func:`delete_test_profiles`.
+
+    Retries the entire load on failure (up to 2 retries) since a
+    transient WebSocket error during profile load leaves the recipe
+    in an unrecoverable state (devices not defined in the simulator).
     """
-    profile_name = f"test_{int(time.time())}"
-    result = await ws_send(
-        token,
-        {
-            "type": "ramses_extras/device_simulator/start_scenario",
-            "scenario": "load_profile_yaml",
-            "params": {
-                "profile_yaml": yaml_text,
-                "profile_name": profile_name,
-                "speed": speed,
-                "preload_schema": preload_schema,
-                "reload_ramses": reload_ramses,
-            },
-        },
-    )
-    _CREATED_PROFILES.add(profile_name)
-    return result
+    import asyncio as _asyncio
+
+    last_err: Exception | None = None
+    for attempt in range(3):
+        profile_name = f"test_{int(time.time())}_{attempt}"
+        try:
+            result = await ws_send(
+                token,
+                {
+                    "type": "ramses_extras/device_simulator/start_scenario",
+                    "scenario": "load_profile_yaml",
+                    "params": {
+                        "profile_yaml": yaml_text,
+                        "profile_name": profile_name,
+                        "speed": speed,
+                        "preload_schema": preload_schema,
+                        "reload_ramses": reload_ramses,
+                    },
+                },
+            )
+            _CREATED_PROFILES.add(profile_name)
+            return result
+        except RuntimeError as e:
+            last_err = e
+            if attempt < 2:
+                print(f"  Profile load failed (attempt {attempt + 1}/3): {str(e)[:80]}")
+                await _asyncio.sleep(5)
+    raise RuntimeError(
+        f"Profile load failed after 3 attempts: {last_err}"
+    ) from last_err
 
 
 # Track profiles created by load_profile_yaml for cleanup.

@@ -91,6 +91,20 @@ class R24Phase3cClassMismatchFlagging(Recipe):
                 print(f"  FAN {FAN} already active")
             else:
                 print(f"  FAN activate failed: {str(e)[:80]}")
+                # If the FAN is not in the profile, the profile load failed
+                # and all subsequent checks will be false negatives.  Bail.
+                if "not defined in profile" in str(e):
+                    ctx.check(
+                        "FAN remote entity has class_mismatch attribute",
+                        False,
+                        "FAN not in profile (profile load failed)",
+                    )
+                    ctx.check(
+                        "Persistent notification for mismatches exists",
+                        False,
+                        "FAN not in profile (profile load failed)",
+                    )
+                    return
 
         # Inject a 1FC9 heartbeat from the FAN so the scan engine tracks
         # 32:150000 and can detect the _class=DIS mismatch.  The profile

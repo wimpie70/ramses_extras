@@ -44,21 +44,34 @@ class R17DiscoveryServiceLifecycleA(Recipe):
 
         # Load fresh_start profile to get a clean discovery state
         print("  Loading fresh_start_allow_unknown_devices_fast_heartbeat...")
-        try:
-            await ws_send(
-                ctx.token,
-                {
-                    "type": "ramses_extras/device_simulator/load_profile",
-                    "profile": "fresh_start_allow_unknown_devices_fast_heartbeat",
-                    "speed": 0.01,
-                    "preload_schema": False,
-                    "reload_ramses_cc": True,
-                    "enable_auto_answer": True,
-                },
+        profile_loaded = False
+        for attempt in range(3):
+            try:
+                await ws_send(
+                    ctx.token,
+                    {
+                        "type": "ramses_extras/device_simulator/load_profile",
+                        "profile": "fresh_start_allow_unknown_devices_fast_heartbeat",
+                        "speed": 0.01,
+                        "preload_schema": False,
+                        "reload_ramses_cc": True,
+                        "enable_auto_answer": True,
+                    },
+                    retries=3,
+                )
+                print("  fresh_start profile loaded")
+                profile_loaded = True
+                break
+            except RuntimeError as e:
+                print(f"  Profile load attempt {attempt + 1}/3 failed: {str(e)[:80]}")
+                if attempt < 2:
+                    ctx.wait(5, "before retry")
+        if not profile_loaded:
+            ctx.check(
+                "get_discovered_devices returns results", False, "profile load failed"
             )
-            print("  fresh_start profile loaded")
-        except RuntimeError as e:
-            print(f"  Profile load failed: {e}")
+            ctx.check("04:500001 in discovered devices", False, "profile load failed")
+            return
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
 
