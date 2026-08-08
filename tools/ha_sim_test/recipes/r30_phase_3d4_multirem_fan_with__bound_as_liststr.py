@@ -162,15 +162,16 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
             "no climate entity matching FAN",
         )
 
-        # Check 6: no validation errors about 'bound' in the log
+        # Check 6: no validation errors about _bound trait specifically.
+        # We grep for "_bound" (with underscore) to avoid matching unrelated
+        # errors that happen to contain "bound" in a different context.
         raw_log_r30 = subprocess.run(
             [
                 "docker",
                 "exec",
                 get_current_instance().name,
                 "grep",
-                "-i",
-                "bound",
+                "_bound",
                 "/config/home-assistant.log",
             ],
             capture_output=True,
@@ -179,10 +180,7 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
         bound_errors = [
             line
             for line in raw_log_r30.splitlines()
-            if "ERROR" in line
-            and "bound" in line.lower()
-            and "bound method" not in line
-            and "bound_to" not in line
+            if "ERROR" in line and "_bound" in line and "bound_to" not in line
         ]
         ctx.check(
             "No ERROR logs about _bound trait (list-valued _bound accepted)",

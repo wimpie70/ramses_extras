@@ -23,6 +23,7 @@ import sys
 import time
 
 from .base import RecipeContext
+from .colors import bold, color_status, green, red
 from .const import InstanceConfig, make_instances
 from .helpers import (
     delete_test_profiles,
@@ -232,8 +233,8 @@ async def teardown(
     )
     print(f"\n  Started:  {started_str}")
     print(f"  Elapsed:  {elapsed:.1f}s ({elapsed / 60:.1f} min)")
-    print(f"  Passed:   {ctx.passed}")
-    print(f"  Failed:   {ctx.failed}")
+    print(f"  Passed:   {green(str(ctx.passed))}")
+    print(f"  Failed:   {red(str(ctx.failed)) if ctx.failed else str(ctx.failed)}")
     print(f"  Total:    {ctx.passed + ctx.failed}")
     print()
 
@@ -247,7 +248,8 @@ async def teardown(
             p = stats.get("passed", 0)
             f = stats.get("failed", 0)
             title = stats.get("title", "")[:40]
-            print(f"    {rid:<8} {p:>5} {f:>5} {dur:>7.1f}s  {title}")
+            fail_str = red(str(f)) if f else str(f)
+            print(f"    {rid:<8} {p:>5} {fail_str:>5} {dur:>7.1f}s  {title}")
         print()
 
     for r in ctx.results:
@@ -256,10 +258,10 @@ async def teardown(
     print(f"\n  Log report: {REPORT_PATH}")
 
     if ctx.failed > 0:
-        print("\n  *** SOME TESTS FAILED ***")
+        print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")
         sys.exit(1)
     else:
-        print("\n  *** ALL TESTS PASSED ***")
+        print(f"\n  {bold(green('*** ALL TESTS PASSED ***'))}")
         sys.exit(0)
 
 

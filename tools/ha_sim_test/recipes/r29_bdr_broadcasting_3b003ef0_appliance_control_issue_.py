@@ -164,7 +164,7 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # the sim test to avoid the hotwater_valve slot collision (both non-FC
         # BDRs would compete for the single hotwater_valve slot).
 
-        ctx.wait(3, "for scan engine to process", floor=2.0)
+        ctx.wait(5, "for scan engine to process", floor=3.0)
 
         # Accept the two BDRs so they enter the known_list
         print("  Accepting discovered BDRs...")
@@ -179,7 +179,13 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
                 print(f"    {bdr_id} accepted")
             except RuntimeError as e:
                 print(f"    {bdr_id} accept failed: {str(e)[:80]}")
-        ctx.wait(5, "for ramses_rf include list update")
+        wait_for(
+            lambda: bdr_app in get_known_list() and bdr_dhw in get_known_list(),
+            timeout=10,
+            interval=1,
+            msg="for ramses_rf include list update",
+            floor=2.0,
+        )
 
         # Trigger sync_topology to update the schema
         print("  Triggering sync_topology...")

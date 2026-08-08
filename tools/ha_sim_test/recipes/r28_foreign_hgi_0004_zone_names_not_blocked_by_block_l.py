@@ -66,6 +66,18 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Activate CTL for heartbeats — on fresh containers, the CTL
+        # is not yet active and the scan engine won't process packets.
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": CTL,
+                },
+            )
+        except RuntimeError:
+            pass
         # Verify the foreign HGI is in the schema
         schema_r28_init = get_schema_retry()
         ctx.check(

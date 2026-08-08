@@ -115,7 +115,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
             print("  Profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
-        ctx.wait_for_ramses_cc_reload(timeout=20)
+        ctx.wait_for_ramses_cc_reload(timeout=30)
         ctx.refresh_token()
 
         # Activate CTL for heartbeats
@@ -129,7 +129,7 @@ class R34BdrReparentHotwaterValveToApplianceControlIssue834(Recipe):
             )
         except RuntimeError:
             pass
-        wait_for_schema_populated(timeout=15)
+        wait_for_schema_populated(timeout=20)
 
         # --- Step 1: Inject 000C RP with HTG role (0E) ---
         # This binds the BDR as hotwater_valve (domain FA) to a DhwZone.

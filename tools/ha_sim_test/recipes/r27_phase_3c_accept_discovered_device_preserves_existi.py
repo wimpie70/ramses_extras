@@ -67,6 +67,19 @@ class R27Phase3cAcceptDiscoveredDevicePreservesExisti(Recipe):
         }
         preserve_yaml = mixed_yaml(preserve_schema)
         await load_profile_yaml(ctx.token, preserve_yaml, speed=0.01)
+        ctx.wait_for_ramses_cc_reload(timeout=20)
+        ctx.refresh_token()
+        # Activate FAN so it sends heartbeats and the scan engine tracks it
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": FAN,
+                },
+            )
+        except RuntimeError:
+            pass
         ctx.wait(5, "for profile reload + entity creation")
 
         # Force a sync so discovery picks up the FAN

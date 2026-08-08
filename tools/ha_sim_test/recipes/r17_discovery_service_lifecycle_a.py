@@ -24,6 +24,7 @@ from ..helpers import (
     get_ramses_storage,
     get_schema,
     get_schema_retry,
+    grep_ha_log,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
@@ -43,21 +44,34 @@ class R17DiscoveryServiceLifecycleA(Recipe):
 
         # Load fresh_start profile to get a clean discovery state
         print("  Loading fresh_start_allow_unknown_devices_fast_heartbeat...")
-        try:
-            await ws_send(
-                ctx.token,
-                {
-                    "type": "ramses_extras/device_simulator/load_profile",
-                    "profile": "fresh_start_allow_unknown_devices_fast_heartbeat",
-                    "speed": 0.01,
-                    "preload_schema": False,
-                    "reload_ramses_cc": True,
-                    "enable_auto_answer": True,
-                },
+        profile_loaded = False
+        for attempt in range(3):
+            try:
+                await ws_send(
+                    ctx.token,
+                    {
+                        "type": "ramses_extras/device_simulator/load_profile",
+                        "profile": "fresh_start_allow_unknown_devices_fast_heartbeat",
+                        "speed": 0.01,
+                        "preload_schema": False,
+                        "reload_ramses_cc": True,
+                        "enable_auto_answer": True,
+                    },
+                    retries=3,
+                )
+                print("  fresh_start profile loaded")
+                profile_loaded = True
+                break
+            except RuntimeError as e:
+                print(f"  Profile load attempt {attempt + 1}/3 failed: {str(e)[:80]}")
+                if attempt < 2:
+                    ctx.wait(5, "before retry")
+        if not profile_loaded:
+            ctx.check(
+                "get_discovered_devices returns results", False, "profile load failed"
             )
-            print("  fresh_start profile loaded")
-        except RuntimeError as e:
-            print(f"  Profile load failed: {e}")
+            ctx.check("04:500001 in discovered devices", False, "profile load failed")
+            return
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
 
@@ -94,24 +108,45 @@ class R17DiscoveryServiceLifecycleA(Recipe):
             floor=10.0,
         )
 
-        # Inject heartbeat from a new device to trigger discovery
+        # Inject heartbeat from a new device to trigger discovery.
+        # Retry up to 3 times — on cold containers the ramses_extras
+        # services may not be registered yet after the reload (HTTP 400).
         disc_dev = "04:500001"
         print(f"  Injecting heartbeat from {disc_dev}...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": disc_dev,
-                    "code": "1FC9",
-                    "payload": "0030C912E294",
-                    "verb": "I",
-                },
-            )
-        except RuntimeError as e:
-            print(f"  Inject failed: {str(e)[:60]}")
-        ctx.wait(10, "for discovery scan to detect the new device")
+        inject_ok = False
+        for attempt in range(3):
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": disc_dev,
+                        "code": "1FC9",
+                        "payload": "0030C912E294",
+                        "verb": "I",
+                    },
+                )
+                inject_ok = True
+                break
+            except RuntimeError as e:
+                print(f"    Inject attempt {attempt + 1} failed: {str(e)[:60]}")
+                if attempt < 2:
+                    ctx.wait(3, "before retry")
+        if not inject_ok:
+            print("  WARN: all 1FC9 inject attempts failed")
+
+        # Poll for the device appearing in discovery scan logs
+        def _device_discovered() -> bool:
+            return len(grep_ha_log(disc_dev.replace(":", "_"), since_lines=200)) > 0
+
+        wait_for(
+            _device_discovered,
+            timeout=20,
+            interval=2,
+            msg="for discovery scan to detect the new device",
+            floor=3.0,
+        )
 
         # Test get_discovered_devices (fires a bus event)
         print("  Calling get_discovered_devices...")
@@ -222,7 +257,13 @@ class R17DiscoveryServiceLifecycleA(Recipe):
                     },
                 )
                 print("  accept succeeded")
-                ctx.wait(5, "for ramses_rf include list update")
+                wait_for(
+                    lambda: disc_dev in get_known_list(),
+                    timeout=10,
+                    interval=1,
+                    msg="for ramses_rf include list update",
+                    floor=2.0,
+                )
                 ctx.check("accept_discovered_device succeeds", True, "")
             except RuntimeError as e:
                 ctx.check("accept_discovered_device succeeds", False, str(e)[:80])
