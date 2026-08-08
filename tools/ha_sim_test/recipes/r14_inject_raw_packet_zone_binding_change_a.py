@@ -48,6 +48,15 @@ class R14InjectRawPacketZoneBindingChangeA(Recipe):
         # ("can't change parent").  sync_learned_topology then removes zone 02
         # as an empty phantom.  We verify the 000C was processed by checking
         # that the CTL comment includes the 000C code, not that the zone persists.
+        # Capture existing zones before inject so we can verify they survive.
+        schema_before_r14 = get_schema_retry()
+        ctl_before_r14 = schema_before_r14.get(CTL, {})
+        zones_before_r14 = (
+            ctl_before_r14.get("zones", {}) if isinstance(ctl_before_r14, dict) else {}
+        )
+        zone_ids_before_r14 = set(zones_before_r14.keys())
+        print(f"  Zones before inject: {sorted(zone_ids_before_r14)}")
+
         print("  Injecting 000C zone map packet for 04:150000 → zone 02...")
         try:
             call_service(
@@ -90,10 +99,11 @@ class R14InjectRawPacketZoneBindingChangeA(Recipe):
         # empty phantom zone because 04:150000 can't be moved from zone 01.
         # Verify the 000C was processed by checking that existing zones are
         # preserved (the 000C didn't corrupt the zone structure).
-        # NOTE: R01 loads a heat_only profile with only zone 01, so we only
-        # check that zone 01 survives the 000C inject.
+        # We check that all zones that existed before the inject still exist
+        # after (regardless of which profile was loaded).
+        zones_preserved = zone_ids_before_r14.issubset(set(zone_ids_r14))
         ctx.check(
             "Existing zones preserved after 000C inject",
-            "01" in zone_ids_r14,
-            f"zones={zone_ids_r14}",
+            zones_preserved,
+            f"zones_before={sorted(zone_ids_before_r14)}, zones_after={zone_ids_r14}",
         )

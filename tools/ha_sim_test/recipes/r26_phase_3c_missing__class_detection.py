@@ -118,8 +118,15 @@ class R26Phase3cMissingClassDetection(Recipe):
             headers={"Authorization": f"Bearer {ctx.token}"},
         )
         log_text = urllib.request.urlopen(req).read().decode()
+        # The DEBUG message is "missing _class for 04:200002" but only
+        # appears at DEBUG level.  The INFO message is "N device(s) in
+        # schema have no _class but discovery has a suggestion: 04:200002".
+        # Check for either format.
+        has_missing_class_log = "missing _class for 04:200002" in log_text or (
+            "have no _class" in log_text and "04:200002" in log_text
+        )
         ctx.check(
             "Log contains missing _class detection for 04:200002",
-            "missing _class for 04:200002" in log_text,
+            has_missing_class_log,
             "no missing _class log entry for 04:200002",
         )

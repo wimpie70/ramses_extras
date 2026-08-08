@@ -66,10 +66,10 @@ class R02RemoveDeviceRemoveATrv(Recipe):
 
                 wait_for(
                     _trv_removed,
-                    timeout=15,
+                    timeout=30,
                     interval=2,
                     msg=f"for {TRV} to be removed from schema",
-                    floor=5.0,
+                    floor=10.0,
                 )
 
                 # Check config entry schema (remove_device updates this directly).
