@@ -68,7 +68,7 @@ class R18AddFakedRemServiceCreatesFakedRemBoundToF(Recipe):
             timeout=45,
             interval=3,
             msg="for ramses_cc services to be registered",
-            floor=5.0,
+            floor=15.0,
         )
 
         # add_faked_rem creates a virtual REM device bound to a FAN.
