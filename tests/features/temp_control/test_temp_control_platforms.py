@@ -48,7 +48,7 @@ class TestTempControlSwitch:
     """Test the switch platform."""
 
     def test_create(self, mock_hass):
-        switches = asyncio.get_event_loop().run_until_complete(
+        switches = asyncio.new_event_loop().run_until_complete(
             tc_sw.create_temp_control_switch(mock_hass, "32:153289")
         )
         assert len(switches) == 1
@@ -99,7 +99,7 @@ class TestTempControlBinarySensor:
     """Test the binary_sensor platform."""
 
     def test_create(self, mock_hass):
-        sensors = asyncio.get_event_loop().run_until_complete(
+        sensors = asyncio.new_event_loop().run_until_complete(
             tc_bs.create_temp_control_active_binary_sensor(mock_hass, "32:153289")
         )
         assert len(sensors) == 1
@@ -145,7 +145,7 @@ class TestTempControlSensor:
     """Test the sensor platform."""
 
     def test_create(self, mock_hass):
-        sensors = asyncio.get_event_loop().run_until_complete(
+        sensors = asyncio.new_event_loop().run_until_complete(
             tc_sn.create_temp_control_status_sensor(mock_hass, "32:153289")
         )
         assert len(sensors) == 1
@@ -200,7 +200,7 @@ class TestTempControlSelect:
     """Test the select platform."""
 
     def test_create(self, mock_hass, mock_config_entry):
-        selects = asyncio.get_event_loop().run_until_complete(
+        selects = asyncio.new_event_loop().run_until_complete(
             tc_sel.create_temp_control_desired_speed_select(
                 mock_hass, "32:153289", mock_config_entry
             )

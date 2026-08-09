@@ -40,6 +40,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .colors import color_status, green, red
 from .const import InstanceConfig
 from .helpers import get_token, set_current_instance
 from .helpers import log_section as _log_section
@@ -95,12 +96,12 @@ class RecipeContext:
         """Record a check result and print it (mirrors helpers.check)."""
         if condition:
             self.passed += 1
-            self.results.append(f"  PASS: {label}")
-            print(f"  PASS: {label}")
+            self.results.append(f"  {color_status('PASS')}: {label}")
+            print(f"  {color_status('PASS')}: {label}")
         else:
             self.failed += 1
-            self.results.append(f"  FAIL: {label} {detail}")
-            print(f"  FAIL: {label} {detail}")
+            self.results.append(f"  {color_status('FAIL')}: {label} {detail}")
+            print(f"  {color_status('FAIL')}: {label} {detail}")
 
     def wait(self, seconds: int, msg: str = "", *, floor: float = 0.0) -> None:
         """Wait and print progress (delegates to helpers.wait)."""

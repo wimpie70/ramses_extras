@@ -202,7 +202,7 @@ class TestTransportMonitor:
         """Test that receiving a message cancels the timeout timer."""
         monitor = TransportMonitor()
         hass = MagicMock()
-        hass.loop = asyncio.get_event_loop()
+        hass.loop = asyncio.get_running_loop()
         hass.async_create_task = MagicMock(
             side_effect=lambda coro: asyncio.create_task(coro)
         )
@@ -234,7 +234,7 @@ class TestTransportMonitor:
         """Test that live client messages mark a device online."""
         monitor = TransportMonitor()
         hass = MagicMock()
-        hass.loop = asyncio.get_event_loop()
+        hass.loop = asyncio.get_running_loop()
         hass.async_create_task = MagicMock(
             side_effect=lambda coro: asyncio.create_task(coro)
         )

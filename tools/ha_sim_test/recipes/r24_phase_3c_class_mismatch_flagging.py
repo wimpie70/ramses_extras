@@ -73,6 +73,39 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
         ctx.wait_for_ramses_cc_reload(msg="for profile reload")
         ctx.refresh_token()
+
+        # Activate the FAN device so it starts sending messages and the
+        # remote entity is created.  On fresh containers (parallel runs),
+        # the FAN is not yet active and no entities exist.
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": FAN,
+                },
+            )
+            print(f"  FAN {FAN} activated")
+        except RuntimeError as e:
+            if "already_active" in str(e):
+                print(f"  FAN {FAN} already active")
+            else:
+                print(f"  FAN activate failed: {str(e)[:80]}")
+                # If the FAN is not in the profile, the profile load failed
+                # and all subsequent checks will be false negatives.  Bail.
+                if "not defined in profile" in str(e):
+                    ctx.check(
+                        "FAN remote entity has class_mismatch attribute",
+                        False,
+                        "FAN not in profile (profile load failed)",
+                    )
+                    ctx.check(
+                        "Persistent notification for mismatches exists",
+                        False,
+                        "FAN not in profile (profile load failed)",
+                    )
+                    return
+
         # Inject a 1FC9 heartbeat from the FAN so the scan engine tracks
         # 32:150000 and can detect the _class=DIS mismatch.  The profile
         # reload stops all simulator devices, so without this injection the

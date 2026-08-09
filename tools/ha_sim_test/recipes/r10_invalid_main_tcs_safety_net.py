@@ -56,7 +56,7 @@ class R10InvalidMainTcsSafetyNet(Recipe):
         except RuntimeError as e:
             print(f"  Profile load failed: {str(e)[:80]}")
 
-        ctx.wait_for_ramses_cc_reload(timeout=20)
+        ctx.wait_for_ramses_cc_reload(timeout=30)
         ctx.refresh_token()
         # Debug: check what the config entry looks like
         schema_debug = get_schema()
@@ -84,7 +84,7 @@ class R10InvalidMainTcsSafetyNet(Recipe):
                     print("  Forced reload triggered")
                 except RuntimeError as e:
                     print(f"  Forced reload failed: {str(e)[:80]}")
-                ctx.wait_for_ramses_cc_reload(timeout=20)
+                ctx.wait_for_ramses_cc_reload(timeout=30)
                 ctx.refresh_token()
                 schema_debug = get_schema()
                 main_tcs = schema_debug.get("main_tcs")

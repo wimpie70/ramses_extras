@@ -131,8 +131,8 @@ class R16ConcurrencystressTestRapidAddremoveInject(Recipe):
         entities_stress = get_entities(ctx.token)
         ctx.check(
             "ha-sim responsive after stress test",
-            len(entities_stress) >= 0,
-            "API not responding",
+            entities_stress is not None,
+            "API not responding (get_entities returned None)",
         )
 
         # Check logs for errors during stress test

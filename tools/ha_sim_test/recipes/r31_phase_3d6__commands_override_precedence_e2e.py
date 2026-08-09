@@ -111,7 +111,23 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             pass
         ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
-        # Check 1: FAN schema has _commands with dict template for "low"
+        # Check 1: FAN schema has _commands with dict template for "low".
+        #    On fresh containers, the config entry update may not have
+        #    persisted yet — poll for the _commands key to appear.
+
+        def _commands_persisted() -> bool:
+            schema = get_schema_retry()
+            fan = schema.get(FAN, {})
+            cmds = fan.get("_commands", {})
+            return isinstance(cmds.get("low"), dict)
+
+        wait_for(
+            _commands_persisted,
+            timeout=15,
+            interval=3,
+            msg="for _commands.low to persist in schema",
+            floor=5.0,
+        )
         schema_after_r31 = get_schema_retry()
         fan_schema_r31 = schema_after_r31.get(FAN, {})
         fan_commands_r31 = fan_schema_r31.get("_commands", {})

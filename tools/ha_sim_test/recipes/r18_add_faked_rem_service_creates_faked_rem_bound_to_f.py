@@ -16,6 +16,7 @@ from ..helpers import (
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
+    get_current_instance,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -24,6 +25,7 @@ from ..helpers import (
     get_schema,
     get_schema_retry,
     load_profile_yaml,
+    wait_for,
     write_ramses_storage,
     ws_send,
 )
@@ -37,6 +39,37 @@ class R18AddFakedRemServiceCreatesFakedRemBoundToF(Recipe):
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 18: add_faked_rem service")
+
+        # Ensure ramses_cc is fully loaded and its services are registered.
+        # On fresh containers (parallel runs), the previous recipe may have
+        # triggered a profile reload that deregisters ramses_cc services.
+        # The FAN may already be in the schema (from the cached config
+        # entry), but the service domain may not be registered yet.
+        def _ramses_cc_services_ready() -> bool:
+            ha_url = get_current_instance().ha_url
+            url = f"{ha_url}/api/services"
+            req = urllib.request.Request(
+                url,
+                headers={"Authorization": f"Bearer {ctx.token}"},
+            )
+            try:
+                resp = urllib.request.urlopen(req, timeout=10)
+                services = json.loads(resp.read())
+                return any(
+                    s.get("domain") == "ramses_cc"
+                    and "add_faked_rem" in s.get("services", {})
+                    for s in services
+                )
+            except Exception:
+                return False
+
+        wait_for(
+            _ramses_cc_services_ready,
+            timeout=45,
+            interval=3,
+            msg="for ramses_cc services to be registered",
+            floor=15.0,
+        )
 
         # add_faked_rem creates a virtual REM device bound to a FAN.
         # It should:
@@ -61,13 +94,20 @@ class R18AddFakedRemServiceCreatesFakedRemBoundToF(Recipe):
                 },
             )
             print("  add_faked_rem service call succeeded")
-            ctx.wait(3, "for schema merge + entity creation")
+            # Poll for the faked REM appearing in schema
+            wait_for(
+                lambda: faked_rem_id in get_schema_retry(),
+                timeout=10,
+                interval=1,
+                msg="for schema merge + entity creation",
+                floor=2.0,
+            )
             # Force a save cycle to persist the config entry
             try:
                 call_service(ctx.token, "ramses_cc", "force_update")
             except RuntimeError:
                 pass
-            ctx.wait(5, "for config entry persistence")
+            ctx.wait(3, "for config entry persistence")
             ctx.check("add_faked_rem service call succeeds", True, "")
         except RuntimeError as e:
             ctx.check("add_faked_rem service call succeeds", False, str(e)[:80])

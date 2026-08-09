@@ -115,7 +115,22 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             pass
         ctx.wait(5, "for entity state write", floor=3.0)
 
-        # 3. Verify the TRV battery binary sensor has a state before restart
+        # 3. Verify the TRV battery binary sensor has a state before restart.
+        #    On fresh containers, the battery entity may not exist yet —
+        #    poll for it to appear before checking state.
+
+        def _battery_has_state() -> bool:
+            entities = get_entities(ctx.token)
+            bat = find_battery_entity(entities, TRV)
+            return bat is not None and bat.get("state") in ("on", "off")
+
+        wait_for(
+            _battery_has_state,
+            timeout=20,
+            interval=3,
+            msg="for battery entity to have state",
+            floor=5.0,
+        )
         entities_r32 = get_entities(ctx.token)
         bat_before = find_battery_entity(entities_r32, TRV)
         bat_state_before = bat_before.get("state") if bat_before else None

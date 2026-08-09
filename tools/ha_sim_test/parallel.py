@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .base import RecipeContext
+from .colors import bold, color_status, green, red
 from .const import InstanceConfig, make_instances
 from .dashboard import LiveDashboard
 from .helpers import (
@@ -150,11 +151,22 @@ def clone_config_dir(inst: InstanceConfig, *, force: bool = False) -> None:
 
 
 def patch_port_in_config(inst: InstanceConfig) -> None:
-    """Patch the HA port in the cloned configuration.yaml."""
+    """Patch the HA port in the cloned configuration.yaml and .storage/http.
+
+    Since HA 2026.8, the HTTP server port is stored in .storage/http (migrated
+    from YAML).  We patch both files to cover all HA versions.
+    """
     config_yaml = f"{inst.config_dir}/configuration.yaml"
-    if not os.path.exists(config_yaml):
+    storage_http = f"{inst.config_dir}/.storage/http"
+    files_to_patch = []
+    if os.path.exists(config_yaml):
+        files_to_patch.append("/config/configuration.yaml")
+    if os.path.exists(storage_http):
+        files_to_patch.append("/config/.storage/http")
+    if not files_to_patch:
         return
-    # Use python container to patch (alpine sed doesn't support \b)
+    # Use alpine sed for simple string replace (8124 -> new port)
+    files_arg = " ".join(files_to_patch)
     result = subprocess.run(
         [
             "docker",
@@ -162,15 +174,11 @@ def patch_port_in_config(inst: InstanceConfig) -> None:
             "--rm",
             "-v",
             f"{inst.config_dir}:/config",
-            "python:3.12-slim",
-            "python3",
+            "alpine",
+            "sh",
             "-c",
-            f"import re; "
-            f"p='/config/configuration.yaml'; "
-            f"c=open(p).read(); "
-            f"c=re.sub(r'\\b8124\\b', '{inst.port}', c); "
-            f"open(p,'w').write(c); "
-            f"print('Patched port to {inst.port}')",
+            f"sed -i 's/8124/{inst.port}/g' {files_arg} && "
+            f"echo 'Patched port to {inst.port} in {files_arg}'",
         ],
         capture_output=True,
         text=True,
@@ -448,58 +456,58 @@ PURE_TESTS: set[str] = {
 
 #: Estimated runtime per recipe (seconds) — used for load balancing.
 ESTIMATED_RUNTIME: dict[str, int] = {
-    "R01": 20,
+    "R01": 75,
     "R02": 3,
     "R03": 1,
     "R04": 3,
     "R05": 30,
     "R06": 15,
     "R07": 10,
-    "R07b": 30,
+    "R07b": 130,
     "R08": 20,
     "R09": 15,
-    "R10": 20,
-    "R11": 20,
+    "R10": 75,
+    "R11": 40,
     "R12": 30,
     "R14": 15,
     "R15": 1,
-    "R16": 10,
-    "R17": 30,
+    "R16": 30,
+    "R17": 60,
     "R18": 8,
-    "R19": 20,
+    "R19": 75,
     "R19b": 15,
     "R19c": 15,
     "R20": 15,
-    "R21": 15,
-    "R22": 15,
-    "R23": 15,
-    "R24": 20,
-    "R25": 15,
-    "R26": 10,
-    "R27": 15,
-    "R28": 20,
-    "R29": 30,
-    "R30": 20,
-    "R31": 20,
-    "R32": 40,
-    "R33": 20,
-    "R34": 30,
-    "R35": 20,
-    "R36": 20,
-    "R37": 30,
-    "R38": 25,
+    "R21": 120,
+    "R22": 25,
+    "R23": 25,
+    "R24": 60,
+    "R25": 25,
+    "R26": 15,
+    "R27": 100,
+    "R28": 60,
+    "R29": 65,
+    "R30": 50,
+    "R31": 110,
+    "R32": 130,
+    "R33": 90,
+    "R34": 80,
+    "R35": 60,
+    "R36": 240,
+    "R37": 60,
+    "R38": 105,
     "R39": 5,
-    "R40": 25,
+    "R40": 30,
     "R41": 5,
     "R42": 5,
     "R43": 5,
-    "R44": 20,
-    "R45": 20,
-    "R46": 20,
-    "R47": 15,
+    "R44": 55,
+    "R45": 85,
+    "R46": 80,
+    "R47": 65,
     "R48": 5,
     "R49": 5,
-    "R50": 30,
+    "R50": 40,
     "R51": 5,
     "R52": 5,
     "R53": 5,
@@ -508,7 +516,9 @@ ESTIMATED_RUNTIME: dict[str, int] = {
     "R56": 5,
     "R57": 5,
     "R58": 5,
-    "R59": 15,
+    "R59": 20,
+    "R60": 115,
+    "R61": 75,
 }
 
 
@@ -814,16 +824,19 @@ def merge_results(results: list[InstanceResult]) -> int:
     print(f"\n  {'Container':<15} {'Pass':>5} {'Fail':>5} {'Time':>8}  Status")
     print(f"  {'-' * 14} {'-' * 5} {'-' * 5} {'-' * 8}  {'-' * 20}")
     for r in results:
-        status = "ERROR" if r.error else ("PASS" if r.failed == 0 else "FAIL")
+        status_raw = "ERROR" if r.error else ("PASS" if r.failed == 0 else "FAIL")
+        status = color_status(status_raw)
+        fail_str = red(str(r.failed)) if r.failed else str(r.failed)
         print(
-            f"  {r.instance.name:<15} {r.passed:>5} {r.failed:>5}"
+            f"  {r.instance.name:<15} {r.passed:>5} {fail_str:>5}"
             f" {r.elapsed:>7.1f}s  {status}"
         )
         if r.error:
             print(f"    Error: {r.error[:100]}")
 
-    print(f"\n  Total passed: {total_passed}")
-    print(f"  Total failed: {total_failed}")
+    print(f"\n  Total passed: {green(str(total_passed))}")
+    fail_total = red(str(total_failed)) if total_failed else str(total_failed)
+    print(f"  Total failed: {fail_total}")
     print(f"  Wall time:    {total_elapsed:.1f}s ({total_elapsed / 60:.1f} min)")
     print()
 
@@ -850,7 +863,9 @@ def merge_results(results: list[InstanceResult]) -> int:
             f = s.get("failed", 0)
             title = s.get("title", "")[:40]
             container = s.get("container", "?")[:11]
-            print(f"    {rid:<8} {container:<12} {p:>5} {f:>5} {dur:>7.1f}s  {title}")
+            fail_str = red(str(f)) if f else str(f)
+            line = f"    {rid:<8} {container:<12} {p:>5} {fail_str:>5}"
+            print(f"{line} {dur:>7.1f}s  {title}")
         print()
 
     # Print all result lines
@@ -859,9 +874,9 @@ def merge_results(results: list[InstanceResult]) -> int:
             print(f"  [{r.instance.name}] {line}")
 
     if total_failed > 0:
-        print("\n  *** SOME TESTS FAILED ***")
+        print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")
         return 1
-    print("\n  *** ALL TESTS PASSED ***")
+    print(f"\n  {bold(green('*** ALL TESTS PASSED ***'))}")
     return 0
 
 

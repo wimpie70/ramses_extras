@@ -76,8 +76,9 @@ class R06ZoneBindingViaInjectMessage(Recipe):
         except RuntimeError as e:
             print(f"  Inject failed: {e}")
 
-        # Wait for the 000C packet to be received and processed by ramses_rf
-        ctx.wait(5, "for 000C packet to be processed by ramses_rf", floor=2.0)
+        # Brief wait for the 000C packet to arrive in the dispatcher
+        # (sync_topology on the next line will process it from the queue)
+        ctx.wait(2, "for 000C packet to arrive in dispatcher")
 
         # Trigger sync_topology to process the injected packet
         try:

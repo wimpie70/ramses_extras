@@ -26,6 +26,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_ha_ready,
 )
 from ..profile import mixed_yaml
 
@@ -314,10 +315,9 @@ except Exception as e:
             timeout=60,
         )
 
-        # Wait for HA to be ready
-        ctx.wait(30, "for HA container to restart")
+        # Wait for HA to be ready (polls instead of fixed 30s sleep)
+        wait_for_ha_ready(timeout=60, msg="for HA container to restart")
         ctx.refresh_token()
-        ctx.wait(10, "for ramses_cc to initialize")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         ctx.wait(5, "for discovery manager to initialize")
