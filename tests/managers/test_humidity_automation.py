@@ -221,7 +221,7 @@ class TestHumidityAutomationEntityNaming:
                 )
 
             # Run the async function with event loop handling
-            loop = asyncio.get_event_loop_policy().get_event_loop()
+            loop = asyncio.new_event_loop()
             decision = loop.run_until_complete(evaluate_decision())
 
             # Check the action
