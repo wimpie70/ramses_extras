@@ -12,6 +12,14 @@ updates:
     assignees:
       - 'wimpie70'
 
+  - package-ecosystem: 'npm'
+    directory: '/config'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 10
+    assignees:
+      - 'wimpie70'
+
   - package-ecosystem: 'github-actions'
     directory: '.github/workflows'
     schedule:
