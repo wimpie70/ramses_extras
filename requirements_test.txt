@@ -16,7 +16,7 @@
 # - pytest >= 9.0.3 (security fix for CVE tmpdir handling)
 
   pytest >= 9.0.3
-  pytest-asyncio >= 1.3.0
+  # pytest-asyncio is pinned by pytest_homeassistant_custom_component (==1.4.0)
   pytest-cov >= 7.0.0
   pytest_homeassistant_custom_component >= 0.13.355
 
