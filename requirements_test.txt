@@ -20,6 +20,5 @@
   pytest_homeassistant_custom_component >= 0.13.355
 
 # Python 3.14 compatibility constraints
-# Note: aiodns version must match HA requirements (4.0.0 for HA 2026.3+)
-aiodns==4.0.0
-pycares==5.0.1
+# Note: aiodns is pinned by HA (4.0.4 for HA 2026.8.1)
+# pycares is pinned by aiodns (>=5.0.0,<6)
