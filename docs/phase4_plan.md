@@ -500,6 +500,19 @@ can appear in both a FAN's `remotes` and `sensors` lists and behave
 correctly as both REM and CO2 sensor. Likely a verification task
 (ha_sim_test recipe), not new code, unless testing reveals a gap.
 
+**6d (future enhancement).** Bidirectional FAN→child parent link for
+HA device registry grouping.  6a/6b gives FAN→children (via
+`_remote_ids`/`_sensor_ids`) but children don't know their parent FAN
+(no `_parent_fan` attribute, unlike heat-domain `Child._parent`).
+ramses_cc's `via_device` logic (`coordinator.py:2139`) checks
+`isinstance(device, Child)` which is False for HVAC devices, so
+REM/CO2 appear as standalone devices in the HA UI instead of grouped
+under their FAN.  Fix: add `_parent_fan: HvacVentilator | None` to
+`DeviceHvac`, set it in `HvacVentilator._update_schema()`, and update
+ramses_cc's `via_device` check to also handle `_parent_fan`.  Does NOT
+require extending `PARENT_RULES`/`_apply_topology_link` — same isolated
+approach as 6a/6b.
+
 **Note on `add_bound_device` / `_bound_devices`:** distinct from
 6a/6b's `_remote_ids`/`_sensor_ids` — `_bound_devices` tracks the 2411
 command source for the FAN (wired client-side in
