@@ -1,5 +1,6 @@
 """Tests for fan device type handler in sensor_control."""
 
+from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -474,3 +475,84 @@ async def test_handle_internal_fan_sensors_form_has_comfort_temp_field():
     # The schema should have comfort_temp_kind and comfort_temp_entity fields
     assert "comfort_temp_kind" in schema.schema
     assert "comfort_temp_entity" in schema.schema
+
+
+@pytest.mark.asyncio
+async def test_handle_internal_fan_sensors_preserves_external_abs_selection():
+    """Selecting 'external_abs' for abs humidity temperature must be saved.
+
+    Regression test for issue 126: ``handle_internal_fan_sensors`` was
+    using ``_source_from_input`` to save abs humidity config, which only
+    handles 'internal'/'external'/'none' kinds.  The abs humidity form
+    offers 'external_temp' and 'external_abs' kinds, which were silently
+    reset to 'internal' — wiping the user's selection.
+    """
+    flow = MagicMock()
+    flow._config_entry = MagicMock(options={"sensor_control": {}})
+    flow.hass = MagicMock()
+    flow.hass.config_entries.async_update_entry = MagicMock()
+
+    user_input = {
+        "indoor_temperature_kind": "internal",
+        "indoor_humidity_kind": "internal",
+        "indoor_humidity_spike_enabled": False,
+        "indoor_humidity_spike_rise_percent": 10,
+        "indoor_humidity_spike_window_minutes": 5,
+        "outdoor_temperature_kind": "internal",
+        "outdoor_humidity_kind": "internal",
+        "co2_kind": "none",
+        # Indoor: external_abs — direct absolute humidity entity
+        "indoor_abs_humidity_temperature_kind": "external_abs",
+        "indoor_abs_humidity_temperature_entity": "sensor.my_abs_humidity",
+        "indoor_abs_humidity_humidity_kind": "internal",
+        # Outdoor: external_temp + external RH → derived
+        "outdoor_abs_humidity_temperature_kind": "external_temp",
+        "outdoor_abs_humidity_temperature_entity": "sensor.outdoor_temp",
+        "outdoor_abs_humidity_humidity_kind": "external",
+        "outdoor_abs_humidity_humidity_entity": "sensor.outdoor_hum",
+    }
+
+    persisted_section: dict = {}
+
+    def _persist_side_effect(_flow, _options, section):
+        persisted_section.update(deepcopy(section))
+
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.helpers.config.migration.get_migrated_feature_section",
+            return_value={"devices": {}},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._persist_sensor_control_section",
+            side_effect=_persist_side_effect,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_step_sensor_control_config",
+            AsyncMock(return_value={"type": "form"}),
+        ),
+    ):
+        await handle_internal_fan_sensors(flow, "32:123456", {}, {}, user_input)
+
+    devices = persisted_section.get("devices", {})
+    device_config = devices.get("32:123456", {})
+    abs_inputs = device_config.get("abs_humidity_inputs", {})
+
+    # Indoor: external_abs must be preserved (not reset to internal)
+    indoor = abs_inputs.get("indoor_abs_humidity", {})
+    assert indoor["temperature"] == {
+        "kind": "external_abs",
+        "entity_id": "sensor.my_abs_humidity",
+    }
+    # When external_abs is selected, humidity is forced to none
+    assert indoor["humidity"] == {"kind": "none"}
+
+    # Outdoor: external_temp must be preserved (not reset to internal)
+    outdoor = abs_inputs.get("outdoor_abs_humidity", {})
+    assert outdoor["temperature"] == {
+        "kind": "external_temp",
+        "entity_id": "sensor.outdoor_temp",
+    }
+    assert outdoor["humidity"] == {
+        "kind": "external",
+        "entity_id": "sensor.outdoor_hum",
+    }
