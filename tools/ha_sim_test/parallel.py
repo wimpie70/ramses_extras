@@ -22,6 +22,7 @@ import functools
 import os
 import re
 import subprocess
+import sys
 import time
 from contextvars import Token
 from dataclasses import dataclass, field
@@ -761,6 +762,20 @@ async def run_single_instance(
                     f" {n_err} errors, {n_warn} warnings"
                 )
 
+            # Running P:/F: tally (suppressed when the live dashboard is
+            # active — it already shows P:/F: in the pane header).
+            # The dashboard enables itself only when stdout is a TTY, so
+            # we use the same check to avoid duplicate output.
+            if not sys.stdout.isatty():
+                p_str = green(f"P:{ctx.passed:>3}")
+                f_str = (
+                    red(f"F:{ctx.failed:>3}") if ctx.failed else f"F:{ctx.failed:>3}"
+                )
+                print(
+                    f"  [{instance.name}] [{p_str} {f_str}]"
+                    f"  {recipe.id} done ({recipe_elapsed:.1f}s)"
+                )
+
         # Collect results
         result.passed = ctx.passed
         result.failed = ctx.failed
@@ -800,9 +815,11 @@ async def _teardown_no_exit(
 
     # Log report
     if ctx.log_monitor is not None:
+        from .runner import _report_path
+
         log_data = ctx.log_monitor.collect()
-        report_path = f"/tmp/ha_sim_test_log_report_{instance.name}.txt"
-        ctx.log_monitor.write_report(report_path, log_data)
+        report_path = _report_path(instance.name)
+        ctx.log_monitor.write_report(str(report_path), log_data)
         print(f"  [{instance.name}] Log report: {report_path}")
         n_errors = len(log_data["errors"])
         n_warnings = len(log_data["warnings"])
