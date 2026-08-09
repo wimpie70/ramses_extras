@@ -513,20 +513,75 @@ ramses_cc's `via_device` check to also handle `_parent_fan`.  Does NOT
 require extending `PARENT_RULES`/`_apply_topology_link` — same isolated
 approach as 6a/6b.
 
-**6e (done, PR 924).** Traffic-based HVAC topology detection via
-"belongs to" device comments.  The scan engine already infers
-`bound_to` when a FAN (32:) sends a directed I/RP to a 37:/29: device
-(operational traffic — 22F1/31E0/31DA/10D0, NOT the 1FC9 hardware
-handshake).  `refresh_device_comments` writes "belongs to 32:XXXXXX"
-in the comment (distinct from "bound to" = heat-domain TCS binding,
-and from `_bound` = hardware handshake for 2411 routing).
-`sync_learned_topology` step 0c/1h parses "belongs to" comments and
-places the device under the FAN's `remotes[]` (REM/DIS) or `sensors[]`
-(CO2/HUM), using the comment's "Likely X" phrase or the schema's
-`_class` trait for classification.  This complements 6a/6b (schema-
-loaded topology) by reconstructing HVAC topology from traffic when no
-schema is preloaded — same as the heat-domain comment-based zone
-binding (step 0b/1g) does for TRVs.  Tested by ha_sim_test R65.
+**6e (done, PR 924 + PR 1017).** Traffic-based HVAC topology detection
+via "belongs to" device comments.
+
+**What we detect:** The scan engine (`discovery_scan.py`) watches RF
+traffic.  When a FAN (32:) sends a directed I or RP packet to a 37:/29:
+device using an HVAC operational code (22F1, 31E0, 31DA, 10D0, 2411),
+the scan engine sets `bound_to = <FAN_id>` on the 37: device.  This is
+traffic-based inference, NOT the 1FC9 hardware handshake — the FAN is
+the controller, and directed communication with a specific remote
+proves binding.  The scan engine now does this for both known and
+unknown devices (previously only unknown — the known-device path
+returned early before the HVAC inference).
+
+**What gets into the schema:** `refresh_device_comments` writes
+"belongs to 32:XXXXXX" in the 37: device's comment (distinct from
+"bound to" = heat-domain TCS binding, and from `_bound` = hardware
+handshake for 2411 routing).  Then `sync_learned_topology` step 0c/1h
+parses "belongs to" comments and places the device under the FAN's
+`remotes[]` (REM/DIS) or `sensors[]` (CO2/HUM), using the comment's
+"Likely X" phrase or the schema's `_class` trait for classification.
+
+**How it's used:** The FAN's `remotes[]`/`sensors[]` lists are the
+HVAC topology — ramses_rf's `load_fan` (6a) reads them to populate
+`_remote_ids`/`_sensor_ids`, and `gateway.schema()` (6b) nests them in
+the learned schema.  ramses_cc's `sync_learned_topology` syncs them
+into the config schema.  This is the same pattern as the heat-domain
+comment-based zone binding (step 0b/1g) for TRVs: traffic → comment →
+schema → topology.
+
+**Why not reuse the heat-domain Parent/Child machinery (PR 1017
+question):** The heat-domain `Child._parent` / `PARENT_RULES` system
+is designed for zone sensors/actuators that have a 1:1 zone binding
+via 000C/000A packets.  HVAC devices don't have zones — they have a
+FAN parent and a remote/sensor role.  The `remotes[]`/`sensors[]` lists
+under the FAN entry are the HVAC equivalent of `zones[NN].sensor`/
+`actuators[]` under a TCS entry.  Reusing Parent/Child would require
+inventing a fake "HVAC zone" concept, which is more complex and less
+accurate than the direct `remotes[]`/`sensors[]` lists.  The
+`_remote_ids`/`_sensor_ids` attributes on `HvacVentilator` (6a) are
+the HVAC equivalent of `Child._parent` — they're set during
+`load_fan()` from the schema, not from traffic.
+
+**Three paths that populate `remotes[]`/`sensors[]`:**
+1. **Schema preload** (user config flow): user declares `remotes`/`sensors`
+   in the FAN's schema entry.  `load_fan` reads them → `_remote_ids`/
+   `_sensor_ids`.
+2. **Learned schema** (6b, `gateway.schema()`): ramses_rf's runtime
+   device registry nests FAN membership → learned schema →
+   `sync_learned_topology` syncs into config schema.
+3. **Traffic-based** (6e, this step): scan engine `bound_to` → comment
+   → `sync_learned_topology` step 0c/1h → `remotes[]`/`sensors[]`.
+
+Paths 2 and 3 are automatic — the user doesn't need to declare the
+topology manually.  Path 3 is the fallback when no schema is preloaded
+and the learned schema hasn't been built yet (e.g. first run after
+adding a FAN).
+
+**Three binding concepts — clearly separated:**
+
+| Phrase | Meaning | Source | Where in schema |
+|--------|---------|--------|-----------------|
+| `bound to 01:...` | Heat-domain TCS binding | Scan engine zone binding (000A/000C/30C9) | `zones[NN].sensor`/`actuators[]` |
+| `belongs to 32:...` | HVAC FAN parent (traffic-inferred) | Scan engine directed FAN→REM I/RP (22F1/31E0/31DA/10D0/2411) | `remotes[]`/`sensors[]` |
+| `_bound` schema trait | Hardware handshake (1FC9 pairing) | User-declared, for 2411 routing | FAN entry `_bound` key |
+
+Tested by ha_sim_test R65 (REM gets "belongs to" comment from 2411 RP
+FAN→REM, placed in `remotes[]`).  Also requires ramses_rf PR 1017
+fixes: 2411 added to `_HVAC_PARENT_INFERENCE_CODES`, and HVAC
+`bound_to` inference now runs for known devices too.
 
 **Note on `add_bound_device` / `_bound_devices`:** distinct from
 6a/6b's `_remote_ids`/`_sensor_ids` — `_bound_devices` tracks the 2411
