@@ -517,12 +517,27 @@ approach as 6a/6b.
 via "belongs to" device comments.
 
 **What we detect:** The scan engine (`discovery_scan.py`) watches RF
-traffic.  When a FAN (32:) sends a directed I or RP packet to a 37:/29:
-device using an HVAC operational code (22F1, 31E0, 31DA, 10D0, 2411),
-the scan engine sets `bound_to = <FAN_id>` on the 37: device.  This is
-traffic-based inference, NOT the 1FC9 hardware handshake — the FAN is
-the controller, and directed communication with a specific remote
-proves binding.  The scan engine now does this for both known and
+traffic in two directions:
+
+1. **FAN→REM (controller→remote):** When a FAN (32:) sends a directed
+   I or RP packet to a 37:/29: device using an HVAC operational code
+   (22F1, 31E0, 31DA, 10D0, 2411), the scan engine sets
+   `bound_to = <FAN_id>` on the 37: device.  This is the FAN responding
+   to a REM's RQ — the FAN is the controller and directed communication
+   with a specific remote proves binding.
+
+2. **REM→FAN (remote→controller, future enhancement):** When a REM
+   (37:) sends a directed W or RQ packet to a FAN (32:) — e.g. the user
+   presses "low speed" and the REM sends `W 22F1` to its bound FAN —
+   the dst FAN is the parent.  This is **more authoritative** than
+   FAN→REM because the REM only sends to the FAN it was 1FC9-paired
+   with (not any FAN in range).  The REM knows its FAN from the hardware
+   handshake; we just watch where it sends commands.  This direction is
+   not yet implemented in the scan engine — would need a new check:
+   `is_src and src.startswith("37:") and dst.startswith("32:") and
+   verb in ("W", "RQ") and code in _HVAC_PARENT_INFERENCE_CODES`.
+
+The scan engine now does the FAN→REM inference for both known and
 unknown devices (previously only unknown — the known-device path
 returned early before the HVAC inference).
 
@@ -630,7 +645,7 @@ establish the link:
 | **Child tracks parent** | `_parent` attribute (Child mixin) | `_parent_fan` (6d, not yet implemented) |
 | **Link establishment** | `get_device(parent=)` → `_apply_topology_link()` | `load_fan()` → `_update_schema()` |
 | **Schema key** | `zones[NN].sensor`/`actuators[]` | `remotes[]`/`sensors[]` |
-| **Passive discovery** | 000C/000A zone binding packets (frequent, periodic) | Directed FAN→REM I/RP (6e, only when REM polls FAN) |
+| **Passive discovery** | 000C/000A zone binding packets (frequent, periodic) | FAN→REM I/RP (6e, only when REM polls FAN) + REM→FAN W/RQ (when user presses a button — REM knows its bound FAN from 1FC9) |
 | **Active discovery** | Not needed — 000C/000A are frequent | 6f: spoofed RQ 22F1 → FAN RP (provokes directed response) |
 | **Comment phrase** | "bound to 01:..." | "belongs to 32:..." |
 
