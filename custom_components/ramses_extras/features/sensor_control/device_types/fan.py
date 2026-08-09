@@ -604,36 +604,48 @@ async def handle_internal_fan_sensors(
             user_input, "co2_kind", "co2_entity", True
         )
 
-        # Indoor absolute humidity
+        # Indoor absolute humidity — must use _abs_temp_part_from_input /
+        # _abs_humidity_part_from_input (not _source_from_input) because the
+        # abs humidity form uses "external_temp" and "external_abs" kinds
+        # that _source_from_input doesn't handle (it would silently reset
+        # them to "internal", wiping the user's selection — issue 126).
+        indoor_temp_cfg = _abs_temp_part_from_input(
+            user_input,
+            "indoor_abs_humidity_temperature_kind",
+            "indoor_abs_humidity_temperature_entity",
+        )
+        indoor_hum_cfg = _abs_humidity_part_from_input(
+            user_input,
+            "indoor_abs_humidity_humidity_kind",
+            "indoor_abs_humidity_humidity_entity",
+        )
+        if indoor_temp_cfg.get("kind") == "external_abs":
+            indoor_hum_cfg = {"kind": "none"}
+        elif indoor_hum_cfg.get("kind") == "none":
+            indoor_temp_cfg = {"kind": "none"}
         updated_abs_inputs["indoor_abs_humidity"] = {
-            "temperature": _source_from_input(
-                user_input,
-                "indoor_abs_humidity_temperature_kind",
-                "indoor_abs_humidity_temperature_entity",
-                False,
-            ),
-            "humidity": _source_from_input(
-                user_input,
-                "indoor_abs_humidity_humidity_kind",
-                "indoor_abs_humidity_humidity_entity",
-                True,
-            ),
+            "temperature": indoor_temp_cfg,
+            "humidity": indoor_hum_cfg,
         }
 
         # Outdoor absolute humidity
+        outdoor_temp_cfg = _abs_temp_part_from_input(
+            user_input,
+            "outdoor_abs_humidity_temperature_kind",
+            "outdoor_abs_humidity_temperature_entity",
+        )
+        outdoor_hum_cfg = _abs_humidity_part_from_input(
+            user_input,
+            "outdoor_abs_humidity_humidity_kind",
+            "outdoor_abs_humidity_humidity_entity",
+        )
+        if outdoor_temp_cfg.get("kind") == "external_abs":
+            outdoor_hum_cfg = {"kind": "none"}
+        elif outdoor_hum_cfg.get("kind") == "none":
+            outdoor_temp_cfg = {"kind": "none"}
         updated_abs_inputs["outdoor_abs_humidity"] = {
-            "temperature": _source_from_input(
-                user_input,
-                "outdoor_abs_humidity_temperature_kind",
-                "outdoor_abs_humidity_temperature_entity",
-                False,
-            ),
-            "humidity": _source_from_input(
-                user_input,
-                "outdoor_abs_humidity_humidity_kind",
-                "outdoor_abs_humidity_humidity_entity",
-                True,
-            ),
+            "temperature": outdoor_temp_cfg,
+            "humidity": outdoor_hum_cfg,
         }
 
         # Comfort temp entity (Temperature Control) — overrides param_75
