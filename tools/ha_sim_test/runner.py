@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from .base import RecipeContext
 from .colors import bold, color_status, green, red
@@ -41,8 +42,35 @@ from .helpers import (
 from .log_monitor import LogMonitor
 from .registry import REGISTRY, discover_recipes
 
-#: Path for the log report written at the end of each run.
-REPORT_PATH = "/tmp/ha_sim_test_log_report.txt"
+#: Directory for persistent test reports (keeps the last N per container).
+REPORTS_DIR = Path(__file__).parent / "reports"
+
+#: How many report files to keep per container (older ones are pruned).
+MAX_REPORTS_PER_CONTAINER = 5
+
+
+def _report_path(container_name: str) -> Path:
+    """Return a timestamped report path for *container_name*.
+
+    Also prunes older reports for the same container, keeping only the
+    last ``MAX_REPORTS_PER_CONTAINER`` files.
+
+    :param container_name: Container name (e.g. ``"ha-sim"`` or
+        ``"ha-sim-2"``).
+    :return: Absolute path for the new report file.
+    """
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    path = REPORTS_DIR / f"log_report_{container_name}_{ts}.txt"
+
+    # Prune: keep only the newest MAX_REPORTS_PER_CONTAINER per container
+    pattern = f"log_report_{container_name}_*.txt"
+    existing = sorted(REPORTS_DIR.glob(pattern))
+    if len(existing) >= MAX_REPORTS_PER_CONTAINER:
+        for old in existing[: -MAX_REPORTS_PER_CONTAINER + 1]:
+            old.unlink(missing_ok=True)
+
+    return path
 
 
 async def setup(ctx: RecipeContext) -> None:
@@ -192,8 +220,9 @@ async def teardown(
     assert ctx.log_monitor is not None
     log_data = ctx.log_monitor.collect()
 
-    ctx.log_monitor.write_report(REPORT_PATH, log_data)
-    print(f"  Report written to: {REPORT_PATH}")
+    report_path = _report_path(ctx.instance.name)
+    ctx.log_monitor.write_report(str(report_path), log_data)
+    print(f"  Report written to: {report_path}")
 
     n_errors = len(log_data["errors"])
     n_warnings = len(log_data["warnings"])
@@ -216,12 +245,12 @@ async def teardown(
     ctx.check(
         "No unexpected ERROR logs in full test run",
         n_errors == 0,
-        f"{n_errors} unexpected errors (see {REPORT_PATH})",
+        f"{n_errors} unexpected errors (see {report_path})",
     )
     ctx.check(
         "No unexpected ramses_cc/ramses_rf WARNING logs",
         n_warnings == 0,
-        f"{n_warnings} unexpected warnings (see {REPORT_PATH})",
+        f"{n_warnings} unexpected warnings (see {report_path})",
     )
 
     # =====================================================================
@@ -255,7 +284,7 @@ async def teardown(
     for r in ctx.results:
         print(r)
 
-    print(f"\n  Log report: {REPORT_PATH}")
+    print(f"\n  Log report: {report_path}")
 
     if ctx.failed > 0:
         print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")
@@ -370,6 +399,11 @@ async def run(
             for line in recipe_logs["warnings"][:3]:
                 clean = re.sub(r"\x1b\[[0-9;]*m", "", line)
                 print(f"    WARN:  {clean[:150]}")
+
+        # Running P:/F: tally after each recipe
+        p_str = green(f"P:{ctx.passed:>3}")
+        f_str = red(f"F:{ctx.failed:>3}") if ctx.failed else f"F:{ctx.failed:>3}"
+        print(f"  [{p_str} {f_str}]  {recipe.id} done ({recipe_elapsed:.1f}s)")
 
     # Teardown / summary
     await teardown(ctx, start_time=suite_start_mono, start_time_wall=suite_start_wall)

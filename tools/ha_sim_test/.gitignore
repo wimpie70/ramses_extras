@@ -1,0 +1,2 @@
+# Keep the directory but ignore generated report files
+reports/log_report_*.txt
