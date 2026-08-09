@@ -32,6 +32,20 @@
 >   Active Discovery Removal → Transport FSM Streamlining. All PRs merged
 >   (916, 919-921, 924-929). Only Phase 4e (API Modernization:
 >   Packet→Message) remains.
+> - **ramses_rf Phase 5** (issue 639/992) — Client API & Consumer DTO
+>   Boundary Enforcement. **CLOSED — fully shipped in ramses_rf 0.59.3**
+>   (Aug 7-8 2026). PR 997 ("Event Bus & Handshake") added
+>   `Gateway.set_schema_updated_callback()` — this is the public
+>   subscription API our ramses_cc Phase 4 Step 5 needed. ramses_cc's
+>   own Phase 5 consumer PRs (906-909) and the const-import fix (PR 914,
+>   needed because PR 987/999 relocated `SZ_*` constants out of
+>   `ramses_tx.const`) are also merged.
+> - **ramses_rf Phase 6** (issue 1001) — Unified Dataclass Payload
+>   Layer. **OPEN — IN PROGRESS** (started Aug 8 2026). Replaces the
+>   108 dict-based parsers with typed `PayloadBase` dataclasses via a
+>   Strangler Fig shadow-parity pattern (parses both old and new,
+>   asserts equality) so it should stay non-breaking for ramses_cc
+>   while in progress. Worth periodic ha_sim_test checks as PRs land.
 >
 > **Key shift (Jul 17 2026, updated Jul 26):** Device identity Builder
 > (`DeviceRole`, `supported_commands()`) scrapped in favor of "init and go"
@@ -3745,6 +3759,29 @@ This is a large doc, if you make any changes, please add a comment below
 on what was changed. I keep and edit this file local and don't want to
 copy/paste over changes someone else made, without an easy way to find
 those changes.
+
+### Changes Aug 9 2026
+
+- Updated naming note: added ramses_rf Phase 5 (issue 992) — CLOSED,
+  fully shipped in 0.59.3 (Aug 7-8 2026). PR 997 ("Event Bus &
+  Handshake") shipped `Gateway.set_schema_updated_callback()`, which
+  unblocks our Phase 4 Step 5 (TopologyChangedEvent subscription).
+  Added ramses_rf Phase 6 (issue 1001) — Unified Dataclass Payload
+  Layer, OPEN and in progress, using a Strangler Fig shadow-parity
+  pattern (non-breaking for ramses_cc so far).
+- Confirmed the const-relocation regression (PR 987/999 moving `SZ_*`
+  constants from `ramses_tx.const` to `ramses_rf.const`, which broke
+  ramses_cc's `binary_sensor.py` etc. imports) is fixed upstream in
+  ramses_cc PR 914 (merged Aug 8 2026) — no compat shim needed on our
+  side; we briefly added one locally in ramses_rf but reverted it
+  once the proper upstream fix landed.
+- Confirmed `load_fan()` in `ramses_rf/schemas.py` is still a stub
+  (checked against 0.59.4 checkout) — Phase 4 Step 6 (HVAC topology)
+  remains blocked, no open PR.
+- ha_sim_test full parallel suite passes cleanly against current
+  ramses_rf/ramses_cc masters (post Phase 5). See `phase4_plan.md`
+  for the up-to-date verification status table and immediate TODOs
+  (Step 5 implementation is now the top actionable item).
 
 ### Changes Jul 26 2026
 

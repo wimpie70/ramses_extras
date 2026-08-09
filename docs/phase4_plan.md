@@ -1,8 +1,8 @@
 # Phase 4 Plan: known_list Removal + Event-Driven Topology
 
 **Created:** Jul 23 2026
-**Updated:** Aug 6 2026
-**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. Steps 5-6 still blocked on ramses_rf Phase 5 (issue 992). ramses_rf Phase 4 fully complete (incl. 4e, shipped 0.59.2). ramses_rf Phase 5 STARTED (PRs 986, 987 in 0.59.3 milestone). **ha-sim test Aug 6 (cc 0.59.2 tag + rf 0.59.2 tag): 355/377 pass, 19 fail, 3 skip — persistent fails need triage.**
+**Updated:** Aug 9 2026
+**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 UNBLOCKED** — ramses_rf Phase 5 (issue 992) is now CLOSED, shipped in 0.59.3, and PR 997 delivers the `set_schema_updated_callback` API our Step 5 needs. Step 6 still blocked on ramses_rf `load_fan` (no movement). ramses_rf Phase 6 (issue 1001, payload dataclass layer) now in progress, non-breaking so far. **ha-sim test Aug 9 (cc/rf master, post Phase 5): full suite passes** — the previous 19 failures (Aug 6, against 0.59.2 tags) appear resolved by Phase 5 completion + ramses_cc's const-import fix (PR 914).
 **Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED, shipped in ramses_rf 0.59.1)
 **Blocks:** nothing (this is the final phase for schema-as-SSOT)
 
@@ -125,22 +125,26 @@ confusion, and prepares the ground for event-driven topology updates
 |---|---|---|
 | ramses_rf 0.59.1 | **RELEASED** (Jul 25 2026) | Includes PR 914 + all Phase 4 PRs (916-929) + PR 931 test fixes. |
 | ramses_rf 0.59.2 | **RELEASED** (Aug 4 2026) | Includes Phase 4e (PR 951 Packet→Message) + Phase 5.5-adjacent work (PR 977 DevType enums, PR 964 decouple Message from `_pkt` shim, PR 952-954 typing/cast removal). **ramses_cc pin still at 0.59.1 — needs bumping + compat check.** |
-| ramses_rf 0.59.3 (milestone) | **IN PROGRESS** | Phase 5 PRs 986 (RamsesProtocolT export) + 987 (L7 payload constants → ramses_rf.const) merged. Identity constants (`DevType`, `DEV_TYPE_MAP`, etc.) NOT yet relocated — still in `ramses_tx/const.py:291-514`. Backward-compat re-exports added (commit `15006d80`). |
+| ramses_rf 0.59.3 (RELEASED Aug 7) | **RELEASED** | Phase 5 fully shipped: PR 986 (RamsesProtocolT export), 987 (L7 payload constants → ramses_rf.const, then re-refactored by PR 999), 994 (const layering cleanup, PR 1A), 995 (polling API, PR 1B), 996 (DTO boundary enforcement, PR 2), 997 (event bus & handshake, PR 3 — **unblocks our Step 5**), 998 (Phase 5 gaps), 999 (final const relocation). **Issue #992 (Phase 5) is CLOSED.** |
+| ramses_rf 0.59.4 (RELEASED Aug 8) | **RELEASED** | Phase 6 (unified dataclass payload layer, issue #1001) started — PRs 1002-1010 merged (PayloadBase ABC, Strangler Fig shadow pipeline, per-domain payload dataclasses for heating/HVAC/OpenTherm/system). Also PR 1011 (FAN initialized callback fix). No known breaking changes for ramses_cc so far (shadow-parity pattern keeps legacy dict output during transition). |
 | Phase 3a-3e complete | DONE | All sub-phases merged |
 | PR 914 (Phase 3.75) | **MERGED, shipped in 0.59.1** | "init and go" from schema `_class` — ensures device class is correct without known_list fallback. |
 | Issue 677 fix (0.57.6) | DONE | `enforce_known_list` bug fixed — verified, Step 3 shipped |
 | ramses_rf Phase 3.5 (1FC9 → TopologyChangedEvent) | **DONE in 0.59.0** (issue #911, closed) | `_evaluate_rf_bind_rules` in `topology_builder.py` intercepts 1FC9, emits `BIND_DEVICE` events. `CREATE_CONTROLLER` + `CREATE_CIRCUIT` actions also in enum. |
-| TopologyChangedEvent public subscription API | **MISSING** | Events flow internally (TopologyBuilder → DeviceRegistry). No public callback for ramses_cc to subscribe. **Tracked by ramses_rf Phase 5 PR 3 (issue 992).** Blocks Step 5. |
-| ramses_rf HVAC topology (`load_fan`) | **STILL A STUB** | `load_fan()` in `schemas.py:397` has `fan._update_schema(**schema)` commented out. No open PR. Blocks Step 6. |
+| TopologyChangedEvent public subscription API | **SHIPPED in 0.59.3** (PR 997) | `Gateway.set_schema_updated_callback(cb)` / `.schema_updated_callback` property now exist in `src/ramses_rf/interfaces.py` and `gateway.py`. `DeviceRegistry.handle_topology_event` triggers `_notify_schema_updated()` via background task. `TopologyChangedEvent` also gained `is_single_device`, `is_relationship`, `target_device_id` helpers. **Step 5 is now unblocked — actionable.** |
+| ramses_rf HVAC topology (`load_fan`) | **STILL A STUB** | `load_fan()` in `schemas.py:437` still has `fan._update_schema(**schema)` commented out (verified against 0.59.4 checkout, Aug 9). No open PR. Blocks Step 6. |
 | ramses_rf Phase 4 (issue #915) | **FULLY COMPLETE** (incl. 4e) | 5-PR strangler fig + Phase 4e (PR 951, Packet→Message). All merged: 916, 919-921, 924-929, 931, 932, 951. |
-| ramses_rf Phase 5 (issue #992) | **OPEN — STARTED** | Client API & Consumer DTO Boundary Enforcement. PRs 986, 987 merged (0.59.3 milestone). Remaining: PR 1 remainder (identity constants, polling API), PR 2 (DTO boundary — breaking for cc), PR 3 (event bus + handshake = our Step 5 unblock). |
+| ramses_rf Phase 5 (issue #992) | **CLOSED — FULLY SHIPPED** (Aug 7-8, in 0.59.3) | Client API & Consumer DTO Boundary Enforcement. All PRs (986, 987/999, 994-998) merged. PR 3 (997) delivers our Step 5 unblock. |
+| ramses_rf Phase 6 (issue #1001) | **OPEN — IN PROGRESS** | Unified Dataclass Payload Layer — replaces the 108 dict-based parsers with typed `PayloadBase` dataclasses, using a Strangler Fig shadow-parity pattern (parallel decode + assert equality) so it should be non-breaking for ramses_cc while in progress. Worth periodic ha-sim regression checks as PRs land. |
 | ramses_rf PR 931 (test fixes) | **MERGED** | Our fixes on top of PR 929: DHW None handling + PollingManager build_rq_cmd + test update. Merged Jul 25 2026. |
 | ramses_cc PR 869 (compat fixes) | **MERGED** (Jul 26 2026) | Compatibility fixes: merge_schemas traits + sentinel packet + discovery removal + resolve_async_attr cooldown. Shipped in ramses_cc 0.59.1. |
 | ramses_cc PR 863 (migration + backup) | **MERGED** (Jul 26 2026) | Phase 4 Step 1: config entry v2→v3 migration with safety net backup. Shipped in ramses_cc 0.59.1. |
 | ramses_cc PR 870 (known_list removal) | **CLOSED unmerged** (Jul 30 2026) | Superseded by PR 882. Had merge-conflict issues + failing tests (stale assertions, missing backup logic). |
 | ramses_cc PR 882 (superseding) | **MERGED** (Jul 30 2026) | PWhite-Eng: "all Phase 4 commits from PR #870 plus the fixes required to pass all CI checks." Restored backup_store logic + updated test assertions. **This is the PR that shipped Steps 2-3.** Shipped in ramses_cc 0.59.2. |
 | ramses_cc PR 881 (migration follow-ups) | **MERGED** (Jul 30 2026) | PWhite-Eng: Phase 4 config migration follow-ups + tech debt (issue 880). |
-| ramses_cc manifest pin | **at `ramses-rf==0.59.2`** (0.59.2 release) | Updated to 0.59.2 in ramses_cc 0.59.2 release. ha-sim test Aug 6 against rf 0.59.2 tag + cc 0.59.2 tag: 355/377 pass, 19 fail (need triage). No const fixes needed (PR 987 is in 0.59.3, not 0.59.2). |
+| ramses_cc PR 914 (0.59.3 const fix) | **MERGED** (Aug 8 2026) | silverailscolo: fixed ramses_cc imports broken by ramses_rf 0.59.3's const relocation (`ramses_tx.const` → `ramses_rf.const`). Necessary companion to PRs 906-909 below. |
+| ramses_cc PR 906-909 (Phase 5 consumer PRs) | **ALL MERGED** (Aug 8 2026) | PR 906 (schedule services), 907 (DTO boundary alignment / thermal_demand), 908+909 (polling interval diagnostics). Completes the ramses_cc side of Phase 5. |
+| ramses_cc manifest pin | **at `ramses-rf==0.59.3`** | Bumped in PR 911. ha-sim test Aug 9 (cc/rf both at current `master`, post Phase 5): **all recipes pass** — the 19 failures from the Aug 6 run appear resolved by the Phase 5 completion + const fix. Re-verify against tagged releases once 0.59.4/cc-equivalent tags stabilize. |
 
 ### Critical path
 
@@ -151,23 +155,48 @@ ramses_rf 0.59.1 (RELEASED) ──→ PR 869 (compat) ✅ MERGED ──→ PR 86
                                                                                  │
                                                                                  └──→ Step 4 (shrink _commands) — optional, not done
 
-ramses_rf 0.59.2 (RELEASED Aug 4) -- cc pin at 0.59.2 (release) -- ha-sim test: 355/377 pass, 19 fail [TRIAGE NEEDED]
-ramses_rf Phase 5 PR 3 (issue 992) ──→ Step 5 (TopologyChangedEvent)             [blocked]
-ramses_rf: implement load_fan        ──→ Step 6 (HVAC topology)                  [blocked]
+ramses_rf 0.59.3 (RELEASED Aug 7) — Phase 5 (issue 992) CLOSED, all PRs merged
+    │
+    ├──→ PR 997 (event bus & handshake) ✅ MERGED ──→ Step 5 (TopologyChangedEvent)   [UNBLOCKED — actionable]
+    │
+    └──→ ramses_cc PR 914 (const fix) + PR 906-909 (consumer PRs) ✅ ALL MERGED
+
+ramses_rf 0.59.4 (RELEASED Aug 8) — Phase 6 (issue 1001) IN PROGRESS (payload dataclass layer, shadow-parity, non-breaking so far)
+
+ramses_rf: implement load_fan  ──→ Step 6 (HVAC topology)  [still blocked, no open PR]
 ```
 
 **Steps 1-3 are SHIPPED** (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Remaining:
 - **Step 4** (shrink `_commands`) — optional, non-breaking, not done
-- **Step 5** (TopologyChangedEvent) — blocked on ramses_rf Phase 5 PR 3 (issue 992)
-- **Step 6** (HVAC topology) — blocked on ramses_rf `load_fan` (still a stub)
+- **Step 5** (TopologyChangedEvent) — **UNBLOCKED as of ramses_rf 0.59.3** (PR 997 shipped `set_schema_updated_callback`). Not yet implemented on the ramses_cc side — this is now the top actionable item.
+- **Step 6** (HVAC topology) — still blocked on ramses_rf `load_fan` (confirmed still a stub as of 0.59.4)
 - **Step 7** (StateUpdatedEvent) — future upgrade
 
-**Immediate TODO:** triage the 19 persistent ha-sim test failures from
-the Aug 6 run (cc 0.59.2 tag + rf 0.59.2 tag). Most likely 0.59.2
-regressions: R36/R40 (Message API affecting 2349/30C9 parsing), R24
-(class_mismatch attribute), R20 (add_faked_rem service validation).
-R02/R08/R16 are timing-sensitive (only in release tag run). See ha-sim
-test section below for full details.
+**Status as of Aug 9 2026:** ramses_rf and ramses_cc masters are both fully
+up to date with each other (0 ahead/behind on tracked branches). The const
+relocation regression from PR 987/999 has been fixed upstream (ramses_cc
+PR 914). A full ha_sim_test parallel run against current masters passes
+cleanly. The 19 failures noted in the Aug 6 run (against the 0.59.2 tags)
+were pre-Phase-5-completion regressions and appear resolved now — but
+should be re-confirmed against the next tagged releases (0.59.3/0.59.4
+equivalents) once cut, not just against master.
+
+**Immediate TODO:**
+1. **Implement Step 5** (TopologyChangedEvent subscription) now that
+   `Gateway.set_schema_updated_callback()` exists in ramses_rf 0.59.3+.
+   This replaces the 5-min `sync_learned_topology` polling loop with an
+   event-driven push from ramses_rf on topology mutations.
+2. Re-run the full ha_sim_test suite once ramses_cc/ramses_rf cut their
+   next tagged releases (post Phase 5) to confirm the fix holds outside
+   of `master`.
+3. Watch ramses_rf Phase 6 (issue #1001, payload dataclass layer) for
+   any breaking changes as it progresses — currently shadow-parity
+   (non-breaking) but the "cutover" PRs later in the 12-PR plan may
+   change parser return types.
+4. Step 6 (HVAC topology / `load_fan`) has no upstream movement — could
+   be worth raising with PWhite-Eng/silverailscolo as a follow-up now
+   that Phase 5 is done, since it's the last remaining hard blocker for
+   Phase 4.
 
 ---
 
