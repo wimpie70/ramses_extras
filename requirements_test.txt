@@ -2,6 +2,7 @@
 # - last checked/updated: 2026-08-09 (c.f. HA 2026.8.1)
 #
 # Note: requires ramses_cc v0.52.1 (pre-release) or later
+# Note: includes requirements_dev.txt inlined ( Dependabot can't resolve -r includes)
 
 # may need to use this version of ramses_rf...
 # -e ~/client/ramses_rf
@@ -9,8 +10,29 @@
 # for using the library with HA
 # - pip list | grep -E 'pytest|voluptuous'
 
-  -r requirements_dev.txt
+# --- requirements_dev.txt (inlined) ---
+# Requirements to dev the source code (matching ramses_cc)
 
+# requirements (dependencies) are in manifest.json
+# - pip list | grep -E 'ramses|serial'
+
+  aiousbwatcher         >= 1.1.1                 # as per: manifest.json latest: 1.1.1
+  pyserial-asyncio-fast >= 0.14                  # as per: manifest.json latest: 0.16
+  ramses_rf             == 0.52.2                # latest: 0.52.2 (as of 2025-10-27)
+
+# libraries required for development (lint/type/test)...
+
+# used for development (linting)
+    prek == 0.3.4
+    ruff == 0.15.0                               # latest: 0.14.4 See also: pre-commit-config.yaml
+
+# used for development (typing)
+    mypy == 1.19.0                               # pinned to match CI
+    types-PyYAML >= 6.0.12                       # latest: 6.0.12 (for yaml type stubs)
+    types-requests >= 2.31.0                     # latest: 2.32.0 (for requests type stubs)
+    voluptuous >= 0.15.2                         # latest: 0.15.2 =HA
+
+# --- end requirements_dev.txt ---
 
 # used for testing (incl. HA, pytest*, syrupy, voluptuous, etc.)
 # - pytest >= 9.0.3 (security fix for CVE tmpdir handling)
