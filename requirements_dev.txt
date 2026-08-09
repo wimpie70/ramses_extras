@@ -1,5 +1,5 @@
 # Requirements to dev the source code (matching ramses_cc)
-# - last checked/updated: 2026-06-17 (c.f. HA 2026.4.4)
+# - last checked/updated: 2026-08-09 (c.f. HA 2026.8.1)
 #
 
 # requirements (dependencies) are in manifest.json
@@ -29,6 +29,5 @@
     voluptuous >= 0.15.2                         # latest: 0.15.2 =HA
 
 # Python 3.14 compatibility constraints
-# Note: aiodns version must match HA requirements (4.0.0 for HA 2026.3+)
-aiodns==4.0.0
-pycares==5.0.1
+# Note: aiodns is pinned by HA (4.0.4 for HA 2026.8.1)
+# pycares is pinned by aiodns (>=5.0.0,<6)
