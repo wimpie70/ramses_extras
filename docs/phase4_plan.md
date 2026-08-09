@@ -532,10 +532,14 @@ traffic in two directions:
    the dst FAN is the parent.  This is **more authoritative** than
    FAN→REM because the REM only sends to the FAN it was 1FC9-paired
    with (not any FAN in range).  The REM knows its FAN from the hardware
-   handshake; we just watch where it sends commands.  This direction is
-   not yet implemented in the scan engine — would need a new check:
-   `is_src and src.startswith("37:") and dst.startswith("32:") and
-   verb in ("W", "RQ") and code in _HVAC_PARENT_INFERENCE_CODES`.
+   handshake; we just watch where it sends commands.  The REM's W dst
+   is sufficient proof — no need to correlate the FAN's response.  An
+   old/unbound REM wouldn't know which FAN to address (1FC9 pairing is
+   burned into the REM's state); a re-paired REM sends to the new FAN.
+   This direction is not yet implemented in the scan engine — would
+   need a new check: `is_src and src.startswith("37:") and
+   dst.startswith("32:") and verb in ("W", "RQ") and code in
+   _HVAC_PARENT_INFERENCE_CODES`.
 
 The scan engine now does the FAN→REM inference for both known and
 unknown devices (previously only unknown — the known-device path
