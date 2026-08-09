@@ -545,13 +545,50 @@ The scan engine now does the FAN→REM inference for both known and
 unknown devices (previously only unknown — the known-device path
 returned early before the HVAC inference).
 
+**CO2/HUM sensors — three detection paths:** CO2 sensors (37: with CO2
+class) and HUM sensors are different from REMs — they're passive.  They
+broadcast their readings (I/3120, I/31E0, I/1298) and answer queries
+(RP) but never send W commands to the FAN.  However, a CO2 sensor can
+also function as a remote (same physical device, dual role) — in that
+case it sends W 22F1 to the FAN when the user presses a button, and is
+detected via the REM→FAN path above.  Classification into `remotes[]`
+vs `sensors[]` is based on **behavior** (does it send W to the FAN?),
+not just device type.
+
+For pure CO2/HUM sensors that never send W, three detection paths:
+
+1. **REM→FAN W (if dual-role):** CO2 sensor sends `W 22F1` to FAN →
+   detected as remote, placed in `remotes[]`.  Same as REM detection.
+   A dual-role CO2+REM goes in `remotes[]` (it's a remote that also
+   provides CO2 data).
+
+2. **1FC9 broadcast payload (most authoritative for pure sensors):**
+   The CO2 sensor periodically broadcasts `I 1FC9` with its binding
+   table.  The payload contains binding chunks
+   (`<domain_id><opcode><dev_id>`) that include the bound FAN's device
+   ID.  For example, payload `0022F1832EF46C10E0832EF4001FC9832EF4`
+   contains chunks with `832EF4` which decodes to a device ID.  Parsing
+   the 1FC9 I payload extracts the FAN ID directly — this is the same
+   1FC9 binding protocol used for heat devices, just broadcast by the
+   sensor instead of the controller.  This is the most authoritative
+   path for pure sensors because it's the actual hardware handshake
+   data, not traffic inference.
+
+3. **FAN→CO2 directed RP (already implemented in 6e):** The FAN sends
+   RQ to the CO2 sensor and gets RP back (e.g. RQ 31E0 → RP 31E0).
+   The scan engine sees the FAN's directed RP to the CO2 and sets
+   `bound_to`.  This is the FAN→REM direction, already working for any
+   37:/29: device.  Less reliable than 1FC9 because it only fires when
+   the FAN actively polls the sensor.
+
 **What gets into the schema:** `refresh_device_comments` writes
 "belongs to 32:XXXXXX" in the 37: device's comment (distinct from
 "bound to" = heat-domain TCS binding, and from `_bound` = hardware
 handshake for 2411 routing).  Then `sync_learned_topology` step 0c/1h
 parses "belongs to" comments and places the device under the FAN's
-`remotes[]` (REM/DIS) or `sensors[]` (CO2/HUM), using the comment's
-"Likely X" phrase or the schema's `_class` trait for classification.
+`remotes[]` (REM/DIS, or dual-role CO2+REM) or `sensors[]` (pure
+CO2/HUM), using the comment's "Likely X" phrase or the schema's
+`_class` trait for classification.
 
 **How it's used:** The FAN's `remotes[]`/`sensors[]` lists are the
 HVAC topology — ramses_rf's `load_fan` (6a) reads them to populate
