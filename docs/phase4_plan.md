@@ -513,6 +513,21 @@ ramses_cc's `via_device` check to also handle `_parent_fan`.  Does NOT
 require extending `PARENT_RULES`/`_apply_topology_link` — same isolated
 approach as 6a/6b.
 
+**6e (done, PR 924).** Traffic-based HVAC topology detection via
+"belongs to" device comments.  The scan engine already infers
+`bound_to` when a FAN (32:) sends a directed I/RP to a 37:/29: device
+(operational traffic — 22F1/31E0/31DA/10D0, NOT the 1FC9 hardware
+handshake).  `refresh_device_comments` writes "belongs to 32:XXXXXX"
+in the comment (distinct from "bound to" = heat-domain TCS binding,
+and from `_bound` = hardware handshake for 2411 routing).
+`sync_learned_topology` step 0c/1h parses "belongs to" comments and
+places the device under the FAN's `remotes[]` (REM/DIS) or `sensors[]`
+(CO2/HUM), using the comment's "Likely X" phrase or the schema's
+`_class` trait for classification.  This complements 6a/6b (schema-
+loaded topology) by reconstructing HVAC topology from traffic when no
+schema is preloaded — same as the heat-domain comment-based zone
+binding (step 0b/1g) does for TRVs.  Tested by ha_sim_test R65.
+
 **Note on `add_bound_device` / `_bound_devices`:** distinct from
 6a/6b's `_remote_ids`/`_sensor_ids` — `_bound_devices` tracks the 2411
 command source for the FAN (wired client-side in

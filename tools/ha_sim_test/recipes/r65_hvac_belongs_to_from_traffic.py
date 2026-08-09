@@ -73,15 +73,17 @@ class R65HvacBelongsToFromTraffic(Recipe):
             )
 
         # 2. Wait for the scan engine to detect FAN→REM/CO2 traffic.
-        #    The mixed profile's auto_answer generates 31DA/22F1 traffic
-        #    from the FAN to its remotes.  The scan engine sets bound_to
-        #    on the 37: devices when it sees directed I/RP from the FAN.
-        #    Then refresh_device_comments writes "belongs to 32:150000"
-        #    and sync_learned_topology places them under the FAN.
+        #    The mixed profile's auto_answer generates 2411 RQ from REM→FAN,
+        #    which triggers FAN RP→REM (directed).  The scan engine sets
+        #    bound_to on the 37: device.  Then refresh_device_comments writes
+        #    "belongs to 32:150000" and sync_learned_topology places them
+        #    under the FAN.
+        #    The coordinator runs save_state every ~30s, which triggers
+        #    refresh_device_comments + sync_learned_topology.
         print("  Waiting for scan engine + sync_learned_topology to detect traffic...")
         schema = None
-        for attempt in range(8):
-            ctx.wait(5, f"for sync cycle (attempt {attempt + 1}/8)")
+        for attempt in range(10):
+            ctx.wait(5, f"for sync cycle (attempt {attempt + 1}/10)")
             schema = get_schema_retry()
             fan_entry = schema.get(FAN, {}) if schema else {}
             if isinstance(fan_entry, dict) and (
@@ -91,7 +93,7 @@ class R65HvacBelongsToFromTraffic(Recipe):
                 print("    FAN has remotes/sensors from traffic — sync done")
                 break
         else:
-            print("    WARNING: FAN still has no remotes/sensors after 40s")
+            print("    WARNING: FAN still has no remotes/sensors after 50s")
 
         # 3. Verify the schema shows HVAC structure from traffic
         fan_entry = schema.get(FAN, {}) if schema else {}
@@ -123,46 +125,39 @@ class R65HvacBelongsToFromTraffic(Recipe):
             f"orphans_hvac={orphans_hvac}",
         )
 
-        # 4. Check device_comments for "belongs to" phrase.
-        #    NOTE: The scan engine sets bound_to only when it sees a FAN (32:)
-        #    sending a DIRECTED I/RP packet to a specific 37: device.  The
-        #    simulator's periodic emitter broadcasts to --:------, so
-        #    bound_to may not be set in the sim environment.  In real-world
-        #    deployments with directed FAN→REM traffic, the "belongs to"
-        #    comment would appear here.
-        #    We check it as informational (not a hard failure) — the topology
-        #    placement (steps 3) is the authoritative test.
-        comments = schema.get("device_comments", {}) if schema else {}
-        rem_comment = comments.get(REM, "")
-        co2_comment = comments.get(CO2, "")
+        # 4. Wait for the "belongs to" comment to appear in device_comments.
+        #    The scan engine sets bound_to when it sees a FAN (32:) sending a
+        #    directed I/RP to a 37: device (e.g. 2411 RP from FAN→REM).
+        #    refresh_device_comments writes "belongs to 32:XXXXXX" in the
+        #    comment.  This may take a full save_state cycle (~30s).
+        print("  Waiting for 'belongs to' comment to appear...")
+        rem_comment = ""
+        co2_comment = ""
+        for attempt in range(8):
+            ctx.wait(5, f"for comment refresh (attempt {attempt + 1}/8)")
+            schema = get_schema_retry()
+            comments = schema.get("device_comments", {}) if schema else {}
+            rem_comment = comments.get(REM, "")
+            co2_comment = comments.get(CO2, "")
+            if f"belongs to {FAN}" in rem_comment or f"belongs to {FAN}" in co2_comment:
+                print("    'belongs to' comment found — refresh done")
+                break
+        else:
+            print("    INFO: 'belongs to' comment not yet present after 40s")
 
         if rem_comment:
-            print(f"  REM comment: {rem_comment[:120]}")
-            ctx.check(
-                f"REM {REM} comment has 'belongs to {FAN}'",
-                f"belongs to {FAN}" in rem_comment,
-                f"comment={rem_comment[:120]}",
-            )
-            ctx.check(
-                f"REM comment does NOT use 'bound to {FAN}' (reserved for heat)",
-                f"bound to {FAN}" not in rem_comment,
-                f"comment={rem_comment[:120]}",
-            )
-        else:
-            print(
-                "  INFO: REM has no device_comment yet — "
-                "scan engine needs directed FAN→REM traffic for 'belongs to'"
-            )
-
+            print(f"  REM comment: {rem_comment[:140]}")
         if co2_comment:
-            print(f"  CO2 comment: {co2_comment[:120]}")
-            ctx.check(
-                f"CO2 {CO2} comment has 'belongs to {FAN}'",
-                f"belongs to {FAN}" in co2_comment,
-                f"comment={co2_comment[:120]}",
-            )
-        else:
-            print(
-                "  INFO: CO2 has no device_comment yet — "
-                "scan engine needs directed FAN→CO2 traffic for 'belongs to'"
-            )
+            print(f"  CO2 comment: {co2_comment[:140]}")
+
+        ctx.check(
+            f"REM {REM} comment has 'belongs to {FAN}'",
+            f"belongs to {FAN}" in rem_comment,
+            f"comment={rem_comment[:140]}",
+        )
+
+        ctx.check(
+            f"REM comment does NOT use 'bound to {FAN}' (reserved for heat)",
+            f"bound to {FAN}" not in rem_comment,
+            f"comment={rem_comment[:140]}",
+        )
