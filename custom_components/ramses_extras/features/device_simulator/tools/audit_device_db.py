@@ -174,8 +174,8 @@ _I_ONLY_CODES: frozenset[str] = frozenset()
 def _load_i_only_codes() -> frozenset[str]:
     """Load codes that have no RQ verb from ramses_tx schema."""
     try:
+        from ramses_rf import CODES_SCHEMA  # noqa: PLC0415
         from ramses_tx.const import VerbT  # noqa: PLC0415
-        from ramses_tx.ramses import CODES_SCHEMA  # noqa: PLC0415
 
         return frozenset(
             str(code)
