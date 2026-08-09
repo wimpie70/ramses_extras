@@ -43,22 +43,6 @@ class R22Thm22ZoneBindingVia000a(Recipe):
         # The scan engine should extract the zone and set it on the THM (issue 813).
         ctx.log_section("Recipe 22: THM (22:) zone binding via 000A")
 
-        # Baseline count of scan-engine starts BEFORE the reload — the
-        # "DiscoveryManager: started" message is produced during the reload,
-        # so we must capture the baseline before triggering it.
-        def _count_scan_starts() -> int:
-            inst_name = get_current_instance().name
-            r = subprocess.run(
-                ["docker", "logs", inst_name],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            logs = (r.stderr or "") + (r.stdout or "")
-            return logs.count("DiscoveryManager: started (passive scan running)")
-
-        _scan_count_before = _count_scan_starts()
-
         # Load fresh_start profile for clean discovery
         print("  Loading fresh_start_allow_unknown_devices_fast_heartbeat...")
         try:
@@ -78,21 +62,6 @@ class R22Thm22ZoneBindingVia000a(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
-
-        # Wait for the scan engine to be ready before injecting (the
-        # protocol layer reconnects after the reload, and packets
-        # published during the gap are lost).
-        def _scan_started() -> bool:
-            return _count_scan_starts() > _scan_count_before
-
-        wait_for(
-            _scan_started,
-            timeout=30,
-            interval=2,
-            msg="for scan engine to start",
-            floor=5.0,
-        )
-
         # Inject RQ 000A from a THM (22:) to the HGI (18:001234)
         # THMs send RQ 000A with just the zone_idx (2 hex) as payload.
         # The dst must be a valid device (not --:------) to avoid PacketInvalid.

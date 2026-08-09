@@ -89,18 +89,12 @@ try:
     equal = serialize(validated) == serialize(gateway_stripped)
 
     # Collect _-prefixed keys that leaked through either path
-    # NOTE: _name in zone entries is intentionally preserved (issue 919:
-    # zone names lost after 24h when MessageStore prunes 0004 packets).
     def find_underscore_keys(obj, path=""):
         found = []
         if isinstance(obj, dict):
             for k, v in obj.items():
                 if isinstance(k, str) and k.startswith("_"):
-                    # _name is allowed in zone entries (under .zones.<idx>)
-                    if k == "_name" and ".zones." in path:
-                        pass
-                    else:
-                        found.append(f"{{path}}.{{k}}" if path else k)
+                    found.append(f"{{path}}.{{k}}" if path else k)
                 found.extend(find_underscore_keys(v, f"{{path}}.{{k}}" if path else k))
         elif isinstance(obj, list):
             for i, v in enumerate(obj):
