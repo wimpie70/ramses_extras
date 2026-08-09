@@ -151,11 +151,22 @@ def clone_config_dir(inst: InstanceConfig, *, force: bool = False) -> None:
 
 
 def patch_port_in_config(inst: InstanceConfig) -> None:
-    """Patch the HA port in the cloned configuration.yaml."""
+    """Patch the HA port in the cloned configuration.yaml and .storage/http.
+
+    Since HA 2026.8, the HTTP server port is stored in .storage/http (migrated
+    from YAML).  We patch both files to cover all HA versions.
+    """
     config_yaml = f"{inst.config_dir}/configuration.yaml"
-    if not os.path.exists(config_yaml):
+    storage_http = f"{inst.config_dir}/.storage/http"
+    files_to_patch = []
+    if os.path.exists(config_yaml):
+        files_to_patch.append("/config/configuration.yaml")
+    if os.path.exists(storage_http):
+        files_to_patch.append("/config/.storage/http")
+    if not files_to_patch:
         return
-    # Use python container to patch (alpine sed doesn't support \b)
+    # Use alpine sed for simple string replace (8124 -> new port)
+    files_arg = " ".join(files_to_patch)
     result = subprocess.run(
         [
             "docker",
@@ -163,15 +174,11 @@ def patch_port_in_config(inst: InstanceConfig) -> None:
             "--rm",
             "-v",
             f"{inst.config_dir}:/config",
-            "python:3.12-slim",
-            "python3",
+            "alpine",
+            "sh",
             "-c",
-            f"import re; "
-            f"p='/config/configuration.yaml'; "
-            f"c=open(p).read(); "
-            f"c=re.sub(r'\\b8124\\b', '{inst.port}', c); "
-            f"open(p,'w').write(c); "
-            f"print('Patched port to {inst.port}')",
+            f"sed -i 's/8124/{inst.port}/g' {files_arg} && "
+            f"echo 'Patched port to {inst.port} in {files_arg}'",
         ],
         capture_output=True,
         text=True,

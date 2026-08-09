@@ -15,9 +15,9 @@ homeassistant:
   country: NL
   language: en
 
-# HTTP server on port 8124 (required to avoid conflict with production HA on 8123)
-http:
-  server_port: 8124
+# Note: HTTP server port (8124) is configured via the UI under
+# Settings > System > Network. It was migrated from YAML in HA 2026.8.
+# The .storage/http file stores: {"server_port": 8124, "yaml_migration_done": true}
 
 # Enable standard integrations (excluding bluetooth to avoid container permission warnings)
 api:
