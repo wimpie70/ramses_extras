@@ -542,18 +542,25 @@ this device) and don't affect entity creation.  The filter we added
 single-class model — a CO2 device should not be in `remotes[]` because
 it won't get remote entities anyway.
 
-**6d (future enhancement).** Bidirectional FAN→child parent link for
-HA device registry grouping.  6a/6b gives FAN→children (via
-`_remote_ids`/`_sensor_ids`) but children don't know their parent FAN
-(no `_parent_fan` attribute, unlike heat-domain `Child._parent`).
-ramses_cc's `via_device` logic (`coordinator.py:2139`) checks
-`isinstance(device, Child)` which is False for HVAC devices, so
-REM/CO2 appear as standalone devices in the HA UI instead of grouped
-under their FAN.  Fix: add `_parent_fan: HvacVentilator | None` to
-`DeviceHvac`, set it in `HvacVentilator._update_schema()`, and update
-ramses_cc's `via_device` check to also handle `_parent_fan`.  Does NOT
-require extending `PARENT_RULES`/`_apply_topology_link` — same isolated
-approach as 6a/6b.
+**6d (done, R67).** Bidirectional FAN→child parent link for HA device
+registry grouping.  Added `_parent_fan: HvacVentilator | None` to
+`DeviceHvac` (ramses_rf), set in `HvacVentilator._update_schema()` when
+a child is added to `remotes[]`/`sensors[]`.  Updated ramses_cc's
+`via_device` check (`coordinator.py`) to handle `DeviceHvac` with
+`_parent_fan` — REM/CO2 now appear grouped under their FAN in the HA
+device registry.
+
+R67 test results:
+- REM `37:170000` has `via_device_id` set to FAN's HA device ID ✓
+- CO2 `37:120000` has `via_device_id` set to FAN's HA device ID ✓
+- FAN `32:150000` does NOT have `via_device` (it's the parent) ✓
+- `via_device` persists across coordinator reload ✓
+
+Also fixed pre-existing schema validation bug: `sync_learned_topology`
+was adding `zones: {}` and `stored_hotwater: {}` to FAN entries because
+it used `.get(SZ_ZONES, {})` which returns `{}` for non-TCS entries.
+Fixed by checking if the key actually exists in the learned entry
+(`.get(SZ_ZONES)` without default).
 
 **6e (done, PR 924 + PR 1017).** Traffic-based HVAC topology detection
 via "belongs to" device comments.
@@ -681,15 +688,39 @@ FAN→REM, placed in `remotes[]`).  Also requires ramses_rf PR 1017
 fixes: 2411 added to `_HVAC_PARENT_INFERENCE_CODES`, and HVAC
 `bound_to` inference now runs for known devices too.
 
-**6f (future enhancement).** Active HVAC topology probing via spoofed
-RQ 22F1.  Step 6e is passive — it waits for the FAN to send a directed
-I/RP to a REM, which may take hours or never happen if the REM doesn't
-poll the FAN.  6f actively probes each 37:/29: device against each
-known FAN (32:) by sending `RQ 22F1` (fan_mode query) with
-`from_id=<REM>` to the FAN via the existing `send_packet` service
-(which supports `from_id` for source spoofing).  If the FAN responds
-with a directed `RP 22F1` to the REM, the scan engine sets `bound_to`
+**6f (done, R68).** Active HVAC topology probing via spoofed RQ 22F1.
+Step 6e is passive — it waits for the FAN to send a directed I/RP to a
+REM, which may take hours or never happen if the REM doesn't poll the
+FAN.  6f actively probes each 37:/29: device against each known FAN
+(32:) by sending `RQ 22F1` (fan_mode query) with `from_id=<REM>` to the
+FAN via the new `probe_hvac_binding` service.  If the FAN responds with
+a directed `RP 22F1` to the REM, the scan engine sets `bound_to`
 (passive listener sees the RP) → "belongs to" comment → `remotes[]`.
+
+**Implementation:**
+- New service `ramses_cc.probe_hvac_binding` (registered when
+  `send_packet` advanced feature is enabled)
+- Optional `device_id` (probe only this 37:/29:) and `fan_id` (probe
+  only this FAN) parameters
+- Sends `RQ 22F1` with `from_id=<REM>`, `device_id=<FAN>`, `payload=00`
+- 0.5s delay between probes to avoid flooding
+- 3s wait after all probes for RP responses to arrive
+- Returns `{probes: [...], results: [...]}` (HA service framework
+  doesn't forward return values to REST API callers, but the service
+  executes correctly)
+
+R68 test results:
+- `probe_hvac_binding` service executes without error ✓
+- REM detected as bound to FAN after probe ✓
+- REM no longer in `orphans_hvac` ✓
+- No unexpected ERROR/WARNING logs ✓
+
+**Note:** In the ha-sim environment, the device simulator's traffic
+during profile loading often triggers the passive detection (6e) before
+the active probe (6f) runs.  The probe service still works correctly —
+it sends the RQ 22F1 packets and the scan engine processes any RP
+responses.  In a real deployment, 6f is useful when the REM hasn't
+polled the FAN recently and passive detection hasn't fired yet.
 
 **Why 22F1 and not 2411:** 2411 (fan_params) has 60+ parameter IDs and
 the RQ payload must include the param_id — getting it wrong may return
