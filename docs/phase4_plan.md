@@ -583,6 +583,42 @@ FAN→REM, placed in `remotes[]`).  Also requires ramses_rf PR 1017
 fixes: 2411 added to `_HVAC_PARENT_INFERENCE_CODES`, and HVAC
 `bound_to` inference now runs for known devices too.
 
+**6f (future enhancement).** Active HVAC topology probing via spoofed
+RQ 22F1.  Step 6e is passive — it waits for the FAN to send a directed
+I/RP to a REM, which may take hours or never happen if the REM doesn't
+poll the FAN.  6f actively probes each 37:/29: device against each
+known FAN (32:) by sending `RQ 22F1` (fan_mode query) with
+`from_id=<REM>` to the FAN via the existing `send_packet` service
+(which supports `from_id` for source spoofing).  If the FAN responds
+with a directed `RP 22F1` to the REM, the scan engine sets `bound_to`
+(passive listener sees the RP) → "belongs to" comment → `remotes[]`.
+
+**Why 22F1 and not 2411:** 2411 (fan_params) has 60+ parameter IDs and
+the RQ payload must include the param_id — getting it wrong may return
+an error RP.  22F1 (fan_mode) takes a simple `00` payload and returns
+the current fan speed — the FAN always has a current speed to report.
+We can verify the RP payload matches the FAN's last 31DA broadcast
+speed, confirming it's a real response (not a neighbour's FAN).
+
+**Why this works:** the HGI is a passive listener — it sees ALL RF
+traffic, including the FAN's RP directed to the REM.  We don't need
+the REM to receive the response; we just need the FAN to emit a
+directed packet to the REM's address.  The scan engine's raw packet
+handler catches it.
+
+**Implementation sketch:**
+- New service `probe_hvac_binding` (or extend `send_packet`):
+  - For each 37:/29: device in known_list without a FAN parent:
+    - Send `RQ 22F1` with `from_id=<37:device>`, `device_id=<32:FAN>`,
+      `payload=00`
+    - Wait 2s for RP response
+    - If RP received: scan engine sets `bound_to` → done
+    - If no RP: REM is not bound to this FAN, try next FAN
+- Could be triggered automatically on coordinator startup (one-shot)
+  or on demand via a service call.
+- Safety: 22F1 RQ is read-only (query, not write) — no side effects
+  on the FAN's operation.
+
 **Note on `add_bound_device` / `_bound_devices`:** distinct from
 6a/6b's `_remote_ids`/`_sensor_ids` — `_bound_devices` tracks the 2411
 command source for the FAN (wired client-side in
