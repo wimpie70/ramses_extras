@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
-from ramses_tx.const import SZ_ACTUATORS, SZ_NAME
+from ramses_rf.const import SZ_ACTUATORS, SZ_NAME
 
 from .const import LOGGER, SIMULATOR_HGI_ID
 
