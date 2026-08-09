@@ -90,6 +90,25 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             print(f"    Silence failed (continuing): {str(e)[:80]}")
         ctx.wait(2, "for emitter cancellation to take effect")
 
+        # 1c. Disable auto-answer to prevent the simulator from responding to
+        #     ramses_cc's RQ 2349 (sent by climate.async_added_to_hass) with
+        #     an RP containing a default setpoint that overwrites our inject.
+        #     The dynamic response for 2349 returns ~20.3°C for zone 03, but
+        #     we inject 21.0°C.  Re-enabled after the checks pass.
+        print("  Disabling auto-answer to prevent RP overwriting injected setpoint...")
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/set_auto_answer",
+                    "enabled": False,
+                },
+            )
+            print("    auto-answer disabled")
+        except RuntimeError as e:
+            print(f"    Disable auto-answer failed (continuing): {str(e)[:80]}")
+        ctx.wait(1, "for auto-answer disable to take effect")
+
         # 2. Inject 2E04 I from CTL (01:150000) — system_mode = auto
         #    Payload: 00 + FFFFFFFFFFFF00 (16 hex chars, len=8)
         #    This sets the system mode to "auto" so hvac_mode doesn't
@@ -323,3 +342,15 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             target_temp is not None and target_temp == setpoint_temp,
             f"temperature={target_temp!r} (None = bug present, issue 843)",
         )
+
+        # Re-enable auto-answer (cleanup — other recipes expect it on)
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/set_auto_answer",
+                    "enabled": True,
+                },
+            )
+        except RuntimeError:
+            pass

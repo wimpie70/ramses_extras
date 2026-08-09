@@ -73,12 +73,19 @@ try:
         results[dev_id] = strip_and_map_traits(traits)
 
     # Check: _-prefixed keys are gone from all results
+    # Exception: _name is intentionally preserved everywhere (issue 919:
+    # ramses_rf's _TRAIT_PRESERVE_KEYS keeps _name so both device-level
+    # and zone-level names survive strip_and_map_traits for hydration)
     def find_underscore_keys(obj, path=""):
         found = []
         if isinstance(obj, dict):
             for k, v in obj.items():
                 if isinstance(k, str) and k.startswith("_"):
-                    found.append(f"{path}.{k}" if path else k)
+                    # _name is preserved by design (issue 919) — don't flag it
+                    if k == "_name":
+                        pass
+                    else:
+                        found.append(f"{path}.{k}" if path else k)
                 found.extend(find_underscore_keys(v, f"{path}.{k}" if path else k))
         elif isinstance(obj, list):
             for i, v in enumerate(obj):
@@ -110,6 +117,7 @@ try:
         "thm_has_disabled": "disabled" in thm,
         "thm_has_commands": "commands" in thm,
         "thm_has_name": "name" in thm,
+        "thm_has__name": "_name" in thm,
         "thm_has_note": "note" in thm,
         "trv_class": trv.get("class", ""),
         "trv_has_disabled": "disabled" in trv,
@@ -117,7 +125,7 @@ try:
         "ctl_has_zones": "03" in zones,
         "ctl_has_dhw": "sensor" in dhw if isinstance(dhw, dict) else False,
         "zone_03_has_name": (
-            "name" in zone_03 if isinstance(zone_03, dict) else True
+            "_name" in zone_03 if isinstance(zone_03, dict) else False
         ),
         "zone_03_has_sensor": (
             zone_03.get("sensor") == "01:150003"
@@ -196,9 +204,15 @@ except Exception as e:
         )
 
         ctx.check(
-            "_name stripped from device traits",
+            "_name not mapped to native 'name' (preserved as _name, issue 919)",
             not result.get("thm_has_name"),
-            "name key found in device traits",
+            "name key found in device traits (should not be mapped)",
+        )
+
+        ctx.check(
+            "_name preserved as _name in device traits (issue 919)",
+            result.get("thm_has__name"),
+            "_name key missing from device traits (should be preserved per 919)",
         )
 
         ctx.check(
@@ -226,7 +240,7 @@ except Exception as e:
             "commands key found in TRV",
         )
 
-        # 5. CTL topology preserved (zones, DHW) but zone _name stripped
+        # 5. CTL topology preserved (zones, DHW) with zone _name preserved (919)
         ctx.check(
             "CTL zones topology preserved",
             result.get("ctl_has_zones"),
@@ -240,9 +254,9 @@ except Exception as e:
         )
 
         ctx.check(
-            "zone _name stripped from nested zone dict",
-            not result.get("zone_03_has_name"),
-            "name key found in zone 03",
+            "zone _name preserved in nested zone dict (issue 919)",
+            result.get("zone_03_has_name"),
+            "_name key missing from zone 03 (should be preserved per issue 919)",
         )
 
         ctx.check(

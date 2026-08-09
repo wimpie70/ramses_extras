@@ -163,8 +163,10 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
         )
 
         # Check 6: no validation errors about _bound trait specifically.
-        # We grep for "_bound" (with underscore) to avoid matching unrelated
-        # errors that happen to contain "bound" in a different context.
+        # We look for ERROR lines that mention _bound in a validation/schema
+        # context, not in state_changed payloads (which contain _bound as a
+        # normal entity attribute key and can appear in websocket backpressure
+        # errors under parallel load).
         raw_log_r30 = subprocess.run(
             [
                 "docker",
@@ -180,7 +182,15 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
         bound_errors = [
             line
             for line in raw_log_r30.splitlines()
-            if "ERROR" in line and "_bound" in line and "bound_to" not in line
+            if "ERROR" in line
+            and "_bound" in line
+            and "bound_to" not in line
+            # Exclude websocket backpressure errors (state_changed payloads
+            # contain _bound as a normal attribute, not a validation error)
+            and "websocket_api" not in line
+            and "pending messages" not in line
+            # Exclude state_changed event payloads
+            and "state_changed" not in line
         ]
         ctx.check(
             "No ERROR logs about _bound trait (list-valued _bound accepted)",
