@@ -31,6 +31,7 @@ import json
 from ..base import Recipe, RecipeContext
 from ..const import CO2, FAN, REM
 from ..helpers import (
+    call_service,
     get_schema_retry,
     load_profile_yaml,
     wait_for,
@@ -219,6 +220,68 @@ class R65HvacBelongsToFromTraffic(Recipe):
             f"REM comment does NOT use 'bound to {FAN}' (reserved for heat)",
             f"bound to {FAN}" not in rem_comment,
             f"comment={rem_comment[:160]}",
+        )
+
+        # 5b. Inject directed RP from FAN to CO2 to trigger bound_to.
+        #     We can't inject RQ from CO2 (protocol rejects RQ from a CO2
+        #     sensor: "Unexpected verb/code for src (CO2) to Tx").  Instead
+        #     we inject the RP directly from the FAN to the CO2 — this is
+        #     what the scan engine needs to see: a FAN (32:) sending a
+        #     directed RP to a 37: device using an HVAC code.
+        print(f"  Injecting RP 31E0 from FAN {FAN} to CO2 {CO2}...")
+        for _ in range(3):
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": FAN,
+                        "dst": CO2,
+                        "code": "31E0",
+                        "payload": "0000000001001E00",
+                        "verb": "RP",
+                    },
+                )
+            except RuntimeError as e:
+                print(f"    Inject failed: {str(e)[:80]}")
+            ctx.wait(1, "between injects")
+
+        # Wait for the CO2 "belongs to" comment to appear
+        # The save_state cycle is ~30s, and the bound_to may be set late
+        # in the cycle, so we need to wait up to 60s.
+        print("  Waiting for CO2 'belongs to' comment to appear...")
+        co2_comment = ""
+        for attempt in range(12):
+            ctx.wait(5, f"for CO2 comment refresh (attempt {attempt + 1}/12)")
+            schema = get_schema_retry()
+            comments = schema.get("device_comments", {}) if schema else {}
+            co2_comment = comments.get(CO2, "")
+            if f"belongs to {FAN}" in co2_comment:
+                print("    CO2 'belongs to' comment found")
+                break
+        else:
+            print("    INFO: CO2 'belongs to' comment not yet present after 60s")
+
+        if co2_comment:
+            print(f"  CO2 comment: {co2_comment[:160]}")
+
+        ctx.check(
+            f"CO2 {CO2} comment has 'belongs to {FAN}' (from injected RP)",
+            f"belongs to {FAN}" in co2_comment,
+            f"comment={co2_comment[:160]}",
+        )
+
+        # Check CO2 is NOT in remotes[] (it's a sensor, not a remote)
+        schema = get_schema_retry()
+        fan_entry = schema.get(FAN, {}) if schema else {}
+        remotes_after_co2 = (
+            fan_entry.get("remotes", []) if isinstance(fan_entry, dict) else []
+        )
+        ctx.check(
+            f"CO2 {CO2} NOT in remotes[] (it's a sensor, not a remote)",
+            CO2 not in remotes_after_co2,
+            f"remotes={remotes_after_co2}",
         )
 
         # 6. Roundtrip: reload ramses_cc and verify the schema persists.
