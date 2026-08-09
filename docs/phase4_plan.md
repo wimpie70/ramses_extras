@@ -2,7 +2,7 @@
 
 **Created:** Jul 23 2026
 **Updated:** Aug 9 2026
-**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 UNBLOCKED** — ramses_rf Phase 5 (issue 992) is now CLOSED, shipped in 0.59.3, and PR 997 delivers the `set_schema_updated_callback` API our Step 5 needs. Step 6 still blocked on ramses_rf `load_fan` (no movement). ramses_rf Phase 6 (issue 1001, payload dataclass layer) now in progress, non-breaking so far. **ha-sim test Aug 9 (cc/rf master, post Phase 5): full suite passes** — the previous 19 failures (Aug 6, against 0.59.2 tags) appear resolved by Phase 5 completion + ramses_cc's const-import fix (PR 914).
+**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 UNBLOCKED** — ramses_rf Phase 5 (issue 992) is now CLOSED, shipped in 0.59.3, and PR 997 delivers the `set_schema_updated_callback` API our Step 5 needs; full implementation plan written below. **Step 6 still blocked** on ramses_rf `load_fan` — confirmed NOT on PWhite-Eng's roadmap (searched issues 639/992/1001); a concrete 3-sub-phase implementation plan is now written below, ready to hand off upstream or implement ourselves if we ever get ramses_rf write access. ramses_rf Phase 6 (issue 1001, payload dataclass layer) now in progress, non-breaking so far. **ha-sim test Aug 9 (cc/rf master, post Phase 5): full suite passes** — the previous 19 failures (Aug 6, against 0.59.2 tags) appear resolved by Phase 5 completion + ramses_cc's const-import fix (PR 914).
 **Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED, shipped in ramses_rf 0.59.1)
 **Blocks:** nothing (this is the final phase for schema-as-SSOT)
 
@@ -543,7 +543,8 @@ HVAC schema (remotes/sensors). `gateway.schema()` flattens all HVAC
 to `orphans_hvac`. On restart, the HVAC structure is lost unless the
 config entry has it.
 
-**Status:** No open PR. This is the biggest remaining gap.
+**Status:** No open PR. This is the biggest remaining gap. **Confirmed
+NOT planned by PWhite-Eng** — see "Not on PWhite-Eng's roadmap" below.
 
 **What ramses_rf already has (0.59.0):**
 - `HvacVentilator` class with `_bound_devices` dict, `add_bound_device`,
@@ -554,23 +555,178 @@ config entry has it.
 - `SCH_TRAITS_HVAC` accepts `remotes`, `sensors`, `bound` as
   `str | list[str]`
 
-**What's missing:**
-1. `load_fan` implementation — uncomment and implement
-   `fan._update_schema(**schema)` so FAN reads `remotes`/`sensors`
-   from schema and creates child devices
-2. FAN as Parent class — FAN owns its REMs and sensors (the
-   `_bound_devices` dict exists but isn't populated from schema)
-3. `gateway.schema()` should output HVAC structure (not flat
-   `orphans_hvac`) when FAN has remotes/sensors
-4. CO2 dual-role support — 37: device can be both REM and sensor
+#### Not on PWhite-Eng's roadmap (verified Aug 9 2026)
 
-**What ramses_cc can do now (workaround):**
+Searched the entire 64-comment thread on issue #639 (last updated Jul
+16 2026, entirely about the heating-domain CQRS/OSI decoupling), the
+Phase 5 issue #992 (client API/DTO boundaries), and the Phase 6 issue
+#1001 (payload dataclass layer) — **`load_fan` is never mentioned**.
+Phase 6's only HVAC-related scope is payload *parsing* (2411, 31DA,
+CO2 dataclasses), not schema/topology loading. `gh search code
+"load_fan" --repo ramses-rf/ramses_rf` returns only the stub itself.
+This is a gap unique to our analysis — nobody upstream is tracking it.
+
+#### Important architectural finding: the generic Parent/Child machinery doesn't fit HVAC
+
+Before designing the fix, verified whether `load_fan` could simply
+call `_get_device(gwy, dev_id, parent=fan, child_id=...)` the same way
+`Evohome._update_schema` does for zones (`tcs.py:798-833`). It cannot,
+without a larger refactor:
+
+- `_apply_topology_link()` (`topology.py:450-499`) calls
+  `self._get_parent(parent, ...)`, which looks up a hardcoded
+  `PARENT_RULES` dict (`topology.py:~380-418`) keyed by
+  `parent.__class__.__name__` (`"Evohome"`, `"DhwZone"`, `"MixZone"`,
+  `"RadZone"`, `"UfhZone"`, `"ValZone"`). `HvacVentilator` is not in
+  this dict, so linking would raise `SchemaInconsistentError` /
+  `PARENT RULES EXCEPTION`.
+- `_apply_topology_link` also unconditionally derives
+  `ctl = getattr(parent, "ctl", None)` and assigns
+  `self.ctl = ctl; self.tcs = getattr(ctl, "tcs", None)` — a
+  heating-domain-specific concept (every zone/circuit belongs to a
+  Controller/TCS) that has no HVAC equivalent (a FAN is not a CTL).
+- Extending `PARENT_RULES` + generalizing `_apply_topology_link` to
+  not assume `ctl`/`tcs` for non-heat parents is possible, but is a
+  much bigger, riskier change than the actual problem requires (it
+  touches shared heating-domain code that has extensive test
+  coverage and is mid-refactor upstream via Phase 6).
+
+**Recommendation: build a separate, minimal HVAC ownership mechanism
+that does not reuse `Parent`/`Child`/`PARENT_RULES` at all.** This
+keeps the change additive and isolated to `hvac_ventilators.py` +
+`schemas.py` + `dev_registry.py`'s orphan/schema helpers, with zero
+risk to the heat-domain topology graph.
+
+#### Concrete implementation plan (three additive sub-phases)
+
+**6a. `load_fan` populates plain ID-list membership (no Parent/Child)**
+
+In `src/ramses_rf/devices/hvac_ventilators.py`, add to `HvacVentilator`:
+
+```python
+# alongside the existing _bound_devices dict
+_remote_ids: set[DeviceIdT]
+_sensor_ids: set[DeviceIdT]
+```
+initialized in `_init_fan_state()` (`self.__dict__.setdefault("_remote_ids", set())`,
+same for `_sensor_ids`), plus a new method:
+
+```python
+def _update_schema(self, **schema: Any) -> None:
+    """Update this FAN with its remotes/sensors membership from schema.
+
+    Unlike heating Parent/Child, this does NOT use the shared
+    ``Parent``/``_apply_topology_link`` machinery (see Step 6 notes in
+    ramses_extras/docs/phase4_plan.md for why) — it's a lightweight,
+    HVAC-specific membership list.
+    """
+    from ramses_rf.schemas import SCH_VCS, SZ_REMOTES, SZ_SENSORS
+
+    schema = shrink(SCH_VCS(schema))
+    for dev_id in schema.get(SZ_REMOTES, []):
+        self._gwy.device_registry.get_device(dev_id)  # ensure it exists
+        self._remote_ids.add(DeviceIdT(dev_id))
+    for dev_id in schema.get(SZ_SENSORS, []):
+        self._gwy.device_registry.get_device(dev_id)  # ensure it exists
+        self._sensor_ids.add(DeviceIdT(dev_id))
+```
+
+In `src/ramses_rf/schemas.py`, uncomment and fix `load_fan`:
+
+```python
+def load_fan(gwy: Gateway, fan_id: DeviceIdT, schema: dict[str, Any]) -> Device:
+    fan = _get_device(gwy, fan_id)
+    if hasattr(fan, "_update_schema"):
+        fan._update_schema(**schema)
+    return fan
+```
+
+This alone makes `remotes`/`sensors` device IDs get instantiated
+(`_get_device` creates them if missing) on schema load, and records
+membership on the FAN — without touching the heat topology graph.
+
+**6b. `gateway.schema()` nests FAN membership instead of flattening to `orphans_hvac`**
+
+Add a `schema()` method to `HvacVentilator` (mirroring
+`Evohome.schema()`'s shape) returning
+`{SZ_REMOTES: sorted(self._remote_ids), SZ_SENSORS: sorted(self._sensor_ids)}`
+(empty lists omitted, matching `shrink()` conventions used elsewhere).
+
+In `Gateway.schema()` (`gateway.py:311-317`), add a loop over FAN
+devices analogous to the existing TCS loop:
+
+```python
+for dev in self.device_registry.devices:
+    if isinstance(dev, HvacVentilator) and (dev._remote_ids or dev._sensor_ids):
+        schema[dev.id] = await dev.schema()
+```
+
+Update `DeviceRegistry.get_hvac_orphans()` (`dev_registry.py:751-765`)
+to exclude any device that is a member of *any* FAN's `_remote_ids` /
+`_sensor_ids` — build the exclusion set once per call:
+
+```python
+async def get_hvac_orphans(self) -> list[DeviceIdT]:
+    owned: set[DeviceIdT] = set()
+    for d in self.devices:
+        if isinstance(d, HvacVentilator):
+            owned |= d._remote_ids | d._sensor_ids
+    orphans = []
+    for d in self.devices:
+        if isinstance(d, DeviceHvac) and d.id not in owned:
+            is_present = await d._is_present() if hasattr(d, "_is_present") else False
+            if is_present:
+                orphans.append(d.id)
+    return sorted(orphans)
+```
+
+**Result:** on restart, `load_schema()` → `load_fan()` restores FAN
+membership from the persisted schema, so `gateway.schema()` round-trips
+correctly (issue #627-style — matches the analogous heat-domain
+round-trip that already works for zones). This directly replaces
+ramses_cc's current workaround of caching HVAC schema separately in
+`.storage/ramses_cc[hvac_schema]` (PR 764) — that workaround can stay
+as a fallback/safety net (same pattern as Step 5's polling fallback)
+but is no longer load-bearing once 6a/6b ship.
+
+**6c. CO2 dual-role support (stretch goal, verify after 6a/6b)**
+
+A device ID can already appear in both a FAN's `remotes` and `sensors`
+lists today — `SCH_VCS`'s `vol.Unique()` is per-list, not cross-list,
+so the schema validation doesn't block it. The open question is
+whether the *device class* (e.g. a 37: REM instantiated as `HvacRemoteBase`)
+correctly responds to both roles at the ramses_rf device-object level.
+This likely needs no new ramses_rf code — just an ha_sim_test recipe
+(e.g. extend the planned R41-R43) proving a single 37: device ID
+correctly appears in both lists after 6a/6b and behaves correctly as
+both REM and CO2 sensor. Treat as a verification task, not a coding
+task, unless testing reveals a real gap.
+
+**Note on `add_bound_device` / `_bound_devices`:** this mechanism is
+distinct from 6a/6b's `_remote_ids`/`_sensor_ids` — `_bound_devices`
+tracks which REM/DIS device is the **2411 command source** for the
+FAN (already wired from the schema `_bound` trait, but done entirely
+client-side in `ramses_cc/fan_handler.py:setup_fan_bound_devices` as a
+workaround). Once 6a/6b ship, `_bound_devices` and `_remote_ids` will
+overlap (a bound device is also a remote), but they serve different
+purposes and can coexist unchanged — no need to unify them in the
+first PR.
+
+**Test:** ha_sim_test recipes R41, R42, R43 (currently SKIP) will
+verify HVAC topology when implemented. Recipe assertions to add:
+- FAN's `remotes`/`sensors` survive a coordinator restart via
+  `gateway.schema()` round-trip (not just the `.storage` cache)
+- `get_hvac_orphans()` no longer lists REM/sensor devices that are
+  members of a FAN
+- `gateway.schema()` output nests remotes/sensors under the FAN ID
+  instead of flattening to `orphans_hvac`
+
+**What ramses_cc can do now (workaround, keep as fallback):**
 - Cache HVAC schema separately in `.storage/ramses_cc[hvac_schema]`
 - Restore HVAC schema from cache on restart
 - This is already implemented (PR 764, verified by R07/R07b/R15)
-
-**Test:** ha_sim_test recipes R41, R42, R43 (currently SKIP) will
-verify HVAC topology when implemented.
+- Once 6a/6b ship, this cache becomes a safety net rather than the
+  primary mechanism (same pattern as Step 5's reduced-frequency poll)
 
 #### Next action: raise upstream now that Phase 5 is done
 
@@ -585,13 +741,15 @@ a good time to raise a focused ramses_rf issue:
 - Title suggestion: "load_fan() is a stub — HVAC schema
   (remotes/sensors) is not loaded into FAN devices"
 - Reference issue #639 (architecture blueprint) and this doc's Step 6
-  analysis (what's missing: `load_fan` impl, FAN-as-Parent, HVAC in
-  `gateway.schema()` output, CO2 dual-role).
+  analysis above — it's detailed enough to hand off directly: the
+  3 sub-phases (6a/6b/6c), the exact files/line numbers, and *why*
+  the existing heat-domain `Parent`/`Child`/`PARENT_RULES` machinery
+  shouldn't be reused (avoids a wasted back-and-forth on approach).
 - We are not positioned to implement this ourselves (it's core
-  `ramses_rf` device/topology logic, not a `ramses_cc` change) — but a
-  clear, actionable issue with the specific missing pieces listed
-  above will make it easier for PWhite-Eng/silverailscolo to pick up,
-  and unblocks our last remaining Phase 4 step.
+  `ramses_rf` device/topology logic, not a `ramses_cc` change) — but
+  the plan above is concrete enough that PWhite-Eng/silverailscolo
+  (or an AI coding session briefed with it) could execute it directly,
+  and it unblocks our last remaining Phase 4 step.
 
 ---
 
