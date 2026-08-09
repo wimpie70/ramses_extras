@@ -2,12 +2,18 @@
 
 Tests the dual-role scenario: a single 37: device that acts as BOTH a
 CO2 sensor (sends I 1298) AND a REM (sends I 22F1 / W 22F1).  This is
-realistic — some Itho devices are combo CO2+REM with buttons.
+realistic — some Itho/Orcon devices are combo CO2+REM with buttons
+(see issue 186, issue 767 "CO2 sensors are remotes too (dual-role)").
+
+**Decision (issue 767):** composite classes (HvacCarbonDioxideRemote)
+and multiple class promotions are REJECTED.  Ship single-role
+FAN/REM/CO2 first; dual-role is upstream's job (ramses_rf Phase 3.75
+"init and go").  Users have managed faking these remotes for years.
 
 ramses_rf's device model is single-class: a device is either
 HvacCarbonDioxideSensor OR HvacRemote, not both.  The eavesdropper
-promotes based on the LAST verb/code pair seen.  This recipe documents
-the current behavior and checks for gaps:
+promotes based on the LAST verb/code pair seen.  This recipe confirms
+the decision is still correct:
 
 1. A CO2 device (sends I 1298) gets CO2 sensor entities.
 2. After injecting I 22F1 from the same device, check:
@@ -15,9 +21,9 @@ the current behavior and checks for gaps:
    - Do CO2 sensor entities disappear?
    - Do remote entities appear?
    - Does the schema placement change?
-3. Verify that the user can force a class via schema _class override.
+3. Verify that schema _class override wins over eavesdropper promotion.
 
-See: phase4_plan.md step 6c
+See: phase4_plan.md step 6c, issue 767, issue 186
 """
 
 from __future__ import annotations
@@ -251,17 +257,15 @@ class R66HvacDualRoleCo2Rem(Recipe):
                 "sensors only — filter removes CO2 from remotes[]",
             )
 
-        # 10. Summary: document the gap.
+        # 10. Summary: confirm the decision from issue 767.
         print()
         print("  === 6c Summary ===")
-        print("  ramses_rf uses a single-class device model:")
-        print("  - A device is either HvacCarbonDioxideSensor OR HvacRemote")
-        print("  - The eavesdropper promotes based on last verb/code pair")
-        print("  - Entity creation is based on device class, not list membership")
-        print("  - remotes[]/sensors[] are topology only (which FAN owns this)")
+        print("  Decision (issue 767): NO dual-role support.")
+        print("  - Composite classes (HvacCarbonDioxideRemote) rejected")
+        print("  - Ship single-role FAN/REM/CO2; dual-role is upstream's job")
+        print("  - Users fake it by setting _class to the role they need")
         print()
-        print("  Gap: a true dual-role device (CO2+REM) cannot get both")
-        print("  sensor and remote entities simultaneously.")
-        print("  Workaround: user sets _class to force one role.")
-        print("  Future fix: add HvacCo2Remote dual-class, or don't promote")
-        print("  when conflicting signatures are detected.")
+        print("  Confirmed by R66:")
+        print("  - CO2 (_class: CO2) gets sensor entity, not remote entity")
+        print("  - Schema _class wins over eavesdropper promotion")
+        print("  - remotes[]/sensors[] are topology only, not entity creation")

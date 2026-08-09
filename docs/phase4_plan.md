@@ -495,14 +495,32 @@ membership round-trips across restarts via the schema, same as zones
 do today — this replaces ramses_cc's `.storage/ramses_cc[hvac_schema]`
 workaround (PR 764), which can stay as a fallback/safety net.
 
-**6c (done, R66).** CO2 dual-role support — verified that a single 37:
-device ID can appear in both a FAN's `remotes` and `sensors` lists
-(ramses_rf stores `_remote_ids` and `_sensor_ids` as separate sets with
-no exclusion).  However, **entity creation is based on device class, not
-list membership** — ramses_rf uses a single-class model where a device is
-either `HvacCarbonDioxideSensor` OR `HvacRemote`, not both.
+**6c (done, R66 — confirmed existing decision).** CO2 dual-role support.
+A single 37: device ID can appear in both a FAN's `remotes` and
+`sensors` lists (ramses_rf stores `_remote_ids` and `_sensor_ids` as
+separate sets with no cross-list exclusion).  However, **entity creation
+is based on device class, not list membership** — ramses_rf uses a
+single-class model where a device is either `HvacCarbonDioxideSensor`
+OR `HvacRemote`, not both.
 
-Test results (R66):
+This was already discussed and decided in issue 767 (Architecture plan):
+- The reviewer (Orcon MVS-15RH user) confirmed CO2 sensors are actually
+  remotes too — a 37: device can send both I|1298 (CO2 reading) AND
+  I|22F1 (fan mode command).  See also issue 186 (dual-purpose device
+  FAQ).
+- **Decision (issue 767, "Chosen solution"):** composite classes
+  (`HvacCarbonDioxideRemote`) and multiple class promotions are
+  **rejected**.  Users have managed faking these remotes for years,
+  and ramses_cc must not block HVAC work on dual-role.  Ship
+  single-role FAN/REM/CO2 first; dual-role is upstream's job
+  (ramses_rf Phase 3.75 "init and go" — `_class` from schema, no
+  runtime `__class__` mutation).
+- **ramses_cc interim handling (PR 764, implemented):** `generate_schema_entry`
+  merges CO2 and REM into a single branch — both go to the parent FAN's
+  `remotes[]` list.  The `sensors[]` list is reserved for when
+  ramses_rf can distinguish dual-role devices.
+
+R66 test results confirm this decision is still correct:
 - CO2 device (`_class: CO2`) gets `sensor.co2_37_120000_carbon_dioxide`
 - REM device gets `remote.rem_37_170000`
 - After injecting `I 22F1` from the CO2: no promotion occurred (schema
@@ -511,22 +529,18 @@ Test results (R66):
 - Schema placement: CO2 stays in `sensors[]` only (our filter removes
   CO2-classified devices from `remotes[]`)
 
-**Gap documented:** a true dual-role device (CO2+REM with buttons)
-cannot get both sensor and remote entities simultaneously.  The
-eavesdropper's `UPDATE_DEVICE_CLASS` event would replace the device
-class entirely (CO2 → REM), losing sensor entities.
+**No code change needed** — the decision is to NOT support dual-role
+entities.  Users who need both CO2 readings and remote control can:
+1. Set `_class: CO2` to get sensor entities (CO2 readings), or
+2. Set `_class: REM` to get remote entities (command learning/sending),
+3. Or add the device twice with different IDs (not possible with a
+   single physical device).
 
-**Workaround:** user sets `_class` to force one role.  The
-`remotes[]`/`sensors[]` lists are topology only (which FAN owns this
-device) and don't affect entity creation.
-
-**Future fix options:**
-1. Add `HvacCo2Remote` dual-class inheriting from both
-   `HvacCarbonDioxideSensor` and `HvacRemote`
-2. Don't promote when conflicting signatures are detected (leave as
-   `DeviceHvac` base class, let user decide)
-3. Allow a device to have multiple classes simultaneously (significant
-   architecture change)
+The `remotes[]`/`sensors[]` lists are topology only (which FAN owns
+this device) and don't affect entity creation.  The filter we added
+(removing CO2-classified devices from `remotes[]`) is correct for the
+single-class model — a CO2 device should not be in `remotes[]` because
+it won't get remote entities anyway.
 
 **6d (future enhancement).** Bidirectional FAN→child parent link for
 HA device registry grouping.  6a/6b gives FAN→children (via
