@@ -495,10 +495,38 @@ membership round-trips across restarts via the schema, same as zones
 do today — this replaces ramses_cc's `.storage/ramses_cc[hvac_schema]`
 workaround (PR 764), which can stay as a fallback/safety net.
 
-**6c (stretch).** CO2 dual-role support — verify a single 37: device ID
-can appear in both a FAN's `remotes` and `sensors` lists and behave
-correctly as both REM and CO2 sensor. Likely a verification task
-(ha_sim_test recipe), not new code, unless testing reveals a gap.
+**6c (done, R66).** CO2 dual-role support — verified that a single 37:
+device ID can appear in both a FAN's `remotes` and `sensors` lists
+(ramses_rf stores `_remote_ids` and `_sensor_ids` as separate sets with
+no exclusion).  However, **entity creation is based on device class, not
+list membership** — ramses_rf uses a single-class model where a device is
+either `HvacCarbonDioxideSensor` OR `HvacRemote`, not both.
+
+Test results (R66):
+- CO2 device (`_class: CO2`) gets `sensor.co2_37_120000_carbon_dioxide`
+- REM device gets `remote.rem_37_170000`
+- After injecting `I 22F1` from the CO2: no promotion occurred (schema
+  `_class` wins over eavesdropper signature), CO2 keeps sensor entity,
+  no remote entity created
+- Schema placement: CO2 stays in `sensors[]` only (our filter removes
+  CO2-classified devices from `remotes[]`)
+
+**Gap documented:** a true dual-role device (CO2+REM with buttons)
+cannot get both sensor and remote entities simultaneously.  The
+eavesdropper's `UPDATE_DEVICE_CLASS` event would replace the device
+class entirely (CO2 → REM), losing sensor entities.
+
+**Workaround:** user sets `_class` to force one role.  The
+`remotes[]`/`sensors[]` lists are topology only (which FAN owns this
+device) and don't affect entity creation.
+
+**Future fix options:**
+1. Add `HvacCo2Remote` dual-class inheriting from both
+   `HvacCarbonDioxideSensor` and `HvacRemote`
+2. Don't promote when conflicting signatures are detected (leave as
+   `DeviceHvac` base class, let user decide)
+3. Allow a device to have multiple classes simultaneously (significant
+   architecture change)
 
 **6d (future enhancement).** Bidirectional FAN→child parent link for
 HA device registry grouping.  6a/6b gives FAN→children (via
