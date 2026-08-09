@@ -185,7 +185,12 @@ equivalents) once cut, not just against master.
 1. **Implement Step 5** (TopologyChangedEvent subscription) now that
    `Gateway.set_schema_updated_callback()` exists in ramses_rf 0.59.3+.
    This replaces the 5-min `sync_learned_topology` polling loop with an
-   event-driven push from ramses_rf on topology mutations.
+   event-driven push from ramses_rf on topology mutations. **See the
+   fully detailed implementation plan** (concrete code sketch, debounce
+   design, `__init__`/unload wiring, and new ha_sim_test recipe R62) in
+   the [Step 5](#step-5-topologychangedevent-subscription) section
+   below — added Aug 9 2026 after verifying the API directly against
+   the ramses_rf 0.59.4 checkout.
 2. Re-run the full ha_sim_test suite once ramses_cc/ramses_rf cut their
    next tagged releases (post Phase 5) to confirm the fix holds outside
    of `master`.
@@ -382,28 +387,146 @@ Event-driven subscription:
 - Events flow: `TopologyBuilder` → `emit_event_cb` →
   `DeviceRegistry.handle_topology_event()`
 
-**What's missing (needs ramses_rf PR):**
-- **No public subscription API** — events flow internally only.
-  ramses_cc needs `gwy.add_topology_callback(cb)` or similar to
-  receive `TopologyChangedEvent` without polling.
-- **Tracked by ramses_rf Phase 5 PR 3 (issue 992)** — "Event Bus &
-  Handshake": harden `TopologyChangedEvent` with typed payload
-  dataclasses + define `SchemaUpdatedCallback` in `interfaces.py`.
-  This is the planned delivery mechanism for our Step 5.
+#### STATUS: UNBLOCKED as of ramses_rf 0.59.3 (PR 997) — API confirmed present
 
-**Changes (ramses_cc side):**
-- `coordinator.py`: register a callback with ramses_rf gateway for
-  `TopologyChangedEvent`
-- On event: update config entry schema with the topology change
-- Keep `sync_learned_topology` as a fallback (run on shutdown + every
-  30 min as safety net)
+Verified directly against the current `ramses_rf` checkout (Aug 9 2026):
 
-**Changes (ramses_rf side — small PR needed):**
-- Expose `gwy.add_topology_callback(cb)` or similar
-- The events already fire — just need to fan out to external listeners
+- `SchemaUpdatedCallback = Callable[[dict[str, Any]], Awaitable[None] | None]`
+  defined in `src/ramses_rf/interfaces.py:15`.
+- `Gateway.schema_updated_callback` (property) and
+  `Gateway.set_schema_updated_callback(callback)` in
+  `src/ramses_rf/gateway.py:275-292`.
+- Wiring already exists end-to-end and needs **no further ramses_rf
+  changes**:
+  `DeviceRegistry.handle_topology_event()` (`devices/dev_registry.py:96-111`)
+  → on any successful mutation, calls `self._on_topology_changed_cb()`
+  → `Gateway._on_topology_changed()` (`gateway.py:294-296`) →
+  `asyncio.create_task(self._notify_schema_updated())` →
+  `Gateway._notify_schema_updated()` (`gateway.py:298-309`) awaits
+  `self.schema()` and invokes the registered callback with the
+  **full schema dict** (same shape as `gwy.get_state()`'s first
+  return value, i.e. identical to what `async_save_client_state`
+  already consumes as `schema` today).
+- The callback may be sync or async (`Awaitable[None] | None` return).
+- This fires on **every** successful topology mutation: `BIND_DEVICE`,
+  `UPDATE_DEVICE_CLASS`, `UPDATE_TRAITS`, `CREATE_CONTROLLER`,
+  `CREATE_CIRCUIT`. Rejected mutations (`DeviceNotFoundError`,
+  `SchemaInconsistentError`, `SystemSchemaInconsistent`) do NOT fire
+  the callback (see `dev_registry.py:112-119`).
 
-**Test:** ha_sim_test recipe verifying real-time schema update on
-zone binding change (no 5-min wait).
+**No ramses_rf PR is needed anymore** — the earlier idea of
+`gwy.add_topology_callback(cb)` is superseded by the simpler
+single-callback `set_schema_updated_callback` API that already shipped.
+
+#### Concrete implementation plan (ramses_cc side only)
+
+All changes are in `custom_components/ramses_cc/coordinator.py`.
+`self.client` is a `Gateway` instance, so the API is directly usable.
+
+**1. Register the callback in `async_start()`**, right after
+`await self.client.start(**start_kwargs)` (or as part of `async_setup`,
+wherever `self.client` is guaranteed non-None and stable — check both
+`async_setup` and `async_start` since `self.client` can be replaced on
+`fresh_start` profile reloads):
+
+```python
+if self.client:
+    self.client.set_schema_updated_callback(self._on_rf_schema_updated)
+    self.entry.async_on_unload(
+        lambda: self.client.set_schema_updated_callback(None)
+        if self.client else None
+    )
+```
+
+**2. Implement `_on_rf_schema_updated` with debouncing.** Topology
+mutations can arrive in bursts (e.g. a discovery scan processing many
+1FC9 packets during startup, or a multi-zone 000C sequence). Firing
+`async_save_client_state` (which does schema validation + a full
+config-entry write + reload-suppression bookkeeping) on every single
+event would cause redundant work and potential config-entry write
+storms. Debounce with a short delay (e.g. 2 seconds), cancelling and
+rescheduling on each new event — a standard "trailing debounce"
+pattern:
+
+```python
+def _on_rf_schema_updated(self, schema: dict[str, Any]) -> None:
+    """Callback from ramses_rf when topology/schema changes (Step 5).
+
+    Debounced: coalesces bursts of topology events (e.g. a discovery
+    scan processing multiple 1FC9 packets) into a single save cycle.
+    """
+    if self._skip_topology_sync:
+        return  # coordinator is unloading/reloading — ignore
+    if self._schema_updated_debounce_task is not None:
+        self._schema_updated_debounce_task.cancel()
+    self._schema_updated_debounce_task = self.hass.async_create_task(
+        self._debounced_topology_sync()
+    )
+
+async def _debounced_topology_sync(self) -> None:
+    try:
+        await asyncio.sleep(2.0)
+    except asyncio.CancelledError:
+        return
+    await self.async_save_client_state()
+```
+
+Notes:
+- Reuse `async_save_client_state()` as-is — it already does the
+  `sync_learned_topology` diff, schema validation
+  (`_validate_schema_for_ramserf`), reload suppression
+  (`_suppress_reload`), and `config_entries.async_update_entry` call.
+  No duplicate logic needed.
+- The `schema` dict passed into the callback is discarded in favour of
+  re-fetching via `self.client.get_state()` inside
+  `async_save_client_state` — this keeps a single code path and avoids
+  subtle drift between "event schema" and "state-save schema". If
+  profiling later shows this is wasteful, `async_save_client_state`
+  could be refactored to accept an optional pre-fetched schema.
+- Guard on `self._skip_topology_sync` (already exists, set during
+  `_async_save_on_unload`, see `coordinator.py:1722/1746`) to avoid
+  writing a fresh-start / unloading config entry from a stale event
+  that was in flight before unload.
+
+**3. Reduce (not remove) the polling fallback.** Keep
+`async_save_client_state` on `async_track_time_interval` as a safety
+net (covers any topology change that doesn't go through
+`DeviceRegistry.handle_topology_event`, and covers periodic packet-state
+persistence which is a separate concern from topology sync). Increase
+`SAVE_STATE_INTERVAL` from 5 min to e.g. 15-30 min once the event-driven
+path is verified reliable — don't remove it entirely in the first PR.
+
+**4. Add `self._schema_updated_debounce_task: asyncio.Task | None = None`**
+to `__init__`, alongside the existing `self._skip_topology_sync` flag.
+
+**5. Cancel the debounce task on unload** (in `_async_save_on_unload`,
+before the final `await self.async_save_client_state()`), so an
+in-flight debounced save doesn't race with the unload's own save.
+
+#### Testing
+
+New ha_sim_test recipe **R62** (next free number): bind a new TRV via
+1FC9 injection (as R11 already does), then instead of `ctx.wait(N)` or
+polling for up to 5 minutes, assert the config entry's `CONF_SCHEMA` is
+updated within a few seconds (e.g. `wait_for(..., timeout=10)`). This
+directly proves the event-driven path fired instead of relying on the
+periodic poll. Also verify:
+- Multiple rapid 1FC9 injections (burst) result in a single config-entry
+  write, not N writes (check `core.config_entries` write timestamp /
+  count via a log line, or spy on `async_update_entry` call count in a
+  debug log).
+- No regression: `sync_learned_topology`'s existing behaviour
+  (validation rejection, comments refresh, remotes migration) is
+  unchanged since it's the same function, just triggered differently.
+- Unload during an in-flight debounce doesn't corrupt the schema
+  (start a topology change, immediately reload the config entry,
+  verify no crash / no stale write).
+
+#### Rollout
+
+This is a purely additive, non-breaking change to ramses_cc — no
+ramses_rf changes, no config schema/migration changes. Safe to ship in
+a minor ramses_cc release once ha_sim_test (including new R62) passes.
 
 ---
 
@@ -448,6 +571,27 @@ config entry has it.
 
 **Test:** ha_sim_test recipes R41, R42, R43 (currently SKIP) will
 verify HVAC topology when implemented.
+
+#### Next action: raise upstream now that Phase 5 is done
+
+Re-confirmed against the 0.59.4 checkout (Aug 9 2026) that
+`load_fan()` (`src/ramses_rf/schemas.py:424-439`) is unchanged — the
+`fan._update_schema(**schema)` line is still commented out, and no
+open ramses_rf PR/issue references it directly (only the general
+tracking issue #639). With Phase 5 now fully closed and Phase 6
+(payload dataclass layer) not touching topology/schema code, this is
+a good time to raise a focused ramses_rf issue:
+
+- Title suggestion: "load_fan() is a stub — HVAC schema
+  (remotes/sensors) is not loaded into FAN devices"
+- Reference issue #639 (architecture blueprint) and this doc's Step 6
+  analysis (what's missing: `load_fan` impl, FAN-as-Parent, HVAC in
+  `gateway.schema()` output, CO2 dual-role).
+- We are not positioned to implement this ourselves (it's core
+  `ramses_rf` device/topology logic, not a `ramses_cc` change) — but a
+  clear, actionable issue with the specific missing pieces listed
+  above will make it easier for PWhite-Eng/silverailscolo to pick up,
+  and unblocks our last remaining Phase 4 step.
 
 ---
 
