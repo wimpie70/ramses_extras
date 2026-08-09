@@ -284,6 +284,113 @@ class R65HvacBelongsToFromTraffic(Recipe):
             f"remotes={remotes_after_co2}",
         )
 
+        # 5c. Contradictory scenario 1: Dual-role CO2+REM.
+        #     Inject W 22F1 from the CO2 to the FAN — the CO2 has _class: CO2
+        #     (sensor) but is acting as a remote (sending a command).  This is
+        #     realistic: some devices are combo CO2+REM with buttons.
+        #     Expected: the protocol layer may reject W from a CO2 (Unexpected
+        #     verb/code for src).  If it does, that's the correct behavior —
+        #     the protocol enforces role-based sending rules.
+        #     If it doesn't reject: the CO2 should stay in sensors[] (schema
+        #     _class is authoritative), NOT move to remotes[].
+        print(f"  Contradictory 1: inject W 22F1 from CO2 {CO2} to FAN {FAN}...")
+        w_rejected = False
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": CO2,
+                    "dst": FAN,
+                    "code": "22F1",
+                    "payload": "000207",
+                    "verb": "W",
+                },
+            )
+            print("    W 22F1 from CO2 accepted by protocol")
+        except RuntimeError as e:
+            w_rejected = True
+            print(f"    W 22F1 from CO2 rejected (expected): {str(e)[:80]}")
+
+        ctx.wait(5, "for schema to settle after W inject")
+        schema = get_schema_retry()
+        fan_entry = schema.get(FAN, {}) if schema else {}
+        remotes_after_w = (
+            fan_entry.get("remotes", []) if isinstance(fan_entry, dict) else []
+        )
+        sensors_after_w = (
+            fan_entry.get("sensors", []) if isinstance(fan_entry, dict) else []
+        )
+
+        if not w_rejected:
+            # If the W was accepted, CO2 should still be in sensors[] (schema
+            # _class is authoritative), NOT in remotes[].
+            ctx.check(
+                f"CO2 {CO2} still in sensors[] after W inject (schema _class wins)",
+                CO2 in sensors_after_w,
+                f"sensors={sensors_after_w}",
+            )
+            ctx.check(
+                f"CO2 {CO2} still NOT in remotes[] after W inject",
+                CO2 not in remotes_after_w,
+                f"remotes={remotes_after_w}",
+            )
+        else:
+            print("    (W rejected — protocol enforces role-based sending)")
+
+        # 5d. Contradictory scenario 2: Second FAN sends RP to the CO2.
+        #     Inject RP 31E0 from a fake FAN (32:999999) to the CO2.  In real
+        #     life, two FANs in range could both answer a broadcast RQ from
+        #     the CO2.  The CO2 already "belongs to" 32:150000 — does it
+        #     switch to 32:999999 (last writer wins) or stay (first writer
+        #     wins / known device only)?
+        fake_fan = "32:999999"
+        print(
+            f"  Contradictory 2: inject RP 31E0 from fake FAN"
+            f" {fake_fan} to CO2 {CO2}..."
+        )
+        for _ in range(3):
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": fake_fan,
+                        "dst": CO2,
+                        "code": "31E0",
+                        "payload": "0000000001001E00",
+                        "verb": "RP",
+                    },
+                )
+            except RuntimeError as e:
+                print(f"    Inject failed: {str(e)[:80]}")
+            ctx.wait(1, "between injects")
+
+        ctx.wait(10, "for scan engine + save_state cycle")
+        schema = get_schema_retry()
+        comments = schema.get("device_comments", {}) if schema else {}
+        co2_comment_after_fake = comments.get(CO2, "")
+        print(f"  CO2 comment after fake FAN RP: {co2_comment_after_fake[:160]}")
+
+        # The CO2 should still belong to the real FAN (32:150000), not the
+        # fake FAN (32:999999).  The scan engine should either:
+        # - ignore the fake FAN (unknown device), or
+        # - keep the first bound_to (first writer wins), or
+        # - switch to the fake FAN (last writer wins — this would be a bug)
+        ctx.check(
+            f"CO2 comment still has 'belongs to {FAN}' (not switched to fake FAN)",
+            f"belongs to {FAN}" in co2_comment_after_fake,
+            f"comment={co2_comment_after_fake[:160]}",
+        )
+
+        ctx.check(
+            f"CO2 comment does NOT have 'belongs to {fake_fan}'",
+            f"belongs to {fake_fan}" not in co2_comment_after_fake,
+            f"comment={co2_comment_after_fake[:160]}",
+        )
+
         # 6. Roundtrip: reload ramses_cc and verify the schema persists.
         #    The "belongs to" comment + remotes[]/sensors[] should survive
         #    a coordinator restart via gateway.schema() → save_state → reload.
