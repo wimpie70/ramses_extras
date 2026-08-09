@@ -619,6 +619,34 @@ handler catches it.
 - Safety: 22F1 RQ is read-only (query, not write) — no side effects
   on the FAN's operation.
 
+**Architectural parallel: heat vs HVAC topology discovery.**  Both
+domains have the same two-layer structure (parent tracks children,
+child tracks parent), but use different mechanisms to discover and
+establish the link:
+
+| Aspect | Heat domain | HVAC domain |
+|--------|-------------|-------------|
+| **Parent tracks children** | `child_by_id` dict (Parent mixin) | `_remote_ids`/`_sensor_ids` sets (HvacVentilator) |
+| **Child tracks parent** | `_parent` attribute (Child mixin) | `_parent_fan` (6d, not yet implemented) |
+| **Link establishment** | `get_device(parent=)` → `_apply_topology_link()` | `load_fan()` → `_update_schema()` |
+| **Schema key** | `zones[NN].sensor`/`actuators[]` | `remotes[]`/`sensors[]` |
+| **Passive discovery** | 000C/000A zone binding packets (frequent, periodic) | Directed FAN→REM I/RP (6e, only when REM polls FAN) |
+| **Active discovery** | Not needed — 000C/000A are frequent | 6f: spoofed RQ 22F1 → FAN RP (provokes directed response) |
+| **Comment phrase** | "bound to 01:..." | "belongs to 32:..." |
+
+The key difference: heat devices broadcast their zone binding
+regularly (000C/000A are periodic — every few minutes), so passive
+listening is sufficient.  HVAC devices don't broadcast their FAN→REM
+relationship regularly — the FAN only sends directed packets to a REM
+when the REM polls it (RQ 2411/22F1).  If the REM is quiet (e.g. user
+hasn't touched the remote), the relationship is invisible to a
+passive listener.  That's why 6f (active probing) is useful for HVAC
+but not needed for heat.
+
+6f is the HVAC equivalent of "force a 000C binding table read" — both
+actively provoke the device to reveal its relationships instead of
+waiting passively for periodic traffic.
+
 **Note on `add_bound_device` / `_bound_devices`:** distinct from
 6a/6b's `_remote_ids`/`_sensor_ids` — `_bound_devices` tracks the 2411
 command source for the FAN (wired client-side in
