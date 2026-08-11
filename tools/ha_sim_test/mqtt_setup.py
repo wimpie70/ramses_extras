@@ -14,6 +14,7 @@ does not, so we must publish them before starting tests.
 from __future__ import annotations
 
 import logging
+import socket
 from urllib.parse import urlparse
 
 import paho.mqtt.client as mqtt
@@ -21,6 +22,22 @@ import paho.mqtt.client as mqtt
 from .const import MQTT_BROKER_URL, MQTT_TOPIC_NS
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def is_mqtt_broker_ready(timeout: float = 5.0) -> bool:
+    """Check if the MQTT broker is reachable (TCP connect).
+
+    :param timeout: Socket connect timeout in seconds.
+    :return: True if the broker accepted a TCP connection.
+    """
+    parsed = urlparse(MQTT_BROKER_URL)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 1883
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError, ConnectionRefusedError:
+        return False
 
 
 def publish_retained_online_messages(hgi_ids: list[str]) -> None:

@@ -25,7 +25,7 @@ from pathlib import Path
 
 from .base import RecipeContext
 from .colors import bold, color_status, green, red
-from .const import InstanceConfig, make_instances
+from .const import MQTT_BROKER_URL, InstanceConfig, make_instances
 from .helpers import (
     delete_test_profiles,
     get_known_list,
@@ -88,7 +88,11 @@ async def setup(ctx: RecipeContext) -> None:
 
         publish_retained_online_messages([inst.hgi_id])
     except Exception as err:  # noqa: BLE001
-        print(f"  WARNING: could not publish retained online message: {err}")
+        print(
+            f"  ERROR: could not publish retained online message: {err}\n"
+            "  The MQTT broker was reachable but the publish failed. Aborting."
+        )
+        sys.exit(1)
 
     # Reset stale state: delete .storage/ramses_cc so ramses_cc starts fresh.
     # The profile load updates config entry options, but .storage/ramses_cc
@@ -313,6 +317,21 @@ async def run(
     # Discover all recipe modules so they self-register
     discover_recipes(__name__.rsplit(".", 1)[0] + ".recipes")
     print(f"  Discovered {len(REGISTRY)} recipes")
+
+    # Verify the MQTT broker is reachable — ramses_cc's MQTT transport
+    # cannot function without it, and all recipes will fail with
+    # cascading errors if it's down.
+    from .mqtt_setup import is_mqtt_broker_ready
+
+    if not is_mqtt_broker_ready():
+        print(
+            f"\n  ERROR: MQTT broker at {MQTT_BROKER_URL} is not reachable.\n"
+            "  Start it with:  cd ~/docker_files/ha-sim && "
+            "docker compose -f docker-compose.mqtt.yml up -d\n"
+            "  Aborting."
+        )
+        sys.exit(1)
+    print(f"  MQTT broker at {MQTT_BROKER_URL} is reachable")
 
     # Select recipes to run
     if recipe_ids:
