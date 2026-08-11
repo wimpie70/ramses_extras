@@ -114,28 +114,65 @@ class R65HvacBelongsToFromTraffic(Recipe):
             f"sensors={sensors_before}",
         )
 
-        # 3. Wait for the scan engine to detect FAN→REM/CO2 traffic.
+        # 3. Wait for the scan engine to detect FAN→REM traffic.
         #    The mixed profile's auto_answer generates 2411 RQ from REM→FAN,
         #    which triggers FAN RP→REM (directed).  The scan engine sets
-        #    bound_to on the 37: device.  Then refresh_device_comments writes
-        #    "belongs to 32:150000" and sync_learned_topology places them
-        #    under the FAN.
+        #    bound_to on the REM.  CO2 is a sensor — it doesn't poll the FAN,
+        #    so passive detection of CO2 is unreliable (depends on the FAN
+        #    happening to send a directed I/RP to the CO2).  We inject a
+        #    directed RP 31E0 from FAN→CO2 below to reliably trigger the
+        #    scan engine's bound_to detection for the CO2.
         #    The coordinator runs save_state every ~30s, which triggers
         #    refresh_device_comments + sync_learned_topology.
-        print("  Waiting for scan engine + sync_learned_topology to detect traffic...")
+        print("  Waiting for scan engine to detect FAN→REM traffic...")
         schema = None
         for attempt in range(10):
             ctx.wait(5, f"for sync cycle (attempt {attempt + 1}/10)")
             schema = get_schema_retry()
             fan_entry = schema.get(FAN, {}) if schema else {}
-            if isinstance(fan_entry, dict) and (
-                REM in fan_entry.get("remotes", [])
-                or CO2 in fan_entry.get("sensors", [])
-            ):
-                print("    FAN has remotes/sensors from traffic — sync done")
+            if isinstance(fan_entry, dict) and REM in fan_entry.get("remotes", []):
+                print("    REM detected in remotes[] from traffic — sync done")
                 break
         else:
-            print("    WARNING: FAN still has no remotes/sensors after 50s")
+            print("    WARNING: REM not in remotes[] after 50s")
+
+        # 3b. Inject directed RP 31E0 from FAN→CO2 to trigger bound_to.
+        #     CO2 is a sensor and doesn't poll the FAN, so passive detection
+        #     is unreliable — especially under parallel load where traffic
+        #     may be sparse.  The injection is the reliable way to trigger
+        #     the scan engine's HVAC parent inference for the CO2.
+        print(
+            f"  Injecting RP 31E0 from FAN {FAN} to CO2 {CO2} (reliable detection)..."
+        )
+        for _ in range(3):
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": FAN,
+                        "dst": CO2,
+                        "code": "31E0",
+                        "payload": "0000000001001E00",
+                        "verb": "RP",
+                    },
+                )
+            except RuntimeError as e:
+                print(f"    Inject failed: {str(e)[:80]}")
+            ctx.wait(1, "between injects")
+
+        # 3c. Wait for sync_learned_topology to place CO2 in sensors[].
+        print("  Waiting for CO2 to appear in sensors[]...")
+        for attempt in range(12):
+            ctx.wait(5, f"for CO2 sync (attempt {attempt + 1}/12)")
+            schema = get_schema_retry()
+            fan_entry = schema.get(FAN, {}) if schema else {}
+            if isinstance(fan_entry, dict) and CO2 in fan_entry.get("sensors", []):
+                print("    CO2 detected in sensors[] — sync done")
+                break
+        else:
+            print("    WARNING: CO2 not in sensors[] after 60s")
 
         # 4. Capture the AFTER state: REM in remotes[], CO2 in sensors[].
         fan_entry = schema.get(FAN, {}) if schema else {}
@@ -222,31 +259,10 @@ class R65HvacBelongsToFromTraffic(Recipe):
             f"comment={rem_comment[:160]}",
         )
 
-        # 5b. Inject directed RP from FAN to CO2 to trigger bound_to.
-        #     We can't inject RQ from CO2 (protocol rejects RQ from a CO2
-        #     sensor: "Unexpected verb/code for src (CO2) to Tx").  Instead
-        #     we inject the RP directly from the FAN to the CO2 — this is
-        #     what the scan engine needs to see: a FAN (32:) sending a
-        #     directed RP to a 37: device using an HVAC code.
-        print(f"  Injecting RP 31E0 from FAN {FAN} to CO2 {CO2}...")
-        for _ in range(3):
-            try:
-                call_service(
-                    ctx.token,
-                    "ramses_extras",
-                    "device_simulator_inject_message",
-                    {
-                        "source_id": FAN,
-                        "dst": CO2,
-                        "code": "31E0",
-                        "payload": "0000000001001E00",
-                        "verb": "RP",
-                    },
-                )
-            except RuntimeError as e:
-                print(f"    Inject failed: {str(e)[:80]}")
-            ctx.wait(1, "between injects")
-
+        # 5b. The CO2 "belongs to" comment may not have appeared yet even
+        #     though CO2 is in sensors[] — the comment is written by
+        #     refresh_device_comments which runs on the save_state cycle.
+        #     The injection was already done in step 3b above.
         # Wait for the CO2 "belongs to" comment to appear
         # The save_state cycle is ~30s, and the bound_to may be set late
         # in the cycle, so we need to wait up to 60s.
@@ -408,9 +424,58 @@ class R65HvacBelongsToFromTraffic(Recipe):
             print(f"  Profile reload failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
-        ctx.wait(5, "for schema to settle after reload")
 
-        schema_rt = get_schema_retry()
+        # 6a. After reload, the schema override strips remotes/sensors, so
+        #     they must be re-detected from traffic.  Wait for REM to appear
+        #     in remotes[] from passive traffic, then inject FAN→CO2 RP to
+        #     trigger CO2 detection (same pattern as step 3).
+        print("  Waiting for REM re-detection from traffic after reload...")
+        schema_rt = None
+        for attempt in range(10):
+            ctx.wait(5, f"for REM re-detection (attempt {attempt + 1}/10)")
+            schema_rt = get_schema_retry()
+            fan_entry_rt = schema_rt.get(FAN, {}) if schema_rt else {}
+            if isinstance(fan_entry_rt, dict) and REM in fan_entry_rt.get(
+                "remotes", []
+            ):
+                print("    REM re-detected in remotes[] after reload")
+                break
+        else:
+            print("    WARNING: REM not in remotes[] after 50s post-reload")
+
+        # 6b. Re-inject FAN→CO2 RP for reliable CO2 re-detection.
+        print(f"  Re-injecting RP 31E0 from FAN {FAN} to CO2 {CO2}...")
+        for _ in range(3):
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": FAN,
+                        "dst": CO2,
+                        "code": "31E0",
+                        "payload": "0000000001001E00",
+                        "verb": "RP",
+                    },
+                )
+            except RuntimeError as e:
+                print(f"    Inject failed: {str(e)[:80]}")
+            ctx.wait(1, "between injects")
+
+        print("  Waiting for CO2 re-detection in sensors[]...")
+        for attempt in range(12):
+            ctx.wait(5, f"for CO2 re-detection (attempt {attempt + 1}/12)")
+            schema_rt = get_schema_retry()
+            fan_entry_rt = schema_rt.get(FAN, {}) if schema_rt else {}
+            if isinstance(fan_entry_rt, dict) and CO2 in fan_entry_rt.get(
+                "sensors", []
+            ):
+                print("    CO2 re-detected in sensors[] after reload")
+                break
+        else:
+            print("    WARNING: CO2 not in sensors[] after 60s post-reload")
+
         fan_entry_rt = schema_rt.get(FAN, {}) if schema_rt else {}
         remotes_rt = (
             fan_entry_rt.get("remotes", []) if isinstance(fan_entry_rt, dict) else []
