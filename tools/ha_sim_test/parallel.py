@@ -30,7 +30,7 @@ from typing import Any
 
 from .base import RecipeContext
 from .colors import bold, color_status, green, red
-from .const import InstanceConfig, make_instances
+from .const import MQTT_BROKER_URL, InstanceConfig, make_instances
 from .dashboard import LiveDashboard
 from .helpers import (
     _current_instance as _current_instance_var,
@@ -276,7 +276,11 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
         publish_retained_online_messages(hgi_ids)
         print(f"  Published retained 'online' messages for {len(hgi_ids)} HGI(s)")
     except Exception as err:  # noqa: BLE001
-        print(f"  WARNING: could not publish retained online messages: {err}")
+        print(
+            f"  ERROR: could not publish retained online messages: {err}\n"
+            "  The MQTT broker was reachable but the publish failed. Aborting."
+        )
+        sys.exit(1)
 
     # Verify instance 1 (ha-sim) is reachable — it's not started by us
     inst1 = instances[0]
@@ -917,6 +921,22 @@ async def run_parallel(
     discover_recipes(__name__.rsplit(".", 1)[0] + ".recipes")
     print(f"  Discovered {len(REGISTRY)} recipes")
 
+    # Verify the MQTT broker is reachable — all containers depend on it
+    # for ramses_cc's MQTT transport.  Without it, every recipe will fail
+    # with cascading errors (Transport did not bind, MQTT connection
+    # failed, etc.).
+    from .mqtt_setup import is_mqtt_broker_ready
+
+    if not is_mqtt_broker_ready():
+        print(
+            f"\n  ERROR: MQTT broker at {MQTT_BROKER_URL} is not reachable.\n"
+            "  Start it with:  cd ~/docker_files/ha-sim && "
+            "docker compose -f docker-compose.mqtt.yml up -d\n"
+            "  Aborting."
+        )
+        sys.exit(1)
+    print(f"  MQTT broker at {MQTT_BROKER_URL} is reachable")
+
     # Select recipes
     if recipe_ids:
         all_recipe_ids = []
@@ -1009,7 +1029,5 @@ async def run_parallel(
     # Cleanup
     if cleanup:
         cleanup_containers(instances, remove_configs=cleanup)
-
-    import sys
 
     sys.exit(exit_code)
