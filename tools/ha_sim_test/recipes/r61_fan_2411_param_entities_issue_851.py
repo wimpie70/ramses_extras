@@ -30,12 +30,16 @@ correct by inspecting ramses_rf/ramses_cc internals via
      on any message from/to a FAN device.
   c. ``_async_param_updated`` normalizes param IDs with ``lstrip("0")``
      before comparing.
-  d. ``fan_handler`` has periodic 2411 polling (``_start_param_polling``).
+  d. ``fan_handler`` has periodic 2411 polling via
+     ``_start_param_polling`` using ``async_track_time_interval``
+     (issue 937 — the old ``while True`` + ``asyncio.sleep`` loop
+     blocked HA startup).
 
 See:
   https://github.com/ramses-rf/ramses_rf/pull/1011
   https://github.com/ramses-rf/ramses_cc/pull/916
   https://github.com/ramses-rf/ramses_cc/issues/851
+  https://github.com/ramses-rf/ramses_cc/issues/937
 """
 
 from __future__ import annotations
@@ -210,12 +214,34 @@ except Exception as e:
                 "lstrip normalization missing in _async_param_updated",
             )
 
-        # 5. Structural check: fan_handler has _start_param_polling.
+        # 5. Structural check: fan_handler has _start_param_polling using
+        #    async_track_time_interval (issue 937 — the old while-True
+        #    loop blocked HA startup).
         code_check_fan_handler = """
-import inspect, json
+import inspect, json, textwrap
 try:
     from custom_components.ramses_cc.fan_handler import RamsesFanHandler
     has_start_poll = hasattr(RamsesFanHandler, "_start_param_polling")
+    src = inspect.getsource(RamsesFanHandler._start_param_polling)
+    has_track_time_interval = "async_track_time_interval" in src
+    # Check for while-True in the code body only (not the docstring).
+    # Strip the docstring so mentions of "while True" in comments/docs
+    # don't cause false positives.
+    body_lines = []
+    in_docstring = False
+    for line in src.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('\"\"\"'):
+            in_docstring = not in_docstring
+            if stripped.endswith('\"\"\"') and len(stripped) > 3:
+                in_docstring = False
+            continue
+        if not in_docstring:
+            body_lines.append(line)
+    body = "\\n".join(body_lines)
+    has_while_loop = "while True" in body
+    # The old _stop_param_polling and _fan_param_poll_tasks should NOT
+    # exist (cleanup is now automatic via entry.async_on_unload)
     has_stop_poll = hasattr(RamsesFanHandler, "_stop_param_polling")
     has_poll_tasks = "_fan_param_poll_tasks" in inspect.getsource(
         RamsesFanHandler.__init__
@@ -223,6 +249,8 @@ try:
     print(json.dumps({
         "ok": True,
         "has_start_poll": has_start_poll,
+        "has_track_time_interval": has_track_time_interval,
+        "has_while_loop": has_while_loop,
         "has_stop_poll": has_stop_poll,
         "has_poll_tasks": has_poll_tasks,
     }))
@@ -242,14 +270,24 @@ except Exception as e:
                 "_start_param_polling missing from RamsesFanHandler",
             )
             ctx.check(
-                "fix: fan_handler has _stop_param_polling method",
-                result.get("has_stop_poll", False),
-                "_stop_param_polling missing from RamsesFanHandler",
+                "fix: _start_param_polling uses async_track_time_interval",
+                result.get("has_track_time_interval", False),
+                "async_track_time_interval not used in _start_param_polling",
             )
             ctx.check(
-                "fix: fan_handler tracks _fan_param_poll_tasks dict",
-                result.get("has_poll_tasks", False),
-                "_fan_param_poll_tasks dict missing from __init__",
+                "fix: _start_param_polling has no while-True loop (issue 937)",
+                not result.get("has_while_loop", True),
+                "while True loop still present in _start_param_polling",
+            )
+            ctx.check(
+                "fix: no _stop_param_polling (cleanup via async_on_unload)",
+                not result.get("has_stop_poll", True),
+                "_stop_param_polling should be removed (cleanup is automatic)",
+            )
+            ctx.check(
+                "fix: no _fan_param_poll_tasks dict (cleanup via async_on_unload)",
+                not result.get("has_poll_tasks", True),
+                "_fan_param_poll_tasks should be removed (cleanup is automatic)",
             )
 
         # 6. Verify parameter entities exist for the FAN device.
