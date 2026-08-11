@@ -47,10 +47,12 @@ from .helpers import (
 from .log_monitor import LogMonitor
 from .mqtt_setup import publish_retained_online_messages
 from .registry import REGISTRY, discover_recipes
+from pathlib import Path
+
 from .runner import setup, teardown
 
 #: Path to ramses_cc custom_components (bind-mounted into each container).
-_RAMSES_CC_PATH = "/home/willem/dev/ramses_cc/custom_components/ramses_cc"
+_RAMSES_CC_PATH = str(Path.home() / "dev/ramses_cc/custom_components/ramses_cc")
 
 #: docker-compose template for parallel instances (2+).
 COMPOSE_TEMPLATE = """\
