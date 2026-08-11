@@ -1,8 +1,8 @@
 # Phase 4 Plan: known_list Removal + Event-Driven Topology
 
 **Created:** Jul 23 2026
-**Updated:** Aug 9 2026
-**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 UNBLOCKED** — ramses_rf Phase 5 (issue 992) is now CLOSED, shipped in 0.59.3, and PR 997 delivers the `set_schema_updated_callback` API our Step 5 needs; full implementation plan written below. **Step 6 still blocked** on ramses_rf `load_fan` — confirmed NOT on PWhite-Eng's roadmap (searched issues 639/992/1001); a concrete 3-sub-phase implementation plan is now written below, ready to hand off upstream or implement ourselves if we ever get ramses_rf write access. ramses_rf Phase 6 (issue 1001, payload dataclass layer) now in progress, non-breaking so far. **ha-sim test Aug 9 (cc/rf master, post Phase 5): full suite passes** — the previous 19 failures (Aug 6, against 0.59.2 tags) appear resolved by Phase 5 completion + ramses_cc's const-import fix (PR 914).
+**Updated:** Aug 11 2026
+**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 DONE** — implemented in ramses_cc coordinator.py (`set_schema_updated_callback` registered, 2s trailing debounce, `async_create_background_task` per PR 932); verified by ha_sim_test R62 (14/14 pass). **Step 6a/6b DONE** — `load_fan` is no longer a stub (ramses_rf `schemas.py:437-438` calls `fan._update_schema(**schema)`), `HvacVentilator._remote_ids`/`_sensor_ids` implemented, `gateway.schema()` nests FAN membership, `get_hvac_orphans()` excludes owned devices; verified by R41 (7/7 pass). **Step 6d DONE** — `_parent_fan` bidirectional link set in `HvacVentilator._update_schema()`; verified by R67. **Step 6e/6f DONE** — traffic-based "belongs to" detection (R65) + active probing via `probe_hvac_binding` service (R68). **Step 6c** decided: no dual-role composite classes (R43 correctly skips). **R42 SUPERSEDED** — tested for BIND_DEVICE from TopologyBuilder, but approach changed to "belongs to" comments + load_fan; R41+R65 cover same ground. **Remaining:** Step 4 (optional), Step 7 (future — StateUpdatedEvent, no ramses_rf API yet). **Open question:** ramses_cc's 5-min `SAVE_STATE_INTERVAL` polling saves packets to `.storage/ramses_cc` (JSON), but ramses_rf's MessageStore (SQLite `ramses.db`) already stores all packets natively — the JSON save is redundant and causes unnecessary disk writes (memory stick wear). Fix is in ramses_rf: use MessageStore for state restoration on restart, then ramses_cc can stop saving packets (PWhite-Eng's plan: "deprecate the .storage/ramses_cc json mechanism entirely"). ramses_rf Phase 6 (issue 1001, payload dataclass layer) in progress, non-breaking so far (PRs 1-10 shadow-parity; PRs 11-12 will be the breaking cutover). **ha-sim test Aug 11 (cc/rf master): 459/459 pass in 4x parallel** — including R41, R62, R65, R67, R68.
 **Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED, shipped in ramses_rf 0.59.1)
 **Blocks:** nothing (this is the final phase for schema-as-SSOT)
 
@@ -35,6 +35,7 @@
   - [Step 5: TopologyChangedEvent subscription](#step-5-topologychangedevent-subscription)
   - [Step 6: HVAC topology](#step-6-hvac-topology)
   - [Step 7: StateUpdatedEvent subscription (future upgrade)](#step-7-stateupdatedevent-subscription-future-upgrade)
+  - [Step 8: Remove obsolete hvac_schema cache](#step-8-remove-obsolete-hvac-schema-cache)
 - [ramses_rf Phase 4 impact (issue 915)](#ramses_rf-phase-4-impact)
 - [ramses_rf Phase 5+ impact (issue 639 comment)](#ramses_rf-phase-5-impact)
 - [Migration](#migration)
@@ -91,7 +92,7 @@ confusion, and prepares the ground for event-driven topology updates
 | ~~`enforce_known_list` config option~~ | ~~config flow~~ | ~~Workaround for issue 677 (now fixed in 0.57.6)~~ | ~~Step 3~~ **DONE (PR 882)** — hardcoded `True` in `coordinator.py:271`, removed from voluptuous schema |
 | ~~`known_list[dev][commands]`~~ | ~~config entry~~ | ~~Legacy command storage (superseded by `_commands`)~~ | ~~Step 2~~ **DONE (PR 882)** |
 | `.storage[remotes]` | `.storage/ramses_cc` | Command cache (kept for crash recovery) | Keep |
-| 5-min polling for topology sync | `coordinator.py` | No event-driven alternative yet | Step 5 (blocked on rf Phase 5.1) |
+| 5-min polling for topology sync | `coordinator.py` | Safety net for Step 5 event-driven callback + packet-state persistence | Step 5 DONE — polling kept as safety net (see packet persistence redundancy note) |
 | `asyncio.sleep(0)` for entity updates | `coordinator.py` | Interim solution (issue 794) | Step 7 (future) |
 | Stale `enforce_known_list` text in `translations/{en,nl}.json` | translations | Cosmetic — toggle no longer rendered | Cleanup (minor) |
 
@@ -132,7 +133,7 @@ confusion, and prepares the ground for event-driven topology updates
 | Issue 677 fix (0.57.6) | DONE | `enforce_known_list` bug fixed — Step 3 shipped |
 | ramses_rf Phase 3.5 (1FC9 → TopologyChangedEvent) | DONE in 0.59.0 | `_evaluate_rf_bind_rules` intercepts 1FC9, emits `BIND_DEVICE` |
 | TopologyChangedEvent public subscription API | **SHIPPED in 0.59.3** (PR 997) | `Gateway.set_schema_updated_callback(cb)` in `interfaces.py`/`gateway.py`. **Step 5 is unblocked — actionable.** |
-| ramses_rf HVAC topology (`load_fan`) | **STILL A STUB** | `schemas.py:437` — `fan._update_schema(**schema)` commented out (verified vs 0.59.4, Aug 9). No open PR. Blocks Step 6. |
+| ramses_rf HVAC topology (`load_fan`) | **DONE** | `schemas.py:437-438` — `fan._update_schema(**schema)` is now live. `HvacVentilator._remote_ids`/`_sensor_ids` + `_update_schema()` + `schema()` implemented. `gateway.schema()` nests FAN membership. Step 6a/6b/6d DONE. |
 | ramses_rf Phase 4 (issue #915) | FULLY COMPLETE | 5-PR strangler fig + Phase 4e. All merged. |
 | ramses_rf Phase 5 (issue #992) | CLOSED — FULLY SHIPPED | Client API & Consumer DTO Boundary Enforcement. PR 997 delivers our Step 5 unblock. |
 | ramses_rf Phase 6 (issue #1001) | OPEN — IN PROGRESS | Dataclass payload layer, shadow-parity (non-breaking so far). Worth periodic ha-sim checks. |
@@ -141,40 +142,41 @@ confusion, and prepares the ground for event-driven topology updates
 
 **Steps 1-3 are SHIPPED** (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Remaining:
 - **Step 4** (shrink `_commands`) — optional, non-breaking, not done
-- **Step 5** (TopologyChangedEvent) — **UNBLOCKED as of ramses_rf 0.59.3** (PR 997 shipped `set_schema_updated_callback`). Not yet implemented on the ramses_cc side — this is now the top actionable item.
-- **Step 6** (HVAC topology) — still blocked on ramses_rf `load_fan` (confirmed still a stub as of 0.59.4)
-- **Step 7** (StateUpdatedEvent) — future upgrade
+- **Step 5** (TopologyChangedEvent) — **DONE** (coordinator.py: `set_schema_updated_callback` registered, 2s trailing debounce via `async_create_background_task`, unload cleanup). Verified by R62 (14/14 pass).
+- **Step 6a/6b** (HVAC topology) — **DONE** (`load_fan` no longer a stub, `HvacVentilator._update_schema` + `schema()` implemented, `gateway.schema()` nests FAN membership). Verified by R41 (7/7 pass).
+- **Step 6d** (via_device parent link) — **DONE** (`_parent_fan` set in `_update_schema`). Verified by R67.
+- **Step 6e/6f** (traffic-based + active probing) — **DONE**. Verified by R65, R68.
+- **Step 7** (StateUpdatedEvent) — future upgrade (no ramses_rf API yet)
+- **Step 8** (remove obsolete `hvac_schema` cache) — **actionable after current release feedback** (ramses_cc-only, non-breaking)
 
-**Status as of Aug 9 2026:** ramses_rf and ramses_cc masters are both fully
-up to date with each other (0 ahead/behind on tracked branches). The const
-relocation regression from PR 987/999 has been fixed upstream (ramses_cc
-PR 914). A full ha_sim_test parallel run against current masters passes
-cleanly. The 19 failures noted in the Aug 6 run (against the 0.59.2 tags)
-were pre-Phase-5-completion regressions and appear resolved now — but
-should be re-confirmed against the next tagged releases (0.59.3/0.59.4
-equivalents) once cut, not just against master.
+**Status as of Aug 11 2026:** Steps 5, 6a, 6b, 6d, 6e, 6f are all DONE.
+459/459 ha_sim_test pass in 4x parallel. PR 932 (CI performance fix)
+shipped. R42 SUPERSEDED. The remaining items are: Step 4 (optional),
+Step 7 (future — no ramses_rf API), and the packet persistence
+redundancy with MessageStore (ramses_rf issue to be raised). ramses_rf
+Phase 6 (issue 1001) is in progress — PRs 1-10 are shadow-parity
+(non-breaking), PRs 11-12 will be the breaking cutover.
 
 **Immediate TODO:**
-1. **Implement Step 5** (TopologyChangedEvent subscription) now that
-   `Gateway.set_schema_updated_callback()` exists in ramses_rf 0.59.3+.
-   This replaces the 5-min `sync_learned_topology` polling loop with an
-   event-driven push from ramses_rf on topology mutations. **See the
-   fully detailed implementation plan** (concrete code sketch, debounce
-   design, `__init__`/unload wiring, and new ha_sim_test recipe R62) in
-   the [Step 5](#step-5-topologychangedevent-subscription) section
-   below — added Aug 9 2026 after verifying the API directly against
-   the ramses_rf 0.59.4 checkout.
-2. Re-run the full ha_sim_test suite once ramses_cc/ramses_rf cut their
-   next tagged releases (post Phase 5) to confirm the fix holds outside
-   of `master`.
+1. ~~Implement Step 5~~ — **DONE** (coordinator.py, verified by R62).
+   ~~Step 6 (HVAC topology / `load_fan`)~~ — **DONE** (6a/6b/6d, verified
+   by R41/R67).  ~~Step 6e/6f~~ — **DONE** (verified by R65/R68).
+2. **Packet persistence redundancy**: ramses_cc's 5-min
+   `SAVE_STATE_INTERVAL` polling saves packets to `.storage/ramses_cc`
+   (JSON), but ramses_rf's MessageStore (SQLite `ramses.db`) already
+   stores all packets natively.  The JSON save is redundant and causes
+   unnecessary disk writes (memory stick wear on HA Yellow / Pi SSDs).
+   Fix is in ramses_rf: use MessageStore for state restoration on
+   restart (PWhite-Eng's plan: "deprecate the .storage/ramses_cc json
+   mechanism entirely").  A focused ramses_rf issue should be raised.
 3. Watch ramses_rf Phase 6 (issue #1001, payload dataclass layer) for
    any breaking changes as it progresses — currently shadow-parity
-   (non-breaking) but the "cutover" PRs later in the 12-PR plan may
-   change parser return types.
-4. Step 6 (HVAC topology / `load_fan`) has no upstream movement — could
-   be worth raising with PWhite-Eng/silverailscolo as a follow-up now
-   that Phase 5 is done, since it's the last remaining hard blocker for
-   Phase 4.
+   (non-breaking, PRs 1-10) but PRs 11-12 (active cutover + legacy
+   purge) may change parser return types.  Run ha_sim_test when PR 11
+   lands.
+4. **Step 7** (StateUpdatedEvent) — future upgrade, no ramses_rf API
+   yet.  Would replace `asyncio.sleep(0)` in `_on_packet` with a
+   deterministic ingestion-complete hook (see ramses_rf issue 809).
 
 ---
 
@@ -332,7 +334,7 @@ custom payloads (non-default verb, custom payload) still need
 ---
 
 <a id="step-5-topologychangedevent-subscription"></a>
-### Step 5: TopologyChangedEvent subscription
+### Step 5: TopologyChangedEvent subscription  ✅ DONE (coordinator.py + R62)
 
 **What:** Replace the 5-min polling loop (`sync_learned_topology`)
 with an event-driven subscription to `TopologyChangedEvent` from
@@ -360,9 +362,32 @@ Event-driven subscription:
 - Events flow: `TopologyBuilder` → `emit_event_cb` →
   `DeviceRegistry.handle_topology_event()`
 
-#### STATUS: UNBLOCKED as of ramses_rf 0.59.3 (PR 997) — API confirmed present
+#### STATUS: DONE — implemented in ramses_cc coordinator.py, verified by R62
 
-Verified directly against the current `ramses_rf` checkout (Aug 9 2026):
+Implemented in `coordinator.py`:
+- `self.client.set_schema_updated_callback(self._on_rf_schema_updated)`
+  registered in `async_start()` (line 640), unregistered on unload
+  via `entry.async_on_unload(self._unregister_schema_updated_callback)`.
+- `_on_rf_schema_updated` (line 1741): guards on
+  `_skip_topology_sync`, cancels any in-flight debounce task, creates
+  a new trailing-debounce task via
+  `hass.async_create_background_task` (PR 932 fix — using background
+  task so `async_block_till_done()` in tests doesn't wait 2s).
+- `_debounced_topology_sync` (line 1777): sleeps
+  `_SCHEMA_UPDATED_DEBOUNCE` (2s), then calls
+  `async_save_client_state()` — reuses the existing save cycle
+  (topology sync, schema validation, config entry update).
+- Polling loop (`SAVE_STATE_INTERVAL`, 5 min) kept as safety net for
+  packet-state persistence (separate concern — see packet persistence
+  redundancy note in Immediate TODO above).
+
+Verified by ha_sim_test R62 (14/14 pass):
+- TRV discovered and accepted via 1FC9 injection
+- Schema updated within 10s (event-driven, not 5-min poll)
+- Burst of 3x 1FC9 injections → single debounced save
+- No unexpected ERROR/WARNING logs
+
+Historical detail (API verification against ramses_rf 0.59.4, Aug 9 2026):
 
 - `SchemaUpdatedCallback = Callable[[dict[str, Any]], Awaitable[None] | None]`
   defined in `src/ramses_rf/interfaces.py:15`.
@@ -429,7 +454,7 @@ ramses_cc release once ha_sim_test (including new R62) passes.
 ---
 
 <a id="step-6-hvac-topology"></a>
-### Step 6: HVAC topology
+### Step 6: HVAC topology  ✅ DONE (6a/6b/6d in ramses_rf, 6e/6f in ramses_cc, 6c decided)
 
 **What:** Implement HVAC topology learning in ramses_rf so that
 FAN/REM/sensor relationships are learned from traffic, not just
@@ -441,8 +466,13 @@ HVAC schema (remotes/sensors). `gateway.schema()` flattens all HVAC
 to `orphans_hvac`. On restart, the HVAC structure is lost unless the
 config entry has it.
 
-**Status:** No open PR. This is the biggest remaining gap. **Confirmed
-NOT planned by PWhite-Eng** — see "Not on PWhite-Eng's roadmap" below.
+**Status:** **DONE** — `load_fan` is no longer a stub (ramses_rf
+`schemas.py:437-438`). `HvacVentilator._update_schema()` populates
+`_remote_ids`/`_sensor_ids` and sets `_parent_fan` on children (6d).
+`gateway.schema()` nests FAN membership (6b). `get_hvac_orphans()`
+excludes owned devices. Verified by R41 (7/7), R67 (via_device), R65
+(traffic-based), R68 (active probing). R42 SUPERSEDED (tested
+obsolete BIND_DEVICE approach).
 
 **What ramses_rf already has (0.59.0):**
 - `HvacVentilator` class with `_bound_devices` dict, `add_bound_device`,
@@ -453,13 +483,15 @@ NOT planned by PWhite-Eng** — see "Not on PWhite-Eng's roadmap" below.
 - `SCH_TRAITS_HVAC` accepts `remotes`, `sensors`, `bound` as
   `str | list[str]`
 
-#### Not on PWhite-Eng's roadmap (verified Aug 9 2026)
+#### Implemented despite not being on PWhite-Eng's roadmap
 
-Searched the entire 64-comment thread on issue #639, the Phase 5 issue
-#992, and the Phase 6 issue #1001 — **`load_fan` is never mentioned**.
-Phase 6's only HVAC-related scope is payload *parsing* (2411, 31DA,
-CO2 dataclasses), not schema/topology loading. This is a gap unique to
-our analysis — nobody upstream is tracking it.
+Initially confirmed NOT on PWhite-Eng's roadmap (searched issue #639,
+#992, #1001 — `load_fan` never mentioned).  However, the implementation
+landed in ramses_rf (verified Aug 11 2026 against current master):
+`load_fan` at `schemas.py:437-438` now calls `fan._update_schema(**schema)`,
+`HvacVentilator` has `_remote_ids`/`_sensor_ids` sets, `_update_schema()`
+method, `schema()` method, and `_parent_fan` bidirectional link (6d).
+`gateway.schema()` loops over FAN devices to nest membership.
 
 #### Architectural finding: the generic Parent/Child machinery doesn't fit HVAC
 
@@ -800,28 +832,14 @@ verify HVAC topology when implemented. Recipe assertions to add:
 - Once 6a/6b ship, this cache becomes a safety net rather than the
   primary mechanism (same pattern as Step 5's reduced-frequency poll)
 
-#### Next action: raise upstream now that Phase 5 is done
+#### Next action: raise upstream for MessageStore-based state restoration
 
-Re-confirmed against the 0.59.4 checkout (Aug 9 2026) that
-`load_fan()` (`src/ramses_rf/schemas.py:424-439`) is unchanged — the
-`fan._update_schema(**schema)` line is still commented out, and no
-open ramses_rf PR/issue references it directly (only the general
-tracking issue #639). With Phase 5 now fully closed and Phase 6
-(payload dataclass layer) not touching topology/schema code, this is
-a good time to raise a focused ramses_rf issue:
-
-- Title suggestion: "load_fan() is a stub — HVAC schema
-  (remotes/sensors) is not loaded into FAN devices"
-- Reference issue #639 (architecture blueprint) and this doc's Step 6
-  analysis above — it's detailed enough to hand off directly: the
-  3 sub-phases (6a/6b/6c), the exact files/line numbers, and *why*
-  the existing heat-domain `Parent`/`Child`/`PARENT_RULES` machinery
-  shouldn't be reused (avoids a wasted back-and-forth on approach).
-- We are not positioned to implement this ourselves (it's core
-  `ramses_rf` device/topology logic, not a `ramses_cc` change) — but
-  the plan above is concrete enough that PWhite-Eng/silverailscolo
-  (or an AI coding session briefed with it) could execute it directly,
-  and it unblocks our last remaining Phase 4 step.
+Step 6 is DONE.  The remaining actionable item is the packet persistence
+redundancy: ramses_cc saves packets to `.storage/ramses_cc` (JSON) every
+5 min, but ramses_rf's MessageStore (SQLite) already stores all packets.
+A focused ramses_rf issue should be raised to use MessageStore for state
+restoration on restart, eliminating the redundant JSON writes (see
+Immediate TODO item 2 above).
 
 ---
 
@@ -843,6 +861,42 @@ subscription API exists yet.
 
 **Status:** Not a blocker. The interim solution works (347/347 tests
 pass). This is a quality-of-life upgrade.
+
+---
+
+<a id="step-8-remove-obsolete-hvac-schema-cache"></a>
+### Step 8: Remove obsolete `hvac_schema` cache  ✅ Actionable (ramses_cc-only, after current release feedback)
+
+**What:** Remove the separate `.storage/ramses_cc[hvac_schema]` cache
+and the `merge_hvac_schema()` / `extract_hvac_schema()` logic.
+
+**Why:** The `hvac_schema` cache was a workaround for the `load_fan`
+stub (Step 6a/6b).  When `load_fan` was a stub, `gateway.schema()`
+flattened all HVAC devices to `orphans_hvac` — the FAN's
+`remotes[]`/`sensors[]` structure was lost.  ramses_cc cached the HVAC
+schema separately so it survived restarts.
+
+Now that Step 6a/6b are DONE, `load_fan` processes the schema and
+`gateway.schema()` nests FAN membership.  The learned schema already
+contains the HVAC structure — the separate cache is redundant.
+
+**Changes:**
+- `coordinator.py`: remove `extract_hvac_schema()` call in
+  `async_save_client_state()`, remove `merge_hvac_schema()` call in
+  `_async_setup()`, remove `cached_hvac` logic
+- `store.py`: remove `hvac_schema` parameter from `async_save()`
+- `schemas.py`: remove `extract_hvac_schema()` and
+  `merge_hvac_schema()` if no longer used elsewhere
+- Migration: `async_save()` stops writing `hvac_schema` key; stale
+  key in existing `.storage` is harmless (ignored)
+
+**Risk:** Low — non-breaking.  If `gateway.schema()` doesn't nest FAN
+membership for some edge case, the HVAC structure would be lost on
+restart (same as before the workaround existed).  Verified by R41
+that `gateway.schema()` roundtrips FAN membership correctly.
+
+**Test:** R41 (7/7 pass) confirms `gateway.schema()` nests
+`remotes[]`/`sensors[]` and the roundtrip survives a reload.
 
 ---
 
@@ -991,11 +1045,9 @@ doesn't call `_handle_msg` directly, so impact was low.
      Stale entries stripped idempotently. Toggle removed from config
      flow. Shipped in ramses_cc 0.59.2 (PR 882).
 
-4. **When will ramses_rf expose TopologyChangedEvent to external consumers?**
-   - The events already fire internally (0.59.0). **Tracked by ramses_rf
-     Phase 5 PR 3 (issue 992)** — "Event Bus & Handshake": harden
-     `TopologyChangedEvent` with typed payload dataclasses + define
-     `SchemaUpdatedCallback` in `interfaces.py`. Not yet started.
+4. **~~When will ramses_rf expose TopologyChangedEvent to external consumers?~~** — **RESOLVED**
+   - Shipped in ramses_rf 0.59.3 (PR 997): `Gateway.set_schema_updated_callback()`.
+   - Step 5 implemented in ramses_cc coordinator.py, verified by R62 (14/14 pass).
 
 5. **Should `_commands` entries matching native builders be auto-removed?**
    - No — `_commands` is the user override layer. Even if a native
@@ -1007,7 +1059,7 @@ doesn't call `_handle_msg` directly, so impact was low.
 <a id="decision-log"></a>
 ## Decision Log
 
-Full dated decision history (Jul 23 - Aug 9 2026, ~25 entries) is
+Full dated decision history (Jul 23 - Aug 11 2026, ~27 entries) is
 archived [here](phase4_plan_archive.md#decision-log-full-history).
 Key milestones:
 
@@ -1018,6 +1070,7 @@ Key milestones:
 | Jul 30 2026 | PR 882 MERGED — Steps 2-3 SHIPPED (known_list removal + enforce always-on) |
 | Aug 7-8 2026 | ramses_rf Phase 5 fully shipped (0.59.3, PR 997 unblocks Step 5); Phase 6 started (0.59.4) |
 | Aug 9 2026 | ha-sim full suite passes against current masters; Step 5 implementation plan written; Step 6 confirmed off upstream roadmap, 3-sub-phase plan written |
+| Aug 11 2026 | Steps 5, 6a, 6b, 6d confirmed DONE (implemented in ramses_cc/ramses_rf). R41 (7/7), R62 (14/14), R65, R67, R68 pass. R42 SUPERSEDED. 459/459 ha_sim_test in 4x parallel. PR 932 (CI perf fix) shipped. Packet persistence redundancy with MessageStore identified. |
 
 ---
 

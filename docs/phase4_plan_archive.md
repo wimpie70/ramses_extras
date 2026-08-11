@@ -6,6 +6,13 @@ short enough to post on GitHub. Nothing here is expected to change —
 it's a record of what was investigated/shipped and why. See the main
 doc for current status and actionable next steps.
 
+> **Aug 11 2026 update:** Steps 5, 6a, 6b, 6d, 6e, 6f are now DONE
+> (verified by ha_sim_test R41/R62/R65/R67/R68). The Step 5 and Step 6
+> code sketches below were the implementation plans — they are now
+> historical records of what was built. R42 is SUPERSEDED. See the main
+> doc for the updated status and the new packet persistence redundancy
+> finding (MessageStore vs `.storage/ramses_cc`).
+
 ---
 
 ## Dependency narrative detail (superseded by main doc's summary table)
@@ -547,6 +554,7 @@ doesn't call `_handle_msg` directly, so impact was low. Related: PRs
 | Aug 6 2026 | ha-sim test run: cc 0.59.2 tag + rf 0.59.2 tag | 355 PASS / 19 FAIL / 3 SKIP. Full detail archived above. |
 | Aug 7-8 2026 | ramses_rf Phase 5 fully shipped (0.59.3), Phase 6 started (0.59.4) | PR 997 delivers Step 5's unblock. cc PRs 914, 906-909 merged. |
 | Aug 9 2026 | ha-sim full suite passes against current masters | Previous 19 failures resolved by Phase 5 completion + cc's const-import fix (PR 914). Step 5 implementation plan written. Step 6 confirmed off PWhite-Eng's roadmap; 3-sub-phase plan written and archived above. |
+| Aug 11 2026 | Steps 5, 6a, 6b, 6d, 6e, 6f confirmed DONE | Implemented in ramses_cc coordinator.py (Step 5) and ramses_rf schemas.py/hvac_ventilators.py/gateway.py (Step 6a/6b/6d). R41 (7/7), R62 (14/14), R65, R67, R68 all pass. 459/459 ha_sim_test in 4x parallel. R42 SUPERSEDED (obsolete BIND_DEVICE approach). PR 932 (CI perf fix: async_create_background_task for debounce) shipped. Packet persistence redundancy with MessageStore identified — ramses_rf issue to be raised. |
 
 ---
 
