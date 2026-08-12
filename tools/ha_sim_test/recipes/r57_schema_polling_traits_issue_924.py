@@ -29,7 +29,6 @@ class R57SchemaPollingTraitsIssue924(Recipe):
     id = "R57"
     seq = 570
     title = "Schema polling traits — polling_interval + is_battery (PR 924)"
-    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 57: Schema polling traits (PR 924)")

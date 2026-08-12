@@ -32,7 +32,6 @@ class R49PositionalAddressingAddrToSrcDstIssue639(Recipe):
     id = "R49"
     seq = 500
     title = "Positional addressing — addr1/addr2/addr3 to src/dst (issue 639)"
-    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section(

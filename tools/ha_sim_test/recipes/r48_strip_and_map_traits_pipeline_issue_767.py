@@ -22,7 +22,6 @@ class R48StripAndMapTraitsPipelineIssue767(Recipe):
     id = "R48"
     seq = 490
     title = "strip_and_map_traits — schema pre-validation pipeline (issue 767)"
-    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 48: strip_and_map_traits pipeline (issue 767)")

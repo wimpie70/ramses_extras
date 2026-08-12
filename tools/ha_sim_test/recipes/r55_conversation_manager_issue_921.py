@@ -33,7 +33,6 @@ class R55ConversationManagerIssue921(Recipe):
     id = "R55"
     seq = 550
     title = "L7 ConversationManager RQ/RP tracking + retransmission (PR 921)"
-    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 55: L7 ConversationManager (PR 920)")

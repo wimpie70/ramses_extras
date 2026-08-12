@@ -23,7 +23,6 @@ class R51SchemaStrippingParityIssue767(Recipe):
     id = "R51"
     seq = 510
     title = "Schema stripping parity: config_flow validation vs gateway (issue 767)"
-    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 51: Schema stripping parity (issue 767)")
