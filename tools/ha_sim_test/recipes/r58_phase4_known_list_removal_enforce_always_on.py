@@ -27,7 +27,13 @@ import subprocess
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW, FAN, REM, TRV
-from ..helpers import get_current_instance, get_known_list, get_schema_retry
+from ..helpers import (
+    get_current_instance,
+    get_known_list,
+    get_schema_retry,
+    load_profile_yaml,
+)
+from ..profile import mixed_yaml
 
 
 class R58Phase4KnownListRemovalEnforceAlwaysOn(Recipe):
@@ -37,6 +43,24 @@ class R58Phase4KnownListRemovalEnforceAlwaysOn(Recipe):
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 58: Phase 4 known_list removal + enforce always-on")
+
+        # Load the mixed profile to ensure all devices (CTL, TRV, DHW,
+        # FAN, REM) are present in the schema.  Without this, the derived
+        # known_list may reflect stale state from a previous recipe that
+        # used a different profile (e.g. a minimal profile without TRV).
+        print("  Loading mixed profile (ensures all devices in schema)...")
+        try:
+            await load_profile_yaml(
+                ctx.token,
+                mixed_yaml(),
+                speed=0.01,
+                preload_schema=True,
+                reload_ramses=True,
+            )
+        except RuntimeError as e:
+            print(f"  Profile load failed: {e}")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
+        ctx.refresh_token()
 
         # Read the raw config entry to check what keys are in options
         result = subprocess.run(

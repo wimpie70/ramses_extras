@@ -160,12 +160,21 @@ def call_service(
 ) -> dict:
     """Call a HA service and return the response.
 
-    Retries up to 3 times with 5s backoff for transient connection errors
-    (HA may be restarting after a profile reload).
+    Retries up to 3 times with 2s backoff for transient connection errors
+    (HA may be restarting after a profile reload).  Before the first
+    attempt, does a fast HTTP ping to check if HA is reachable — if not,
+    waits up to 15s for it to come back (avoids wasting a 30s HTTP
+    timeout on a container that's still restarting).
     """
     ha_url = get_current_instance().ha_url
     url = f"{ha_url}/api/services/{domain}/{service}"
     body = json.dumps(data or {}).encode()
+
+    # Pre-check: wait for HA to be reachable before attempting the call.
+    # This avoids wasting a 30s HTTP timeout on a container that's
+    # still restarting (docker restart takes 2-5s).
+    if not is_ha_ready():
+        wait_for(is_ha_ready, timeout=15, interval=1, msg="for HA before call_service")
 
     for attempt in range(3):
         req = urllib.request.Request(
@@ -187,7 +196,7 @@ def call_service(
         except urllib.error.URLError as e:
             if attempt < 2:
                 print(f"  call_service: retry {attempt + 1}/3 (connection refused)")
-                time.sleep(5)
+                time.sleep(2)
                 continue
             raise RuntimeError(f"Connection failed after 3 retries: {e}") from e
         except TimeoutError as e:
@@ -195,7 +204,7 @@ def call_service(
             # urlopen during the read phase, not wrapped in URLError.
             if attempt < 2:
                 print(f"  call_service: retry {attempt + 1}/3 (timeout)")
-                time.sleep(5)
+                time.sleep(2)
                 continue
             raise RuntimeError(f"Service call timed out after 3 retries: {e}") from e
     return {}  # unreachable
@@ -207,15 +216,26 @@ def call_service(
 async def ws_send(token: str, msg: dict, *, retries: int = 3) -> dict:
     """Send a websocket message and return the response.
 
-    Retries up to *retries* times with exponential backoff for transient
-    timeouts and connection errors (common under parallel container
-    contention where HA may be too busy to respond within the 30s
-    websocket timeout, or may close the connection during a reload).
+    Retries up to *retries* times with backoff for transient timeouts
+    and connection errors (common under parallel container contention
+    where HA may be too busy to respond within the 30s websocket
+    timeout, or may close the connection during a reload).
+
+    Before the first attempt, does a fast HTTP ping to check if HA is
+    reachable — if not, waits up to 15s for it to come back (avoids
+    wasting a 30s WS timeout on a container that's still restarting).
     """
     import aiohttp
 
-    # Exponential backoff: 3s, 5s, 8s
-    _backoff = (3, 5, 8)
+    # Pre-check: wait for HA to be reachable before attempting WS.
+    # This avoids wasting a 30s WS timeout on a container that's
+    # still restarting (docker restart takes 2-5s).
+    if not is_ha_ready():
+        wait_for(is_ha_ready, timeout=15, interval=1, msg="for HA before ws_send")
+
+    # Backoff schedule: short for the common "WebSocket closed during
+    # reload" case (recovers in 1-3s), longer for persistent issues.
+    _backoff = (1, 3, 5)
 
     last_err: Exception | None = None
     for attempt in range(retries + 1):
@@ -338,7 +358,7 @@ async def load_profile_yaml(
             last_err = e
             if attempt < 2:
                 print(f"  Profile load failed (attempt {attempt + 1}/3): {str(e)[:80]}")
-                await _asyncio.sleep(5)
+                await _asyncio.sleep(2)
     raise RuntimeError(
         f"Profile load failed after 3 attempts: {last_err}"
     ) from last_err
