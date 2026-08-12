@@ -368,8 +368,14 @@ If a new bug introduces an unexpected ERROR or WARNING, it will appear in the re
 
 ## Test recipes
 
-72 recipes (R01–R72), grouped by category. Each recipe is a self-contained
-module under `tools/ha_sim_test/recipes/`.
+64 recipes (R01–R72, with gaps where structural recipes were converted
+to pytest). Each recipe is a self-contained module under
+`tools/ha_sim_test/recipes/`.
+
+The 10 structural recipes (R39, R48, R49, R51–R57) have been converted
+to pytest unit tests — 7 in ramses_rf (`tests/tests_rf/structural/`)
+and 3 in ramses_cc (`tests/tests_new/structural/`).  These tests run
+directly against the source code without needing the ha-sim container.
 
 ### Device lifecycle
 
@@ -476,8 +482,6 @@ module under `tools/ha_sim_test/recipes/`.
 | Recipe | Description | Checks |
 |---|---|---|
 | R50 | Device health tracking — orphaned/lost devices | 20+ |
-| R51 | Schema stripping parity (issue 767) | 8 |
-| R52 | known_list derivation from schema (issue 767) | 10+ |
 
 ### Packet DTO & positional addressing (issue 639)
 
@@ -485,7 +489,6 @@ module under `tools/ha_sim_test/recipes/`.
 |---|---|---|
 | R38 | Faked THM 30C9 correct zone_idx (issue 639) | 3 |
 | R40 | PacketDTO rx_path integrity (issue 639) | 5 |
-| R49 | Positional addressing — addr to src/dst | 12 |
 
 ### Payload decode regression guards
 
@@ -502,15 +505,17 @@ module under `tools/ha_sim_test/recipes/`.
 
 | Recipe | Description | Checks |
 |---|---|---|
-| R39 | (reserved) | — |
+| R39 | (removed — converted to pytest in ramses_rf) | — |
 | R41–R46 | Structural / import-time checks | varies |
-| R48 | send_packet service + device_id filter | 5 |
-| R53–R57 | Structural / import-time checks | varies |
+| R48 | (removed — converted to pytest in ramses_rf) | — |
+| R49 | (removed — converted to pytest in ramses_rf) | — |
+| R51–R57 | (removed — converted to pytest in ramses_rf/ramses_cc) | — |
 | R60 | send_packet CommandDTO + device_id filter (issue 864) | 5 |
 | R61 | FAN 2411 parameter entities availability (issue 851) | 5 |
 | Log Report | ERROR/WARNING analysis | 2 |
 
-**Total:** ~430+ checks across 72 recipes.
+**Total:** ~350+ checks across 64 recipes (10 structural recipes converted
+to pytest — see ramses_rf/ramses_cc test suites).
 
 ## Services tested
 
@@ -519,7 +524,7 @@ module under `tools/ha_sim_test/recipes/`.
 | `ramses_cc.sync_topology` | R06, R09, R14, R16, R29, R30, R31, R37 |
 | `ramses_cc.remove_device` | R02, R03, R04, R11, R16 |
 | `ramses_cc.accept_discovered_device` | R11, R17, R27, R29, R37 |
-| `ramses_cc.get_discovered_devices` | R17, R48 |
+| `ramses_cc.get_discovered_devices` | R17 |
 | `ramses_cc.discard_discovered_device` | R17 |
 | `ramses_cc.enable_discovered_device` | R17 |
 | `ramses_cc.disable_discovered_device` | R17 |
@@ -527,7 +532,7 @@ module under `tools/ha_sim_test/recipes/`.
 | `ramses_cc.add_faked_rem` | R18 |
 | `ramses_cc.force_update` | R35, R50, R65 |
 | `ramses_cc.probe_hvac_binding` | R68 |
-| `ramses_cc.send_packet` | R48, R60 |
+| `ramses_cc.send_packet` | R60 |
 | `ramses_extras.device_simulator/load_profile` | Setup, R11, R29, R35, R37, R50, R65 |
 | `ramses_extras.device_simulator/activate_profile_device` | R01, R29, R35, R37 |
 | `ramses_extras.device_simulator/silence_devices` | R35, R71 |
