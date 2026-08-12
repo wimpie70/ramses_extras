@@ -1,0 +1,66 @@
+TODO — ha_sim_test recipe optimization findings
+================================================
+
+## Done
+
+- [x] Tag 10 structural recipes with `tags = ("structural",)` (R39, R48, R49,
+      R51, R52, R53, R54, R55, R56, R57) and add `--tags` / `--exclude-tags` /
+      `--include-structural` CLI flags.  Structural recipes are excluded from
+      E2E runs by default (they don't need the ha-sim container).
+
+## Medium priority
+
+- [ ] Merge R15 into R07 — R15 is a 1-check storage key verification that
+      R07 already covers (both verify HVAC schema in .storage).
+
+- [ ] Merge R19b into R19 — R19b is a 1-check edge case (invalid zone_idx
+      rejected) that fits naturally in R19's zone binding tests.
+
+- [ ] Merge R14 into R06 — both test 000C zone binding injection; R14 is
+      only 1 check.
+
+- [ ] Merge R70/R71/R72 into one parameterized decoder recipe — all three
+      test payload decode accuracy.  A single recipe with opcode + payload
+      + expected values table would be easier to extend.
+
+- [ ] Gate phase 2/3/4 migration tests by ramses_cc version — R20 (SSOT
+      Phase 2), R33 (Phase 3d.3b), R58/R59 (Phase 4) test migration paths
+      that are only relevant when upgrading from an older version.  Add a
+      version check helper that reads the installed ramses_cc version
+      (or schema version from .storage) and skips the recipe if the
+      version is already past the migration point.  This avoids testing
+      obsolete migration code on fresh installs.
+
+- [ ] Verify R20 obsolescence — SSOT Phase 2 migration may be fully
+      superseded by Phase 4 (R58/R59).  If Phase 4 removes known_list
+      entirely, the Phase 2 trait migration is a no-op.
+
+- [ ] Verify R33 obsolescence — Phase 3d.3b consolidated stripper may be
+      partially superseded by Phase 4 schema stripping.  Still tests
+      validation parity though, so may be worth keeping.
+
+## Low priority (not doing)
+
+- Combining zone binding recipes (R06/R14/R19/R19b/R19c/R21/R22) into one
+  parameterized recipe — would reduce recipe count but lose isolation for
+  debugging.
+
+- Combining remove_device recipes (R02/R03/R04) — same reason.
+
+## Structural recipe details (for reference)
+
+10 recipes tagged `structural` (164 checks total, 31% of suite):
+  R39  ( 5 ch) CommandDTO field inspection
+  R48  (20 ch) strip_and_map_traits pipeline
+  R49  ( 7 ch) Positional addressing DTO fields
+  R51  ( 8 ch) Schema stripping parity
+  R52  (19 ch) known_list derivation logic
+  R53  (19 ch) CQRS builder defaults vs _commands
+  R54  (17 ch) Topology event flow
+  R55  (29 ch) ConversationManager RQ/RP tracking
+  R56  (24 ch) PollingManager live cutover
+  R57  (16 ch) Schema polling traits
+
+These use `docker_exec_python` to inspect source code structure inside the
+container.  They don't test HA behavior — they're static analysis that could
+eventually be converted to pytest unit tests.

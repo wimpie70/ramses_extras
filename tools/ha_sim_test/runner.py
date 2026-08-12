@@ -45,40 +45,7 @@ from .registry import REGISTRY, discover_recipes
 #: Default directory for persistent test reports (keeps the last N per
 #: container).  Can be overridden via :func:`set_reports_dir` (used by
 #: the ``--reports-dir`` CLI flag).
-#:
-#: Defaults to a user-level data directory outside the repo so reports
-#: don't pollute the working tree and are reachable on all platforms:
-#:   Linux:  ~/.local/share/ramses_extras/ha_sim_reports
-#:   macOS:  ~/Library/Application Support/ramses_extras/ha_sim_reports
-#:   Windows: %LOCALAPPDATA%/ramses_extras/ha_sim_reports
-try:
-    from platformdirs import user_data_dir
-
-    _DEFAULT_REPORTS_DIR = Path(user_data_dir("ramses_extras")) / "ha_sim_reports"
-except ImportError:
-    import os
-    import sys
-
-    if sys.platform == "darwin":
-        _DEFAULT_REPORTS_DIR = (
-            Path.home()
-            / "Library"
-            / "Application Support"
-            / "ramses_extras"
-            / "ha_sim_reports"
-        )
-    elif sys.platform == "win32":
-        _DEFAULT_REPORTS_DIR = (
-            Path(os.environ.get("LOCALAPPDATA", Path.home()))
-            / "ramses_extras"
-            / "ha_sim_reports"
-        )
-    else:
-        _DEFAULT_REPORTS_DIR = (
-            Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-            / "ramses_extras"
-            / "ha_sim_reports"
-        )
+_DEFAULT_REPORTS_DIR = Path(__file__).parent / "reports"
 
 #: Active directory for persistent test reports.
 REPORTS_DIR: Path = _DEFAULT_REPORTS_DIR
@@ -388,13 +355,20 @@ async def run(
     recipe_ids: list[str] | None = None,
     *,
     instance: InstanceConfig | None = None,
+    tag_filter: set[str] | None = None,
+    exclude_filter: set[str] | None = None,
 ) -> None:
     """Run the full test suite on a single container.
 
     :param recipe_ids: If given, run only these recipe ids (in seq order).
-                       If None, run all registered recipes.
+                       If None, run all registered recipes (subject to tag
+                       filtering).
     :param instance: Instance config (container name, port, URLs).  Defaults
                      to the standard ``ha-sim`` instance (backward compatible).
+    :param tag_filter: If given, run only recipes that have at least one of
+                       these tags.  ``None`` means no positive tag filtering.
+    :param exclude_filter: If given, exclude recipes that have any of these
+                           tags.  ``None`` means no negative tag filtering.
     """
     inst = instance or InstanceConfig.default()
     suite_start_mono = time.monotonic()
@@ -436,6 +410,23 @@ async def run(
             recipes.append(r)
     else:
         recipes = REGISTRY.sorted()
+
+    # Apply tag filtering (only when no explicit recipe_ids given)
+    if not recipe_ids:
+        if tag_filter:
+            before = len(recipes)
+            recipes = [r for r in recipes if set(r.tags) & tag_filter]
+            print(
+                f"  Tag filter (include {tag_filter}): "
+                f"{before} -> {len(recipes)} recipes"
+            )
+        if exclude_filter:
+            before = len(recipes)
+            recipes = [r for r in recipes if not (set(r.tags) & exclude_filter)]
+            print(
+                f"  Tag filter (exclude {exclude_filter}): "
+                f"{before} -> {len(recipes)} recipes"
+            )
 
     # Authenticate
     print(f"Authenticating to {inst.name} ({inst.ha_url})...")
