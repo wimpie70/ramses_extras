@@ -21,7 +21,7 @@ import subprocess
 import time
 
 from ..base import Recipe, RecipeContext
-from ..const import CTL, DHW, TRV
+from ..const import CTL
 from ..helpers import (
     get_current_instance,
     get_schema_retry,
@@ -33,7 +33,7 @@ from ..helpers import (
     wait_for_schema_populated,
     ws_send,
 )
-from ..profile import MIXED_SCHEMA, mixed_yaml
+from ..profile import minimal_ctl_zone_yaml
 
 # Zone we'll test — zone 03 in the mixed profile
 _ZONE_IDX = "03"
@@ -98,20 +98,17 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 63: Zone name survives MessageStore pruning")
 
-        # ── 1. Load mixed profile with _name on zone 03 ───────────────
-        r63_schema = dict(MIXED_SCHEMA)
-        ctl_entry = dict(r63_schema.get(CTL, {}))
-        zones = dict(ctl_entry.get("zones", {}))
-        zone_03 = dict(zones.get(_ZONE_IDX, {}))
-        zone_03["_name"] = _ZONE_NAME
-        zones[_ZONE_IDX] = zone_03
-        ctl_entry["zones"] = zones
-        r63_schema[CTL] = ctl_entry
-
+        # ── 1. Load minimal profile with _name on zone 03 ───────────
+        #    Only CTL + HGI needed (2 devices, not 19) — the zone name
+        #    is a schema trait on the CTL entry, no sensor required.
         print(
-            f"  Loading mixed profile with _name='{_ZONE_NAME}' on zone {_ZONE_IDX}..."
+            f"  Loading minimal profile with _name='{_ZONE_NAME}'"
+            f" on zone {_ZONE_IDX}..."
         )
-        yaml_profile = mixed_yaml(r63_schema)
+        yaml_profile = minimal_ctl_zone_yaml(
+            zone_idx=_ZONE_IDX,
+            zone_name=_ZONE_NAME,
+        )
         try:
             await load_profile_yaml(
                 ctx.token,
@@ -137,7 +134,7 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
             )
         except RuntimeError:
             pass
-        wait_for_schema_populated(min_keys=5, timeout=20)
+        wait_for_schema_populated(min_keys=2, timeout=20)
 
         # ── 2. Verify schema has _name on zone 03 ─────────────────────
         schema_before = get_schema_retry()
@@ -213,7 +210,7 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
             )
         except RuntimeError:
             pass
-        wait_for_schema_populated(min_keys=5, timeout=20)
+        wait_for_schema_populated(min_keys=2, timeout=20)
 
         # ── 5. Verify zone name survived the restart ──────────────────
         #    Wait for the device to reappear and check its registry name

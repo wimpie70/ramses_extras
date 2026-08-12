@@ -25,6 +25,13 @@ SZ_SCHEMA = "schema"
 SZ_PACKETS = "packets"
 SZ_DISCOVERY = "discovery"
 
+#: Strong references to in-flight _reload_ramses_cc tasks.
+#: Without this, the GC can destroy the Task while it is still pending
+#: (e.g. at the ``await asyncio.sleep(3)`` in _reload_ramses_cc),
+#: producing a "Task was destroyed but it is pending" warning.
+#: Tasks are removed from this set via a done callback.
+_pending_reload_tasks: set[asyncio.Task[Any]] = set()
+
 
 def _ensure_hgi_entry(
     known_list: dict[str, dict[str, Any]],
@@ -541,7 +548,7 @@ async def _update_known_list_and_reload(
     }
 
     if reload_ramses_cc:
-        hass.async_create_task(
+        task = hass.async_create_task(
             _reload_ramses_cc(
                 hass,
                 entry.entry_id,
@@ -550,6 +557,8 @@ async def _update_known_list_and_reload(
                 profile_devices,
             )
         )
+        _pending_reload_tasks.add(task)
+        task.add_done_callback(_pending_reload_tasks.discard)
         actions.append("reloading_ramses_cc")
     else:
         actions.append("skipped_reload")

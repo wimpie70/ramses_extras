@@ -106,8 +106,9 @@ def main() -> None:
         type=Path,
         default=None,
         metavar="DIR",
-        help="Directory to write log and summary reports into (default: "
-        "tools/ha_sim_test/reports/).  Created if it does not exist.",
+        help="Directory to write log and summary reports into. "
+        "Default: user data dir (e.g. ~/.local/share/ramses_extras/"
+        "ha_sim_reports on Linux).  Created if it does not exist.",
     )
     args = parser.parse_args()
 

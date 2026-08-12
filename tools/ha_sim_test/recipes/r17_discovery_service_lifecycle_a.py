@@ -105,7 +105,7 @@ class R17DiscoveryServiceLifecycleA(Recipe):
             timeout=45,
             interval=2,
             msg="for DiscoveryManager to start",
-            floor=15.0,
+            floor=20.0,
         )
 
         # Inject heartbeat from a new device to trigger discovery.
@@ -145,7 +145,7 @@ class R17DiscoveryServiceLifecycleA(Recipe):
             timeout=20,
             interval=2,
             msg="for discovery scan to detect the new device",
-            floor=3.0,
+            floor=5.0,
         )
 
         # Test get_discovered_devices (fires a bus event)

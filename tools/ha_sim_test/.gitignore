@@ -1,2 +1,2 @@
-# Keep the directory but ignore generated report files
-reports/log_report_*.txt
+# Ignore generated report files (in case --reports-dir points here)
+reports/

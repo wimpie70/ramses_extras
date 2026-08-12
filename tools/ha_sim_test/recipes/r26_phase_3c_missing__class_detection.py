@@ -15,7 +15,6 @@ from ..helpers import (
     wait_for,
     ws_send,
 )
-from ..profile import MIXED_KL, get_mixed_kl, mixed_yaml
 
 
 class R26Phase3cMissingClassDetection(Recipe):
@@ -37,34 +36,18 @@ class R26Phase3cMissingClassDetection(Recipe):
 
         test_device = "04:200099"
 
-        # Step 1: Load a profile with test_device in the schema but no _class.
-        # Start from the mixed profile and add 04:200099 as a root entry
-        # with an empty dict (no _class).  The known_list must NOT include
-        # a class for this device either, otherwise _merge_known_list_into_schema
-        # would add _class from the known_list.
-        import yaml as _yaml
+        # Step 1: Load a minimal profile with test_device in the schema
+        # but no _class.  The known_list must NOT include a class for
+        # this device, otherwise _merge_known_list_into_schema would add
+        # _class from the known_list.
+        from ..profile import minimal_ctl_yaml
 
-        r26_schema = dict(MIXED_KL)  # use MIXED_KL as base (has CTL, zones, etc.)
-        # Actually, we need the _schema, not the known_list
-        from ..profile import MIXED_SCHEMA
+        # Minimal profile: CTL + test_device with empty schema entry
+        r26_yaml = minimal_ctl_yaml(
+            schema_override={test_device: {}},
+        )
 
-        r26_schema = dict(MIXED_SCHEMA)
-        # Add test_device as a root entry with no _class
-        r26_schema[test_device] = {}  # no _class — this is the precondition
-
-        # Build known_list without class for test_device
-        r26_kl = get_mixed_kl()
-        # Don't add test_device to known_list at all — it's in the schema
-        # but not in the known_list, which is fine for this test.
-
-        profile = {
-            "known_list": r26_kl,
-            "_enforce_known_list": {"enabled": True},
-            "_schema": r26_schema,
-        }
-        r26_yaml = _yaml.dump(profile, default_flow_style=False, sort_keys=False)
-
-        print(f"  Loading profile with {test_device} (no _class)...")
+        print(f"  Loading minimal profile with {test_device} (no _class)...")
         await load_profile_yaml(ctx.token, r26_yaml, speed=0.01)
         ctx.wait_for_ramses_cc_reload(msg="for profile reload")
         ctx.refresh_token()
