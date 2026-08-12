@@ -26,6 +26,7 @@ import sys
 import time
 from contextvars import Token
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .base import RecipeContext
@@ -47,8 +48,6 @@ from .helpers import (
 from .log_monitor import LogMonitor
 from .mqtt_setup import publish_retained_online_messages
 from .registry import REGISTRY, discover_recipes
-from pathlib import Path
-
 from .runner import setup, teardown
 
 #: Path to ramses_cc custom_components (bind-mounted into each container).
