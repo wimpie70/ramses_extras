@@ -26,6 +26,7 @@ class R53CqrsBuilderDefaultsVsCommandsIssue767(Recipe):
     id = "R53"
     seq = 530
     title = "CQRS builder defaults vs _commands override (issue 767)"
+    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 53: CQRS builder defaults vs _commands (issue 767)")

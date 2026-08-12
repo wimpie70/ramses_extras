@@ -23,6 +23,7 @@ class R39CommandDtoNoAppMetadataIssue639(Recipe):
     id = "R39"
     seq = 400
     title = "CommandDTO carries no application metadata (issue 639)"
+    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 39: CommandDTO carries no application metadata")
