@@ -28,14 +28,14 @@ from __future__ import annotations
 import json
 
 from ..base import Recipe, RecipeContext
-from ..const import CO2, FAN, REM
+from ..const import FAN, REM
 from ..helpers import (
     call_service,
     get_schema_retry,
     load_profile_yaml,
     wait_for,
 )
-from ..profile import mixed_yaml
+from ..profile import minimal_hvac_yaml
 
 
 class R68HvacActiveProbing(Recipe):
@@ -46,16 +46,12 @@ class R68HvacActiveProbing(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 68: Active HVAC topology probing (6f)")
 
-        # 1. Load mixed profile with FAN's remotes/sensors stripped.
+        # 1. Load minimal HVAC profile with FAN's remotes/sensors stripped.
         #    The FAN keeps _class=FAN but has no remotes/sensors —
         #    the topology must be discovered via active probing.
-        print("  Loading mixed profile with FAN remotes/sensors stripped...")
-        schema_override = {
-            FAN: {
-                "_class": "FAN",
-            },
-        }
-        yaml_text = mixed_yaml(schema_override=schema_override)
+        #    Only 4 devices needed (HGI + FAN + REM + CO2).
+        print("  Loading minimal HVAC profile (FAN, REM, CO2)...")
+        yaml_text = minimal_hvac_yaml()
         try:
             await load_profile_yaml(
                 ctx.token,

@@ -205,3 +205,20 @@ def minimal_hvac_yaml() -> str:
     }
     schema = {FAN: {"_class": "FAN"}}
     return _build_yaml(kl, schema)
+
+
+def minimal_ctl_dhw_yaml() -> str:
+    """Minimal profile with CTL + DHW + HGI (3 devices).
+
+    DHW is nested as ``stored_hotwater.sensor`` inside the CTL entry —
+    a nested location that tests device extraction logic.
+
+    :returns: YAML string.
+    """
+    kl = {
+        HGI: {"class": "HGI"},
+        CTL: {"class": "CTL"},
+        DHW: {"class": "DHW"},
+    }
+    schema = {CTL: {"stored_hotwater": {"sensor": DHW}}}
+    return _build_yaml(kl, schema)
