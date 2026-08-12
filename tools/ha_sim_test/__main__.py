@@ -110,35 +110,6 @@ def main() -> None:
         "Default: user data dir (e.g. ~/.local/share/ramses_extras/"
         "ha_sim_reports on Linux).  Created if it does not exist.",
     )
-    parser.add_argument(
-        "--tags",
-        nargs="*",
-        default=None,
-        metavar="TAG",
-        help="Run only recipes that have at least one of the given tags. "
-        "Example: --tags structural runs only structural recipes. "
-        "By default, structural recipes are excluded from E2E runs "
-        "(see --include-structural).",
-    )
-    parser.add_argument(
-        "--exclude-tags",
-        nargs="*",
-        default=None,
-        metavar="TAG",
-        help="Exclude recipes that have any of the given tags. "
-        "Example: --exclude-tags structural. "
-        "Default: structural is excluded unless --tags or "
-        "--include-structural is used.",
-    )
-    parser.add_argument(
-        "--include-structural",
-        action="store_true",
-        default=False,
-        help="Include structural recipes in the run (shorthand for "
-        "--exclude-tags with nothing excluded).  By default, structural "
-        "recipes are excluded from E2E runs because they don't need the "
-        "ha-sim container.",
-    )
     args = parser.parse_args()
 
     # Apply CLI wait-scale/floor overrides (env vars are read at import time
@@ -160,34 +131,12 @@ def main() -> None:
 
         set_reports_dir(args.reports_dir)
 
-    # Resolve tag-based filtering.
-    # Priority: --tags > --exclude-tags > --include-structural > default
-    # Default (no flags): exclude "structural" from E2E runs.
-    if args.tags is not None:
-        # --tags: run only recipes with at least one matching tag
-        tag_filter: set[str] | None = set(args.tags)
-        exclude_filter: set[str] | None = None
-    elif args.exclude_tags is not None:
-        # --exclude-tags: exclude recipes with any matching tag
-        tag_filter = None
-        exclude_filter = set(args.exclude_tags)
-    elif args.include_structural:
-        # --include-structural: don't exclude structural
-        tag_filter = None
-        exclude_filter = None
-    else:
-        # Default: exclude structural from E2E runs
-        tag_filter = None
-        exclude_filter = {"structural"}
-
     recipe_ids = args.recipes or None
 
     if args.parallel <= 1:
         from .runner import run
 
-        asyncio.run(
-            run(recipe_ids, tag_filter=tag_filter, exclude_filter=exclude_filter)
-        )
+        asyncio.run(run(recipe_ids))
     else:
         from .parallel import run_parallel
 
@@ -199,8 +148,6 @@ def main() -> None:
                 port=args.port,
                 assignments=args.assign,
                 cleanup=args.cleanup,
-                tag_filter=tag_filter,
-                exclude_filter=exclude_filter,
             )
         )
 

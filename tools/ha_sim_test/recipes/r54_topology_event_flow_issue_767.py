@@ -23,7 +23,6 @@ class R54TopologyEventFlowIssue767(Recipe):
     id = "R54"
     seq = 540
     title = "Topology event flow: BIND_DEVICE, CREATE_CONTROLLER (issue 767)"
-    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 54: Topology event flow (issue 767)")

@@ -32,7 +32,6 @@ class R56PollingManagerIssue926(Recipe):
     id = "R56"
     seq = 560
     title = "L7 PollingManager live cutover (PR 926)"
-    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 56: L7 PollingManager (PR 926)")

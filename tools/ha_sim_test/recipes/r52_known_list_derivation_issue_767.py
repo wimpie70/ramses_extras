@@ -26,7 +26,6 @@ class R52KnownListDerivationIssue767(Recipe):
     id = "R52"
     seq = 520
     title = "known_list derivation from schema (issue 767)"
-    tags = ("structural",)
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 52: known_list derivation (issue 767)")
