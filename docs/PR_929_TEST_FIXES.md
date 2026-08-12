@@ -53,6 +53,7 @@ confusing device classification and causing protocol queue backups.
 ```python
 # Before:
 from ramses_tx import CommandDTO
+
 ...
 cmd_dto = CommandDTO(
     verb="RQ",
@@ -65,6 +66,7 @@ cmd_dto = CommandDTO(
 
 # After:
 from ramses_rf.devices.helpers import build_rq_cmd
+
 ...
 cmd_dto = build_rq_cmd(task.device_id, task.code)
 ```

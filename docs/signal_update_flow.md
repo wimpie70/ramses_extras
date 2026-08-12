@@ -171,7 +171,9 @@ def _on_packet(dto: PacketDTO) -> None:
         async_dispatcher_send(self.hass, f"{SIGNAL_UPDATE}_{dto.src.id}")
         if dto.dst and dto.dst.id != dto.src.id:
             async_dispatcher_send(self.hass, f"{SIGNAL_UPDATE}_{dto.dst.id}")
+
     self.hass.async_create_task(_signal_after_ingestion())
+
 
 self.client.add_msg_handler(_on_packet)
 ```

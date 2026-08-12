@@ -205,7 +205,7 @@ features:
 3. **Check binding resolution**:
    ```python
    # In Home Assistant developer tools
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'remote_bindings') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "remote_bindings")}}
    ```
 
 4. **Common fixes**:
@@ -221,7 +221,7 @@ features:
 
 1. Check unmatched traffic counter:
    ```python
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'unmatched_remote_count') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "unmatched_remote_count")}}
    ```
 
 2. Get unmatched traffic details:
@@ -270,7 +270,7 @@ features:
 
 1. Verify arbiter is enabled:
    ```python
-   {{ states('sensor.fan_arbiter_state') }}
+   {{states("sensor.fan_arbiter_state")}}
    ```
 
 2. Check for duplicate handling:

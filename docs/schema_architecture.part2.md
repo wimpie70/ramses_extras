@@ -287,10 +287,10 @@ From `ramses_rf/models/state_base.py`:
 
 ```python
 class DeviceTraits:
-    device_class: str | None = None    # class (CTL, TRV, DHW, FAN, ...)
-    alias: str | None = None           # friendly name
-    faked: bool | None = None          # fake sensor mode
-    scheme: str | None = None          # HVAC vendor scheme (itho, nuaire, ...)
+    device_class: str | None = None  # class (CTL, TRV, DHW, FAN, ...)
+    alias: str | None = None  # friendly name
+    faked: bool | None = None  # fake sensor mode
+    scheme: str | None = None  # HVAC vendor scheme (itho, nuaire, ...)
 ```
 
 Plus from `ramses_rf/config.py` SCH_TRAITS:

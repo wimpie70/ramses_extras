@@ -164,6 +164,7 @@ the `SIGNAL_UPDATE` emission:
 @callback
 def _on_packet(dto: PacketDTO) -> None:
     """Emit SIGNAL_UPDATE after ramses_rf has ingested the packet."""
+
     async def _signal_after_ingestion() -> None:
         await asyncio.sleep(0)  # yield to ramses_rf's create_task'd ingestion
         src_id = dto.addr1
@@ -172,6 +173,7 @@ def _on_packet(dto: PacketDTO) -> None:
             async_dispatcher_send(self.hass, f"{SIGNAL_UPDATE}_{dto.addr2}")
 
     self.hass.async_create_task(_signal_after_ingestion())
+
 
 self.entry.async_on_unload(self.client.add_msg_handler(_on_packet))
 ```
@@ -272,22 +274,26 @@ class RamsesSensorEntityDescription(RamsesEntityDescription, SensorEntityDescrip
 
 ```python
 # sensor.py, entity descriptions
-RamsesSensorEntityDescription(
-    key=SZ_FILTER_REMAINING,
-    ramses_rf_attr=SZ_FILTER_REMAINING,
-    name="Filter remaining",
-    native_unit_of_measurement=UnitOfTime.DAYS,
-    should_poll=True,          # <-- fetch via async_update()
-    poll_command="10D0",       # <-- RQ code to send
-),
-RamsesSensorEntityDescription(
-    key=SZ_FILTER_REMAINING_PERCENT,
-    ramses_rf_attr=SZ_FILTER_REMAINING_PERCENT,
-    name="Filter remaining (%)",
-    native_unit_of_measurement=PERCENTAGE,
-    should_poll=True,
-    poll_command="10D0",
-),
+(
+    RamsesSensorEntityDescription(
+        key=SZ_FILTER_REMAINING,
+        ramses_rf_attr=SZ_FILTER_REMAINING,
+        name="Filter remaining",
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        should_poll=True,  # <-- fetch via async_update()
+        poll_command="10D0",  # <-- RQ code to send
+    ),
+)
+(
+    RamsesSensorEntityDescription(
+        key=SZ_FILTER_REMAINING_PERCENT,
+        ramses_rf_attr=SZ_FILTER_REMAINING_PERCENT,
+        name="Filter remaining (%)",
+        native_unit_of_measurement=PERCENTAGE,
+        should_poll=True,
+        poll_command="10D0",
+    ),
+)
 ```
 
 ### 2. Implement `async_update()` on RamsesSensor

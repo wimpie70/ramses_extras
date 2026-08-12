@@ -94,14 +94,14 @@ a parameter that the runner passes to each recipe context.
 ```python
 @dataclass(frozen=True)
 class InstanceConfig:
-    name: str                    # container name, e.g. "ha-sim-2"
-    port: int                    # e.g. 8125
-    ha_url: str                  # e.g. "http://localhost:8125"
+    name: str  # container name, e.g. "ha-sim-2"
+    port: int  # e.g. 8125
+    ha_url: str  # e.g. "http://localhost:8125"
     ha_user: str = "admin"
     ha_pass: str = "admin123"
-    hgi_id: str = "18:001234"    # gateway ID for this instance
+    hgi_id: str = "18:001234"  # gateway ID for this instance
     mqtt_topic_ns: str = "RAMSES/GATEWAY_SIM"  # topic root
-    config_dir: str = ""         # host path to config dir (for cloning)
+    config_dir: str = ""  # host path to config dir (for cloning)
     # Device IDs — same across instances (MQTT topic isolation makes this safe)
     ctl: str = "01:150000"
     trv: str = "04:150003"
@@ -115,7 +115,9 @@ class InstanceConfig:
         return f"mqtt://slimmemeter:j@diebla@@192.168.40.11:1883/{self.mqtt_topic_ns}/{self.hgi_id}"
 
     @staticmethod
-    def for_index(i: int, *, base: str = "ha-sim", port: int = 8124) -> "InstanceConfig":
+    def for_index(
+        i: int, *, base: str = "ha-sim", port: int = 8124
+    ) -> "InstanceConfig":
         """Create config for the i-th parallel instance (1-based)."""
         if i == 1 and base == "ha-sim":
             # First instance uses the original container name (backward compat)
@@ -209,6 +211,7 @@ This requires two changes:
 ```python
 # ramses_extras/features/device_simulator/const.py
 import os
+
 SIMULATOR_HGI_ID = os.environ.get("RAMSES_SIM_HGI_ID", "18:001234")
 ```
 
@@ -288,8 +291,21 @@ def distribute_recipes(
     # Container-affecting recipes (spread across containers)
     restart_recipes = ["R29", "R32", "R34", "R37", "R38", "R50", "R59"]
     # Pure tests (always on container 1)
-    pure_tests = ["R39", "R41", "R42", "R43", "R48", "R49",
-                  "R51", "R52", "R53", "R54", "R55", "R56", "R57"]
+    pure_tests = [
+        "R39",
+        "R41",
+        "R42",
+        "R43",
+        "R48",
+        "R49",
+        "R51",
+        "R52",
+        "R53",
+        "R54",
+        "R55",
+        "R56",
+        "R57",
+    ]
 
     # Assign restart recipes round-robin across containers
     # Assign chains to containers that have the least estimated runtime
@@ -387,14 +403,25 @@ def merge_results(results: list[InstanceResult]) -> int:
 **CLI parsing** (in `__main__.py`):
 
 ```python
-parser.add_argument("--parallel", type=int, default=1, metavar="N",
-                    help="Run across N containers (default: 1 = sequential)")
-parser.add_argument("--container-base", default="ha-sim",
-                    help="Base container name (default: ha-sim)")
-parser.add_argument("--port", type=int, default=8124,
-                    help="Starting port (default: 8124)")
-parser.add_argument("--assign", action="append", default=[],
-                    help="Manual assignment: --assign ha-sim-2:R01,R02,R03")
+parser.add_argument(
+    "--parallel",
+    type=int,
+    default=1,
+    metavar="N",
+    help="Run across N containers (default: 1 = sequential)",
+)
+parser.add_argument(
+    "--container-base", default="ha-sim", help="Base container name (default: ha-sim)"
+)
+parser.add_argument(
+    "--port", type=int, default=8124, help="Starting port (default: 8124)"
+)
+parser.add_argument(
+    "--assign",
+    action="append",
+    default=[],
+    help="Manual assignment: --assign ha-sim-2:R01,R02,R03",
+)
 ```
 
 **Backward compat**: `python -m ha_sim_test` (no flags) runs on single `ha-sim`

@@ -67,8 +67,7 @@ profile reloads):
 if self.client:
     self.client.set_schema_updated_callback(self._on_rf_schema_updated)
     self.entry.async_on_unload(
-        lambda: self.client.set_schema_updated_callback(None)
-        if self.client else None
+        lambda: self.client.set_schema_updated_callback(None) if self.client else None
     )
 ```
 
@@ -90,6 +89,7 @@ def _on_rf_schema_updated(self, schema: dict[str, Any]) -> None:
     self._schema_updated_debounce_task = self.hass.async_create_task(
         self._debounced_topology_sync()
     )
+
 
 async def _debounced_topology_sync(self) -> None:
     try:

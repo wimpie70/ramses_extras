@@ -194,12 +194,12 @@ def check_priority():
             "sensor_entity": str,
             "threshold": int,
             "enabled": bool,
-            "valve_entity": str | None  # Future
+            "valve_entity": str | None,  # Future
         }
     ],
     "max_runtime_minutes": int,
     "cooldown_period_minutes": int,
-    "priority_over_humidity": bool  # Always True
+    "priority_over_humidity": bool,  # Always True
 }
 ```
 

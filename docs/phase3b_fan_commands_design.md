@@ -176,9 +176,9 @@ Placeholders (filled at send time):
 
 This mirrors `HvacVentilator.set_fan_mode()` (PR 546):
 ```python
-src_id = self.get_bound_rem()    # try bound REM first
+src_id = self.get_bound_rem()  # try bound REM first
 if not src_id:
-    src_id = self.hgi.id         # fallback to HGI
+    src_id = self.hgi.id  # fallback to HGI
 ```
 
 **Three levels of flexibility:**
@@ -193,7 +193,7 @@ if not src_id:
 src = cmd_def.get("src") or pick_bound_rem(fan) or fan.hgi.id
 dst = fan.id
 brd = "--:------"
-length = f"{len(payload) // 2:03d}"          # calculated from payload
+length = f"{len(payload) // 2:03d}"  # calculated from payload
 
 packet = f"{verb} --- {src} {dst} {brd} {code} {length} {payload}"
 # → "W --- 32:153001 30:160000 --:------ 22F7 003 0000EF"
@@ -585,9 +585,9 @@ def _migrate_rem_commands_to_fan(schema: dict[str, Any]) -> dict[str, Any]:
                 continue  # FAN is authoritative
             parts = packet_str.split()
             fan_commands[cmd_name] = {
-                "verb": parts[0],    # "I"
-                "code": parts[5],    # "22F1"
-                "payload": parts[7], # "000030"
+                "verb": parts[0],  # "I"
+                "code": parts[5],  # "22F1"
+                "payload": parts[7],  # "000030"
             }
         entry["_commands"] = fan_commands
 

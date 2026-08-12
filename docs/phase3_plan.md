@@ -633,6 +633,7 @@ class RamsesCcStore(Store[dict[str, Any]]):
         """
         return old_data
 
+
 # In RamsesStore.__init__:
 self._store = RamsesCcStore(hass, STORAGE_VERSION, STORAGE_KEY)
 ```
