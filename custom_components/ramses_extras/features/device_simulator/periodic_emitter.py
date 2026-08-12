@@ -208,7 +208,7 @@ class PeriodicEmitter:
         """
         device = self._active_devices.get(device_id)
         if device:
-            device.speed_multiplier = max(0.01, speed)
+            device.speed_multiplier = max(0.005, speed)
             LOGGER.debug(
                 "PeriodicEmitter: set device %s speed to %.2f", device_id, speed
             )
@@ -220,7 +220,7 @@ class PeriodicEmitter:
 
         :param speed: Speed multiplier
         """
-        self._global_speed = max(0.01, speed)
+        self._global_speed = max(0.005, speed)
         LOGGER.info("PeriodicEmitter: global speed set to %.2f", speed)
 
     def exclude_code(self, device_id: str, code: str) -> bool:

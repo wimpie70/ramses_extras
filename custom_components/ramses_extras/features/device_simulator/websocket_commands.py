@@ -1785,7 +1785,7 @@ async def ws_set_device_enabled(
     {
         vol.Required("type"): "ramses_extras/device_simulator/set_autonomous_speed",
         vol.Required("speed"): vol.All(
-            vol.Coerce(float), vol.Clamp(min=0.01, max=100.0)
+            vol.Coerce(float), vol.Clamp(min=0.005, max=200.0)
         ),
     }
 )

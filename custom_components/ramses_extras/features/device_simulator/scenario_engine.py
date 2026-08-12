@@ -452,7 +452,7 @@ class ScenarioEngine:
             value = float(speed)
         except TypeError, ValueError:
             value = 1.0
-        self._autonomous_speed = max(0.01, min(value, 100.0))
+        self._autonomous_speed = max(0.005, min(value, 200.0))
 
     async def async_activate_device(
         self,
@@ -1062,7 +1062,7 @@ class ScenarioEngine:
             interval = random.uniform(low, high)
         else:
             interval = base_interval
-        return max(interval / current_speed, 0.1)
+        return max(interval / current_speed, 0.05)
 
     async def _handle_inbound_frame(self, frame: str) -> None:
         """Handle a frame received from ramses_rf (outbound /tx) or from device

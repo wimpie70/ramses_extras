@@ -48,6 +48,7 @@ from .log_monitor import LogMonitor
 from .mqtt_setup import publish_retained_online_messages
 from .registry import REGISTRY, discover_recipes
 from .runner import setup, teardown
+from .timing_store import TimingStore
 
 #: Path to ramses_cc custom_components (bind-mounted into each container).
 _RAMSES_CC_PATH = "/home/willem/dev/ramses_cc/custom_components/ramses_cc"
@@ -464,88 +465,31 @@ PURE_TESTS: set[str] = {
     "R57",
 }
 
-#: Estimated runtime per recipe (seconds) — used for load balancing.
-#: Calibrated from full 4-parallel runs (2026-08-12) using actual wall
-#: times, rounded to nearest 5s.  Timings vary between runs due to
-#: parallel contention, docker restart timing, and scan engine
-#: variability — these are parallel-run times (with contention), which
-#: is what the balancer should optimise for.
-ESTIMATED_RUNTIME: dict[str, int] = {
-    "R01": 125,
-    "R02": 1,
-    "R03": 1,
-    "R04": 5,
-    "R05": 10,
-    "R06": 5,
-    "R07": 1,
-    "R07b": 135,
-    "R08": 25,
-    "R09": 25,
-    "R10": 25,
-    "R11": 50,
-    "R12": 15,
-    "R14": 5,
-    "R15": 1,
-    "R16": 25,
-    "R17": 55,
-    "R18": 5,
-    "R19": 70,
-    "R19b": 5,
-    "R19c": 5,
-    "R20": 5,
-    "R21": 65,
-    "R22": 20,
-    "R23": 60,
-    "R24": 35,
-    "R25": 85,
-    "R26": 95,
-    "R27": 55,
-    "R28": 40,
-    "R29": 50,
-    "R30": 105,
-    "R31": 25,
-    "R32": 75,
-    "R33": 75,
-    "R34": 40,
-    "R35": 35,
-    "R36": 120,
-    "R37": 80,
-    "R38": 60,
-    "R39": 1,
-    "R40": 30,
-    "R41": 55,
-    "R42": 1,
-    "R43": 1,
-    "R44": 15,
-    "R45": 10,
-    "R46": 55,
-    "R47": 285,
-    "R48": 1,
-    "R49": 1,
-    "R50": 25,
-    "R51": 1,
-    "R52": 1,
-    "R53": 1,
-    "R54": 1,
-    "R55": 1,
-    "R56": 1,
-    "R57": 1,
-    "R58": 5,
-    "R59": 15,
-    "R60": 135,
-    "R61": 25,
-    "R62": 145,
-    "R63": 295,
-    "R64": 105,
-    "R65": 60,
-    "R66": 10,
-    "R67": 300,
-    "R68": 105,
-    "R69": 60,
-    "R70": 5,
-    "R71": 100,
-    "R72": 30,
-}
+#: Rolling-average timing store — self-calibrating load balancing.
+#: Replaces the manual ESTIMATED_RUNTIME table.  The store reads from
+#: ``~/.local/share/ramses_extras/ha_sim_reports/recipe_timings.json``
+#: and falls back to seed estimates for recipes with no history.
+TIMING_STORE = TimingStore()
+
+
+def _est(recipe_id: str) -> float:
+    """Get the estimated runtime for a recipe (from rolling average)."""
+    return TIMING_STORE.get_estimate(recipe_id)
+
+
+# Backward compatibility: keep ESTIMATED_RUNTIME as a property-like dict
+# for any code that references it directly.
+class _EstimatedRuntimeDict(dict):
+    """Dict-like wrapper that falls back to TimingStore for missing keys."""
+
+    def __missing__(self, key: str) -> int:
+        return int(TIMING_STORE.get_estimate(key))
+
+    def get(self, key: str, default: int = 10) -> int:
+        return int(TIMING_STORE.get_estimate(key))
+
+
+ESTIMATED_RUNTIME = _EstimatedRuntimeDict()
 
 
 def distribute_recipes(
@@ -768,6 +712,9 @@ async def run_single_instance(
                 "title": recipe.title,
             }
 
+            # Record timing for rolling-average load balancing
+            TIMING_STORE.record_run(recipe.id, recipe_elapsed)
+
             # Clean up test profiles
             try:
                 ctx.refresh_token()
@@ -815,6 +762,148 @@ async def run_single_instance(
         print(f"  [{instance.name}] FATAL: {e}")
     finally:
         # Reset contextvar
+        _current_instance_reset(token)
+
+    result.elapsed = time.monotonic() - start
+    return result
+
+
+async def run_dynamic_instance(
+    instance: InstanceConfig,
+    work_queue: asyncio.Queue[list[str]],
+    queue_lock: asyncio.Lock,
+    available_units: list[list[str]],
+) -> InstanceResult:
+    """Run recipes from a shared dynamic queue on a single container.
+
+    Pulls the next recipe unit (or dependency chain) from the shared
+    queue when the container is free.  This distributes load dynamically
+    — if one container hits a slow recipe or timeout, other containers
+    pick up the slack.
+
+    *available_units* is the pre-sorted list of recipe units (dependency
+    chains kept together).  The queue is pre-loaded with units sorted
+    by estimated time (highest first) so the slowest recipes start first.
+    """
+    result = InstanceResult(instance=instance)
+    start = time.monotonic()
+
+    token = set_current_instance(instance)
+
+    try:
+        # Authenticate
+        print(f"\n  [{instance.name}] Authenticating ({instance.ha_url})...")
+        auth_token = get_token()
+        print(f"  [{instance.name}] Token acquired")
+
+        # Build context
+        log_monitor = LogMonitor()
+        ctx = RecipeContext(
+            token=auth_token, log_monitor=log_monitor, instance=instance
+        )
+        log_monitor.start()
+
+        # Setup
+        await setup(ctx)
+
+        # Pull and run recipes from the shared queue
+        while True:
+            try:
+                unit = await work_queue.get()
+            except asyncio.CancelledError:
+                break
+            if unit is None:
+                # Sentinel — queue is empty
+                work_queue.task_done()
+                break
+
+            for rid in unit:
+                recipe_cls = REGISTRY.get(rid)
+                if recipe_cls is None:
+                    print(
+                        f"  [{instance.name}] WARNING:"
+                        f" recipe {rid!r} not found, skipping"
+                    )
+                    continue
+
+                recipe = recipe_cls()
+                print(
+                    f"\n  [{instance.name}] >>> Running {recipe.id}"
+                    f" (seq={recipe.seq}): {recipe.title}"
+                )
+
+                log_snapshot = log_monitor.snapshot()
+                passed_before = ctx.passed
+                failed_before = ctx.failed
+
+                recipe_start = time.monotonic()
+                try:
+                    await recipe.run(ctx)
+                except Exception as e:
+                    ctx.check(
+                        f"Recipe {recipe.id} did not raise an unhandled exception",
+                        False,
+                        f"{type(e).__name__}: {e}",
+                    )
+                    print(f"  [{instance.name}] !!! Recipe {recipe.id} raised: {e}")
+                recipe_elapsed = time.monotonic() - recipe_start
+
+                ctx.recipe_stats[recipe.id] = {
+                    "passed": ctx.passed - passed_before,
+                    "failed": ctx.failed - failed_before,
+                    "duration": recipe_elapsed,
+                    "title": recipe.title,
+                }
+
+                # Record timing for rolling-average load balancing
+                TIMING_STORE.record_run(recipe.id, recipe_elapsed)
+
+                # Clean up test profiles
+                try:
+                    ctx.refresh_token()
+                    n = await delete_test_profiles(ctx.token)
+                    if n:
+                        print(f"  [{instance.name}] Cleaned up {n} test profile(s)")
+                except Exception:
+                    pass
+
+                # Per-recipe log check
+                recipe_logs = log_monitor.record_recipe(recipe.id, log_snapshot)
+                n_err = len(recipe_logs["errors"])
+                n_warn = len(recipe_logs["warnings"])
+                if n_err or n_warn:
+                    print(
+                        f"  [{instance.name}] [log] {recipe.id}:"
+                        f" {n_err} errors, {n_warn} warnings"
+                    )
+
+                if not sys.stdout.isatty():
+                    p_str = green(f"P:{ctx.passed:>3}")
+                    f_str = (
+                        red(f"F:{ctx.failed:>3}")
+                        if ctx.failed
+                        else f"F:{ctx.failed:>3}"
+                    )
+                    print(
+                        f"  [{instance.name}] [{p_str} {f_str}]"
+                        f"  {recipe.id} done ({recipe_elapsed:.1f}s)"
+                    )
+
+            work_queue.task_done()
+
+        # Collect results
+        result.passed = ctx.passed
+        result.failed = ctx.failed
+        result.results = ctx.results
+        result.recipe_stats = ctx.recipe_stats
+
+        # Teardown
+        await _teardown_no_exit(ctx, start_time=start, instance=instance)
+
+    except Exception as e:
+        result.error = f"{type(e).__name__}: {e}"
+        print(f"  [{instance.name}] FATAL: {e}")
+    finally:
         _current_instance_reset(token)
 
     result.elapsed = time.monotonic() - start
@@ -997,34 +1086,52 @@ async def run_parallel(
     # Start containers
     await ensure_containers(instances)
 
-    # Distribute recipes (static pre-assignment)
-    # The dynamic queue was tested and found slower due to resource contention:
-    # when all 4 containers run recipes simultaneously, each recipe takes ~2x
-    # longer (CPU/disk/network).  The static approach lets ha-sim finish early
-    # and reduces contention for the remaining containers.
-    groups = distribute_recipes(all_recipe_ids, n_containers, manual_assignments=manual)
-    for idx, rids in groups.items():
-        inst = instances[idx - 1]
-        est = sum(ESTIMATED_RUNTIME.get(r, 10) for r in rids)
-        print(
-            f"  {inst.name} ({len(rids)} recipes, ~{est}s):"
-            f" {', '.join(rids[:10])}{'...' if len(rids) > 10 else ''}"
-        )
+    # Build work units (dependency chains kept together as atomic units)
+    # Sort by estimated time descending (LPT — Longest Processing Time first)
+    # so the slowest recipes start first and containers stay balanced.
+    chain_recipe_set: set[str] = set()
+    units: list[list[str]] = []
+    for chain in DEPENDENCY_CHAINS:
+        unit = [r for r in chain if r in all_recipe_ids]
+        if unit:
+            units.append(unit)
+            chain_recipe_set.update(unit)
 
-    # Run in parallel, with a live per-container status dashboard (falls
-    # back to plain interleaved prints when stdout isn't a real terminal,
-    # e.g. piped to a log file).
+    # Add standalone recipes as individual units
+    for rid in all_recipe_ids:
+        if rid not in chain_recipe_set:
+            units.append([rid])
+
+    # Sort units by total estimated time (descending)
+    units.sort(key=lambda u: sum(_est(r) for r in u), reverse=True)
+
+    # Build a shared work queue
+    work_queue: asyncio.Queue[list[str] | None] = asyncio.Queue()
+    for unit in units:
+        work_queue.put_nowait(unit)
+    # Add sentinel values (one per container) to signal completion
+    for _ in range(n_containers):
+        work_queue.put_nowait(None)
+
+    total_est = sum(sum(_est(r) for r in u) for u in units)
+    print(
+        f"  Dynamic dispatch: {len(units)} units,"
+        f" ~{total_est:.0f}s total across {n_containers} containers"
+    )
+
+    # Run in parallel with dynamic dispatch
     log_section("Parallel: Running recipes")
-    ordered_instances = [instances[idx - 1] for idx in sorted(groups)]
-    dash = LiveDashboard([inst.name for inst in ordered_instances])
+    dash = LiveDashboard([inst.name for inst in instances])
     tasks: list[asyncio.Task[InstanceResult]] = []
 
     def _on_done(_task: asyncio.Task[InstanceResult], name: str) -> None:
         dash.mark_done(name)
 
-    for idx in sorted(groups):
-        inst = instances[idx - 1]
-        task = asyncio.ensure_future(run_single_instance(inst, groups[idx]))
+    queue_lock = asyncio.Lock()
+    for inst in instances:
+        task = asyncio.ensure_future(
+            run_dynamic_instance(inst, work_queue, queue_lock, units)
+        )
         task.add_done_callback(functools.partial(_on_done, name=inst.name))
         tasks.append(task)
 
@@ -1046,6 +1153,9 @@ async def run_parallel(
 
     # Merge and print summary
     exit_code = merge_results(final_results)
+
+    # Persist timing data for future runs
+    TIMING_STORE.save()
 
     # Cleanup
     if cleanup:

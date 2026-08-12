@@ -887,16 +887,14 @@ def wait_for_ramses_cc_loaded(
     """Wait for ramses_cc to be loaded after a docker restart.
 
     Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
-    *floor* of 25s — after a docker restart, ramses_cc's async_setup_entry
-    takes 10-15s to complete (MQTT transport init, schema load, entity
-    creation), and under parallel contention (4 containers sharing CPU)
-    it can take up to 22s.  Scaling the timeout below 25s causes false
-    TIMEOUTs that cascade into schema/profile load failures in subsequent
-    steps.  The floor only sets the max wait ceiling — the function still
-    exits early as soon as ramses_cc is loaded.
+    *floor* of 15s — after a docker restart, ramses_cc's async_setup_entry
+    takes 10-15s to complete under parallel contention (MQTT transport
+    init, schema load, entity creation, scan engine start).  The schema
+    check exits early once ramses_cc is loaded, so the 15s floor is just
+    a safety margin for parallel contention.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=25.0
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=15.0
     )
 
 
@@ -907,15 +905,12 @@ def wait_for_ramses_cc_reload(
 
     Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
     *floor* of 12s — profile reloads are in-process (no docker restart),
-    so they're faster than cold starts, but still take 5-10s for the
-    full reload cycle (unload → reload → MQTT reconnect → schema load).
-    Under parallel contention this can stretch to 10-12s.  At aggressive
-    poll scales (0.08), the 20s ceiling would drop to 1.6s which is far
-    too tight; the 12s floor ensures we don't give up before the reload
-    completes, while still returning early once it's done.
+    but the full reload cycle (unload → reload → MQTT reconnect → schema
+    load) takes 8-12s under parallel contention.  The readiness check
+    exits early once done, so the 12s floor is just a safety margin.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=12.0
+        is_ramses_cc_loaded, timeout=timeout, interval=0.5, msg=msg, floor=12.0
     )
 
 
@@ -1224,7 +1219,14 @@ def is_ha_ready() -> bool:
 
 
 def is_ramses_cc_loaded() -> bool:
-    """Check if ramses_cc is loaded and its schema is populated."""
+    """Check if ramses_cc is loaded and its schema is populated.
+
+    During a cold start (docker restart), the schema is empty until
+    ramses_cc's ``async_setup_entry`` completes and writes the learned
+    schema.  During a profile reload, the schema is briefly cleared
+    (unload) and then repopulated (reload).  In both cases, a non-empty
+    schema indicates ramses_cc is loaded and ready.
+    """
     schema = get_schema()
     return bool(schema)
 
