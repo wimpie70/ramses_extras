@@ -97,7 +97,7 @@ class R62TopologyEventDrivenSchemaSyncStep5(Recipe):
             timeout=30,
             interval=2,
             msg="for DiscoveryManager to start",
-            floor=10.0,
+            floor=15.0,
         )
 
         # ── 2. Inject 1FC9 from new TRV to trigger discovery ─────────────
@@ -128,7 +128,7 @@ class R62TopologyEventDrivenSchemaSyncStep5(Recipe):
             timeout=20,
             interval=2,
             msg="for discovery scan to detect the new TRV",
-            floor=3.0,
+            floor=5.0,
         )
 
         # ── 3. Accept the discovered device ──────────────────────────────
@@ -227,7 +227,7 @@ class R62TopologyEventDrivenSchemaSyncStep5(Recipe):
             timeout=20,
             interval=2,
             msg=f"for discovery scan to detect {new_trv_2}",
-            floor=3.0,
+            floor=5.0,
         )
 
         try:

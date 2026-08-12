@@ -867,16 +867,16 @@ def wait_for_ramses_cc_loaded(
     """Wait for ramses_cc to be loaded after a docker restart.
 
     Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
-    *floor* of 20s — after a docker restart, ramses_cc's async_setup_entry
+    *floor* of 25s — after a docker restart, ramses_cc's async_setup_entry
     takes 10-15s to complete (MQTT transport init, schema load, entity
     creation), and under parallel contention (4 containers sharing CPU)
-    it can take up to 18s.  Scaling the timeout below 20s causes false
+    it can take up to 22s.  Scaling the timeout below 25s causes false
     TIMEOUTs that cascade into schema/profile load failures in subsequent
     steps.  The floor only sets the max wait ceiling — the function still
     exits early as soon as ramses_cc is loaded.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=20.0
+        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=25.0
     )
 
 
@@ -886,15 +886,16 @@ def wait_for_ramses_cc_reload(
     """Wait for ramses_cc to reload after a profile change (in-process).
 
     Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
-    *floor* of 8s — profile reloads are in-process (no docker restart),
-    so they're faster than cold starts, but still take 5-7s for the
+    *floor* of 12s — profile reloads are in-process (no docker restart),
+    so they're faster than cold starts, but still take 5-10s for the
     full reload cycle (unload → reload → MQTT reconnect → schema load).
-    At aggressive poll scales (0.1), the 20s ceiling would drop to 2s
-    which is too tight; the 8s floor ensures we don't give up before
-    the reload completes, while still returning early once it's done.
+    Under parallel contention this can stretch to 10-12s.  At aggressive
+    poll scales (0.08), the 20s ceiling would drop to 1.6s which is far
+    too tight; the 12s floor ensures we don't give up before the reload
+    completes, while still returning early once it's done.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=8.0
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=12.0
     )
 
 
@@ -913,7 +914,7 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
         timeout=timeout,
         interval=2,
         msg=f"for schema to have >= {min_keys} keys",
-        floor=3.0,
+        floor=5.0,
     )
 
 
@@ -954,7 +955,7 @@ def wait_for_schema_stable(
     last = _schema_hash()
     quiet_until = time.monotonic() + quiet
     scaled_timeout = min(
-        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 3.0)), timeout
+        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 5.0)), timeout
     )
     print(
         f"  Waiting up to {timeout}s→{scaled_timeout:g}s {msg}...",
@@ -1038,7 +1039,7 @@ def wait_for_schema_has(
         timeout=timeout,
         interval=2,
         msg=f"for {device_id} in schema",
-        floor=3.0,
+        floor=5.0,
     )
 
 
@@ -1083,7 +1084,7 @@ def wait_for_entity_state(
         interval=1,
         msg=f"for {entity_id} state"
         + (f" == {expected!r}" if expected else " to be set"),
-        floor=3.0,
+        floor=5.0,
     )
 
 

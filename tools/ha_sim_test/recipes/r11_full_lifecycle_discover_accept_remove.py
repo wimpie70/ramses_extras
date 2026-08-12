@@ -98,7 +98,7 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
             timeout=30,
             interval=2,
             msg="for DiscoveryManager to start",
-            floor=10.0,
+            floor=15.0,
         )
 
         # Inject several 1FC9 heartbeats from the new TRV to trigger discovery
@@ -129,7 +129,7 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
             timeout=20,
             interval=2,
             msg="for discovery scan to detect the new TRV",
-            floor=3.0,
+            floor=5.0,
         )
 
         # Try to accept the discovered device

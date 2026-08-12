@@ -109,7 +109,7 @@ class R06ZoneBindingViaInjectMessage(Recipe):
             timeout=15,
             interval=2,
             msg=f"for zone {target_zone} to appear in schema",
-            floor=3.0,
+            floor=5.0,
         )
         schema_after_inject = get_cached_schema()
         ctl_schema_after = schema_after_inject.get(CTL, {})

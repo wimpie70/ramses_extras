@@ -247,7 +247,7 @@ except Exception as e:
             timeout=60,
             interval=5,
             msg="for zone 03 climate entity to appear after 30C9 RX",
-            floor=20.0,
+            floor=30.0,
         )
 
         # Read final state
