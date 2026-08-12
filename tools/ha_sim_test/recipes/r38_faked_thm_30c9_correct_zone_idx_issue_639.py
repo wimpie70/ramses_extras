@@ -167,7 +167,8 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
         #    device simulator receives it and logs:
         #      "Simulator received from ramses_rf:  I --- <src> ... 30C9 ..."
         #    We filter for our specific device to avoid matching other
-        #    traffic.
+        #    traffic.  Use "from ramses_rf" to match only the actual
+        #    packet line, not the simulator's internal debug log.
         #    Poll until the 30C9 entry appears in the HA log (event-driven
         #    wait, not fixed sleep + retry).
         def _30c9_in_log() -> bool:
@@ -178,7 +179,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
                     get_current_instance().name,
                     "bash",
                     "-c",
-                    f"grep 'Simulator received.*{sensor_id}.*30C9' "
+                    f"grep 'Simulator received from ramses_rf.*{sensor_id}.*30C9' "
                     "/config/home-assistant.log | tail -10",
                 ],
                 capture_output=True,
@@ -201,7 +202,7 @@ class R38FakedThm30c9CorrectZoneIdxIssue639(Recipe):
                 get_current_instance().name,
                 "bash",
                 "-c",
-                f"grep 'Simulator received.*{sensor_id}.*30C9' "
+                f"grep 'Simulator received from ramses_rf.*{sensor_id}.*30C9' "
                 "/config/home-assistant.log | tail -10",
             ],
             capture_output=True,

@@ -16,6 +16,10 @@ EXPECTED_WARNINGS: list[str] = [
     "QoS",
     # Profile reload: stale device removal is expected
     "removed stale HA devices",
+    # ramses_extras: async_unload may fail if ramses_cc is still
+    # initialising after a docker restart (transient — the retry
+    # logic in _reload_ramses_cc handles this)
+    "async_unload failed",
     # ramses_rf: schema merge fallback warning
     "Failed to initialise with merged schema",
     # Discovery: devices not yet in known_list during fresh_start
