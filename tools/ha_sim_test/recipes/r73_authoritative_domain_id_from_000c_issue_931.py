@@ -15,6 +15,7 @@ from ..helpers import (
     get_schema_retry,
     load_profile_yaml,
     wait_for,
+    wait_for_discovered_device,
     wait_for_schema_populated,
     ws_send,
 )
@@ -123,21 +124,13 @@ class R73AuthoritativeDomainIdFrom000CIssue931(Recipe):
                 except RuntimeError:
                     pass
 
-        # Wait for scan engine to process
-        ctx.wait(5, "for scan engine to process 3B00/3EF0")
-
-        # Accept all 3 BDRs
+        # Accept all 3 BDRs (polls until scan engine has processed them)
         for bdr_id in (bdr_fa, bdr_f9, bdr_fc):
-            try:
-                call_service(
-                    ctx.token,
-                    "ramses_cc",
-                    "accept_discovered_device",
-                    {"device_id": bdr_id},
-                )
+            ok = wait_for_discovered_device(ctx.token, bdr_id, timeout=15)
+            if ok:
                 print(f"    {bdr_id} accepted")
-            except RuntimeError:
-                pass
+            else:
+                print(f"    {bdr_id} accept timed out")
 
         # Wait for include list update
         wait_for(

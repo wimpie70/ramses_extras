@@ -48,6 +48,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_discovered_device,
     wait_for_schema_populated,
     ws_send,
 )
@@ -243,21 +244,14 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(5, "for scan engine to process", floor=3.0)
-
-        # Accept both discovered devices so they enter the known_list
+        # Accept both discovered devices (polls until scan engine has them)
         print("  Accepting discovered OTB and BDR...")
         for dev_id in (otb_id, bdr_id):
-            try:
-                call_service(
-                    ctx.token,
-                    "ramses_cc",
-                    "accept_discovered_device",
-                    {"device_id": dev_id},
-                )
+            ok = wait_for_discovered_device(ctx.token, dev_id, timeout=15)
+            if ok:
                 print(f"    {dev_id} accepted")
-            except RuntimeError as e:
-                print(f"    {dev_id} accept failed: {str(e)[:80]}")
+            else:
+                print(f"    {dev_id} accept timed out")
         wait_for(
             lambda: otb_id in get_known_list() and bdr_id in get_known_list(),
             timeout=10,

@@ -20,7 +20,6 @@ from __future__ import annotations
 import asyncio
 import functools
 import os
-import re
 import subprocess
 import sys
 import time
@@ -427,6 +426,7 @@ def _current_instance_reset(token: Token[InstanceConfig | None]) -> None:
 # Recipe distribution
 # ---------------------------------------------------------------------------
 #: Dependency chains — recipes that must be on the same container.
+#: These are kept together as atomic units in the shared work queue.
 DEPENDENCY_CHAINS: list[list[str]] = [
     ["R07b", "R05"],  # restart → no resurrection
     ["R18", "R20"],  # faked REM
@@ -434,39 +434,8 @@ DEPENDENCY_CHAINS: list[list[str]] = [
     ["R19", "R26"],  # TRV from broadcast
 ]
 
-#: Recipes that do docker restart/stop/start or clear_cached_state.
-#: These affect the entire container, so they should be spread across containers.
-CONTAINER_AFFECTING: set[str] = {
-    "R07b",
-    "R29",
-    "R32",
-    "R34",
-    "R37",
-    "R38",
-    "R50",
-    "R59",
-}
-
-#: Pure function tests — no HA interaction needed, ~1s each.
-#: These run on instance 1 (no container overhead).
-PURE_TESTS: set[str] = {
-    "R39",
-    "R41",
-    "R42",
-    "R43",
-    "R48",
-    "R49",
-    "R51",
-    "R52",
-    "R53",
-    "R54",
-    "R55",
-    "R56",
-    "R57",
-}
-
 #: Rolling-average timing store — self-calibrating load balancing.
-#: Replaces the manual ESTIMATED_RUNTIME table.  The store reads from
+#: The store reads from
 #: ``~/.local/share/ramses_extras/ha_sim_reports/recipe_timings.json``
 #: and falls back to seed estimates for recipes with no history.
 TIMING_STORE = TimingStore()
@@ -475,160 +444,6 @@ TIMING_STORE = TimingStore()
 def _est(recipe_id: str) -> float:
     """Get the estimated runtime for a recipe (from rolling average)."""
     return TIMING_STORE.get_estimate(recipe_id)
-
-
-# Backward compatibility: keep ESTIMATED_RUNTIME as a property-like dict
-# for any code that references it directly.
-class _EstimatedRuntimeDict(dict):
-    """Dict-like wrapper that falls back to TimingStore for missing keys."""
-
-    def __missing__(self, key: str) -> int:
-        return int(TIMING_STORE.get_estimate(key))
-
-    def get(self, key: str, default: int = 10) -> int:
-        return int(TIMING_STORE.get_estimate(key))
-
-
-ESTIMATED_RUNTIME = _EstimatedRuntimeDict()
-
-
-def distribute_recipes(
-    recipe_ids: list[str],
-    n_containers: int,
-    *,
-    manual_assignments: dict[str, list[str]] | None = None,
-) -> dict[int, list[str]]:
-    """Distribute recipes across N containers.
-
-    Constraints:
-    1. Dependency chains stay together on the same container.
-    2. Container-affecting recipes (docker restart / clear_cached_state) are
-       spread across containers (max 1 per container if possible).
-    3. Pure function tests go on container 1 (no HA needed).
-    4. Remaining recipes are greedy-filled to balance estimated runtime.
-
-    :param manual_assignments: If given, these recipes are assigned to specific
-        containers and excluded from auto-distribution.
-    :return: Mapping of container index (1-based) -> list of recipe IDs.
-    """
-    if manual_assignments is None:
-        manual_assignments = {}
-
-    # Initialize groups
-    groups: dict[int, list[str]] = {i: [] for i in range(1, n_containers + 1)}
-
-    # Track which recipes are already assigned
-    assigned: set[str] = set()
-
-    # 1. Apply manual assignments
-    for container_name, rids in manual_assignments.items():
-        # Parse container name to index (ha-sim -> 1, ha-sim-2 -> 2, ...)
-        idx = _container_name_to_index(container_name, n_containers)
-        if idx is None:
-            print(f"  WARNING: unknown container {container_name}, skipping assignment")
-            continue
-        for rid in rids:
-            if rid in recipe_ids and rid not in assigned:
-                groups[idx].append(rid)
-                assigned.add(rid)
-
-    # 2. Put pure tests on container 1
-    for rid in recipe_ids:
-        if rid in PURE_TESTS and rid not in assigned:
-            groups[1].append(rid)
-            assigned.add(rid)
-
-    # 3. Build atomic groups from dependency chains
-    # Each chain becomes a single unit that must go on one container.
-    chain_units: list[list[str]] = []
-    chain_recipe_set: set[str] = set()
-    for chain in DEPENDENCY_CHAINS:
-        unit = [r for r in chain if r in recipe_ids and r not in assigned]
-        if unit:
-            chain_units.append(unit)
-            chain_recipe_set.update(unit)
-
-    # 4. Assign container-affecting recipes (and their chains) round-robin
-    # These are spread across containers to avoid serialization.
-    container_affecting_units: list[list[str]] = []
-    other_units: list[list[str]] = []
-
-    for unit in chain_units:
-        if any(r in CONTAINER_AFFECTING for r in unit):
-            container_affecting_units.append(unit)
-        else:
-            other_units.append(unit)
-
-    # Also check standalone container-affecting recipes (not in chains)
-    for rid in recipe_ids:
-        if (
-            rid in CONTAINER_AFFECTING
-            and rid not in assigned
-            and rid not in chain_recipe_set
-        ):
-            container_affecting_units.append([rid])
-            assigned.add(rid)
-
-    # Mark chain recipes as assigned
-    for unit in container_affecting_units:
-        assigned.update(unit)
-    for unit in other_units:
-        assigned.update(unit)
-
-    # Round-robin assign container-affecting units
-    container_runtimes = {
-        i: sum(ESTIMATED_RUNTIME.get(r, 10) for r in groups[i]) for i in groups
-    }
-    for i, unit in enumerate(container_affecting_units):
-        # Pick the container with the least runtime, cycling through containers
-        target = (i % n_containers) + 1
-        # But prefer the container with least load
-        target = min(container_runtimes, key=lambda k: container_runtimes[k])
-        groups[target].extend(unit)
-        unit_time = sum(ESTIMATED_RUNTIME.get(r, 10) for r in unit)
-        container_runtimes[target] += unit_time
-
-    # 5. Greedy-fill remaining recipes (including non-affecting chains)
-    # Sort by estimated runtime descending for better balance
-    other_units.sort(
-        key=lambda u: sum(ESTIMATED_RUNTIME.get(r, 10) for r in u), reverse=True
-    )
-
-    for unit in other_units:
-        target = min(container_runtimes, key=lambda k: container_runtimes[k])
-        groups[target].extend(unit)
-        unit_time = sum(ESTIMATED_RUNTIME.get(r, 10) for r in unit)
-        container_runtimes[target] += unit_time
-
-    # 6. Assign remaining individual recipes
-    #    (not in chains, not pure tests, not container-affecting)
-    remaining = [r for r in recipe_ids if r not in assigned]
-    remaining.sort(key=lambda r: ESTIMATED_RUNTIME.get(r, 10), reverse=True)
-
-    for rid in remaining:
-        target = min(container_runtimes, key=lambda k: container_runtimes[k])
-        groups[target].append(rid)
-        container_runtimes[target] += ESTIMATED_RUNTIME.get(rid, 10)
-
-    # 7. Sort each group by seq order
-    for idx in groups:
-        groups[idx].sort(
-            key=lambda r: (REGISTRY.get(r).seq if REGISTRY.get(r) else 999, r)
-        )
-
-    return groups
-
-
-def _container_name_to_index(name: str, n_containers: int) -> int | None:
-    """Convert a container name to its 1-based index."""
-    if name in ("ha-sim", "ha-sim-1"):
-        return 1
-    m = re.match(r"ha-sim-(\d+)$", name)
-    if m:
-        idx = int(m.group(1))
-        if 1 <= idx <= n_containers:
-            return idx
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -647,132 +462,9 @@ class InstanceResult:
     error: str | None = None
 
 
-async def run_single_instance(
-    instance: InstanceConfig,
-    recipe_ids: list[str],
-) -> InstanceResult:
-    """Run a list of recipes on a single container (sequential within container)."""
-    result = InstanceResult(instance=instance)
-    start = time.monotonic()
-
-    # Set the contextvar for this asyncio task
-    token = set_current_instance(instance)
-
-    try:
-        # Authenticate
-        print(f"\n  [{instance.name}] Authenticating ({instance.ha_url})...")
-        auth_token = get_token()
-        print(f"  [{instance.name}] Token acquired")
-
-        # Build context
-        log_monitor = LogMonitor()
-        ctx = RecipeContext(
-            token=auth_token, log_monitor=log_monitor, instance=instance
-        )
-        log_monitor.start()
-
-        # Setup
-        await setup(ctx)
-
-        # Run recipes
-        for rid in recipe_ids:
-            recipe_cls = REGISTRY.get(rid)
-            if recipe_cls is None:
-                print(
-                    f"  [{instance.name}] WARNING: recipe {rid!r} not found, skipping"
-                )
-                continue
-
-            recipe = recipe_cls()
-            print(
-                f"\n  [{instance.name}] >>> Running {recipe.id}"
-                f" (seq={recipe.seq}): {recipe.title}"
-            )
-
-            log_snapshot = log_monitor.snapshot()
-            passed_before = ctx.passed
-            failed_before = ctx.failed
-
-            recipe_start = time.monotonic()
-            try:
-                await recipe.run(ctx)
-            except Exception as e:
-                ctx.check(
-                    f"Recipe {recipe.id} did not raise an unhandled exception",
-                    False,
-                    f"{type(e).__name__}: {e}",
-                )
-                print(f"  [{instance.name}] !!! Recipe {recipe.id} raised: {e}")
-            recipe_elapsed = time.monotonic() - recipe_start
-
-            ctx.recipe_stats[recipe.id] = {
-                "passed": ctx.passed - passed_before,
-                "failed": ctx.failed - failed_before,
-                "duration": recipe_elapsed,
-                "title": recipe.title,
-            }
-
-            # Record timing for rolling-average load balancing
-            TIMING_STORE.record_run(recipe.id, recipe_elapsed)
-
-            # Clean up test profiles
-            try:
-                ctx.refresh_token()
-                n = await delete_test_profiles(ctx.token)
-                if n:
-                    print(f"  [{instance.name}] Cleaned up {n} test profile(s)")
-            except Exception:
-                pass
-
-            # Per-recipe log check
-            recipe_logs = log_monitor.record_recipe(recipe.id, log_snapshot)
-            n_err = len(recipe_logs["errors"])
-            n_warn = len(recipe_logs["warnings"])
-            if n_err or n_warn:
-                print(
-                    f"  [{instance.name}] [log] {recipe.id}:"
-                    f" {n_err} errors, {n_warn} warnings"
-                )
-
-            # Running P:/F: tally (suppressed when the live dashboard is
-            # active — it already shows P:/F: in the pane header).
-            # The dashboard enables itself only when stdout is a TTY, so
-            # we use the same check to avoid duplicate output.
-            if not sys.stdout.isatty():
-                p_str = green(f"P:{ctx.passed:>3}")
-                f_str = (
-                    red(f"F:{ctx.failed:>3}") if ctx.failed else f"F:{ctx.failed:>3}"
-                )
-                print(
-                    f"  [{instance.name}] [{p_str} {f_str}]"
-                    f"  {recipe.id} done ({recipe_elapsed:.1f}s)"
-                )
-
-        # Collect results
-        result.passed = ctx.passed
-        result.failed = ctx.failed
-        result.results = ctx.results
-        result.recipe_stats = ctx.recipe_stats
-
-        # Teardown (without sys.exit)
-        await _teardown_no_exit(ctx, start_time=start, instance=instance)
-
-    except Exception as e:
-        result.error = f"{type(e).__name__}: {e}"
-        print(f"  [{instance.name}] FATAL: {e}")
-    finally:
-        # Reset contextvar
-        _current_instance_reset(token)
-
-    result.elapsed = time.monotonic() - start
-    return result
-
-
 async def run_dynamic_instance(
     instance: InstanceConfig,
-    work_queue: asyncio.Queue[list[str]],
-    queue_lock: asyncio.Lock,
-    available_units: list[list[str]],
+    work_queue: asyncio.Queue[list[str] | None],
 ) -> InstanceResult:
     """Run recipes from a shared dynamic queue on a single container.
 
@@ -781,9 +473,9 @@ async def run_dynamic_instance(
     — if one container hits a slow recipe or timeout, other containers
     pick up the slack.
 
-    *available_units* is the pre-sorted list of recipe units (dependency
-    chains kept together).  The queue is pre-loaded with units sorted
-    by estimated time (highest first) so the slowest recipes start first.
+    The queue is pre-loaded with units sorted by estimated time (highest
+    first) so the slowest recipes start first (LPT scheduling).  A
+    ``None`` sentinel signals queue exhaustion — the container stops.
     """
     result = InstanceResult(instance=instance)
     start = time.monotonic()
@@ -1022,10 +714,17 @@ async def run_parallel(
 ) -> None:
     """Run recipes across N containers in parallel.
 
-    Uses static pre-assignment: recipes are distributed across containers
-    before the run, respecting dependency chains and balancing estimated
-    runtime.  A dynamic work queue was tested but found slower due to
-    resource contention (see comment below).
+    Uses a **dynamic work queue**: all recipe units (dependency chains
+    kept together) are placed in a shared ``asyncio.Queue`` sorted by
+    estimated runtime (longest first — LPT scheduling).  Each container
+    pulls the next unit when it finishes its current recipe.  This
+    automatically balances load — if one container draws a slow recipe,
+    the others pick up more units from the queue.
+
+    The remaining wall-time imbalance (typically 1-2min) is caused by
+    recipe runtime variance under parallel contention, not dispatch
+    failure.  A single slow recipe (e.g. R68: 178s) creates a "long
+    tail" that can't be parallelised further.
     """
     # Discover recipes
     discover_recipes(__name__.rsplit(".", 1)[0] + ".recipes")
@@ -1127,11 +826,8 @@ async def run_parallel(
     def _on_done(_task: asyncio.Task[InstanceResult], name: str) -> None:
         dash.mark_done(name)
 
-    queue_lock = asyncio.Lock()
     for inst in instances:
-        task = asyncio.ensure_future(
-            run_dynamic_instance(inst, work_queue, queue_lock, units)
-        )
+        task = asyncio.ensure_future(run_dynamic_instance(inst, work_queue))
         task.add_done_callback(functools.partial(_on_done, name=inst.name))
         tasks.append(task)
 

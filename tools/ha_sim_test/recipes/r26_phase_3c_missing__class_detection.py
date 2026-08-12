@@ -125,7 +125,7 @@ class R26Phase3cMissingClassDetection(Recipe):
             )
         except RuntimeError as e:
             print(f"    30C9 inject failed: {str(e)[:80]}")
-        ctx.wait(5, "for scan engine to process", floor=3.0)
+        ctx.wait(3, "for scan engine to process", floor=3.0)
 
         # Step 3: Trigger sync_topology to run check_missing_class.
         try:

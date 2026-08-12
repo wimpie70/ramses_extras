@@ -1058,6 +1058,46 @@ def wait_for_schema_has(
     )
 
 
+def wait_for_discovered_device(
+    token: str,
+    device_id: str,
+    *,
+    timeout: int = 15,
+    interval: float = 1.0,
+) -> bool:
+    """Wait until *device_id* is discovered by the scan engine.
+
+    Polls the ``accept_discovered_device`` service — if the device is
+    not yet discovered, the service call raises RuntimeError.  Once the
+    scan engine has processed the injected packets, the call succeeds
+    and the function returns True.
+
+    Replaces ``ctx.wait(5, "for scan engine to process")`` followed by
+    a bare ``accept_discovered_device`` call — typically returns in
+    1-2s once the scan engine has processed the packet, instead of
+    sleeping the full 5s.
+
+    :returns: True if the device was discovered and accepted, False on
+        timeout.
+    """
+    import time as _time
+
+    deadline = _time.monotonic() + timeout
+    while _time.monotonic() < deadline:
+        try:
+            call_service(
+                token,
+                "ramses_cc",
+                "accept_discovered_device",
+                {"device_id": device_id},
+            )
+            return True  # success — device was discovered and accepted
+        except RuntimeError:
+            pass  # not discovered yet — retry
+        _time.sleep(interval)
+    return False
+
+
 def wait_for_entity_state(
     token: str,
     entity_id: str,

@@ -27,6 +27,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_discovered_device,
     wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
@@ -164,21 +165,14 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # the sim test to avoid the hotwater_valve slot collision (both non-FC
         # BDRs would compete for the single hotwater_valve slot).
 
-        ctx.wait(5, "for scan engine to process", floor=3.0)
-
-        # Accept the two BDRs so they enter the known_list
+        # Accept the two BDRs (polls until scan engine has processed them)
         print("  Accepting discovered BDRs...")
         for bdr_id in (bdr_app, bdr_dhw):
-            try:
-                call_service(
-                    ctx.token,
-                    "ramses_cc",
-                    "accept_discovered_device",
-                    {"device_id": bdr_id},
-                )
+            ok = wait_for_discovered_device(ctx.token, bdr_id, timeout=15)
+            if ok:
                 print(f"    {bdr_id} accepted")
-            except RuntimeError as e:
-                print(f"    {bdr_id} accept failed: {str(e)[:80]}")
+            else:
+                print(f"    {bdr_id} accept timed out")
         wait_for(
             lambda: bdr_app in get_known_list() and bdr_dhw in get_known_list(),
             timeout=10,

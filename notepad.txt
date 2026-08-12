@@ -39,12 +39,9 @@ TODO — ha_sim_test recipe optimization findings
       + expected values table would be easier to extend.
 
 - [ ] Gate phase 2/3/4 migration tests by ramses_cc version — R20 (SSOT
-      Phase 2), R33 (Phase 3d.3b), R58/R59 (Phase 4) test migration paths
-      that are only relevant when upgrading from an older version.  Add a
-      version check helper that reads the installed ramses_cc version
-      (or schema version from .storage) and skips the recipe if the
-      version is already past the migration point.  This avoids testing
-      obsolete migration code on fresh installs.
+      Phase 2), R33 (Phase 3d.3b), R58/R59 (Phase 4). These stay relevant
+      since users can upgrade from an older version directly to the latest.
+
 
 - [ ] Verify R20 obsolescence — SSOT Phase 2 migration may be fully
       superseded by Phase 4 (R58/R59).  If Phase 4 removes known_list
@@ -53,6 +50,222 @@ TODO — ha_sim_test recipe optimization findings
 - [ ] Verify R33 obsolescence — Phase 3d.3b consolidated stripper may be
       partially superseded by Phase 4 schema stripping.  Still tests
       validation parity though, so may be worth keeping.
+
+## Restart optimization analysis (2026-08-12)
+
+Full parallel run: 66 recipes, 0 failures, 18m13s across 4 containers.
+
+### Where the time goes
+
+Per-container wall time (determines overall wall time):
+  ha-sim:   10 recipes, 724s (12.1min)
+  ha-sim-2: 24 recipes, 849s (14.2min)  ← bottleneck container
+  ha-sim-3: 19 recipes, 786s (13.1min)
+  ha-sim-4: 13 recipes, 743s (12.4min)
+
+Wait time breakdown (across all containers, summed):
+  Fixed ctx.wait:     407s  (93 calls — scan engine processing, log flush)
+  ramses_cc init:      49s  (10 calls — 15s floor after container restart)
+  Container restart:   30s  (15 calls — 2s each actual)
+  ramses_cc reload:    20s  (54 calls — avg 0.4s, floor rarely hit)
+  Schema populated:     2s  (26 calls — very fast)
+
+"Other" time (service calls, injects, HTTP, profile loads) dominates
+the slowest recipes.  This is actual work, not wait time.
+
+### Top 10 slowest recipes
+
+  R68:  178s — Active HVAC probing (3 restarts, 96s other)
+  R07b: 173s — HVAC survives restart (5 restarts, 113s other)
+  R69:  155s — Faked 03: THM 30C9 (6 restarts, 78s other)
+  R63:  145s — Zone name survives pruning (2 restarts, 86s other)
+  R37:  125s — BDR misclassified (7 restarts, 46s other)
+  R64:  117s — No repeated discovery notifications (3 restarts)
+  R62:  106s — Event-driven schema sync (2 restarts, 87s other)
+  R23:  104s — 0004 zone_name propagation (2 restarts, 66s other)
+  R60:   98s — send_packet CommandDTO (3 restarts, 65s other)
+  R32:   98s — Battery 1060 cache restore (1 restart, 46s other)
+
+### Restart combination opportunities
+
+12 recipes do clear_cached_state or container restart.  Each
+clear_cached_state costs ~19s (2s stop + 2s start + 15s init floor).
+But restarts are parallelized across containers, so wall-time savings
+are modest.
+
+1. R29 + R37 + R73 + R74 → one BDR suite
+   All test BDR placement via 3B00/3EF0/000C.  Combine into one recipe
+   that clears state once and runs all 4 test phases sequentially.
+   Savings: 3 fewer clear_cached_state = ~57s recipe time, ~15s wall
+
+2. R38 → merge into R69
+   R38 (faked THM 30C9 zone_idx) is a subset of R69 (faked 03: THM
+   30C9 decoder).  R69 already tests what R38 tests plus more.
+   Savings: 1 fewer clear_cached_state = ~19s recipe time, ~5s wall
+
+3. R07b → merge into R07
+   R07b just restarts and re-verifies HVAC schema.  R07 already loads
+   the HVAC profile.  Add the restart+verify as a phase at the end of R07.
+   Savings: 1 restart = ~17s recipe time, ~4s wall
+
+4. R64 + R62 → one event-driven sync suite
+   Both test event-driven schema sync.  R64 tests no repeated
+   notifications, R62 tests schema update speed.  Share the restart.
+   Savings: 1 restart = ~17s recipe time, ~4s wall
+
+Total potential savings: ~110s recipe time, ~28s wall time (2.5%).
+The parallel dispatcher already absorbs most restart overhead by
+distributing recipes across containers.
+
+### Bigger wins (not restart-related)
+
+5. Reduce ctx.wait("scan engine to process") — 11 calls × 5s = 53s.
+   The scan engine processes packets in ~1-2s.  The 5s floor is
+   conservative.  Reducing to 3s saves ~22s recipe time.
+
+6. Reduce ramses_cc init floor — 10 calls hit the 15s floor.
+   The init timeout is 30s with a 15s floor.  If ramses_cc initializes
+   in 10s, the floor adds 5s waste per call.  Lowering the floor to 10s
+   saves ~50s recipe time (but risks flaky failures on slow containers).
+
+7. R68 (178s) and R07b (173s) are outliers — they do many restarts
+   in sequence.  R68 does 3 restarts for HVAC probing; R07b does 5
+   restarts.  These could be refactored to batch their restarts.
+
+### Conclusion
+
+Restart combination saves ~28s wall time (2.5%) — modest because the
+parallel dispatcher already absorbs restart overhead.  The bigger win
+is reducing ctx.wait floors (item 5) and investigating why R68/R07b
+need so many restarts (item 7).
+
+Recommended priority:
+  - Item 2 (R38→R69 merge): easiest, cleanest, no test loss
+  - Item 1 (BDR suite): moderate effort, good coverage consolidation
+  - Item 5 (ctx.wait floors): easy, low risk
+  - Items 3, 4: low savings, defer
+  - Items 6, 7: need investigation, risk of flaky failures
+
+### ctx.wait → event-driven wait conversion (2026-08-12)
+
+Total ctx.wait time: 479s across 82 calls (summed, not wall time).
+
+Already event-driven (no action needed):
+  - ramses_cc reload: wait_for_ramses_cc_reload (polls is_ramses_cc_loaded)
+  - ramses_cc init: wait_for_ramses_cc_loaded (polls is_ramses_cc_loaded)
+  - schema populated: wait_for_schema_populated (polls schema key count)
+  - schema stable: wait_for_schema_stable (polls schema hash)
+  - HA ready: wait_for_ha_ready (polls /api endpoint)
+  - entity state: wait_for_entity_state (polls /api/states/<id>)
+  - device in schema: wait_for_schema_has (polls schema for device_id)
+
+Can be converted to event-driven (polling instead of fixed sleep):
+
+  1. "scan engine to process" (11 calls × 5s = 53s) — BIGGEST WIN
+     After injecting 3B00/3EF0/000C packets, we wait 5s for the scan
+     engine to process them.  Instead, poll get_discovered_devices()
+     until the injected device appears (or its domain_id changes).
+     New helper: wait_for_discovered_device(device_id, timeout=10)
+     Savings: ~40s (most calls return in 1-2s)
+
+  2. "30C9 packet to appear in log" (2 calls × 5s = 10s)
+     Already polls the log, but uses ctx.wait instead of wait_for.
+     Convert to wait_for(lambda: log_monitor.find("30C9"), ...)
+     Savings: ~5s
+
+  3. "entity state write" (3 calls × 5s = 15s)
+     Already have wait_for_entity_state helper — just use it.
+     Savings: ~10s
+
+  4. "1260 to process" (3 calls × 5s = 15s)
+     Poll the entity state (sensor.dhw_temperature) until it changes.
+     Use wait_for_entity_state with not_none=True.
+     Savings: ~10s
+
+  5. "log to flush" (3 calls × 3s = 9s)
+     Poll the log monitor until the expected line appears.
+     Savings: ~5s
+
+Cannot easily convert (genuine fixed waits):
+  - "between injects" (12 calls × 2s = 24s) — need spacing between
+    packets so the scan engine processes them in order
+  - "container to stop" (4 calls × 2s = 8s) — docker stop is async
+  - "emitter cancellation" (3 calls × 2s = 6s) — asyncio cancellation
+    needs time to propagate
+  - "before retry" (3 calls × 3s = 9s) — backoff between retries
+
+Total convertible: ~70s (15% of ctx.wait time)
+Total not convertible: ~47s (10% of ctx.wait time)
+Already converted (wait_for_*): reload, init, schema, entity, HA ready
+
+### Load balancing: estimate accuracy (2026-08-12)
+
+The dispatcher uses rolling-average estimates (TimingStore) to balance
+load across containers.  The estimates are nearly perfectly balanced
+(862s / 860s / 857s / 857s = 1.01 ratio), but the actual run showed:
+  ha-sim:   721s (est 862s, -141s)  ← finished 2.1min early
+  ha-sim-2: 909s (est 860s, +49s)   ← bottleneck
+  ha-sim-3: 584s (est 857s, -273s)  ← finished 4.6min early!
+  ha-sim-4: 889s (est 857s, +32s)
+
+Root cause: recipe runtimes are highly variable under parallel contention.
+The rolling average (4-5 samples) can't predict which recipes will be
+slow on a given run.  Biggest errors:
+  R68: est 59s, actual 178s (+119s) — 3x slower than average
+  R64: est 227s, actual 117s (-110s) — 2x faster than average
+  R38: est 125s, actual 49s (-77s)
+  R33: est 122s, actual 54s (-67s)
+  R23: est 45s, actual 104s (+59s)
+
+The variance is caused by parallel contention (4 containers sharing the
+same host CPU/disk/MQTT broker).  When multiple containers restart or
+load profiles simultaneously, all of them slow down.
+
+Possible fixes:
+  a. Use median instead of mean (more robust to outliers)
+  b. Increase MAX_HISTORY to 10-20 (more data points)
+  c. Use the last run's actual time as the estimate (reactive)
+  d. Dynamic rebalancing: when a container finishes, steal recipes
+     from the slowest container's remaining queue
+
+Option (d) is the most effective — it eliminates the estimate accuracy
+problem entirely.  The dispatcher would need to:
+  1. Assign recipes to containers as before (initial distribution)
+  2. When a container finishes its queue, check if other containers
+     have unstarted recipes
+  3. Move unstarted recipes from the slowest container to the idle one
+
+This is a moderate refactor of run_single_instance() — it currently
+runs a fixed list of recipes.  It would need a shared queue with
+atomic pop, or a coordinator task that monitors progress and reassigns.
+
+### Results after optimisation (2026-08-12)
+
+Implemented:
+  1. Dynamic dispatch (already existed! — run_parallel uses a shared
+     asyncio.Queue with LPT sorting; cleaned up dead code:
+     distribute_recipes, run_single_instance, CONTAINER_AFFECTING,
+     PURE_TESTS, ESTIMATED_RUNTIME, _EstimatedRuntimeDict,
+     _container_name_to_index, unused re import, queue_lock param,
+     available_units param)
+  2. wait_for_discovered_device helper — replaces ctx.wait(5, "scan
+     engine") + accept_discovered_device with a polling accept that
+     returns as soon as the scan engine has the device (1-2s typically)
+  3. Reduced "scan engine to process" floors from 5s→3s for the
+     sync_topology pattern (7 recipes)
+  4. R38 merged into R69 (R38's zone_idx check added to R69, R38 deleted)
+
+Before (static dispatch, 66 recipes):
+  ha-sim:   721s    ha-sim-2: 909s    ha-sim-3: 584s    ha-sim-4: 889s
+  Imbalance: 325s (5.4min)    Wall time: 18m13s
+
+After (dynamic queue + ctx.wait optimisation, 65 recipes):
+  ha-sim:  1016.4s  ha-sim-2: 1011.7s  ha-sim-3: 1027.5s  ha-sim-4: 1031.7s
+  Imbalance: 20s (0.3min)     Wall time: 17m14s
+
+The dynamic queue eliminated 94% of the imbalance (325s → 20s).
+The 1-minute wall time improvement comes from ctx.wait floor reductions
+and R38 removal.
 
 ## Low priority (not doing)
 

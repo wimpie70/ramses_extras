@@ -26,6 +26,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_discovered_device,
     wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
@@ -136,24 +137,15 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
                 print(f"    {trv_id} -> 3150: FAILED - {str(e)[:80]}")
             time.sleep(0.5)
 
-        ctx.wait(5, "for scan engine to process", floor=4.0)
-
-        # Accept the discovered TRVs so they enter the known_list.
-        # With the mixed profile (enforce_known_list=True), unknown devices
-        # won't be placed in zones until they're accepted.
+        # Accept the discovered TRVs (polls until scan engine has them)
         print("  Accepting discovered TRVs...")
         for trv_id, zone_idx in broadcast_trvs:
-            try:
-                call_service(
-                    ctx.token,
-                    "ramses_cc",
-                    "accept_discovered_device",
-                    {"device_id": trv_id},
-                )
+            ok = wait_for_discovered_device(ctx.token, trv_id, timeout=15)
+            if ok:
                 print(f"    {trv_id} accepted")
-            except RuntimeError as e:
-                print(f"    {trv_id} accept failed: {str(e)[:80]}")
-        ctx.wait(5, "for ramses_rf include list update")
+            else:
+                print(f"    {trv_id} accept timed out")
+        ctx.wait(3, "for ramses_rf include list update")
 
         # Trigger sync_topology to update the schema
         print("  Triggering sync_topology...")

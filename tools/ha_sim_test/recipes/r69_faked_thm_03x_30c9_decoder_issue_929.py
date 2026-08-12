@@ -236,3 +236,11 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
             len(payload) >= 2 and payload[:2] == zone_idx,
             f"payload was '{payload[:8]}' (expected idx '{zone_idx}')",
         )
+
+        # Also verify it does NOT start with "00" (the old buggy behaviour
+        # from issue 639, where build_put_sensor_temp hard-coded "00")
+        ctx.check(
+            "30C9 payload does NOT start with '00' (old bug from issue 639)",
+            len(payload) >= 2 and payload[:2] != "00",
+            "payload starts with '00' — bug regression!",
+        )
