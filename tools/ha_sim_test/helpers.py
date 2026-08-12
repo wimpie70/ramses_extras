@@ -867,13 +867,16 @@ def wait_for_ramses_cc_loaded(
     """Wait for ramses_cc to be loaded after a docker restart.
 
     Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
-    *floor* of 15s — after a docker restart, ramses_cc's async_setup_entry
-    takes 5-10s to complete (MQTT transport init, schema load, entity
-    creation).  Scaling the timeout below 15s causes false TIMEOUTs that
-    cascade into schema/profile load failures in subsequent steps.
+    *floor* of 20s — after a docker restart, ramses_cc's async_setup_entry
+    takes 10-15s to complete (MQTT transport init, schema load, entity
+    creation), and under parallel contention (4 containers sharing CPU)
+    it can take up to 18s.  Scaling the timeout below 20s causes false
+    TIMEOUTs that cascade into schema/profile load failures in subsequent
+    steps.  The floor only sets the max wait ceiling — the function still
+    exits early as soon as ramses_cc is loaded.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=15.0
+        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=20.0
     )
 
 

@@ -119,6 +119,15 @@ EXPECTED_WARNINGS: list[str] = [
     # the EntityPlatform async_add_entities task may still be pending when
     # the integration unloads)
     "Task <Task pending name='EntityPlatform async_ad",
+    # ramses_extras: _reload_ramses_cc fire-and-forget task may still be
+    # running (at await asyncio.sleep or async_setup) when a subsequent
+    # profile reload triggers an unload.  The task completes successfully —
+    # this is a timing artifact at 100x speed, not a real issue.
+    "coro=<_reload_ramses_cc()",
+    # ramses_cc: RamsesFanHandler callback task may still be pending during
+    # rapid reload cycles.  Benign at 100x speed — the fan handler setup
+    # completes on the next reload cycle.
+    "coro=<RamsesFanHandler.async_setup_fan_device",
     # HA core: "Future exception was never retrieved" — race condition in
     # entity removal during rapid reload cycles at 100x speed.  HA core's
     # remove_entity_cb (entity_platform.py:1043) uses `del

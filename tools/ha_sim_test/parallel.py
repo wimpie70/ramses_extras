@@ -26,7 +26,6 @@ import sys
 import time
 from contextvars import Token
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from .base import RecipeContext
@@ -51,7 +50,10 @@ from .registry import REGISTRY, discover_recipes
 from .runner import setup, teardown
 
 #: Path to ramses_cc custom_components (bind-mounted into each container).
-_RAMSES_CC_PATH = str(Path.home() / "dev/ramses_cc/custom_components/ramses_cc")
+_RAMSES_CC_PATH = "/home/willem/dev/ramses_cc/custom_components/ramses_cc"
+
+#: Path to ramses_extras custom_components (bind-mounted into each container).
+_RAMSES_EXTRAS_PATH = "/home/willem/dev/ramses_extras/custom_components/ramses_extras"
 
 #: docker-compose template for parallel instances (2+).
 COMPOSE_TEMPLATE = """\
@@ -76,6 +78,7 @@ SERVICE_TEMPLATE = """\
       - {config_dir}:/config
       - /home/willem/dev/ramses_rf:/config/ramses_rf
       - {ramses_cc_path}:/config/custom_components/ramses_cc
+      - {ramses_extras_path}:/config/custom_components/ramses_extras
 """
 
 
@@ -250,6 +253,7 @@ def generate_compose_file(instances: list[InstanceConfig]) -> str:
                 hgi_id=inst.hgi_id,
                 config_dir=inst.config_dir,
                 ramses_cc_path=_RAMSES_CC_PATH,
+                ramses_extras_path=_RAMSES_EXTRAS_PATH,
             )
         )
     compose_path = "/home/willem/docker_files/ha-sim/docker-compose.parallel.yml"
@@ -461,70 +465,84 @@ PURE_TESTS: set[str] = {
 }
 
 #: Estimated runtime per recipe (seconds) — used for load balancing.
+#: Calibrated from two full 4-parallel runs (2026-08-12) using the max
+#: of both runs, rounded to nearest 5s.  Timings vary significantly
+#: between runs due to parallel contention, docker restart timing, and
+#: scan engine variability — the max provides a conservative estimate
+#: that prevents the balancer from under-allocating to a container that
+#: happens to get a slow run of a variable recipe.
 ESTIMATED_RUNTIME: dict[str, int] = {
-    "R01": 75,
-    "R02": 3,
+    "R01": 30,
+    "R02": 1,
     "R03": 1,
-    "R04": 3,
-    "R05": 30,
-    "R06": 15,
-    "R07": 10,
-    "R07b": 130,
-    "R08": 20,
-    "R09": 15,
-    "R10": 75,
-    "R11": 40,
-    "R12": 30,
-    "R14": 15,
+    "R04": 5,
+    "R05": 10,
+    "R06": 5,
+    "R07": 1,
+    "R07b": 135,
+    "R08": 45,
+    "R09": 110,
+    "R10": 30,
+    "R11": 45,
+    "R12": 15,
+    "R14": 5,
     "R15": 1,
-    "R16": 30,
-    "R17": 60,
-    "R18": 8,
-    "R19": 75,
-    "R19b": 15,
-    "R19c": 15,
-    "R20": 15,
-    "R21": 120,
-    "R22": 25,
-    "R23": 25,
-    "R24": 60,
-    "R25": 25,
-    "R26": 15,
-    "R27": 100,
-    "R28": 60,
-    "R29": 65,
-    "R30": 50,
-    "R31": 110,
-    "R32": 130,
-    "R33": 90,
-    "R34": 80,
-    "R35": 60,
-    "R36": 240,
-    "R37": 60,
-    "R38": 105,
-    "R39": 5,
-    "R40": 30,
-    "R41": 5,
-    "R42": 5,
-    "R43": 5,
-    "R44": 55,
-    "R45": 85,
-    "R46": 80,
-    "R47": 65,
-    "R48": 5,
-    "R49": 5,
-    "R50": 40,
-    "R51": 5,
-    "R52": 5,
-    "R53": 5,
-    "R54": 5,
-    "R55": 5,
-    "R56": 5,
-    "R57": 5,
-    "R58": 5,
-    "R59": 20,
+    "R16": 25,
+    "R17": 70,
+    "R18": 5,
+    "R19": 80,
+    "R19b": 5,
+    "R19c": 5,
+    "R20": 5,
+    "R21": 20,
+    "R22": 50,
+    "R23": 35,
+    "R24": 125,
+    "R25": 60,
+    "R26": 205,
+    "R27": 85,
+    "R28": 75,
+    "R29": 60,
+    "R30": 80,
+    "R31": 95,
+    "R32": 65,
+    "R33": 5,
+    "R34": 45,
+    "R35": 50,
+    "R36": 125,
+    "R37": 100,
+    "R38": 80,
+    "R39": 1,
+    "R40": 90,
+    "R41": 15,
+    "R42": 1,
+    "R43": 1,
+    "R44": 20,
+    "R45": 60,
+    "R46": 90,
+    "R47": 45,
+    "R48": 1,
+    "R49": 1,
+    "R50": 35,
+    "R51": 1,
+    "R52": 1,
+    "R53": 1,
+    "R54": 1,
+    "R55": 1,
+    "R56": 1,
+    "R57": 1,
+    "R58": 1,
+    "R59": 15,
     "R60": 115,
-    "R61": 75,
+    "R61": 40,
+    "R62": 70,
+    "R63": 195,
+    "R64": 220,
+    "R65": 50,
+    "R66": 40,
+    "R67": 15,
+    "R68": 220,
+    "R69": 270,
 }
 
 
@@ -681,7 +699,6 @@ class InstanceResult:
     recipe_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     elapsed: float = 0.0
     error: str | None = None
-    log_report_path: str | None = None
 
 
 async def run_single_instance(
@@ -789,8 +806,7 @@ async def run_single_instance(
         result.recipe_stats = ctx.recipe_stats
 
         # Teardown (without sys.exit)
-        log_path = await _teardown_no_exit(ctx, start_time=start, instance=instance)
-        result.log_report_path = log_path
+        await _teardown_no_exit(ctx, start_time=start, instance=instance)
 
     except Exception as e:
         result.error = f"{type(e).__name__}: {e}"
@@ -808,12 +824,8 @@ async def _teardown_no_exit(
     *,
     start_time: float,
     instance: InstanceConfig,
-) -> str | None:
-    """Teardown without calling sys.exit (for parallel mode).
-
-    :return: Path to the written log report, or ``None`` if no log
-        monitor was attached.
-    """
+) -> None:
+    """Teardown without calling sys.exit (for parallel mode)."""
     from .helpers import delete_test_profiles
 
     try:
@@ -838,8 +850,6 @@ async def _teardown_no_exit(
             print(f"  [{instance.name}] Unexpected errors: {n_errors}")
         if n_warnings:
             print(f"  [{instance.name}] Unexpected warnings: {n_warnings}")
-        return str(report_path)
-    return None
 
 
 def merge_results(results: list[InstanceResult]) -> int:
@@ -902,28 +912,6 @@ def merge_results(results: list[InstanceResult]) -> int:
     for r in results:
         for line in r.results:
             print(f"  [{r.instance.name}] {line}")
-
-    # =====================================================================
-    # SUMMARY REPORT: Write a Markdown summary alongside the log reports
-    # =====================================================================
-    from .report_writer import RunSummary, write_summary_report
-    from .runner import REPORTS_DIR
-
-    summaries = [
-        RunSummary(
-            instance=r.instance,
-            elapsed=r.elapsed,
-            passed=r.passed,
-            failed=r.failed,
-            recipe_stats=r.recipe_stats,
-            results=r.results,
-            log_report_path=r.log_report_path,
-            error=r.error,
-        )
-        for r in results
-    ]
-    summary_path = write_summary_report(summaries, reports_dir=REPORTS_DIR)
-    print(f"\n  Summary report: {summary_path}")
 
     if total_failed > 0:
         print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")

@@ -66,6 +66,11 @@ except ImportError as e:
         # comment was added by PR 964 (typing/linting refactor) as a
         # metadata field for log annotations — it carries no decoded
         # payload data, just an optional human-readable comment string.
+        # raw_payload was added by commit 894a6413 (typed payload dataclass
+        # refactor) to carry the raw ASCII hex payload string alongside the
+        # now-typed `payload` field (PayloadBase).  It is a pure L1/L2
+        # transport field — the raw hex, not decoded — so it does not
+        # violate issue 639 rule 4 ("No Decoding Callbacks").
         allowed_fields = {
             "timestamp",
             "rssi",
@@ -77,6 +82,7 @@ except ImportError as e:
             "code",
             "length",
             "payload",
+            "raw_payload",
             "is_tx",
             "comment",
         }
