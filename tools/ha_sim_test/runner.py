@@ -45,7 +45,40 @@ from .registry import REGISTRY, discover_recipes
 #: Default directory for persistent test reports (keeps the last N per
 #: container).  Can be overridden via :func:`set_reports_dir` (used by
 #: the ``--reports-dir`` CLI flag).
-_DEFAULT_REPORTS_DIR = Path(__file__).parent / "reports"
+#:
+#: Defaults to a user-level data directory outside the repo so reports
+#: don't pollute the working tree and are reachable on all platforms:
+#:   Linux:  ~/.local/share/ramses_extras/ha_sim_reports
+#:   macOS:  ~/Library/Application Support/ramses_extras/ha_sim_reports
+#:   Windows: %LOCALAPPDATA%/ramses_extras/ha_sim_reports
+try:
+    from platformdirs import user_data_dir
+
+    _DEFAULT_REPORTS_DIR = Path(user_data_dir("ramses_extras")) / "ha_sim_reports"
+except ImportError:
+    import os
+    import sys
+
+    if sys.platform == "darwin":
+        _DEFAULT_REPORTS_DIR = (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "ramses_extras"
+            / "ha_sim_reports"
+        )
+    elif sys.platform == "win32":
+        _DEFAULT_REPORTS_DIR = (
+            Path(os.environ.get("LOCALAPPDATA", Path.home()))
+            / "ramses_extras"
+            / "ha_sim_reports"
+        )
+    else:
+        _DEFAULT_REPORTS_DIR = (
+            Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+            / "ramses_extras"
+            / "ha_sim_reports"
+        )
 
 #: Active directory for persistent test reports.
 REPORTS_DIR: Path = _DEFAULT_REPORTS_DIR
