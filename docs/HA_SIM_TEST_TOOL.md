@@ -1,7 +1,9 @@
 # ha-sim Test Tool
 
 **Location:** `tools/ha_sim_test/` (Python package)
-**Reports:** `tools/ha_sim_test/reports/` (overridable via `--reports-dir`)
+**Reports:** user data dir (e.g. `~/.local/share/ramses_extras/ha_sim_reports/` on
+Linux, `~/Library/Application Support/ramses_extras/ha_sim_reports/` on macOS);
+overridable via `--reports-dir`
 
 ## Overview
 
@@ -113,17 +115,19 @@ To revert, remove the `PYTHONPATH` line and `docker compose up -d` again.
 ## Running the tests
 
 ```bash
-cd /home/willem/dev/ramses_extras/tools
-python3 -m ha_sim_test
+cd /home/willem/dev/ramses_extras
+source ~/venvs/extras/bin/activate
+python -m tools.ha_sim_test
 ```
 
 To run specific recipes only:
 
 ```bash
-python3 -m ha_sim_test R06 R29
+python -m tools.ha_sim_test R06 R29
 ```
 
-The test suite takes ~6 minutes to complete (single container). Output is printed to stdout with:
+The test suite takes ~6 minutes single-container, ~18 minutes across 4
+parallel containers. Output is printed to stdout with:
 - A section header for each recipe
 - `PASS:` / `FAIL:` lines for each check
 - A summary at the end with the total count
@@ -136,7 +140,8 @@ Exit code: `0` = all passed, `1` = some failed.
 usage: ha_sim_test [-h] [--parallel N] [--container-base CONTAINER_BASE]
                    [--port PORT] [--assign CONTAINER:R1,R2,...] [--cleanup]
                    [--wait-scale-blind FACTOR] [--wait-scale-poll FACTOR]
-                   [recipes ...]
+                   [--wait-floor-blind SECONDS] [--wait-floor-poll SECONDS]
+                   [--reports-dir DIR] [recipes ...]
 ```
 
 | Parameter | Default | Description |
@@ -151,6 +156,7 @@ usage: ha_sim_test [-h] [--parallel N] [--container-base CONTAINER_BASE]
 | `--wait-scale-poll FACTOR` | `1.0` | Scale factor for `wait_for()` timeout ceilings. See [Wait scaling](#wait-scaling). |
 | `--wait-floor-blind SECONDS` | `0` | Global minimum (real-time seconds) for all blind `wait()` sleeps. Protects sensitive waits when using aggressive scale factors. |
 | `--wait-floor-poll SECONDS` | `0` | Global minimum for all `wait_for()` timeout ceilings. Per-call `floor=` (e.g. `wait_for_ha_ready` uses 10s) takes the max with this. |
+| `--reports-dir DIR` | user data dir | Directory to write log and summary reports into. Default: `~/.local/share/ramses_extras/ha_sim_reports/` (Linux), `~/Library/Application Support/...` (macOS), `%LOCALAPPDATA%/...` (Windows). Created if it does not exist. |
 
 ### Examples
 
@@ -278,12 +284,12 @@ conditions in the HA entity state machine.
 
 Per-call floors (built into helpers, no CLI flag needed):
 ``wait_for_ha_ready``: floor=10s (docker restart)
-``wait_for_ramses_cc_loaded``: floor=15s (docker restart cold start)
-``wait_for_ramses_cc_reload``: floor=8s (in-process profile reload)
-``wait_for_schema_stable``: floor=3s (polls schema, exits early when stable)
-``wait_for_schema_populated``: floor=3s (polls schema key count)
-``wait_for_schema_has``: floor=3s (polls for specific device in schema)
-``wait_for_entity_state``: floor=3s (polls entity state via REST)
+``wait_for_ramses_cc_loaded``: floor=25s (docker restart cold start)
+``wait_for_ramses_cc_reload``: floor=12s (in-process profile reload)
+``wait_for_schema_stable``: floor=5s (polls schema, exits early when stable)
+``wait_for_schema_populated``: floor=5s (polls schema key count)
+``wait_for_schema_has``: floor=5s (polls for specific device in schema)
+``wait_for_entity_state``: floor=5s (polls entity state via REST)
 ``wait_for_transport_reconnect``: floor=3s (polls MQTT subscription log)
 
 **Output format:** when a wait is scaled, the output shows both the
@@ -299,7 +305,8 @@ the global `--wait-floor-poll` (the effective floor is the max of both).
 ## Test reports
 
 After each run, two reports are written to the reports directory
-(default: `tools/ha_sim_test/reports/`, overridable via `--reports-dir`):
+(default: user data dir, e.g. `~/.local/share/ramses_extras/ha_sim_reports/`
+on Linux; overridable via `--reports-dir`):
 
 ### Log report
 
@@ -361,45 +368,236 @@ If a new bug introduces an unexpected ERROR or WARNING, it will appear in the re
 
 ## Test recipes
 
+72 recipes (R01–R72), grouped by category. Each recipe is a self-contained
+module under `tools/ha_sim_test/recipes/`.
+
+### Device lifecycle
+
 | Recipe | Description | Checks |
 |---|---|---|
-| Setup | Load mixed profile (100x speed), activate all devices | — |
-| R6/14 | Zone binding via inject_message (000C packet) | 2 |
-| R3 | remove_device — HGI rejection | 1 |
-| R2 | remove_device — remove TRV | 3 |
-| R4 | remove_device — CTL / main_tcs removal | 2 |
-| R15 | Verify hvac_schema key in .storage | 1 |
-| R7 | HVAC schema caching — FAN + REM | 2 |
-| R7b | Restart ha-sim, verify HVAC survives | 2 |
-| R5 | No resurrection after restart | 2 |
-| R11 | Discover → accept → remove lifecycle | 5 |
+| R01 | Heat profile activation + schema/entities | 5 |
+| R02 | remove_device — remove TRV | 3 |
+| R03 | remove_device — HGI rejection | 1 |
+| R04 | remove_device — CTL / main_tcs removal | 2 |
+| R05 | No resurrection after restart | 2 |
 | R10 | Invalid main_tcs safety net | 3 |
-| R8 | HVAC schema caching — merge union on reload | 3 |
-| R9 | User schema edits survive sync — _alias | 2 |
+| R11 | Discover → accept → remove lifecycle | 5 |
+| R16 | Concurrency/stress test — rapid add/remove | 4 |
+
+### Schema management
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R07 | HVAC schema caching — FAN + REM | 2 |
+| R07b | Restart ha-sim, verify HVAC survives | 2 |
+| R08 | HVAC schema caching — merge union on reload | 3 |
+| R09 | User schema edits survive sync — _alias | 2 |
 | R12 | HVAC device loss scenario | 3 |
-| R16 | Concurrency/stress test | 4 |
-| R1 | Heat profile activation + schema/entities | 5 |
+| R15 | Verify hvac_schema key in .storage | 1 |
+| R20 | SSOT Phase 2 migration — known_list traits | 5 |
+
+### Zone binding & packet injection
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R06 | Zone binding via inject_message (000C packet) | 2 |
 | R14 | Raw packet injection — zone rebinding | 1 |
-| R17 | Discovery service lifecycle | 7 |
-| R34 | Water heater DHW CQRS hydration (issue 843) | 4 |
+| R19 | Zone binding from broadcast traffic (passive) | 8 |
+| R19b | Invalid zone indices are rejected | 1 |
+| R19c | 18: (HGI) devices tracked but no zone binding | 2 |
+| R21 | CTL (01:) does not get zone_idx from 000A | 8 |
+| R22 | THM (22:) zone binding via 000A | 2 |
+| R23 | 0004 zone_name propagation (parser_0004) | 2 |
+| R28 | Foreign HGI — 0004 zone names not blocked | 4 |
+
+### Discovery service
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R17 | Discovery service lifecycle [A] | 7 |
+| R18 | add_faked_rem service — creates faked REM | 5 |
+| R47 | Unknown device discovery + log tracking | 3 |
+
+### BDR / OTB classification (issue 834)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R29 | BDR 3B00/3EF0 → appliance_control | 6 |
+| R34 | BDR re-parent hotwater_valve → appliance_control | 5 |
+| R37 | BDR hotwater_valve misclassified as appliance_control | 9 |
+
+### Phase 3c — _class detection & mismatch
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R24 | Phase 3c — class mismatch flagging | 5 |
+| R25 | Phase 3c — fix mismatch, notification dismissed | 2 |
+| R26 | Phase 3c — missing _class detection | 1 |
+| R27 | Phase 3c — accept_discovered_device preserves root | 1 |
+
+### Phase 3d — FAN _commands & multi-REM
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R30 | Phase 3d.4 — multi-REM FAN with _bound as list | 5 |
+| R31 | Phase 3d.6 — _commands override precedence (E2E) | 5 |
+| R33 | Phase 3d.3b — consolidated stripper validation | 8 |
+
+### Phase 4 — known_list enforcement (PR 870)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R58 | Phase 4 — known_list removed, enforce always-on | 14 |
+| R59 | Phase 4 — _cleanup_stale_known_list strips stale keys | 9 |
+
+### HVAC topology (FAN/REM/CO2)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R62 | Topology event-driven schema sync (step 5) | 7 |
+| R65 | HVAC 'belongs to' FAN detected from traffic | 18 |
+| R66 | HVAC dual-role CO2+REM support | 5 |
+| R68 | Active HVAC topology probing (6f) | 4 |
+
+### CQRS / DHW hydration
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R35 | Water heater DHW CQRS hydration (issue 843) | 4 |
+
+### Battery & cache restore
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R32 | Battery (1060) cache restore — stale 1060 after restart | 4 |
+
+### Device health tracking (issue 767)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R50 | Device health tracking — orphaned/lost devices | 20+ |
+| R51 | Schema stripping parity (issue 767) | 8 |
+| R52 | known_list derivation from schema (issue 767) | 10+ |
+
+### Packet DTO & positional addressing (issue 639)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R38 | Faked THM 30C9 correct zone_idx (issue 639) | 3 |
+| R40 | PacketDTO rx_path integrity (issue 639) | 5 |
+| R49 | Positional addressing — addr to src/dst | 12 |
+
+### Payload decode regression guards
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R63 | Zone name survives message_store prune (issue 919) | 5 |
+| R64 | No repeated discovery notifications (issue 917) | 4 |
+| R69 | Faked THM 03x 30C9 decoder (issue 929) | 3 |
+| R70 | 3EF0 9-byte OTB payload decode (PR 1031 regression guard) | 9 |
+| R71 | 1260 DHW temperature value accuracy | 5 |
+| R72 | 3150 heat_demand value accuracy | 8 |
+
+### Other
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R39 | (reserved) | — |
+| R41–R46 | Structural / import-time checks | varies |
+| R48 | send_packet service + device_id filter | 5 |
+| R53–R57 | Structural / import-time checks | varies |
+| R60 | send_packet CommandDTO + device_id filter (issue 864) | 5 |
+| R61 | FAN 2411 parameter entities availability (issue 851) | 5 |
 | Log Report | ERROR/WARNING analysis | 2 |
-| **Total** | | **54** |
+
+**Total:** ~430+ checks across 72 recipes.
 
 ## Services tested
 
 | Service | Tested by |
 |---|---|
-| `ramses_cc.sync_topology` | R6/14, R9, R14, R16 |
-| `ramses_cc.remove_device` | R2, R3, R4, R11, R16 |
-| `ramses_cc.accept_discovered_device` | R11, R17 |
-| `ramses_cc.get_discovered_devices` | R17 |
+| `ramses_cc.sync_topology` | R06, R09, R14, R16, R29, R30, R31, R37 |
+| `ramses_cc.remove_device` | R02, R03, R04, R11, R16 |
+| `ramses_cc.accept_discovered_device` | R11, R17, R27, R29, R37 |
+| `ramses_cc.get_discovered_devices` | R17, R48 |
 | `ramses_cc.discard_discovered_device` | R17 |
 | `ramses_cc.enable_discovered_device` | R17 |
 | `ramses_cc.disable_discovered_device` | R17 |
 | `ramses_cc.remove_discovered_device` | R17 |
-| `ramses_cc.add_faked_rem` | Prepared only (stub — WIP) |
-| `ramses_extras.device_simulator/load_profile` | Setup, R11 |
-| `ramses_extras.device_simulator/activate_device` | Setup, R1 |
-| `ramses_extras.device_simulator/load_profile_yaml` | R1, R8, R9, R10, R14, R17 |
-| `ramses_extras.device_simulator/inject_message` | R6/14, R11, R14, R16 |
+| `ramses_cc.add_faked_rem` | R18 |
+| `ramses_cc.force_update` | R35, R50, R65 |
+| `ramses_cc.probe_hvac_binding` | R68 |
+| `ramses_cc.send_packet` | R48, R60 |
+| `ramses_extras.device_simulator/load_profile` | Setup, R11, R29, R35, R37, R50, R65 |
+| `ramses_extras.device_simulator/activate_profile_device` | R01, R29, R35, R37 |
+| `ramses_extras.device_simulator/silence_devices` | R35, R71 |
+| `ramses_extras.device_simulator/load_profile_yaml` | R01, R08, R09, R10, R14, R17, R26, R58 |
+| `ramses_extras.device_simulator/inject_message` | R06, R11, R14, R16, R19, R22, R26, R29, R35, R37, R40, R50, R65, R68, R70, R71, R72 |
 | `ramses_extras.device_simulator/start_scenario` | R12 |
+
+## Parallel contention findings
+
+Running 4 containers in parallel reveals race conditions and state
+pollution issues that don't surface in single-container runs.  The
+following fixes were applied to make recipes robust under parallel
+load:
+
+### Timeout floor increases
+
+Several `wait_for()` floors were increased to prevent aggressive
+scaling from causing timeouts under parallel load (where container
+CPU contention slows down ramses_cc initialization and schema sync):
+
+| Helper | Old floor | New floor | Reason |
+|---|---|---|---|
+| `wait_for_ramses_cc_loaded` | 20s | 25s | Cold start under load |
+| `wait_for_ramses_cc_reload` | 8s | 12s | In-process reload under load |
+| `wait_for_schema_populated` | 3s | 5s | Schema key count polling |
+| `wait_for_schema_stable` | 3s | 5s | Schema sync stability |
+| `wait_for_device_in_schema` | 3s | 5s | Specific device appearance |
+| `wait_for_entity_state` | 3s | 5s | REST entity state polling |
+
+### Recipe-specific fixes
+
+- **R65** (HVAC 'belongs to' from traffic): The scan engine populates
+  `remotes[]`/`sensors[]` from traffic during profile load, before the
+  test's BEFORE checks.  The recipe now accepts populated lists at
+  BEFORE if they contain the expected devices.  CO2 comment checks are
+  lenient — an empty comment is accepted if the CO2 is already in
+  `sensors[]` (binding detected, comment artifact delayed).
+
+- **R58** (Phase 4 known_list removal): Loads a fresh mixed profile at
+  the start to ensure clean state (previous recipes may have left a
+  minimal profile without TRV, causing known_list checks to fail).
+
+- **R68** (Active HVAC topology probing): Handles `probe_hvac_binding`
+  service timeouts gracefully — reports as a note (not a failure) and
+  checks for passive detection of binding instead.
+
+### ws_send / call_service improvements
+
+- `ws_send` and `call_service` now pre-check `is_ha_ready()` before
+  attempting a connection, avoiding long initial timeouts when the
+  container is still restarting.
+- Backoff for transient `WebSocket closed` and connection timeout
+  errors shortened from 5s to 2-3s (these recover quickly).
+
+## Payload decode regression guards
+
+Three recipes (R70, R71, R72) were added to close gaps identified
+during review of ramses_rf PR 1031 (ActuatorStatePayload regression
+that dropped bytes 4-8 for 9-byte 3EF0 payloads from R8820A OTBs).
+
+These recipes verify **decoded payload field values** in the HA event
+log, not just entity state.  They use `ast.literal_eval` to parse the
+decoded payload dict from the `ramses_cc_regex_match` event log lines.
+
+| Recipe | Opcode | What it verifies |
+|---|---|---|
+| R70 | 3EF0 | 9-byte OTB payload: `ch_enabled`, `ch_setpoint`, `max_rel_modulation` (bytes 6-8).  Also 6-byte variant for comparison. |
+| R71 | 1260 | DHW temperature value accuracy: 0, 50, 55, 65°C injected, decoded value must match exactly. |
+| R72 | 3150 | Heat demand value accuracy: 0%, 25%, 50%, 100% single-zone + multi-zone array payload. |
+
+**Error grep note:** The error check uses `since_lines=200` to avoid
+matching the giant `.storage/ramses_cc` dump at startup (which contains
+packet data with opcode strings like `"3EF0"` and `"3150"`).
