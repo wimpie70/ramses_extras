@@ -8,7 +8,8 @@ and propagated via a contextvar in :mod:`.helpers`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Default HA sim instance (single-container mode, backward compatible)
@@ -18,7 +19,7 @@ HA_USER = "admin"
 HA_PASS = "admin123"
 
 # Default host path to the ha-sim config directory (bind mount source).
-HA_SIM_CONFIG_DIR = "/home/willem/docker_files/ha-sim/config"
+HA_SIM_CONFIG_DIR = str(Path.home() / "docker_files/ha-sim/config")
 
 # MQTT broker connection string (shared across instances — topic isolation
 # is via the HGI ID in the topic path).

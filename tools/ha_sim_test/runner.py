@@ -326,8 +326,11 @@ async def run(
     if not is_mqtt_broker_ready():
         print(
             f"\n  ERROR: MQTT broker at {MQTT_BROKER_URL} is not reachable.\n"
-            "  Start it with:  cd ~/docker_files/ha-sim && "
-            "docker compose -f docker-compose.mqtt.yml up -d\n"
+            "  Start it via docker compose:\n"
+            "    cd ~/docker_files/ha-sim && docker compose -f docker-compose.mqtt.yml up -d\n"
+            "  Or run a standalone container:\n"
+            "    docker run -d --name ha-sim-mqtt -p 1884:1884 eclipse-mosquitto:latest "
+            "sh -c 'echo \"listener 1884 0.0.0.0\\nallow_anonymous true\" > /tmp/mosquitto.conf && mosquitto -c /tmp/mosquitto.conf'\n"
             "  Aborting."
         )
         sys.exit(1)
