@@ -26,6 +26,7 @@ import sys
 import time
 from contextvars import Token
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .base import RecipeContext
@@ -47,8 +48,6 @@ from .helpers import (
 from .log_monitor import LogMonitor
 from .mqtt_setup import publish_retained_online_messages
 from .registry import REGISTRY, discover_recipes
-from pathlib import Path
-
 from .runner import setup, teardown
 
 #: Path to ramses_cc custom_components (bind-mounted into each container).
@@ -682,6 +681,7 @@ class InstanceResult:
     recipe_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     elapsed: float = 0.0
     error: str | None = None
+    log_report_path: str | None = None
 
 
 async def run_single_instance(
@@ -789,7 +789,8 @@ async def run_single_instance(
         result.recipe_stats = ctx.recipe_stats
 
         # Teardown (without sys.exit)
-        await _teardown_no_exit(ctx, start_time=start, instance=instance)
+        log_path = await _teardown_no_exit(ctx, start_time=start, instance=instance)
+        result.log_report_path = log_path
 
     except Exception as e:
         result.error = f"{type(e).__name__}: {e}"
@@ -807,8 +808,12 @@ async def _teardown_no_exit(
     *,
     start_time: float,
     instance: InstanceConfig,
-) -> None:
-    """Teardown without calling sys.exit (for parallel mode)."""
+) -> str | None:
+    """Teardown without calling sys.exit (for parallel mode).
+
+    :return: Path to the written log report, or ``None`` if no log
+        monitor was attached.
+    """
     from .helpers import delete_test_profiles
 
     try:
@@ -833,6 +838,8 @@ async def _teardown_no_exit(
             print(f"  [{instance.name}] Unexpected errors: {n_errors}")
         if n_warnings:
             print(f"  [{instance.name}] Unexpected warnings: {n_warnings}")
+        return str(report_path)
+    return None
 
 
 def merge_results(results: list[InstanceResult]) -> int:
@@ -895,6 +902,28 @@ def merge_results(results: list[InstanceResult]) -> int:
     for r in results:
         for line in r.results:
             print(f"  [{r.instance.name}] {line}")
+
+    # =====================================================================
+    # SUMMARY REPORT: Write a Markdown summary alongside the log reports
+    # =====================================================================
+    from .report_writer import RunSummary, write_summary_report
+    from .runner import REPORTS_DIR
+
+    summaries = [
+        RunSummary(
+            instance=r.instance,
+            elapsed=r.elapsed,
+            passed=r.passed,
+            failed=r.failed,
+            recipe_stats=r.recipe_stats,
+            results=r.results,
+            log_report_path=r.log_report_path,
+            error=r.error,
+        )
+        for r in results
+    ]
+    summary_path = write_summary_report(summaries, reports_dir=REPORTS_DIR)
+    print(f"\n  Summary report: {summary_path}")
 
     if total_failed > 0:
         print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")

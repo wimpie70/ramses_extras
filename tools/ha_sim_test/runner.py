@@ -42,11 +42,25 @@ from .helpers import (
 from .log_monitor import LogMonitor
 from .registry import REGISTRY, discover_recipes
 
-#: Directory for persistent test reports (keeps the last N per container).
-REPORTS_DIR = Path(__file__).parent / "reports"
+#: Default directory for persistent test reports (keeps the last N per
+#: container).  Can be overridden via :func:`set_reports_dir` (used by
+#: the ``--reports-dir`` CLI flag).
+_DEFAULT_REPORTS_DIR = Path(__file__).parent / "reports"
+
+#: Active directory for persistent test reports.
+REPORTS_DIR: Path = _DEFAULT_REPORTS_DIR
 
 #: How many report files to keep per container (older ones are pruned).
 MAX_REPORTS_PER_CONTAINER = 5
+
+
+def set_reports_dir(path: Path) -> None:
+    """Override the active reports directory.
+
+    :param path: Directory to write reports into.  Created on first use.
+    """
+    global REPORTS_DIR
+    REPORTS_DIR = path
 
 
 def _report_path(container_name: str) -> Path:
@@ -65,6 +79,28 @@ def _report_path(container_name: str) -> Path:
 
     # Prune: keep only the newest MAX_REPORTS_PER_CONTAINER per container
     pattern = f"log_report_{container_name}_*.txt"
+    existing = sorted(REPORTS_DIR.glob(pattern))
+    if len(existing) >= MAX_REPORTS_PER_CONTAINER:
+        for old in existing[: -MAX_REPORTS_PER_CONTAINER + 1]:
+            old.unlink(missing_ok=True)
+
+    return path
+
+
+def _summary_report_path(container_name: str) -> Path:
+    """Return a timestamped Markdown summary report path for *container_name*.
+
+    Also prunes older summary reports for the same container, keeping
+    only the last ``MAX_REPORTS_PER_CONTAINER`` files.
+
+    :param container_name: Container name (e.g. ``"ha-sim"``).
+    :return: Absolute path for the new summary file.
+    """
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    path = REPORTS_DIR / f"summary_{container_name}_{ts}.md"
+
+    pattern = f"summary_{container_name}_*.md"
     existing = sorted(REPORTS_DIR.glob(pattern))
     if len(existing) >= MAX_REPORTS_PER_CONTAINER:
         for old in existing[: -MAX_REPORTS_PER_CONTAINER + 1]:
@@ -288,7 +324,24 @@ async def teardown(
     for r in ctx.results:
         print(r)
 
-    print(f"\n  Log report: {report_path}")
+    # =====================================================================
+    # SUMMARY REPORT: Write a Markdown summary alongside the log report
+    # =====================================================================
+    from .report_writer import RunSummary, write_summary_report
+
+    summary = RunSummary(
+        instance=ctx.instance,
+        started_wall=start_time_wall or start_time,
+        elapsed=elapsed,
+        passed=ctx.passed,
+        failed=ctx.failed,
+        recipe_stats=ctx.recipe_stats,
+        results=ctx.results,
+        log_report_path=str(report_path),
+    )
+    summary_path = write_summary_report([summary], reports_dir=REPORTS_DIR)
+    print(f"\n  Log report:     {report_path}")
+    print(f"  Summary report: {summary_path}")
 
     if ctx.failed > 0:
         print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")
@@ -327,10 +380,13 @@ async def run(
         print(
             f"\n  ERROR: MQTT broker at {MQTT_BROKER_URL} is not reachable.\n"
             "  Start it via docker compose:\n"
-            "    cd ~/docker_files/ha-sim && docker compose -f docker-compose.mqtt.yml up -d\n"
-            "  Or run a standalone container:\n"
-            "    docker run -d --name ha-sim-mqtt -p 1884:1884 eclipse-mosquitto:latest "
-            "sh -c 'echo \"listener 1884 0.0.0.0\\nallow_anonymous true\" > /tmp/mosquitto.conf && mosquitto -c /tmp/mosquitto.conf'\n"
+            "    cd ~/docker_files/ha-sim && \\\n"
+            "    docker compose -f docker-compose.mqtt.yml up -d\n"
+            "  Or run a standalone mosquitto container:\n"
+            "    docker run -d --name ha-sim-mqtt -p 1884:1884 \\\n"
+            "    eclipse-mosquitto:latest \\\n"
+            "    sh -c \"printf 'listener 1884 0.0.0.0\\nallow_anonymous true\\n' \\\n"
+            '    > /tmp/mosquitto.conf && mosquitto -c /tmp/mosquitto.conf"\n'
             "  Aborting."
         )
         sys.exit(1)

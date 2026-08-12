@@ -1,7 +1,7 @@
 # ha-sim Test Tool
 
 **Location:** `tools/ha_sim_test/` (Python package)
-**Report:** `/tmp/ha_sim_test_log_report.txt`
+**Reports:** `tools/ha_sim_test/reports/` (overridable via `--reports-dir`)
 
 ## Overview
 
@@ -177,6 +177,9 @@ python3 -m ha_sim_test --wait-scale-blind 1.0 --wait-scale-poll 1.0 --wait-floor
 
 # Pipe to a log file (dashboard auto-disables, plain interleaved output)
 python3 -m ha_sim_test --parallel 4 > /tmp/run.log 2>&1
+
+# Write reports to a custom directory
+python3 -m ha_sim_test --reports-dir /tmp/ha_sim_run_20260812
 ```
 
 ### Parallel mode
@@ -293,12 +296,15 @@ visible which waits are being shortened and by how much.
 reachable, so scaling below 10s makes no sense. This is separate from
 the global `--wait-floor-poll` (the effective floor is the max of both).
 
-## Test report
+## Test reports
 
-After the run, a log report is written to:
+After each run, two reports are written to the reports directory
+(default: `tools/ha_sim_test/reports/`, overridable via `--reports-dir`):
+
+### Log report
 
 ```
-/tmp/ha_sim_test_log_report.txt
+log_report_{container}_{timestamp}.txt
 ```
 
 This report contains:
@@ -308,6 +314,24 @@ This report contains:
 - **Errors** — unexpected ERROR lines from ha-sim logs (should be 0)
 - **Warnings** — unexpected WARNING lines from ramses_cc/ramses_rf/ramses_tx (should be 0)
 - **Expected warnings (filtered out)** — the full list of known/expected patterns
+
+Up to `MAX_REPORTS_PER_CONTAINER` (5) log reports are kept per container;
+older ones are pruned automatically.
+
+### Summary report
+
+```
+summary_{container}_{timestamp}.md      # single-container mode
+summary_parallel_{timestamp}.md         # parallel mode
+```
+
+A Markdown report (readable by both humans and machines) containing:
+- **Run metadata** — timestamp, status (PASS/FAIL), totals, wall time
+- **Per-container overview** — pass/fail/time/status table (parallel mode)
+- **Per-recipe timing** — recipe, container, pass, fail, duration, title
+- **Check results** — every PASS/FAIL line with detail
+- **Container errors** — fatal errors per container (if any)
+- **Log report references** — paths to the corresponding log reports
 
 ### Log monitor design
 

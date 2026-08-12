@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 
 
 def main() -> None:
@@ -100,6 +101,14 @@ def main() -> None:
         "The per-call floor= parameter (e.g. wait_for_ha_ready uses floor=10) "
         "takes the max with this.",
     )
+    parser.add_argument(
+        "--reports-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Directory to write log and summary reports into (default: "
+        "tools/ha_sim_test/reports/).  Created if it does not exist.",
+    )
     args = parser.parse_args()
 
     # Apply CLI wait-scale/floor overrides (env vars are read at import time
@@ -114,6 +123,12 @@ def main() -> None:
         helpers.WAIT_FLOOR_BLIND = args.wait_floor_blind
     if args.wait_floor_poll is not None:
         helpers.WAIT_FLOOR_POLL = args.wait_floor_poll
+
+    # Apply reports-dir override before dispatching to runner/parallel.
+    if args.reports_dir is not None:
+        from .runner import set_reports_dir
+
+        set_reports_dir(args.reports_dir)
 
     recipe_ids = args.recipes or None
 
