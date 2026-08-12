@@ -565,7 +565,7 @@ class ConfigProfileStore:
             value = float(speed)
         except TypeError, ValueError:
             value = 1.0
-        self._autonomous_speed = max(0.01, min(value, 100.0))
+        self._autonomous_speed = max(0.005, min(value, 200.0))
 
     def set_active_profile(self, name: str | None) -> None:
         """Set the active profile name in memory; call async_save_state to persist."""

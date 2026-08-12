@@ -1184,7 +1184,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       return;
     }
 
-    const clamped = Math.min(100, Math.max(0.01, numeric));
+    const clamped = Math.min(200, Math.max(0.005, numeric));
     this._pendingSpeed = clamped;
     this._speedSaving = true;
     this._scheduleRender();

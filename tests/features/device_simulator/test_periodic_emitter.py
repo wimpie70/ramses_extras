@@ -184,7 +184,7 @@ class TestPeriodicEmitterDeviceManagement:
         device = emitter.add_device("37:168270", "FAN")
 
         emitter.set_device_speed("37:168270", 0.001)
-        assert device.speed_multiplier == 0.01  # Clamped to minimum
+        assert device.speed_multiplier == 0.005  # Clamped to minimum
 
     def test_set_global_speed(self, emitter: PeriodicEmitter) -> None:
         """Test setting global speed."""
@@ -568,7 +568,7 @@ class TestPeriodicEmitterGlobalSpeed:
     def test_set_global_speed_min_bound(self, emitter: PeriodicEmitter) -> None:
         """Test global speed minimum bound."""
         emitter.set_global_speed(0.001)
-        assert emitter._global_speed == 0.01  # Clamped to minimum
+        assert emitter._global_speed == 0.005  # Clamped to minimum
 
 
 class TestPeriodicEmitterEmitMessageException:

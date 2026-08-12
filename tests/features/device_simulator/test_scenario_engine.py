@@ -693,7 +693,7 @@ class TestScenarioEngineDeviceTracking:
         engine = ScenarioEngine(hass, endpoint, db)
 
         engine.set_autonomous_speed(0.001)
-        assert engine.get_autonomous_speed() == 0.01
+        assert engine.get_autonomous_speed() == 0.005
 
     def test_set_autonomous_speed_clamp_max(self) -> None:
         """Test set_autonomous_speed clamps to maximum."""
@@ -704,7 +704,7 @@ class TestScenarioEngineDeviceTracking:
         engine = ScenarioEngine(hass, endpoint, db)
 
         engine.set_autonomous_speed(200.0)
-        assert engine.get_autonomous_speed() == 100.0
+        assert engine.get_autonomous_speed() == 200.0
 
     def test_set_autonomous_speed_invalid_string(self) -> None:
         """Test set_autonomous_speed with invalid string."""

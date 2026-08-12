@@ -318,8 +318,8 @@ export function buildRunConsoleCard(card) {
   // Speed sub-block
   const currentSpeed = Number(card._autonomousSpeed) || 1;
   const pendingSpeed = Number.isFinite(card._pendingSpeed) ? card._pendingSpeed : currentSpeed;
-  const sliderValue = Math.min(1, Math.max(0.01, pendingSpeed || 1));
-  const presetValues = [2, 1, 0.5, 0.25, 0.1, 0.05, 0.02];
+  const sliderValue = Math.min(1, Math.max(0.005, pendingSpeed || 1));
+  const presetValues = [2, 1, 0.5, 0.25, 0.1, 0.05, 0.02, 0.01];
   const speedBadge = card._speedSaving
     ? '<span class="chip muted">Saving…</span>'
     : `<span class="chip profile">${formatAutonomousSpeedLabel(currentSpeed)}</span>`;
@@ -474,8 +474,8 @@ export function buildPlaybackConversationCard(card) {
 export function buildAutonomousSpeedCard(card) {
   const current = Number(card._autonomousSpeed) || 1;
   const pending = Number.isFinite(card._pendingSpeed) ? card._pendingSpeed : current;
-  const sliderValue = Math.min(1, Math.max(0.01, pending || 1));
-  const presetValues = [2, 1, 0.5, 0.25, 0.1, 0.05, 0.02];
+  const sliderValue = Math.min(1, Math.max(0.005, pending || 1));
+  const presetValues = [2, 1, 0.5, 0.25, 0.1, 0.05, 0.02, 0.01];
 
   const badge = card._speedSaving
     ? '<span class="chip muted">Saving…</span>'
