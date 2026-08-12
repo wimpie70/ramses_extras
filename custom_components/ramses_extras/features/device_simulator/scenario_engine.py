@@ -1104,6 +1104,18 @@ class ScenarioEngine:
             await self._echo_write(src, dst, code, payload)
             return
 
+        # Echo I frames from faked devices to satisfy ramses_tx WantEcho
+        # state.  When ramses_rf sends an I frame (e.g. 30C9 from
+        # put_room_temp) on behalf of a faked device, the FSM waits for
+        # the packet to appear on the bus as an echo.  Without this echo
+        # the FSM times out after DEFAULT_SEND_TIMEOUT (20 s).
+        if verb == VERB_I:
+            LOGGER.debug(
+                "Simulator received I frame: %s -> %s, code=%s", src, dst, code
+            )
+            await self._echo_inform(src, dst, code, payload)
+            return
+
         if verb != VERB_RQ:
             LOGGER.debug("Simulator: ignoring non-RQ, non-W frame: verb=%s", verb)
             return
@@ -1188,6 +1200,40 @@ class ScenarioEngine:
             LOGGER.debug("Echoed W frame %s/%s for %s", code, dst, src)
         except Exception as err:  # noqa: BLE001
             LOGGER.warning("Failed to echo W for %s/%s: %s", dst, code, err)
+
+    async def _echo_inform(self, src: str, dst: str, code: str, payload: str) -> None:
+        """Echo an I frame back so the FSM WantEcho state is satisfied.
+
+        When ramses_rf sends an I frame on behalf of a faked device (e.g.
+        30C9 from ``put_room_temp``), the FSM transitions to WantEcho and
+        waits for the packet to appear on the bus.  Without this echo the
+        FSM times out after ``DEFAULT_SEND_TIMEOUT`` (20 s).
+
+        For I frames the source is the faked device itself (not the HGI),
+        so we check that ``src`` is an active simulated device.
+
+        :param src: Source device ID (the faked device).
+        :param dst: Destination (usually ``--:------`` for broadcasts).
+        :param code: RAMSES code.
+        :param payload: Hex payload.
+        """
+        device = self._active_devices.get(src)
+        if not device:
+            LOGGER.debug("Echo I: device %s not active, skipping", src)
+            return
+        if not device.enabled:
+            LOGGER.debug("Echo I: device %s disabled", src)
+            return
+        if device.suppress_responses:
+            LOGGER.debug("Echo I: device %s suppresses responses", src)
+            return
+
+        packet = self._build_packet(src, dst, VERB_I, code, payload)
+        try:
+            await self._endpoint.send_packet(packet)
+            LOGGER.debug("Echoed I frame %s/%s for %s", code, src, dst)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Failed to echo I for %s/%s: %s", src, code, err)
 
     async def _respond_to_rq(
         self,

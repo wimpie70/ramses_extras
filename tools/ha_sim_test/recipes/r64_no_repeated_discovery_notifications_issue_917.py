@@ -23,7 +23,7 @@ import subprocess
 import time
 
 from ..base import Recipe, RecipeContext
-from ..const import CTL, DHW, FAN, HGI, TRV
+from ..const import CTL, DHW
 from ..helpers import (
     call_service,
     get_current_instance,
@@ -38,7 +38,7 @@ from ..helpers import (
     wait_for_schema_populated,
     ws_send,
 )
-from ..profile import MIXED_SCHEMA, mixed_yaml
+from ..profile import minimal_ctl_dhw_yaml
 
 # DHW is placed as stored_hotwater.sensor inside the CTL entry —
 # a nested location that the simplified extraction missed.
@@ -82,12 +82,12 @@ class R64NoRepeatedDiscoveryNotificationsIssue917(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 64: No repeated discovery notifications")
 
-        # ── 1. Load mixed profile ──────────────────────────────────────
-        # The mixed profile has DHW (07:150000) as stored_hotwater.sensor
-        # inside the CTL entry — a nested location that the old
-        # simplified extraction missed.
-        print("  Loading mixed profile...")
-        yaml_profile = mixed_yaml()
+        # ── 1. Load minimal profile (CTL + DHW) ───────────────────────
+        # The DHW (07:150000) is nested as stored_hotwater.sensor inside
+        # the CTL entry — a nested location that the old simplified
+        # extraction missed.  Only 3 devices needed (HGI + CTL + DHW).
+        print("  Loading minimal profile (CTL + DHW)...")
+        yaml_profile = minimal_ctl_dhw_yaml()
         try:
             await load_profile_yaml(
                 ctx.token,

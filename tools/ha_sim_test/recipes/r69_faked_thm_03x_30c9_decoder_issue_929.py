@@ -35,7 +35,7 @@ from ..helpers import (
     wait_for_schema_populated,
     ws_send,
 )
-from ..profile import get_mixed_kl, mixed_yaml
+from ..profile import minimal_ctl_zone_yaml
 
 
 class R69FakedThm03x30c9DecoderIssue929(Recipe):
@@ -54,7 +54,7 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
         ctx.refresh_token()
         ctx.wait_for_ramses_cc_loaded(timeout=45)
 
-        # 1. Load mixed profile with a 03: device as faked THM sensor.
+        # 1. Load a minimal profile with a 03: device as faked THM sensor.
         #    Use 03:155003 — a 03: (analog_thermostat) device that is NOT
         #    a controller type, so _has_ctl is False and the 0xAB guard
         #    would fire before the fix.
@@ -62,24 +62,20 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
         zone_idx = "03"
         fake_temp = 22.0
 
-        faked_kl = get_mixed_kl()
-        faked_kl[sensor_id] = {"class": "THM", "faked": True}
-
-        # Build a schema where zone 03 uses the 03: sensor
+        # Minimal profile: CTL + faked THM as zone 03 sensor (3 devices
+        # instead of the full 19-device mixed profile)
+        yaml_text = minimal_ctl_zone_yaml(
+            zone_idx=zone_idx,
+            sensor_id=sensor_id,
+        )
+        # Add faked: True to the sensor's known_list entry
         import yaml as _yaml
 
-        profile = _yaml.safe_load(mixed_yaml())
-        profile["known_list"] = faked_kl
-        # Override zone 03's sensor to our 03: device
-        schema = profile.get("_schema", {})
-        ctl_schema = schema.get(CTL, {})
-        zones = ctl_schema.get("zones", {})
-        if "03" in zones:
-            zones["03"]["sensor"] = sensor_id
-        profile["_schema"] = schema
+        profile = _yaml.safe_load(yaml_text)
+        profile["known_list"][sensor_id]["faked"] = True
         yaml_text = _yaml.dump(profile, default_flow_style=False)
 
-        print(f"  Loading mixed profile with {sensor_id} faked (zone {zone_idx})...")
+        print(f"  Loading minimal profile with {sensor_id} faked (zone {zone_idx})...")
         try:
             await load_profile_yaml(
                 ctx.token,
@@ -173,6 +169,9 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
         ctx.wait(5, "for 30C9 packet to appear in log", floor=2.0)
 
         # 4. Read the HA log for the 30C9 packet from our faked 03: device.
+        #    Use "from ramses_rf" to match only the actual packet line,
+        #    not the simulator's internal debug log (e.g. "Simulator
+        #    received I frame: ...").
         def _30c9_in_log() -> bool:
             result = subprocess.run(
                 [
@@ -181,7 +180,7 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
                     get_current_instance().name,
                     "bash",
                     "-c",
-                    f"grep 'Simulator received.*{sensor_id}.*30C9' "
+                    f"grep 'Simulator received from ramses_rf.*{sensor_id}.*30C9' "
                     "/config/home-assistant.log | tail -10",
                 ],
                 capture_output=True,
@@ -203,7 +202,7 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
                 get_current_instance().name,
                 "bash",
                 "-c",
-                f"grep 'Simulator received.*{sensor_id}.*30C9' "
+                f"grep 'Simulator received from ramses_rf.*{sensor_id}.*30C9' "
                 "/config/home-assistant.log | tail -10",
             ],
             capture_output=True,

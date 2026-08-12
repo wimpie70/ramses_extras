@@ -160,12 +160,21 @@ def call_service(
 ) -> dict:
     """Call a HA service and return the response.
 
-    Retries up to 3 times with 5s backoff for transient connection errors
-    (HA may be restarting after a profile reload).
+    Retries up to 3 times with 2s backoff for transient connection errors
+    (HA may be restarting after a profile reload).  Before the first
+    attempt, does a fast HTTP ping to check if HA is reachable — if not,
+    waits up to 15s for it to come back (avoids wasting a 30s HTTP
+    timeout on a container that's still restarting).
     """
     ha_url = get_current_instance().ha_url
     url = f"{ha_url}/api/services/{domain}/{service}"
     body = json.dumps(data or {}).encode()
+
+    # Pre-check: wait for HA to be reachable before attempting the call.
+    # This avoids wasting a 30s HTTP timeout on a container that's
+    # still restarting (docker restart takes 2-5s).
+    if not is_ha_ready():
+        wait_for(is_ha_ready, timeout=15, interval=1, msg="for HA before call_service")
 
     for attempt in range(3):
         req = urllib.request.Request(
@@ -187,7 +196,7 @@ def call_service(
         except urllib.error.URLError as e:
             if attempt < 2:
                 print(f"  call_service: retry {attempt + 1}/3 (connection refused)")
-                time.sleep(5)
+                time.sleep(2)
                 continue
             raise RuntimeError(f"Connection failed after 3 retries: {e}") from e
         except TimeoutError as e:
@@ -195,7 +204,7 @@ def call_service(
             # urlopen during the read phase, not wrapped in URLError.
             if attempt < 2:
                 print(f"  call_service: retry {attempt + 1}/3 (timeout)")
-                time.sleep(5)
+                time.sleep(2)
                 continue
             raise RuntimeError(f"Service call timed out after 3 retries: {e}") from e
     return {}  # unreachable
@@ -207,15 +216,26 @@ def call_service(
 async def ws_send(token: str, msg: dict, *, retries: int = 3) -> dict:
     """Send a websocket message and return the response.
 
-    Retries up to *retries* times with exponential backoff for transient
-    timeouts and connection errors (common under parallel container
-    contention where HA may be too busy to respond within the 30s
-    websocket timeout, or may close the connection during a reload).
+    Retries up to *retries* times with backoff for transient timeouts
+    and connection errors (common under parallel container contention
+    where HA may be too busy to respond within the 30s websocket
+    timeout, or may close the connection during a reload).
+
+    Before the first attempt, does a fast HTTP ping to check if HA is
+    reachable — if not, waits up to 15s for it to come back (avoids
+    wasting a 30s WS timeout on a container that's still restarting).
     """
     import aiohttp
 
-    # Exponential backoff: 3s, 5s, 8s
-    _backoff = (3, 5, 8)
+    # Pre-check: wait for HA to be reachable before attempting WS.
+    # This avoids wasting a 30s WS timeout on a container that's
+    # still restarting (docker restart takes 2-5s).
+    if not is_ha_ready():
+        wait_for(is_ha_ready, timeout=15, interval=1, msg="for HA before ws_send")
+
+    # Backoff schedule: short for the common "WebSocket closed during
+    # reload" case (recovers in 1-3s), longer for persistent issues.
+    _backoff = (1, 3, 5)
 
     last_err: Exception | None = None
     for attempt in range(retries + 1):
@@ -338,7 +358,7 @@ async def load_profile_yaml(
             last_err = e
             if attempt < 2:
                 print(f"  Profile load failed (attempt {attempt + 1}/3): {str(e)[:80]}")
-                await _asyncio.sleep(5)
+                await _asyncio.sleep(2)
     raise RuntimeError(
         f"Profile load failed after 3 attempts: {last_err}"
     ) from last_err
@@ -867,13 +887,16 @@ def wait_for_ramses_cc_loaded(
     """Wait for ramses_cc to be loaded after a docker restart.
 
     Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
-    *floor* of 15s — after a docker restart, ramses_cc's async_setup_entry
-    takes 5-10s to complete (MQTT transport init, schema load, entity
-    creation).  Scaling the timeout below 15s causes false TIMEOUTs that
-    cascade into schema/profile load failures in subsequent steps.
+    *floor* of 25s — after a docker restart, ramses_cc's async_setup_entry
+    takes 10-15s to complete (MQTT transport init, schema load, entity
+    creation), and under parallel contention (4 containers sharing CPU)
+    it can take up to 22s.  Scaling the timeout below 25s causes false
+    TIMEOUTs that cascade into schema/profile load failures in subsequent
+    steps.  The floor only sets the max wait ceiling — the function still
+    exits early as soon as ramses_cc is loaded.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=15.0
+        is_ramses_cc_loaded, timeout=timeout, interval=2, msg=msg, floor=25.0
     )
 
 
@@ -883,15 +906,16 @@ def wait_for_ramses_cc_reload(
     """Wait for ramses_cc to reload after a profile change (in-process).
 
     Like :func:`wait_for` with :func:`is_ramses_cc_loaded`, but with a
-    *floor* of 8s — profile reloads are in-process (no docker restart),
-    so they're faster than cold starts, but still take 5-7s for the
+    *floor* of 12s — profile reloads are in-process (no docker restart),
+    so they're faster than cold starts, but still take 5-10s for the
     full reload cycle (unload → reload → MQTT reconnect → schema load).
-    At aggressive poll scales (0.1), the 20s ceiling would drop to 2s
-    which is too tight; the 8s floor ensures we don't give up before
-    the reload completes, while still returning early once it's done.
+    Under parallel contention this can stretch to 10-12s.  At aggressive
+    poll scales (0.08), the 20s ceiling would drop to 1.6s which is far
+    too tight; the 12s floor ensures we don't give up before the reload
+    completes, while still returning early once it's done.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=8.0
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=12.0
     )
 
 
@@ -910,7 +934,7 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
         timeout=timeout,
         interval=2,
         msg=f"for schema to have >= {min_keys} keys",
-        floor=3.0,
+        floor=5.0,
     )
 
 
@@ -951,7 +975,7 @@ def wait_for_schema_stable(
     last = _schema_hash()
     quiet_until = time.monotonic() + quiet
     scaled_timeout = min(
-        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 3.0)), timeout
+        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 5.0)), timeout
     )
     print(
         f"  Waiting up to {timeout}s→{scaled_timeout:g}s {msg}...",
@@ -1035,7 +1059,7 @@ def wait_for_schema_has(
         timeout=timeout,
         interval=2,
         msg=f"for {device_id} in schema",
-        floor=3.0,
+        floor=5.0,
     )
 
 
@@ -1080,7 +1104,7 @@ def wait_for_entity_state(
         interval=1,
         msg=f"for {entity_id} state"
         + (f" == {expected!r}" if expected else " to be set"),
-        floor=3.0,
+        floor=5.0,
     )
 
 
