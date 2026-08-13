@@ -40,6 +40,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 from ..profile import minimal_ctl_zone_yaml
@@ -134,6 +135,11 @@ class R76ZoneName0004PollingIssue947(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+
+        # Wait for the MQTT transport to reconnect after the reload.
+        # Without this, injected 0004 packets are silently dropped
+        # ("Transport is closing or has closed").
+        wait_for_transport_ready(timeout=30)
 
         # ── 1. Verify schema has initial _name on zone 03 ────────────
         wait_for_schema_populated(min_keys=2, timeout=10)
