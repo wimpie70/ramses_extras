@@ -166,12 +166,15 @@ def minimal_ctl_zone_yaml(
     zone_idx: str = "03",
     zone_name: str | None = None,
     sensor_id: str | None = None,
+    clear_alias: bool = False,
 ) -> str:
     """Minimal profile with CTL + one zone (2 devices).
 
     :param zone_idx: Zone index (e.g. "03").
     :param zone_name: Optional zone _name.
     :param sensor_id: Optional sensor device ID for the zone.
+    :param clear_alias: If True, explicitly set ``_alias: null`` to clear
+        any stale alias from a prior recipe (e.g. R09 sets _alias).
     :returns: YAML string.
     """
     zone: dict[str, object] = {"actuators": []}
@@ -179,6 +182,8 @@ def minimal_ctl_zone_yaml(
         zone["sensor"] = sensor_id
     if zone_name:
         zone["_name"] = zone_name
+    if clear_alias:
+        zone["_alias"] = None
     schema = {CTL: {"zones": {zone_idx: zone}}}
     kl: dict[str, dict[str, str]] = {
         HGI: {"class": "HGI"},

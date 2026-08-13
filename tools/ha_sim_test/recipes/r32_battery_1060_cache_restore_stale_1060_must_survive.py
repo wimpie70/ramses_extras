@@ -87,7 +87,7 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
                 print(f"    {name} activated")
             except RuntimeError:
                 pass
-        ctx.wait(15, "for 1060 battery packets to populate message_store")
+        ctx.wait(8, "for 1060 battery packets to populate message_store", floor=5.0)
 
         # 2. Force a fresh 1060 I from TRV (battery 100%, low=0)
         #    schema: ^0[0-9A-F](FF|[0-9A-F]{2})0[01]$  (idx, level, low_flag)
@@ -210,7 +210,7 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
         subprocess.run(
             ["docker", "start", get_current_instance().name], capture_output=True
         )
-        wait_for_ha_ready(timeout=30)
+        wait_for_ha_ready(timeout=20)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
         wait_for_ramses_cc_loaded(

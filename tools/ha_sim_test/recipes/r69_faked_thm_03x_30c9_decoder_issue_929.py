@@ -52,7 +52,7 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
         ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for_ramses_cc_loaded(timeout=45)
+        ctx.wait_for_ramses_cc_loaded(timeout=25)
 
         # 1. Load a minimal profile with a 03: device as faked THM sensor.
         #    Use 03:155003 — a 03: (analog_thermostat) device that is NOT

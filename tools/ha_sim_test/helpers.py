@@ -71,7 +71,7 @@ WAIT_SCALE_POLL: float = float(
 #: ``WAIT_FLOOR_POLL`` does the same for ``wait_for()`` timeout ceilings.
 #: The per-call ``floor=`` parameter (e.g. ``wait_for_ha_ready`` uses floor=10)
 #: takes the max with this global floor.
-WAIT_FLOOR_BLIND: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_BLIND", "3"))
+WAIT_FLOOR_BLIND: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_BLIND", "1"))
 WAIT_FLOOR_POLL: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_POLL", "0"))
 
 # ---------------------------------------------------------------------------
@@ -888,7 +888,7 @@ def wait_for_ha_ready(timeout: int = 30, msg: str = "for ha-sim to start up") ->
     of 10s — docker restarts take a hard 3-5s minimum before the API is
     even reachable, so scaling the timeout below 10s makes no sense.
     """
-    return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=10.0)
+    return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=3.0)
 
 
 def wait_for_ramses_cc_loaded(
@@ -904,7 +904,7 @@ def wait_for_ramses_cc_loaded(
     a safety margin for parallel contention.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=15.0
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=5.0
     )
 
 
@@ -920,7 +920,7 @@ def wait_for_ramses_cc_reload(
     exits early once done, so the 12s floor is just a safety margin.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=0.5, msg=msg, floor=12.0
+        is_ramses_cc_loaded, timeout=timeout, interval=0.5, msg=msg, floor=3.0
     )
 
 
@@ -939,7 +939,7 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
         timeout=timeout,
         interval=2,
         msg=f"for schema to have >= {min_keys} keys",
-        floor=5.0,
+        floor=2.0,
     )
 
 
@@ -980,7 +980,7 @@ def wait_for_schema_stable(
     last = _schema_hash()
     quiet_until = time.monotonic() + quiet
     scaled_timeout = min(
-        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 5.0)), timeout
+        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 2.0)), timeout
     )
     print(
         f"  Waiting up to {timeout}s→{scaled_timeout:g}s {msg}...",
@@ -1034,7 +1034,7 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
         timeout=timeout,
         interval=3,
         msg="for transport to reconnect",
-        floor=15.0,
+        floor=5.0,
     )
 
 

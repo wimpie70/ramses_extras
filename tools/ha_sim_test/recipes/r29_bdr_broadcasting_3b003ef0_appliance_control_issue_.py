@@ -59,10 +59,10 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # hold the appliance_control/hotwater_valve slots.
         print("  Stopping ha-sim and clearing cached state...")
         clear_cached_state(ctx.log_monitor, label="R29 pre-restart")
-        ctx.wait_for_ha_ready(timeout=30)
+        ctx.wait_for_ha_ready(timeout=20)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for_ramses_cc_loaded(timeout=30)
+        ctx.wait_for_ramses_cc_loaded(timeout=20)
 
         # Load mixed profile (has CTL 01:150000 as main_tcs for TCS placement)
         print("  Loading mixed profile (has CTL for TCS placement)...")
