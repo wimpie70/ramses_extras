@@ -6,6 +6,7 @@ from ..base import Recipe, RecipeContext
 from ..const import TRV
 from ..helpers import (
     call_service,
+    docker_exec_python,
     grep_ha_log,
     wait_for_schema_populated,
     ws_send,
@@ -83,22 +84,44 @@ class R72ThreeOneFiveZeroHeatDemandValueAccuracy(Recipe):
                 print(f"    Inject failed: {str(e)[:80]}")
             ctx.wait(2, "for 3150 to process", floor=1.5)
 
-            # Check the decoded payload in the HA log
-            # The event handler logs: 'payload': {'heat_demand': <value>}
-            log_lines = grep_ha_log(
-                f"ramses_cc_regex_match.*3150.*{TRV.replace(':', '.')}.*{payload}"
-            )
+            # --- Decode verification via docker_exec_python ---
+            decode_code = f"""
+import json
 
-            decoded_demand: float | None = None
-            for line in log_lines:
-                if "'heat_demand'" in line:
-                    try:
-                        payload_str = line.split("'heat_demand': ", 1)[1]
-                        payload_str = payload_str.split(",")[0].rstrip("}")
-                        decoded_demand = float(payload_str)
-                        break
-                    except IndexError, ValueError:
-                        continue
+try:
+    from ramses_rf.payloads.heating import HeatDemandPayload
+    
+    # {desc}
+    payload_hex = "{payload}"
+    result = HeatDemandPayload.from_bytes(bytearray.fromhex(payload_hex))
+
+    # Single-zone payloads return a single object, but let's be safe
+    if isinstance(result, list):
+        result = result[0]
+
+    print(json.dumps({{
+        "ok": True,
+        "heat_demand": result.demand_percent / 200.0,
+    }}))
+except Exception as e:
+    import traceback
+    print(json.dumps({{
+        "error": f"{{type(e).__name__}}: {{e}}",
+        "traceback": traceback.format_exc()[:1000],
+        "ok": False,
+    }}))
+"""
+            result = docker_exec_python(decode_code, timeout=30)
+
+            if not result.get("ok"):
+                ctx.check(
+                    f"3150 {desc}: parser executed without error",
+                    False,
+                    result.get("error"),
+                )
+                continue
+
+            decoded_demand = result.get("heat_demand")
 
             print(f"    decoded heat_demand: {decoded_demand}")
 
@@ -133,38 +156,65 @@ class R72ThreeOneFiveZeroHeatDemandValueAccuracy(Recipe):
             print(f"    Inject failed: {str(e)[:80]}")
         ctx.wait(2, "for 3150 array to process", floor=1.5)
 
-        # For array payloads, the event log shows a list of dicts
-        array_log = grep_ha_log(
-            f"ramses_cc_regex_match.*3150.*{TRV.replace(':', '.')}.*{array_payload}"
-        )
+        # --- Decode verification via docker_exec_python ---
+        decode_code = f"""
+import json
 
-        # Check that the array was decoded as a list with zone_idx fields
-        array_decoded = False
-        for line in array_log:
-            if "'zone_idx'" in line and "'heat_demand'" in line:
-                array_decoded = True
-                # Verify zone 03 demand = 1.0
-                has_zone_03 = "'03'" in line and "1.0" in line
-                has_zone_04 = "'04'" in line and "0.5" in line
-                z3 = "found" if has_zone_03 else "missing"
-                z4 = "found" if has_zone_04 else "missing"
-                print(f"    array decoded: zone_03={z3}, zone_04={z4}")
-                ctx.check(
-                    "3150 array: zone 03 decoded with heat_demand=1.0",
-                    has_zone_03,
-                    f"line={line[:200]}",
-                )
-                ctx.check(
-                    "3150 array: zone 04 decoded with heat_demand=0.5",
-                    has_zone_04,
-                    f"line={line[:200]}",
-                )
-                break
+try:
+    from ramses_rf.payloads.heating import HeatDemandPayload
+    
+    # array_payload
+    payload_hex = "{array_payload}"
+    results = HeatDemandPayload.from_bytes(bytearray.fromhex(payload_hex))
+
+    if not isinstance(results, list):
+        results = [results]
+
+    zones = {{
+        f"{{r.domain_or_zone_idx:02X}}": r.demand_percent / 200.0 
+        for r in results 
+        if r.domain_or_zone_idx is not None
+    }}
+
+    print(json.dumps({{
+        "ok": True,
+        "zones": zones,
+    }}))
+except Exception as e:
+    import traceback
+    print(json.dumps({{
+        "error": f"{{type(e).__name__}}: {{e}}",
+        "traceback": traceback.format_exc()[:1000],
+        "ok": False,
+    }}))
+"""
+        result = docker_exec_python(decode_code, timeout=30)
+
+        array_decoded = result.get("ok", False)
+        if array_decoded:
+            zones = result.get("zones", {})
+            has_zone_03 = zones.get("03") == 1.0
+            has_zone_04 = zones.get("04") == 0.5
+
+            z3 = "found" if has_zone_03 else "missing"
+            z4 = "found" if has_zone_04 else "missing"
+            print(f"    array decoded: zone_03={z3}, zone_04={z4}")
+
+            ctx.check(
+                "3150 array: zone 03 decoded with heat_demand=1.0",
+                has_zone_03,
+                f"zones={zones}",
+            )
+            ctx.check(
+                "3150 array: zone 04 decoded with heat_demand=0.5",
+                has_zone_04,
+                f"zones={zones}",
+            )
 
         ctx.check(
             "3150 array payload decoded as list with zone_idx fields",
             array_decoded,
-            f"log_lines={len(array_log)}",
+            f"result={result}",
         )
 
         # --- Check for parser errors (only in recent log lines to avoid

@@ -633,15 +633,15 @@ A **profile** bundles:
 ```python
 @dataclass
 class SystemConfigProfile:
-    id: str                          # e.g., "heat_evohome_3zone"
-    name: str                        # Human-readable
+    id: str  # e.g., "heat_evohome_3zone"
+    name: str  # Human-readable
     description: str
-    system_type: str                 # "heat", "hvac", "mixed"
-    ramses_cc_config: dict           # known_devices, schema, etc.
-    device_ids: list[str]            # Devices active in this profile
-    message_filter: dict             # Which messages from DB to use
-    tags: list[str]                  # e.g., ["evohome", "3zone", "CO2"]
-    source: str | None               # e.g., "user report #42"
+    system_type: str  # "heat", "hvac", "mixed"
+    ramses_cc_config: dict  # known_devices, schema, etc.
+    device_ids: list[str]  # Devices active in this profile
+    message_filter: dict  # Which messages from DB to use
+    tags: list[str]  # e.g., ["evohome", "3zone", "CO2"]
+    source: str | None  # e.g., "user report #42"
 ```
 
 **Built-in profiles** (seeded from regression data):
@@ -937,10 +937,10 @@ The timeout constants in `ramses_rf/src/ramses_rf/const.py` are module-level `ti
 
 ```python
 HEARTBEAT_TIMEOUT_DEFAULT = td(hours=1)
-HEARTBEAT_TIMEOUT_OTB     = td(hours=24)
-HEARTBEAT_TIMEOUT_TRV     = td(hours=12)
-HEARTBEAT_TIMEOUT_REMOTE  = td(hours=24)
-HEARTBEAT_TIMEOUT_SENSOR  = td(hours=12)
+HEARTBEAT_TIMEOUT_OTB = td(hours=24)
+HEARTBEAT_TIMEOUT_TRV = td(hours=12)
+HEARTBEAT_TIMEOUT_REMOTE = td(hours=24)
+HEARTBEAT_TIMEOUT_SENSOR = td(hours=12)
 ```
 
 Each device class's `heartbeat_timeout` property just returns one of these constants.
@@ -957,13 +957,14 @@ import ramses_rf.const as _rfc
 
 _TIMEOUT_SCALE: float = 1.0  # 1.0 = real-time, 0.01 = 100x faster
 
+
 def apply_timeout_scale(scale: float) -> None:
     """Scale all heartbeat timeouts by factor (e.g. 0.01 = 100x faster)."""
     _rfc.HEARTBEAT_TIMEOUT_DEFAULT = td(seconds=3600 * scale)
-    _rfc.HEARTBEAT_TIMEOUT_OTB     = td(seconds=86400 * scale)
-    _rfc.HEARTBEAT_TIMEOUT_TRV     = td(seconds=43200 * scale)
-    _rfc.HEARTBEAT_TIMEOUT_REMOTE  = td(seconds=86400 * scale)
-    _rfc.HEARTBEAT_TIMEOUT_SENSOR  = td(seconds=43200 * scale)
+    _rfc.HEARTBEAT_TIMEOUT_OTB = td(seconds=86400 * scale)
+    _rfc.HEARTBEAT_TIMEOUT_TRV = td(seconds=43200 * scale)
+    _rfc.HEARTBEAT_TIMEOUT_REMOTE = td(seconds=86400 * scale)
+    _rfc.HEARTBEAT_TIMEOUT_SENSOR = td(seconds=43200 * scale)
 ```
 
 This works because the device `heartbeat_timeout` properties read from the module attribute at call time — not at import time — so patching the module constant is sufficient.
@@ -1638,14 +1639,14 @@ All frames must pass `ramses_tx.const.COMMAND_REGEX`:
 ```python
 COMMAND_REGEX = re.compile(
     r"^([0-9A-F]{2}([0-9A-F]{2}){1,2}){0,1} "  # RSSI (optional for outbound)
-    r"([ RQW]{1,3}) "                           # Verb
-    r"--- "                                     # Separator
-    r"([0-9:]{9}) "                            # SRC
-    r"([0-9:]{9}|--:------) "                  # DST
-    r"([0-9:]{9}|--:------) "                  # BROADCAST
-    r"([0-9A-F]{4}) "                          # CODE
-    r"(\d{3})"                                 # LEN
-    r"( [0-9A-F]{2,})*$"                       # PAYLOAD
+    r"([ RQW]{1,3}) "  # Verb
+    r"--- "  # Separator
+    r"([0-9:]{9}) "  # SRC
+    r"([0-9:]{9}|--:------) "  # DST
+    r"([0-9:]{9}|--:------) "  # BROADCAST
+    r"([0-9A-F]{4}) "  # CODE
+    r"(\d{3})"  # LEN
+    r"( [0-9A-F]{2,})*$"  # PAYLOAD
 )
 ```
 

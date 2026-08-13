@@ -25,8 +25,7 @@ async def run(self, ctx: RecipeContext) -> None:
         ctx.check(
             "load_fan is implemented (not a stub)",
             False,
-            "SKIP: load_fan is still a stub — "
-            "pending ramses_rf Phase 3.75 / issue 639",
+            "SKIP: load_fan is still a stub — pending ramses_rf Phase 3.75 / issue 639",
         )
         print("  SKIP: recipe will run when load_fan is implemented")
         return
@@ -262,6 +261,7 @@ from ramses_rf.devices.hvac_sensors import HvacCarbonDioxideSensor
 # If the class hierarchy still forces single-role, skip.
 # The "init and go" pattern would show up as schema-driven class selection.
 import inspect
+
 src = inspect.getsource(HvacCarbonDioxideSensor)
 if "HvacRemote" not in src and "Remote" not in src:
     print(

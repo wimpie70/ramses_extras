@@ -6,6 +6,7 @@ from ..base import Recipe, RecipeContext
 from ..const import DHW
 from ..helpers import (
     call_service,
+    docker_exec_python,
     grep_ha_log,
     wait_for_schema_populated,
     ws_send,
@@ -99,22 +100,43 @@ class R71OneTwoSixZeroTempValueAccuracy(Recipe):
                 print(f"    Inject failed: {str(e)[:80]}")
             ctx.wait(2, "for 1260 to process", floor=1.5)
 
-            # Check the decoded payload in the HA log
-            # The event handler logs: 'payload': {'temperature': <value>}
-            log_lines = grep_ha_log(
-                f"ramses_cc_regex_match.*1260.*{DHW.replace(':', '.')}.*{payload}"
-            )
+            # --- Decode verification via docker_exec_python ---
+            # Call the parser directly inside the container to verify the
+            # decoded fields. This is more reliable than grepping logs, which
+            # depends on ramses_rf's event logging format and level.
+            decode_code = f"""
+import json
 
-            decoded_temp: float | None = None
-            for line in log_lines:
-                if "'temperature'" in line:
-                    try:
-                        payload_str = line.split("'temperature': ", 1)[1]
-                        payload_str = payload_str.split(",")[0].rstrip("}")
-                        decoded_temp = float(payload_str)
-                        break
-                    except IndexError, ValueError:
-                        continue
+try:
+    from ramses_rf.payloads.dhw import DhwTempPayload
+    
+    # {desc}
+    payload_hex = "{payload}"
+    result = DhwTempPayload.from_bytes(bytearray.fromhex(payload_hex))
+
+    print(json.dumps({{
+        "ok": True,
+        "temperature": result.temperature,
+    }}))
+except Exception as e:
+    import traceback
+    print(json.dumps({{
+        "error": f"{{type(e).__name__}}: {{e}}",
+        "traceback": traceback.format_exc()[:1000],
+        "ok": False,
+    }}))
+"""
+            result = docker_exec_python(decode_code, timeout=30)
+
+            if not result.get("ok"):
+                ctx.check(
+                    f"1260 {desc}: parser executed without error",
+                    False,
+                    result.get("error"),
+                )
+                continue
+
+            decoded_temp = result.get("temperature")
 
             print(f"    decoded temperature: {decoded_temp}")
 

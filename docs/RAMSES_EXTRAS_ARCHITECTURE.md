@@ -445,6 +445,7 @@ async def _get_broker_for_entry(hass):
     # Access ramses_cc broker through HA data
     return hass.data["ramses_cc"]["broker"]
 
+
 # Device discovery and communication
 async def _find_device_by_id(broker, device_id):
     """Find device by ID in ramses_cc broker."""
@@ -1162,8 +1163,7 @@ class HumiditySwitch(ExtrasSwitchEntity):
         """Activate dehumidification."""
         # Call service layer for fan speed control
         await self.hass.services.async_call(
-            "ramses_extras", "activate_dehumidification",
-            {"device_id": self.device_id}
+            "ramses_extras", "activate_dehumidification", {"device_id": self.device_id}
         )
         self._is_on = True
         self.async_write_ha_state()
@@ -1172,8 +1172,9 @@ class HumiditySwitch(ExtrasSwitchEntity):
         """Deactivate dehumidification."""
         # Call service layer for fan speed control
         await self.hass.services.async_call(
-            "ramses_extras", "deactivate_dehumidification",
-            {"device_id": self.device_id}
+            "ramses_extras",
+            "deactivate_dehumidification",
+            {"device_id": self.device_id},
         )
         self._is_on = False
         self.async_write_ha_state()
@@ -1215,9 +1216,9 @@ AVAILABLE_FEATURES = {
         # ... other config
     },
     "hello_world": {
-        "allowed_device_slugs": ["*"],   # Works with any device
+        "allowed_device_slugs": ["*"],  # Works with any device
         # ... other config
-    }
+    },
 }
 ```
 
@@ -1312,9 +1313,7 @@ Entities are created based on the DeviceFeatureMatrix managed inside SimpleEntit
 ```python
 for device_id, feature_id in combinations:
     # Generate entity IDs for this feature/device combination
-    entity_ids = await self._generate_entity_ids_for_combination(
-        feature_id, device_id
-    )
+    entity_ids = await self._generate_entity_ids_for_combination(feature_id, device_id)
     required_entities.extend(entity_ids)
 ```
 
@@ -1395,8 +1394,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     entities = await create_humidity_sensor(hass, config_entry)
     async_add_entities(entities)
 
+
 class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
     """Feature-specific sensor with business logic."""
+
     # All humidity calculation logic
     # Feature-specific behavior
 ```
@@ -1417,6 +1418,7 @@ async def async_step_feature_hvac_fan_card(self, user_input=None):
     self._selected_feature = "hvac_fan_card"
     return await self.async_step_device_selection()
 
+
 async def async_step_feature_config(self, user_input=None):
     feature_id = self._selected_feature
     module = f"custom_components.ramses_extras.features.{feature_id}.config_flow"
@@ -1425,6 +1427,7 @@ async def async_step_feature_config(self, user_input=None):
     if hasattr(feature_flow, handler_name):
         return await getattr(feature_flow, handler_name)(self, user_input)
     return await self.generic_step_feature_config(user_input)
+
 
 async def async_step_matrix_confirm(self, user_input=None):
     entity_manager = SimpleEntityManager(self.hass)
@@ -1436,9 +1439,11 @@ async def async_step_matrix_confirm(self, user_input=None):
     # Persist new matrix, restore into SimpleEntityManager
     entity_manager.restore_device_feature_matrix_state(temp_matrix_state)
 
-    entities_to_create, entities_to_remove = await entity_manager.calculate_entity_changes(
-        old_matrix_state,
-        temp_matrix_state
+    (
+        entities_to_create,
+        entities_to_remove,
+    ) = await entity_manager.calculate_entity_changes(
+        old_matrix_state, temp_matrix_state
     )
 
     # Create/remove entities directly (entity registry operations)
@@ -1759,7 +1764,9 @@ Also read the `Contributing` section on github to see how to setup a development
 from ...automation import HumidityAutomationManager
 
 # Framework imports (absolute - due to module resolution)
-from custom_components.ramses_extras.framework.helpers.automation import ExtrasBaseAutomation
+from custom_components.ramses_extras.framework.helpers.automation import (
+    ExtrasBaseAutomation,
+)
 from custom_components.ramses_extras.framework.helpers.entity import EntityHelpers
 
 # Root imports (absolute)
@@ -1785,7 +1792,9 @@ from homeassistant.config_entries import ConfigEntry
        """Create feature using framework patterns."""
 
        # Configuration management
-       config = MyFeatureConfig(hass, config_entry, "my_feature", MyFeatureConfig.DEFAULT_CONFIG)
+       config = MyFeatureConfig(
+           hass, config_entry, "my_feature", MyFeatureConfig.DEFAULT_CONFIG
+       )
 
        # Simple entity management
        entity_manager = SimpleEntityManager(hass)
@@ -2118,10 +2127,12 @@ class SimpleEntityManager:
 ### Command Registration
 
 ```python
-@websocket_api.websocket_command({
-    vol.Required("type"): "ramses_extras/default/get_bound_rem",
-    vol.Required("device_id"): str,
-})
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ramses_extras/default/get_bound_rem",
+        vol.Required("device_id"): str,
+    }
+)
 @websocket_api.async_response
 async def ws_get_bound_rem_default(hass, connection, msg):
     """Get bound REM device information."""
@@ -2163,7 +2174,7 @@ const schema = await callWebSocket(hass, {
 DEVICE_TYPE_HANDLERS = {
     "HvacVentilator": "handle_hvac_ventilator",
     "HvacController": "handle_hvac_controller",  # Future device type
-    "Thermostat": "handle_thermostat",           # Future device type
+    "Thermostat": "handle_thermostat",  # Future device type
 }
 ```
 
@@ -2178,7 +2189,7 @@ DEVICE_TYPE_HANDLERS = {
     "device_type": "HvacVentilator",
     "device_object": device,  # Full device object for inspection
     "entity_ids": ["sensor.indoor_absolute_humidity_32_153289", ...],
-    "handled_by": "humidity_control"  # Which feature called the handler
+    "handled_by": "humidity_control",  # Which feature called the handler
 }
 ```
 

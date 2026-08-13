@@ -107,8 +107,8 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 2. **Check device class:**
    ```python
    # In HA Developer Tools
-   {{ device_attr('32:153289', 'name') }}
-   {{ device_attr('32:153289', 'model') }}
+   {{device_attr("32:153289", "name")}}
+   {{device_attr("32:153289", "model")}}
    ```
 
 3. **Verify bound trait in ramses_rf config:**
@@ -146,7 +146,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 2. Verify device enumeration:
    ```python
    # In HA Developer Tools → Python
-   hass.data.get('ramses_extras', {}).get('devices', {})
+   hass.data.get("ramses_extras", {}).get("devices", {})
    ```
 
 **Solutions:**
@@ -169,13 +169,13 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 1. **Check sensor resolution state:**
    ```python
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'sensor_sources') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "sensor_sources")}}
    ```
 
 2. **Verify entity exists:**
    ```python
-   {{ states('sensor.fan_indoor_temp_32_153289') }}
-   {{ states('sensor.living_room_humidity') }}  # For external sensors
+   {{states("sensor.fan_indoor_temp_32_153289")}}
+   {{states("sensor.living_room_humidity")}}  # For external sensors
    ```
 
 3. **Check FAN Configuration source settings:**
@@ -204,13 +204,13 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 1. **Check absolute humidity inputs:**
    ```python
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'abs_humidity_inputs') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "abs_humidity_inputs")}}
    ```
 
 2. **Verify input sensors:**
    ```python
-   {{ states('sensor.indoor_absolute_humidity_32_153289') }}
-   {{ states('sensor.outdoor_absolute_humidity_32_153289') }}
+   {{states("sensor.indoor_absolute_humidity_32_153289")}}
+   {{states("sensor.outdoor_absolute_humidity_32_153289")}}
    ```
 
 3. **Check source entities for derived calculation:**
@@ -237,7 +237,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 1. **Verify binding exists:**
    ```python
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'remote_bindings') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "remote_bindings")}}
    ```
 
 2. **Check if REM is sending traffic:**
@@ -257,7 +257,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 4. **Check arbiter state:**
    ```python
-   {{ states('sensor.fan_arbiter_state_32_153289') }}
+   {{states("sensor.fan_arbiter_state_32_153289")}}
    ```
 
 **Common Causes & Solutions:**
@@ -283,7 +283,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 1. **Check unmatched traffic counter:**
    ```python
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'unmatched_remote_count') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "unmatched_remote_count")}}
    ```
 
 2. **Get unmatched traffic details:**
@@ -359,7 +359,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 1. **Check zone configuration:**
    ```python
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'zones') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "zones")}}
    ```
 
 2. **Verify zone export:**
@@ -373,7 +373,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 3. **Check zone coordinator state:**
    ```python
-   {{ states('sensor.zone_coordinator_32_153289') }}
+   {{states("sensor.zone_coordinator_32_153289")}}
    ```
 
 **Common Causes & Solutions:**
@@ -406,7 +406,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 2. **Check zone configuration:**
    ```python
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'zones') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "zones")}}
    ```
 
 3. **Verify safety limits:**
@@ -434,20 +434,20 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 1. **Check Humidity Control state:**
    ```python
-   {{ states('switch.humidity_control_32_153289') }}
-   {{ states('number.humidity_threshold_high_32_153289') }}
+   {{states("switch.humidity_control_32_153289")}}
+   {{states("number.humidity_threshold_high_32_153289")}}
    ```
 
 2. **Verify sensor values:**
    ```python
-   {{ states('sensor.indoor_absolute_humidity_32_153289') }}
-   {{ states('sensor.outdoor_absolute_humidity_32_153289') }}
+   {{states("sensor.indoor_absolute_humidity_32_153289")}}
+   {{states("sensor.outdoor_absolute_humidity_32_153289")}}
    ```
 
 3. **Check arbiter mode:**
    ```python
-   {{ states('sensor.fan_arbiter_state_32_153289') }}
-   {{ state_attr('sensor.fan_arbiter_state_32_153289', 'manual_override') }}
+   {{states("sensor.fan_arbiter_state_32_153289")}}
+   {{state_attr("sensor.fan_arbiter_state_32_153289", "manual_override")}}
    ```
 
 4. **Enable debug logging:**
@@ -480,18 +480,18 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 1. **Check CO2 Control state:**
    ```python
-   {{ states('switch.co2_control_32_153289') }}
-   {{ states('number.co2_threshold_32_153289') }}
+   {{states("switch.co2_control_32_153289")}}
+   {{states("number.co2_threshold_32_153289")}}
    ```
 
 2. **Verify CO2 sensor:**
    ```python
-   {{ states('sensor.co2_zone_1_32_153289') }}
+   {{states("sensor.co2_zone_1_32_153289")}}
    ```
 
 3. **Check priority status:**
    ```python
-   {{ state_attr('sensor.fan_arbiter_state_32_153289', 'active_control') }}
+   {{state_attr("sensor.fan_arbiter_state_32_153289", "active_control")}}
    ```
 
 **Solutions:**
@@ -512,20 +512,20 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 1. **Check arbiter state:**
    ```python
-   {{ states('sensor.fan_arbiter_state_32_153289') }}
-   {{ state_attr('sensor.fan_arbiter_state_32_153289', 'extras_control_enabled') }}
-   {{ state_attr('sensor.fan_arbiter_state_32_153289', 'manual_override_until') }}
+   {{states("sensor.fan_arbiter_state_32_153289")}}
+   {{state_attr("sensor.fan_arbiter_state_32_153289", "extras_control_enabled")}}
+   {{state_attr("sensor.fan_arbiter_state_32_153289", "manual_override_until")}}
    ```
 
 2. **Verify transport state:**
    ```python
-   {{ states('sensor.fan_transport_32_153289') }}
+   {{states("sensor.fan_transport_32_153289")}}
    ```
 
 3. **Check effective speed:**
    ```python
-   {{ state_attr('sensor.fan_arbiter_state_32_153289', 'effective_speed') }}
-   {{ state_attr('sensor.fan_arbiter_state_32_153289', 'requested_speed') }}
+   {{state_attr("sensor.fan_arbiter_state_32_153289", "effective_speed")}}
+   {{state_attr("sensor.fan_arbiter_state_32_153289", "requested_speed")}}
    ```
 
 **Solutions:**
@@ -561,7 +561,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 3. **Verify Ramses Extras WebSocket registration:**
    ```python
-   {{ states('sensor.ramses_extras_diagnostics') }}
+   {{states("sensor.ramses_extras_diagnostics")}}
    ```
 
 **Solutions:**
@@ -584,7 +584,7 @@ Access via browser console on a page with Ramses Extras cards, or via HA WebSock
 
 2. **Verify feature is configured:**
    ```python
-   {{ state_attr('sensor.ramses_extras_diagnostics', 'configured_features') }}
+   {{state_attr("sensor.ramses_extras_diagnostics", "configured_features")}}
    ```
 
 3. **Test export via WebSocket:**
@@ -656,7 +656,7 @@ When reporting issues, provide:
 
 3. **Diagnostic State:**
    ```python
-   {{ states('sensor.ramses_extras_diagnostics') }}
+   {{states("sensor.ramses_extras_diagnostics")}}
    ```
 
 4. **Relevant Logs:**

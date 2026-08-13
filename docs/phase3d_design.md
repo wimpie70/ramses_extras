@@ -46,6 +46,7 @@ stripped = _strip_traits(value)
 
 # After:
 from ramses_rf.config import strip_traits as _strip_traits_rf
+
 stripped = _strip_traits_rf(value) if isinstance(value, dict) else value
 ```
 
@@ -252,9 +253,11 @@ try:
         strip_traits as _strip_traits_rf,
     )
 except ImportError:  # ramses_rf < 0.59.0 — fallback inline implementation
-    _STRIP_MAP: dict[str, str] = { ... }
+    _STRIP_MAP: dict[str, str] = {...}
+
     def _strip_and_map_traits(traits): ...
     def _strip_traits_rf(traits): ...
+
 
 # After (4 lines):
 from ramses_rf.config import (
