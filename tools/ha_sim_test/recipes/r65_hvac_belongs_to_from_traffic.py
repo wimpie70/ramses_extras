@@ -140,7 +140,7 @@ class R65HvacBelongsToFromTraffic(Recipe):
         print("  Waiting for scan engine to detect FAN→REM traffic...")
         schema = None
         for attempt in range(6):
-            ctx.wait(5, f"for passive sync cycle (attempt {attempt + 1}/6)")
+            ctx.wait(3, f"for passive sync cycle (attempt {attempt + 1}/6)")
             schema = get_schema_retry()
             fan_entry = schema.get(FAN, {}) if schema else {}
             if isinstance(fan_entry, dict) and REM in fan_entry.get("remotes", []):
@@ -188,7 +188,7 @@ class R65HvacBelongsToFromTraffic(Recipe):
         # 3c. Wait for REM to appear in remotes[] after injection + sync.
         print("  Waiting for REM to appear in remotes[]...")
         for attempt in range(8):
-            ctx.wait(5, f"for REM sync (attempt {attempt + 1}/8)")
+            ctx.wait(3, f"for REM sync (attempt {attempt + 1}/8)")
             schema = get_schema_retry()
             fan_entry = schema.get(FAN, {}) if schema else {}
             if isinstance(fan_entry, dict) and REM in fan_entry.get("remotes", []):
@@ -238,7 +238,7 @@ class R65HvacBelongsToFromTraffic(Recipe):
         # 4b. Wait for sync_learned_topology to place CO2 in sensors[].
         print("  Waiting for CO2 to appear in sensors[]...")
         for attempt in range(12):
-            ctx.wait(5, f"for CO2 sync (attempt {attempt + 1}/12)")
+            ctx.wait(3, f"for CO2 sync (attempt {attempt + 1}/12)")
             schema = get_schema_retry()
             fan_entry = schema.get(FAN, {}) if schema else {}
             if isinstance(fan_entry, dict) and CO2 in fan_entry.get("sensors", []):
@@ -304,7 +304,7 @@ class R65HvacBelongsToFromTraffic(Recipe):
         rem_comment = ""
         co2_comment = ""
         for attempt in range(8):
-            ctx.wait(5, f"for comment refresh (attempt {attempt + 1}/8)")
+            ctx.wait(3, f"for comment refresh (attempt {attempt + 1}/8)")
             schema = get_schema_retry()
             comments = schema.get("device_comments", {}) if schema else {}
             rem_comment = comments.get(REM, "")
@@ -356,7 +356,7 @@ class R65HvacBelongsToFromTraffic(Recipe):
         print("  Waiting for CO2 'belongs to' comment to appear...")
         co2_comment = ""
         for attempt in range(12):
-            ctx.wait(5, f"for CO2 comment refresh (attempt {attempt + 1}/12)")
+            ctx.wait(3, f"for CO2 comment refresh (attempt {attempt + 1}/12)")
             schema = get_schema_retry()
             comments = schema.get("device_comments", {}) if schema else {}
             co2_comment = comments.get(CO2, "")
@@ -485,7 +485,7 @@ class R65HvacBelongsToFromTraffic(Recipe):
                 print(f"    Inject failed: {str(e)[:80]}")
             ctx.wait(1, "between injects")
 
-        ctx.wait(10, "for scan engine + save_state cycle")
+        ctx.wait(5, "for scan engine + save_state cycle", floor=3.0)
         schema = get_schema_retry()
         comments = schema.get("device_comments", {}) if schema else {}
         co2_comment_after_fake = comments.get(CO2, "")

@@ -17,7 +17,6 @@ See: https://github.com/ramses-rf/ramses_cc/issues/917
 
 from __future__ import annotations
 
-import asyncio
 import json
 import subprocess
 import time
@@ -113,7 +112,7 @@ class R64NoRepeatedDiscoveryNotificationsIssue917(Recipe):
             )
         except RuntimeError:
             pass
-        wait_for_schema_populated(min_keys=3, timeout=20)
+        wait_for_schema_populated(min_keys=3, timeout=15)
 
         # ── 2. Verify schema has DHW nested in stored_hotwater ─────────
         schema = get_schema_retry()
@@ -148,10 +147,10 @@ class R64NoRepeatedDiscoveryNotificationsIssue917(Recipe):
         inst = get_current_instance()
         subprocess.run(["docker", "restart", inst.name], check=True, timeout=60)
 
-        wait_for_ha_ready(timeout=60, msg="for ha-sim to restart")
+        wait_for_ha_ready(timeout=30, msg="for ha-sim to restart")
         ctx.refresh_token()
         wait_for_ramses_cc_loaded(
-            timeout=30, msg="for ramses_cc to initialize after restart"
+            timeout=20, msg="for ramses_cc to initialize after restart"
         )
 
         # Reload the profile after restart
@@ -180,13 +179,12 @@ class R64NoRepeatedDiscoveryNotificationsIssue917(Recipe):
             )
         except RuntimeError:
             pass
-        wait_for_schema_populated(min_keys=3, timeout=20)
+        wait_for_schema_populated(min_keys=3, timeout=15)
 
         # ── 5. Verify no new discovery notifications appeared ───────────
-        # Wait a bit for the discovery checkpoint to run (10s initial
-        # check + 5s margin).
+        # Wait for the discovery checkpoint to run (10s initial check).
         print("  Waiting for discovery checkpoint to run...")
-        await asyncio.sleep(20)
+        ctx.wait(10, "for discovery checkpoint", floor=5.0)
         ctx.refresh_token()
         notifs_after = await self._get_discovery_notifications(ctx)
         notif_after = len(notifs_after)

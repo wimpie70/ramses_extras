@@ -182,7 +182,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(2, "between injects")
+        ctx.wait(1, "between injects")
 
         # OTB broadcasts 3EF0 I (boiler relay state)
         print(f"  Injecting 3EF0 I broadcast from OTB {otb_id}...")
@@ -202,7 +202,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(2, "between injects")
+        ctx.wait(1, "between injects")
 
         # BDR broadcasts 3B00 I (TPI state) — this is the hotwater_valve,
         # NOT the appliance_control.  The scan engine must NOT flag this
@@ -224,7 +224,7 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(2, "between injects")
+        ctx.wait(1, "between injects")
 
         # BDR broadcasts 3EF0 I (relay state)
         print(f"  Injecting 3EF0 I broadcast from BDR {bdr_id} (hotwater_valve)...")
@@ -266,12 +266,12 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
+        ctx.wait_for_schema_stable(timeout=8, msg="for sync_learned_topology")
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
+        ctx.wait_for_schema_stable(timeout=8, msg="for save_client_state")
 
         schema_r37 = get_schema_retry()
         ctl_r37 = schema_r37.get(CTL, {})
@@ -337,12 +337,12 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError as e:
             print(f"  sync_topology failed: {e}")
-        ctx.wait(10, "for second sync_learned_topology")
+        ctx.wait(5, "for second sync_learned_topology", floor=3.0)
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait_for_schema_stable(timeout=10, msg="for save")
+        ctx.wait_for_schema_stable(timeout=8, msg="for save")
 
         schema_r37_2 = get_schema_retry()
         ctl_r37_2 = schema_r37_2.get(CTL, {})

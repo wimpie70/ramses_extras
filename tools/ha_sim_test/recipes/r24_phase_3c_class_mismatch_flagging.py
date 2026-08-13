@@ -178,9 +178,9 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         wait_for(
             _has_class_mismatch,
             timeout=60,
-            interval=5,
+            interval=3,
             msg="for class_mismatch attribute to appear",
-            floor=30.0,
+            floor=10.0,
         )
         # Read final state for the check
         entities = get_entities(ctx.token)
@@ -218,9 +218,9 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         await wait_for_async(
             _has_mismatch_notif,
             timeout=30,
-            interval=3,
+            interval=2,
             msg="for mismatch notification to appear",
-            floor=15.0,
+            floor=5.0,
         )
         notifications = await get_persistent_notifications(ctx.token)
         mismatch_notif = [
