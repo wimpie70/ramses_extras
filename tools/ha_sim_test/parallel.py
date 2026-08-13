@@ -657,20 +657,17 @@ async def run_dynamic_instance(
                         f" {n_err} errors, {n_warn} warnings"
                     )
 
-                if not sys.stdout.isatty():
-                    global _PROGRESS_DONE
-                    _PROGRESS_DONE += 1
-                    p_str = green(f"P:{ctx.passed:>3}")
-                    f_str = (
-                        red(f"F:{ctx.failed:>3}")
-                        if ctx.failed
-                        else f"F:{ctx.failed:>3}"
-                    )
-                    print(
-                        f"  {_progress_str()} [{instance.name}]"
-                        f" [{p_str} {f_str}]"
-                        f"  {recipe.id} done ({recipe_elapsed:.1f}s)"
-                    )
+                global _PROGRESS_DONE
+                _PROGRESS_DONE += 1
+                p_str = green(f"P:{ctx.passed:>3}")
+                f_str = (
+                    red(f"F:{ctx.failed:>3}") if ctx.failed else f"F:{ctx.failed:>3}"
+                )
+                print(
+                    f"  {_progress_str()} [{instance.name}]"
+                    f" [{p_str} {f_str}]"
+                    f"  {recipe.id} done ({recipe_elapsed:.1f}s)"
+                )
 
             work_queue.task_done()
 
