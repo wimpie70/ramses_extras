@@ -37,10 +37,12 @@ from ..const import CTL
 from ..helpers import (
     call_service,
     get_schema_retry,
+    load_profile_yaml,
     wait_for,
     wait_for_schema_populated,
     ws_send,
 )
+from ..profile import minimal_ctl_zone_yaml
 
 # Zone we'll test — zone 03 in the mixed profile (initial _name='Lounge')
 _ZONE_IDX = "03"
@@ -105,12 +107,33 @@ class R76ZoneName0004PollingIssue947(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 76: Zone name 0004 polling regression (issue 947)")
 
-        # The mixed profile from setup has zone 03 with _name='Lounge'.
-        # We use the existing MQTT transport (no profile reload) and
-        # inject a 0004 I packet to change the name to 'Kitchen'.
-        # This proves that 0004 packets are processed and propagate to
-        # the schema and device registry — the same path that the
-        # PollingManager's 0004 RQ would trigger.
+        # Load a minimal profile with _name='Lounge' on zone 03.
+        # We can't rely on the mixed profile from setup because earlier
+        # recipes (e.g. R75) may have changed the schema.  Loading our
+        # own profile ensures a clean, predictable starting state.
+        # Clear any stale _alias from prior recipes (e.g. R09) so the
+        # device registry picks up _name='Lounge' instead.
+        print(
+            f"  Loading minimal profile with _name='{_OLD_NAME}' on zone {_ZONE_IDX}..."
+        )
+        yaml_profile = minimal_ctl_zone_yaml(
+            zone_idx=_ZONE_IDX,
+            zone_name=_OLD_NAME,
+            clear_alias=True,
+        )
+        try:
+            await load_profile_yaml(
+                ctx.token,
+                yaml_profile,
+                speed=0.01,
+                preload_schema=True,
+                reload_ramses=True,
+            )
+            print("  Profile loaded")
+        except RuntimeError as e:
+            print(f"  Profile load failed: {e}")
+        ctx.wait_for_ramses_cc_reload(timeout=20)
+        ctx.refresh_token()
 
         # ── 1. Verify schema has initial _name on zone 03 ────────────
         wait_for_schema_populated(min_keys=2, timeout=10)
