@@ -32,11 +32,11 @@ def is_mqtt_broker_ready(timeout: float = 5.0) -> bool:
     """
     parsed = urlparse(MQTT_BROKER_URL)
     host = parsed.hostname or "localhost"
-    port = parsed.port or 1883
+    port = int(parsed.port) if parsed.port else 1883
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except OSError, ConnectionRefusedError:
+    except (OSError, ConnectionRefusedError):
         return False
 
 
@@ -47,7 +47,7 @@ def publish_retained_online_messages(hgi_ids: list[str]) -> None:
     """
     parsed = urlparse(MQTT_BROKER_URL)
     host = parsed.hostname or "localhost"
-    port = parsed.port or 1883
+    port = int(parsed.port) if parsed.port else 1883
     username = parsed.username or ""
     password = parsed.password or ""
 
