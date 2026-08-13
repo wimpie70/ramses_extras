@@ -101,6 +101,9 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
         # ── 1. Load minimal profile with _name on zone 03 ───────────
         #    Only CTL + HGI needed (2 devices, not 19) — the zone name
         #    is a schema trait on the CTL entry, no sensor required.
+        #    Clear any stale _alias from prior recipes (e.g. R09 sets
+        #    _alias='Living Room') so the device registry picks up
+        #    _name='Lounge' instead.
         print(
             f"  Loading minimal profile with _name='{_ZONE_NAME}'"
             f" on zone {_ZONE_IDX}..."
@@ -108,6 +111,7 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
         yaml_profile = minimal_ctl_zone_yaml(
             zone_idx=_ZONE_IDX,
             zone_name=_ZONE_NAME,
+            clear_alias=True,
         )
         try:
             await load_profile_yaml(

@@ -71,10 +71,10 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
         # ── Setup: clean slate ──────────────────────────────────────
         print("  Stopping ha-sim and clearing cached state...")
         clear_cached_state(ctx.log_monitor, label="R60 pre-clean")
-        ctx.wait_for_ha_ready(timeout=30)
+        ctx.wait_for_ha_ready(timeout=20)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for_ramses_cc_loaded(timeout=30)
+        ctx.wait_for_ramses_cc_loaded(timeout=20)
 
         # ── Step 1: Inject a faked device into the schema ───────────
         # Phase 4: the schema is the sole source of truth.  Faked devices
@@ -103,13 +103,13 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
                 f"could not read {host_path}: {e}",
             )
             subprocess.run(["docker", "start", inst.name], capture_output=True)
-            ctx.wait_for_ha_ready(timeout=30)
+            ctx.wait_for_ha_ready(timeout=20)
             return
 
         ctx.check("core.config_entries readable", bool(raw), "")
         if not raw:
             subprocess.run(["docker", "start", inst.name], capture_output=True)
-            ctx.wait_for_ha_ready(timeout=30)
+            ctx.wait_for_ha_ready(timeout=20)
             return
 
         data = json.loads(raw)
@@ -124,7 +124,7 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
         ctx.check("ramses_cc config entry found", cc_entry is not None, "")
         if cc_entry is None:
             subprocess.run(["docker", "start", inst.name], capture_output=True)
-            ctx.wait_for_ha_ready(timeout=30)
+            ctx.wait_for_ha_ready(timeout=20)
             return
 
         # Modify the config entry options (Phase 4: schema-centric):
@@ -175,16 +175,16 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
         )
         if cp_result.returncode != 0:
             subprocess.run(["docker", "start", inst.name], capture_output=True)
-            ctx.wait_for_ha_ready(timeout=30)
+            ctx.wait_for_ha_ready(timeout=20)
             return
 
         # ── Step 2: Start ha-sim and wait for ramses_cc ──────────────
         print("  Starting ha-sim with faked device in schema...")
         subprocess.run(["docker", "start", inst.name], capture_output=True)
-        ctx.wait_for_ha_ready(timeout=30)
+        ctx.wait_for_ha_ready(timeout=20)
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
-        ctx.wait_for_ramses_cc_loaded(timeout=30)
+        ctx.wait_for_ramses_cc_loaded(timeout=20)
         ctx.wait(5, "for protocol/filter to stabilise")
 
         # ── Step 3: Test send_packet with the faked device ───────────
@@ -380,6 +380,6 @@ except Exception as e:
             pass
 
         subprocess.run(["docker", "start", inst.name], capture_output=True)
-        ctx.wait_for_ha_ready(timeout=30)
+        ctx.wait_for_ha_ready(timeout=20)
         ctx.refresh_token()
-        ctx.wait_for_ramses_cc_loaded(timeout=30)
+        ctx.wait_for_ramses_cc_loaded(timeout=20)

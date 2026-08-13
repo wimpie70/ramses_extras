@@ -232,6 +232,15 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
                     return e
             return None
 
+        # 4b. Poll for climate entity existence — under parallel load the
+        #     entity may not be created immediately after force_update.
+        wait_for(
+            lambda: _find_climate_entity() is not None,
+            timeout=15,
+            interval=2,
+            msg="for climate entity to be created",
+            floor=3.0,
+        )
         climate_entity = _find_climate_entity()
 
         # Check 1: climate entity exists

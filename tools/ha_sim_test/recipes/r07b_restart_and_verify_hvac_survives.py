@@ -153,8 +153,8 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
         fan_eid = fan_entity_before["entity_id"] if fan_entity_before else "None"
         print(f"  FAN entity before loss: {fan_eid}")
 
-        # Wait for loss phase (10s) + some margin
-        ctx.wait(15, "for REM loss phase")
+        # Wait for loss phase (10s scenario time, ~0.1s real at 100x speed)
+        ctx.wait(3, "for REM loss phase")
 
         # Check FAN entity during loss
         entities_during_loss = get_entities(ctx.token)
@@ -180,8 +180,8 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             f"remotes={remotes_during}",
         )
 
-        # Wait for restore phase (20s) + some margin
-        ctx.wait(15, "for REM restore phase")
+        # Wait for restore phase (20s scenario time, ~0.2s real at 100x speed)
+        ctx.wait(3, "for REM restore phase")
 
         # Check FAN entity after restore
         entities_after_restore = get_entities(ctx.token)
