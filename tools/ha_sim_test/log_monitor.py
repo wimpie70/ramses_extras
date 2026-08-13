@@ -81,6 +81,8 @@ EXPECTED_WARNINGS: list[str] = [
     "bound mismatches between discovery and schema",
     "have no _class but discovery has a suggestion",
     "appear orphaned",
+    # ramses_cc: zone name mismatch (expected in R76 — issue 947)
+    "name mismatches between schema and controller",
     # ramses_cc: bound device not found during early init (FAN not yet active)
     "Bound device",
     "not found for FAN",
