@@ -12,8 +12,8 @@ from datetime import timedelta
 from ..base import Recipe, RecipeContext
 from ..const import CO2, CTL, DHW, FAN, HA_URL, HGI, REM, TRV
 from ..helpers import (
+    async_clear_cached_state,
     call_service,
-    clear_cached_state,
     find_battery_entity,
     find_entity_for_device,
     get_cached_schema,
@@ -57,12 +57,9 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         # restarts via .storage/ramses_cc.  We need a truly clean slate
         # so the pre-existing OTB (10:083401) and BDR (13:083402) don't
         # hold the appliance_control/hotwater_valve slots.
-        print("  Stopping ha-sim and clearing cached state...")
-        clear_cached_state(ctx.log_monitor, label="R29 pre-restart")
-        ctx.wait_for_ha_ready(timeout=20)
+        print("  Clearing cached state...")
+        await async_clear_cached_state(ctx, label="R29 pre-restart")
         ctx.log_monitor.reset_baseline()
-        ctx.refresh_token()
-        ctx.wait_for_ramses_cc_loaded(timeout=20)
 
         # Load mixed profile (has CTL 01:150000 as main_tcs for TCS placement)
         print("  Loading mixed profile (has CTL for TCS placement)...")

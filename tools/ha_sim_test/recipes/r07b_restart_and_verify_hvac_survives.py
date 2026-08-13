@@ -209,3 +209,45 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             print("  Scenario stopped")
         except RuntimeError:
             pass
+
+        # ── Part 3: No resurrection after restart (merged from R05) ──
+        ctx.log_section("Recipe 7b: No resurrection after restart")
+        kl_before_remove = get_known_list()
+        if TRV in kl_before_remove or CTL in kl_before_remove:
+            print(f"  Removing TRV {TRV} and CTL {CTL}...")
+            for dev_id, name in [(TRV, "TRV"), (CTL, "CTL")]:
+                try:
+                    call_service(
+                        ctx.token, "ramses_cc", "remove_device", {"device_id": dev_id}
+                    )
+                except RuntimeError:
+                    pass
+
+            def _devices_removed() -> bool:
+                kl = get_known_list()
+                return TRV not in kl and CTL not in kl
+
+            wait_for(
+                _devices_removed,
+                timeout=10,
+                interval=1,
+                msg="for TRV+CTL removal to propagate",
+            )
+
+        try:
+            call_service(ctx.token, "ramses_cc", "sync_topology")
+        except RuntimeError:
+            pass
+        ctx.wait_for_schema_stable(timeout=8, msg="for sync_learned_topology")
+
+        kl_post_check = get_known_list()
+        ctx.check(
+            "TRV not resurrected in known_list",
+            TRV not in kl_post_check,
+            f"known_list still has {TRV}",
+        )
+        ctx.check(
+            "CTL not resurrected in known_list",
+            CTL not in kl_post_check,
+            f"known_list still has {CTL}",
+        )

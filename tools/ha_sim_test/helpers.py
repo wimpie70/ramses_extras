@@ -71,7 +71,7 @@ WAIT_SCALE_POLL: float = float(
 #: ``WAIT_FLOOR_POLL`` does the same for ``wait_for()`` timeout ceilings.
 #: The per-call ``floor=`` parameter (e.g. ``wait_for_ha_ready`` uses floor=10)
 #: takes the max with this global floor.
-WAIT_FLOOR_BLIND: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_BLIND", "1"))
+WAIT_FLOOR_BLIND: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_BLIND", "3"))
 WAIT_FLOOR_POLL: float = float(os.environ.get("HA_SIM_TEST_WAIT_FLOOR_POLL", "0"))
 
 # ---------------------------------------------------------------------------
@@ -319,6 +319,8 @@ async def load_profile_yaml(
     speed: float = 0.01,
     preload_schema: bool = True,
     reload_ramses: bool = True,
+    reset_rf_cache: bool = False,
+    clear_discovery_state: bool = False,
 ) -> dict:
     """Load a custom YAML profile via the device_simulator scenario.
 
@@ -349,6 +351,8 @@ async def load_profile_yaml(
                         "speed": speed,
                         "preload_schema": preload_schema,
                         "reload_ramses": reload_ramses,
+                        "reset_rf_cache": reset_rf_cache,
+                        "clear_discovery_state": clear_discovery_state,
                     },
                 },
             )
@@ -888,7 +892,7 @@ def wait_for_ha_ready(timeout: int = 30, msg: str = "for ha-sim to start up") ->
     of 10s — docker restarts take a hard 3-5s minimum before the API is
     even reachable, so scaling the timeout below 10s makes no sense.
     """
-    return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=3.0)
+    return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=10.0)
 
 
 def wait_for_ramses_cc_loaded(
@@ -904,7 +908,7 @@ def wait_for_ramses_cc_loaded(
     a safety margin for parallel contention.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=5.0
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=15.0
     )
 
 
@@ -920,7 +924,7 @@ def wait_for_ramses_cc_reload(
     exits early once done, so the 12s floor is just a safety margin.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=0.5, msg=msg, floor=3.0
+        is_ramses_cc_loaded, timeout=timeout, interval=0.5, msg=msg, floor=12.0
     )
 
 
@@ -939,7 +943,7 @@ def wait_for_schema_populated(min_keys: int = 5, timeout: int = 20) -> bool:
         timeout=timeout,
         interval=2,
         msg=f"for schema to have >= {min_keys} keys",
-        floor=2.0,
+        floor=5.0,
     )
 
 
@@ -980,7 +984,7 @@ def wait_for_schema_stable(
     last = _schema_hash()
     quiet_until = time.monotonic() + quiet
     scaled_timeout = min(
-        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 2.0)), timeout
+        max(timeout * WAIT_SCALE_POLL, max(WAIT_FLOOR_POLL, 5.0)), timeout
     )
     print(
         f"  Waiting up to {timeout}s→{scaled_timeout:g}s {msg}...",
@@ -1034,7 +1038,7 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
         timeout=timeout,
         interval=3,
         msg="for transport to reconnect",
-        floor=5.0,
+        floor=15.0,
     )
 
 
@@ -1301,6 +1305,43 @@ def is_ramses_extras_ready() -> bool:
     # docker logs output goes to stderr
     logs = result.stderr or ""
     return "WebSocket integration setup complete" in logs
+
+
+async def async_clear_cached_state(
+    ctx: Any,
+    label: str = "",
+) -> None:
+    """In-process fast clean-slate via WebSocket.
+
+    Clears ramses_cc schema, packets, ramses.db, and config entry options,
+    then reloads ramses_cc in-process. Takes ~1s instead of ~35s container restart.
+    Falls back to docker stop/start if the WebSocket call fails.
+    """
+    if getattr(ctx, "log_monitor", None) is not None:
+        ctx.log_monitor.capture_before_restart(label or "pre-clean")
+
+    try:
+        await ws_send(
+            ctx.token,
+            {
+                "type": "ramses_extras/device_simulator/clear_ramses_cache",
+                "clear_schema": True,
+                "clear_packets": True,
+                "clear_config_entry": True,
+                "reload_ramses_cc": True,
+            },
+        )
+        wait_for_ramses_cc_reload(timeout=15, msg="for in-process clean-slate reload")
+        ctx.refresh_token()
+        print("  Fast in-process clean-slate performed (<2s)")
+    except Exception as err:
+        print(
+            f"  WebSocket clean-slate failed ({err}),"
+            " falling back to container restart..."
+        )
+        clear_cached_state(log_monitor=getattr(ctx, "log_monitor", None), label=label)
+        wait_for_ha_ready(timeout=30)
+        wait_for_ramses_cc_loaded(timeout=20)
 
 
 def clear_cached_state(

@@ -149,3 +149,62 @@ except ImportError as e:
             and CO2 in cached_fan.get("sensors", []),
             f"cached_fan={cached_fan}, orphans={cached_orphans}",
         )
+
+        # ── Part 2: Topology binding rules (merged from R42) ──────────
+        # Original R42 SKIPs when _evaluate_hvac_rules is not importable
+        # or has no BIND_DEVICE rules (pending ramses_rf HVAC topology PR).
+        code_r42 = """
+import inspect, json
+try:
+    from ramses_rf.pipeline.topology_builder import TopologyBuilder
+    src = inspect.getsource(TopologyBuilder._evaluate_hvac_rules)
+    has_bind = "BIND_DEVICE" in src
+    print(json.dumps({"has_bind": has_bind, "ok": True}))
+except (ImportError, AttributeError) as e:
+    print(json.dumps({"error": str(e), "ok": False}))
+"""
+        res_r42 = docker_exec_python(code_r42)
+        if not res_r42.get("ok"):
+            print(
+                "  SKIP: TopologyBuilder._evaluate_hvac_rules not "
+                "importable — pending ramses_rf"
+            )
+        elif not res_r42.get("has_bind"):
+            print(
+                "  SKIP: TopologyBuilder._evaluate_hvac_rules has no "
+                "BIND_DEVICE rules — pending ramses_rf HVAC topology PR"
+            )
+        else:
+            ctx.check(
+                "TopologyBuilder._evaluate_hvac_rules has BIND_DEVICE",
+                res_r42.get("has_bind") is True,
+                f"result={res_r42}",
+            )
+
+        # ── Part 3: CO2 dual-role support (merged from R43) ───────────
+        # Original R43 SKIPs when the dual-role REM support is not yet
+        # implemented in HvacCarbonDioxideSensor (pending ramses_rf PR).
+        code_r43 = """
+import inspect, json
+try:
+    from ramses_rf.devices.hvac_sensors import HvacCarbonDioxideSensor
+    src = inspect.getsource(HvacCarbonDioxideSensor)
+    has_remote = "HvacRemote" in src or "_SLUG = DevType.REM" in src
+    print(json.dumps({"has_remote": has_remote, "ok": True}))
+except (ImportError, AttributeError) as e:
+    print(json.dumps({"error": str(e), "ok": False}))
+"""
+        res_r43 = docker_exec_python(code_r43)
+        if not res_r43.get("ok"):
+            print("  SKIP: HvacCarbonDioxideSensor not importable — pending ramses_rf")
+        elif not res_r43.get("has_remote"):
+            print(
+                "  SKIP: HvacCarbonDioxideSensor has no dual-role REM "
+                "support — pending ramses_rf PR"
+            )
+        else:
+            ctx.check(
+                "HvacCarbonDioxideSensor supports dual-role REM",
+                res_r43.get("has_remote") is True,
+                f"result={res_r43}",
+            )
