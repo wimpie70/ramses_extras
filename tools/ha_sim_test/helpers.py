@@ -378,6 +378,7 @@ async def delete_test_profiles(token: str) -> int:
     """
     deleted = 0
     # Try deleting via the websocket API first (clean — updates in-memory store)
+    ws_failed = False
     for name in sorted(_CREATED_PROFILES):
         try:
             await ws_send(
@@ -389,11 +390,20 @@ async def delete_test_profiles(token: str) -> int:
             )
             deleted += 1
         except Exception:
-            pass
+            ws_failed = True
     _CREATED_PROFILES.clear()
-    # Also clean up any leftover test_ profiles from previous runs by
-    # editing the JSON store directly (the websocket API may not list them
-    # if the store was reloaded).
+    # Fallback: clean up leftover test_ profiles by editing the JSON store
+    # directly.  Only run the docker exec when WS deletes failed (the
+    # in-memory store may be out of sync) — otherwise the WS API already
+    # handled it and the docker exec is a no-op that wastes ~5-10s under
+    # parallel contention.
+    if not ws_failed and deleted > 0:
+        return deleted
+    # No profiles created this round, or WS failed — run the fallback
+    # only if we actually attempted WS deletes (ws_failed) to avoid
+    # spawning a docker exec for every recipe that creates no profiles.
+    if not ws_failed and deleted == 0:
+        return 0
     try:
         result = subprocess.run(
             [
