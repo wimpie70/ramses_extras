@@ -480,12 +480,7 @@ def _current_instance_reset(token: Token[InstanceConfig | None]) -> None:
 # ---------------------------------------------------------------------------
 #: Dependency chains — recipes that must be on the same container.
 #: These are kept together as atomic units in the shared work queue.
-DEPENDENCY_CHAINS: list[list[str]] = [
-    ["R07b", "R05"],  # restart → no resurrection
-    ["R18", "R20"],  # faked REM
-    ["R24", "R25"],  # class mismatch fix
-    ["R19", "R26"],  # TRV from broadcast
-]
+DEPENDENCY_CHAINS: list[list[str]] = []
 
 #: Rolling-average timing store — self-calibrating load balancing.
 #: The store reads from

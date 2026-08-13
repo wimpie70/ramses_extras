@@ -109,7 +109,7 @@ import json
 
 try:
     from ramses_rf.payloads.dhw import DhwTempPayload
-    
+
     # {desc}
     payload_hex = "{payload}"
     result = DhwTempPayload.from_bytes(bytearray.fromhex(payload_hex))

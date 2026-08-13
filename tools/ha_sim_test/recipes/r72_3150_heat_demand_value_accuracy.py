@@ -90,7 +90,7 @@ import json
 
 try:
     from ramses_rf.payloads.heating import HeatDemandPayload
-    
+
     # {desc}
     payload_hex = "{payload}"
     result = HeatDemandPayload.from_bytes(bytearray.fromhex(payload_hex))
@@ -162,7 +162,7 @@ import json
 
 try:
     from ramses_rf.payloads.heating import HeatDemandPayload
-    
+
     # array_payload
     payload_hex = "{array_payload}"
     results = HeatDemandPayload.from_bytes(bytearray.fromhex(payload_hex))
@@ -171,8 +171,8 @@ try:
         results = [results]
 
     zones = {{
-        f"{{r.domain_or_zone_idx:02X}}": r.demand_percent / 200.0 
-        for r in results 
+        f"{{r.domain_or_zone_idx:02X}}": r.demand_percent / 200.0
+        for r in results
         if r.domain_or_zone_idx is not None
     }}
 
