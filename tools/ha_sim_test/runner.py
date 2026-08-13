@@ -191,6 +191,7 @@ async def setup(ctx: RecipeContext) -> None:
                     "speed": 0.01,  # 100x faster heartbeats
                     "preload_schema": True,
                     "reload_ramses_cc": True,  # Reload to pick up new known_list
+                    # CTL needs auto_answer to process packets
                     "enable_auto_answer": True,
                 },
             )
@@ -227,13 +228,14 @@ async def setup(ctx: RecipeContext) -> None:
     wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload + init")
     ctx.refresh_token()
 
-    # Activate devices via websocket (faster — uses profile config)
+    # Activate devices via websocket (faster — uses profile config).
+    # Only activate CTL + TRV — recipes that need HVAC devices (FAN/REM/CO2)
+    # load their own profiles which stop all devices and activate new ones.
+    # Skipping FAN/REM/CO2 activation saves ~3s setup time and avoids
+    # starting periodic emitters that generate unnecessary traffic.
     for dev_id, name in [
         (inst.ctl, "CTL"),
         (inst.trv, "TRV"),
-        (inst.fan, "FAN"),
-        (inst.rem, "REM"),
-        (inst.co2, "CO2"),
     ]:
         print(f"  Activating {name} {dev_id}...")
         try:

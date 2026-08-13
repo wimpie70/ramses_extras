@@ -64,7 +64,7 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
                     "profile": "mixed",
                     "speed": 0.01,
                     "preload_schema": True,
-                    "reload_ramses_cc": False,
+                    "reload_ramses_cc": True,
                     "enable_auto_answer": True,
                 },
             )

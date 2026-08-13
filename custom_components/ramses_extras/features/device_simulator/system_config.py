@@ -164,7 +164,7 @@ class ConfigProfileStore:
     def _init_builtin_profiles(self) -> None:
         """Initialize built-in system configuration profiles."""
         hvac_devices = ["FAN", "CO2", "REM"]
-        hvac_devices_extended = ["FAN", "CO2", "REM", "HUM"]
+        hvac_devices_extended = ["FAN", "CO2", "REM"]
 
         fan_id = SIM_DEVICES["FAN"]["id"]
         co2_id = SIM_DEVICES["CO2"]["id"]

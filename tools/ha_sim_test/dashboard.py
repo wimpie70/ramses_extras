@@ -35,7 +35,8 @@ from typing import TextIO
 from .helpers import get_current_instance
 
 _RUNNING_RE = re.compile(r">>> Running (\S+) \(seq=\d+\): (.*)")
-_TAG_RE = re.compile(r"^\s*\[[\w-]+\]\s*")
+# Strip leading [N/64 M:SS] progress tag and [container-name] tag
+_TAG_RE = re.compile(r"^\s*(?:\[[\d/:]+\s+\d+:\d+\]\s*)?\[[\w-]+\]\s*")
 
 
 def _terminal_width(default: int = 100) -> int:
@@ -140,11 +141,22 @@ class LiveDashboard:
         if self._lines_drawn:
             out.append(f"\x1b[{self._lines_drawn}A")
         n_lines = 0
+
+        # Progress counter from parallel module (lazy import to avoid cycle)
+        progress = ""
+        try:
+            from .parallel import _progress_str
+
+            progress = _progress_str() + " "
+        except Exception:
+            pass
+
         for pane in self._panes.values():
             elapsed = time.monotonic() - pane.start
             status = "done " if pane.done else "..."
             header = (
-                f"  {pane.name:<10} [{pane.recipe:<5}] {pane.title[:38]:<38} "
+                f"  {progress}{pane.name:<10} [{pane.recipe:<5}]"
+                f" {pane.title[:34]:<34} "
                 f"P:{pane.passed:>3} F:{pane.failed:>3} {elapsed:>5.0f}s {status}"
             )
             out.append(_fit(header, cols))

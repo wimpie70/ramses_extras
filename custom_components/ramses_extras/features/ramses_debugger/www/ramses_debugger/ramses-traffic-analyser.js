@@ -354,6 +354,18 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       })
       .catch((error) => {
         this._lastError = error;
+
+        // If the command is unknown, the debugger feature is disabled.
+        // Stop retrying — no point in an infinite loop.
+        const isUnknownCommand = error?.message?.includes('Unknown command') ||
+          error?.code === 'unknown_command';
+        if (isUnknownCommand) {
+          logger.warn('Traffic subscribe failed — debugger feature is disabled.');
+          this._stats = null;
+          this.render();
+          return;
+        }
+
         logger.warn('Traffic subscribe failed, consider enabling polling:', error);
         void this._refreshStatsOnce();
 

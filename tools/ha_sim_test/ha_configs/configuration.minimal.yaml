@@ -1,0 +1,30 @@
+homeassistant:
+  name: Home Simulator
+  latitude: 52.0
+  longitude: 5.0
+  elevation: 0
+  unit_system: metric
+  time_zone: Europe/Amsterdam
+  country: NL
+  language: en
+  packages: !include_dir_named packages
+
+# Minimal integrations for ha_sim_test
+api:
+config:
+frontend:
+input_button:
+input_text:
+script:
+select:
+
+logger:
+  default: info
+  logs:
+    custom_components.ramses_cc: debug
+    ramses_rf: debug
+    ramses_tx: debug
+    custom_components.ramses_extras: debug
+
+system_log:
+  max_entries: 1000

@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "minor_version": 5,
+  "key": "core.config_entries",
+  "data": {
+    "entries": [
+      {
+        "created_at": "1970-01-01T00:00:00+00:00",
+        "data": {},
+        "disabled_by": null,
+        "discovery_keys": {},
+        "domain": "ramses_cc",
+        "entry_id": "01JZQP3K0E415T0F0JH13XPRWH",
+        "minor_version": 1,
+        "modified_at": "1970-01-01T00:00:00+00:00",
+        "options": {
+          "advanced_features": {
+            "auto_notify": true,
+            "lost_threshold_days": 7.0,
+            "message_events": ".*",
+            "passive_scan": true,
+            "send_packet": true,
+            "ssot_migration_done": true
+          },
+          "packet_log": {
+            "packet_log_retention_days": 5,
+            "rotate_bytes": 10000
+          },
+          "ramses_rf": {
+            "enable_eavesdrop": false,
+            "log_all_mqtt": true
+          },
+          "scan_interval": 60,
+          "schema": {
+            "01:150000": {
+              "_alias": "Migration Test CTL",
+              "_class": "CTL",
+              "stored_hotwater": {
+                "sensor": "07:150000"
+              },
+              "zones": {
+                "03": {
+                  "actuators": ["04:150003"],
+                  "sensor": "01:150003"
+                }
+              }
+            },
+            "01:150003": {
+              "_class": "CTL"
+            },
+            "04:150000": {
+              "_class": "TRV"
+            },
+            "04:150003": {
+              "_class": "TRV"
+            },
+            "07:150000": {
+              "_class": "DHW"
+            },
+            "32:150000": {
+              "_class": "FAN",
+              "_commands": {
+                "_comment": "Target the FAN for automations, not the REM"
+              },
+              "remotes": ["37:170000"],
+              "sensors": ["37:120000"]
+            },
+            "37:120000": {
+              "_class": "CO2"
+            },
+            "37:170000": {
+              "_class": "REM",
+              "_commands": {
+                "_comment": "Deprecated \u2014 commands moved to FAN"
+              }
+            }
+          },
+          "serial_port": {
+            "port_name": "mqtt://localhost:1884/RAMSES/GATEWAY_SIM/18:001234"
+          }
+        },
+        "pref_disable_new_entities": false,
+        "pref_disable_polling": false,
+        "source": "user",
+        "subentries": [],
+        "title": "RAMSES RF",
+        "unique_id": null,
+        "version": 3
+      },
+      {
+        "created_at": "1970-01-01T00:00:00+00:00",
+        "data": {
+          "device_feature_matrix": {
+            "32:150000": {
+              "default": true
+            }
+          },
+          "enabled_features": {
+            "co2_control": false,
+            "default": true,
+            "device_simulator": true,
+            "hello_world": false,
+            "humidity_control": false,
+            "hvac_fan_card": false,
+            "ramses_debugger": false,
+            "sensor_control": false,
+            "temp_control": false
+          },
+          "name": "Ramses Extras"
+        },
+        "disabled_by": null,
+        "discovery_keys": {},
+        "domain": "ramses_extras",
+        "entry_id": "01KR0T2XD8GY4WQ58AD8B602Y2",
+        "minor_version": 1,
+        "modified_at": "1970-01-01T00:00:00+00:00",
+        "options": {
+          "debug_mode": true,
+          "device_feature_matrix": {
+            "32:150000": {
+              "default": true
+            }
+          },
+          "frontend_log_level": "debug",
+          "log_level": "debug",
+          "ramses_extras": {
+            "enabled_features": {
+              "co2_control": false,
+              "default": true,
+              "device_simulator": true,
+              "hello_world": false,
+              "humidity_control": false,
+              "hvac_fan_card": false,
+              "ramses_debugger": true,
+              "sensor_control": true,
+              "temp_control": false
+            }
+          }
+        },
+        "pref_disable_new_entities": false,
+        "pref_disable_polling": false,
+        "source": "user",
+        "subentries": [],
+        "title": "Ramses Extras",
+        "unique_id": null,
+        "version": 1
+      },
+      {
+        "created_at": "1970-01-01T00:00:00+00:00",
+        "data": {
+          "broker": "localhost",
+          "keepalive": 60,
+          "password": "",
+          "port": 1884,
+          "protocol": "5",
+          "tls_insecure": false,
+          "transport": "tcp",
+          "username": ""
+        },
+        "disabled_by": null,
+        "discovery_keys": {},
+        "domain": "mqtt",
+        "entry_id": "01KR0Z0NEH695FEHEFSAZEGMFF",
+        "minor_version": 1,
+        "modified_at": "1970-01-01T00:00:00+00:00",
+        "options": {},
+        "pref_disable_new_entities": true,
+        "pref_disable_polling": false,
+        "source": "user",
+        "subentries": [],
+        "title": "192.168.40.11",
+        "unique_id": null,
+        "version": 2
+      },
+      {
+        "created_at": "2026-08-13T08:49:32.944657+00:00",
+        "data": {},
+        "disabled_by": null,
+        "discovery_keys": {},
+        "domain": "analytics",
+        "entry_id": "01KZX4ZY8GK65NR41N9QQD0RN1",
+        "minor_version": 1,
+        "modified_at": "2026-08-13T08:49:32.944659+00:00",
+        "options": {},
+        "pref_disable_new_entities": false,
+        "pref_disable_polling": false,
+        "source": "system",
+        "subentries": [],
+        "title": "Analytics",
+        "unique_id": null,
+        "version": 1
+      },
+      {
+        "created_at": "2026-08-13T08:49:32.951211+00:00",
+        "data": {},
+        "disabled_by": null,
+        "discovery_keys": {},
+        "domain": "backup",
+        "entry_id": "01KZX4ZY8QWGWNYTF2YBVYBRSA",
+        "minor_version": 1,
+        "modified_at": "2026-08-13T08:49:32.951215+00:00",
+        "options": {},
+        "pref_disable_new_entities": false,
+        "pref_disable_polling": false,
+        "source": "system",
+        "subentries": [],
+        "title": "Backup",
+        "unique_id": null,
+        "version": 1
+      }
+    ]
+  }
+}
