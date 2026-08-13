@@ -395,10 +395,9 @@ directly against the source code without needing the ha-sim container.
 | Recipe | Description | Checks |
 |---|---|---|
 | R07 | HVAC schema caching — FAN + REM | 2 |
-| R07b | Restart ha-sim, verify HVAC survives | 2 |
+| R07b | Restart, HVAC survives + device-loss scenario | 5 |
 | R08 | HVAC schema caching — merge union on reload | 3 |
 | R09 | User schema edits survive sync — _alias | 2 |
-| R12 | HVAC device loss scenario | 3 |
 | R15 | Verify hvac_schema key in .storage | 1 |
 | R20 | SSOT Phase 2 migration — known_list traits | 5 |
 
@@ -538,7 +537,7 @@ to pytest — see ramses_rf/ramses_cc test suites).
 | `ramses_extras.device_simulator/silence_devices` | R35, R71 |
 | `ramses_extras.device_simulator/load_profile_yaml` | R01, R08, R09, R10, R14, R17, R26, R58 |
 | `ramses_extras.device_simulator/inject_message` | R06, R11, R14, R16, R19, R22, R26, R29, R35, R37, R40, R50, R65, R68, R70, R71, R72 |
-| `ramses_extras.device_simulator/start_scenario` | R12 |
+| `ramses_extras.device_simulator/start_scenario` | R07b |
 
 ## Parallel contention findings
 
