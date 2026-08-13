@@ -1,4 +1,11 @@
-"""Recipe R07b: Restart and verify HVAC survives."""
+"""Recipe R07b: Restart, verify HVAC survives, and device-loss scenario.
+
+Merges the former R12 (HVAC device loss) into R07b so that the device-loss
+test runs immediately after the restart+profile-reload, which guarantees
+the mixed profile (FAN/REM/CO2) is active.  R12 previously assumed the
+setup profile was still loaded, which broke when profile-stripping recipes
+(R01, fresh_start recipes) ran before it on the same container.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +45,7 @@ from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
 class R07bRestartAndVerifyHvacSurvives(Recipe):
     id = "R07b"
     seq = 70
-    title = "Restart and verify HVAC survives"
+    title = "Restart, HVAC survives + device-loss scenario"
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 7b: Restart ha-sim, verify HVAC survives")
@@ -110,3 +117,95 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             bool(hvac_after),
             f"hvac_schema={json.dumps(hvac_after)[:200]}",
         )
+
+        # ── Part 2: HVAC device-loss scenario (merged from R12) ──────
+        # The mixed profile is now loaded and FAN/REM/CO2 are active,
+        # so this is the safe point to test the device_simulator's
+        # hvac_device_loss scenario (REM silences then restores).
+        ctx.log_section("Recipe 7b: HVAC device-loss scenario (REM 37:170000)")
+
+        print("  Starting hvac_device_loss scenario for REM 37:170000...")
+        try:
+            result = call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_run_scenario",
+                {
+                    "scenario_type": "hvac_device_loss",
+                    "params": {
+                        "device_id": REM,
+                        "loss_after": 10,
+                        "restore_after": 20,
+                    },
+                },
+            )
+            print(f"  Scenario started: {result}")
+        except RuntimeError as e:
+            print(f"  Scenario start failed: {str(e)[:80]}")
+
+        # Check FAN entity before loss
+        entities_before_loss = get_entities(ctx.token)
+        fan_entity_before = None
+        for s in entities_before_loss:
+            if "fan_32_150000" in s["entity_id"] or "32_150000" in s["entity_id"]:
+                fan_entity_before = s
+                break
+        fan_eid = fan_entity_before["entity_id"] if fan_entity_before else "None"
+        print(f"  FAN entity before loss: {fan_eid}")
+
+        # Wait for loss phase (10s) + some margin
+        ctx.wait(15, "for REM loss phase")
+
+        # Check FAN entity during loss
+        entities_during_loss = get_entities(ctx.token)
+        fan_entity_during = None
+        for s in entities_during_loss:
+            if "fan_32_150000" in s["entity_id"] or "32_150000" in s["entity_id"]:
+                fan_entity_during = s
+                break
+        ctx.check(
+            "FAN entity available during REM loss",
+            fan_entity_during is not None,
+            "FAN entity not found during loss",
+        )
+
+        # Check HVAC schema preserved during loss (use hvac_schema from .storage)
+        storage_loss = get_ramses_storage()
+        hvac_schema_loss = storage_loss.get("hvac_schema", {})
+        fan_hvac_loss = hvac_schema_loss.get(FAN, {})
+        remotes_during = fan_hvac_loss.get("remotes", [])
+        ctx.check(
+            "HVAC schema preserved during REM loss",
+            REM in remotes_during,
+            f"remotes={remotes_during}",
+        )
+
+        # Wait for restore phase (20s) + some margin
+        ctx.wait(15, "for REM restore phase")
+
+        # Check FAN entity after restore
+        entities_after_restore = get_entities(ctx.token)
+        fan_entity_after = None
+        for s in entities_after_restore:
+            if "fan_32_150000" in s["entity_id"] or "32_150000" in s["entity_id"]:
+                fan_entity_after = s
+                break
+        ctx.check(
+            "FAN entity available after REM restore",
+            fan_entity_after is not None,
+            "FAN entity not found after restore",
+        )
+
+        # Stop the scenario
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_stop_scenario",
+                {
+                    "device_id": REM,
+                },
+            )
+            print("  Scenario stopped")
+        except RuntimeError:
+            pass
