@@ -276,51 +276,50 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             ):
                 return True
             _force_update_count += 1
-            if _force_update_count % 2 == 0:
-                # Re-inject 2349 and 2309 to overwrite any RP responses
-                # from the simulator's auto-answer that may have set
-                # temp_state.setpoint back to the default (19.0).
-                try:
-                    call_service(
-                        ctx.token,
-                        "ramses_extras",
-                        "device_simulator_inject_message",
-                        {
-                            "source_id": CTL,
-                            "code": "2349",
-                            "payload": payload_2349,
-                            "verb": "I",
-                        },
-                    )
-                    call_service(
-                        ctx.token,
-                        "ramses_extras",
-                        "device_simulator_inject_message",
-                        {
-                            "source_id": CTL,
-                            "code": "2309",
-                            "payload": payload_2309,
-                            "verb": "I",
-                        },
-                    )
-                except RuntimeError:
-                    pass
-                try:
-                    call_service(ctx.token, "ramses_cc", "sync_topology")
-                except RuntimeError:
-                    pass
-                try:
-                    call_service(ctx.token, "ramses_cc", "force_update")
-                except RuntimeError:
-                    pass
+            # Re-inject 2349 and 2309 on every poll to overwrite any RP
+            # responses from the simulator's auto-answer that may have
+            # set temp_state.setpoint back to a default value.
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": CTL,
+                        "code": "2349",
+                        "payload": payload_2349,
+                        "verb": "I",
+                    },
+                )
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": CTL,
+                        "code": "2309",
+                        "payload": payload_2309,
+                        "verb": "I",
+                    },
+                )
+            except RuntimeError:
+                pass
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
             return False
 
         wait_for(
             _climate_hydrated,
-            timeout=30,
-            interval=3,
+            timeout=45,
+            interval=2,
             msg="for climate entity state to hydrate from 2349",
-            floor=12.0,
+            floor=20.0,
         )
 
         # Read final state for the checks

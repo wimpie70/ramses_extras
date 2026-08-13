@@ -23,6 +23,7 @@ import time
 from ..base import Recipe, RecipeContext
 from ..const import CTL
 from ..helpers import (
+    call_service,
     get_current_instance,
     get_schema_retry,
     is_ha_ready,
@@ -140,6 +141,21 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
             pass
         wait_for_schema_populated(min_keys=2, timeout=20)
 
+        # Force a device registry refresh — prior recipes (e.g. R33 sets
+        # _alias='Bedroom') may have left a stale name in the device
+        # registry.  sync_topology + force_update triggers
+        # _async_update_device which reads the current Zone.name()
+        # (now 'Lounge' from _name, since _alias is cleared).
+        try:
+            call_service(ctx.token, "ramses_cc", "sync_topology")
+        except RuntimeError:
+            pass
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(3, "for device registry name refresh")
+
         # ── 2. Verify schema has _name on zone 03 ─────────────────────
         schema_before = get_schema_retry()
         ctl_schema = schema_before.get(CTL, {})
@@ -215,6 +231,17 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
         except RuntimeError:
             pass
         wait_for_schema_populated(min_keys=2, timeout=20)
+
+        # Force device registry refresh after restart too
+        try:
+            call_service(ctx.token, "ramses_cc", "sync_topology")
+        except RuntimeError:
+            pass
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(3, "for device registry name refresh after restart")
 
         # ── 5. Verify zone name survived the restart ──────────────────
         #    Wait for the device to reappear and check its registry name
