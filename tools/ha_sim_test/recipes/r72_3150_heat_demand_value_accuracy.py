@@ -175,9 +175,9 @@ try:
         results = [results]
 
     zones = {{
-        f"{{r.domain_or_zone_idx:02X}}": r.demand_percent / 200.0
+        f"{{r.domain_or_zone_index:02X}}": r.demand_percent / 200.0
         for r in results
-        if r.domain_or_zone_idx is not None
+        if r.domain_or_zone_index is not None
     }}
 
     print(json.dumps({{
