@@ -1837,8 +1837,6 @@ async def ws_clear_ramses_cache(
 
     clear_schema = msg.get("clear_schema", True)
     clear_packets = msg.get("clear_packets", False)
-    clear_config_entry = msg.get("clear_config_entry", False)
-    reload_ramses_cc = msg.get("reload_ramses_cc", False)
     actions: list[str] = []
 
     try:
@@ -1877,29 +1875,6 @@ async def ws_clear_ramses_cache(
                 actions.append("deleted_ramses_db")
                 LOGGER.info("Cleared ramses.db at %s", db_path)
 
-        if clear_config_entry:
-            entries = hass.config_entries.async_entries("ramses_cc")
-            for entry in entries:
-                opts = dict(entry.options)
-                opts.pop("schema", None)
-                opts.pop("known_list", None)
-                hass.config_entries.async_update_entry(entry, options=opts)
-            actions.append("cleared_config_entry")
-
-        if reload_ramses_cc:
-            from .profile_loader import _reload_ramses_cc
-
-            entries = hass.config_entries.async_entries("ramses_cc")
-            for entry in entries:
-                await _reload_ramses_cc(
-                    hass,
-                    entry.entry_id,
-                    wipe_schema=True,
-                    auto_start_on_reload=True,
-                    profile_devices={},
-                )
-            actions.append("reloaded_ramses_cc")
-
         LOGGER.info("Cleared ramses_cc cache: %s", actions)
         connection.send_result(
             msg["id"],
@@ -1907,10 +1882,7 @@ async def ws_clear_ramses_cache(
                 "success": True,
                 "clear_schema": clear_schema,
                 "clear_packets": clear_packets,
-                "clear_config_entry": clear_config_entry,
-                "reload_ramses_cc": reload_ramses_cc,
-                "actions": actions,
-                "message": "Cache cleared.",
+                "message": "Cache cleared. Restart ramses_cc to apply.",
             },
         )
     except Exception as err:  # noqa: BLE001

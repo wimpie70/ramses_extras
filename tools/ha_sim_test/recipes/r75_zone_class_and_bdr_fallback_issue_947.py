@@ -43,8 +43,8 @@ import yaml as _yaml
 from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW
 from ..helpers import (
-    async_clear_cached_state,
     call_service,
+    clear_cached_state,
     get_current_instance,
     get_schema_retry,
     is_ramses_cc_loaded,
@@ -82,9 +82,12 @@ class R75ZoneClassAndBdrFallbackIssue947(Recipe):
         bdr_id = "13:094705"  # BDR = hotwater_valve (fallback)
 
         # --- Clear ALL cached state ---
-        print("  Clearing cached state...")
-        await async_clear_cached_state(ctx, label="R75 pre-restart")
+        print("  Stopping ha-sim and clearing cached state...")
+        clear_cached_state(ctx.log_monitor, label="R75 pre-restart")
+        ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # --- Build a custom profile ---
         # Schema declares:
