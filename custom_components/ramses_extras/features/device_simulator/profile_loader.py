@@ -627,11 +627,27 @@ async def _reload_ramses_cc(
     # This happens when a previous unload failed (e.g. a platform was never
     # loaded due to a setup error).  Force the state back to NOT_LOADED so
     # we can set it up again.
+    #
+    # If the entry is in SETUP_IN_PROGRESS (e.g. a previous profile load
+    # triggered a reload that hasn't finished yet), we must wait for the
+    # setup to complete before unloading — otherwise async_unload fails
+    # and the subsequent async_setup is a no-op, leaving the coordinator
+    # running with the previous profile's schema (issue 919).
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry and entry.state == ConfigEntryState.FAILED_UNLOAD:
         LOGGER.warning("Profile load: entry is in FAILED_UNLOAD state, forcing reload")
         entry._async_set_state(hass, ConfigEntryState.NOT_LOADED, None)
     else:
+        # Wait for SETUP_IN_PROGRESS to settle — the previous profile load's
+        # coordinator setup may still be running.  Without this wait,
+        # async_unload fails and the reload is silently skipped.
+        for _ in range(10):
+            if not entry or entry.state != ConfigEntryState.SETUP_IN_PROGRESS:
+                break
+            LOGGER.info("Profile load: waiting for SETUP_IN_PROGRESS to settle...")
+            await asyncio.sleep(1)
+            entry = hass.config_entries.async_get_entry(entry_id)
+
         try:
             await hass.config_entries.async_unload(entry_id)
         except Exception as err:  # noqa: BLE001
@@ -703,6 +719,14 @@ async def _reload_ramses_cc(
     # False).  The cached schema from a previous profile may have stale
     # traits (e.g. _class=THM from a previous test) that would override
     # the new profile's schema via merge_schemas on reload.
+    #
+    # Also delete ramses.db (the SQLite-backed MessageStore) so that stale
+    # 0004/0005/000C packets from a prior profile don't override the new
+    # schema's traits via Zone.name() / Zone._update_schema() when the
+    # MessageStore is hydrated on reload (ramses-rf/ramses_cc issue 919:
+    # stale 0004 packets from a prior recipe cause the device registry
+    # name to show the old zone name instead of the new profile's _name).
+    schema_packet_codes: frozenset[str] = frozenset({"0004", "0005", "000C"})
     if not wipe_schema:
         try:
             preload_store: HaStore = HaStore(
@@ -712,13 +736,51 @@ async def _reload_ramses_cc(
             )
             preload_stored: dict[str, Any] = await preload_store.async_load() or {}
             preload_cs = preload_stored.get(SZ_CLIENT_STATE, {})
+            changed = False
             if SZ_SCHEMA in preload_cs:
                 preload_cs.pop(SZ_SCHEMA)
-                await preload_store.async_save(preload_stored)
+                changed = True
                 LOGGER.info("Profile load: cleared cached schema (preload mode)")
+            # Clear ALL cached packets when preloading a schema.  Stale
+            # 0004/0005/000C packets from a prior profile would override
+            # the new schema's traits via Zone.name() / Zone._update_schema()
+            # when ramses_cc replays them into the MessageStore on startup
+            # (issue 919).  Clearing all packets is safe because the new
+            # profile will re-emit them via the simulator.
+            packets = preload_cs.get(SZ_PACKETS)
+            if isinstance(packets, dict) and packets:
+                pkt_count = len(packets)
+                schema_pkt_count = sum(
+                    1
+                    for p in packets.values()
+                    if isinstance(p, dict) and p.get("code") in schema_packet_codes
+                )
+                LOGGER.info(
+                    "Profile load: cached state has %d packets (%d schema-related), "
+                    "clearing all (preload mode)",
+                    pkt_count,
+                    schema_pkt_count,
+                )
+                preload_cs.pop(SZ_PACKETS, None)
+                changed = True
+            if changed:
+                await preload_store.async_save(preload_stored)
         except Exception as err:  # noqa: BLE001
             LOGGER.warning(
                 "Profile load: could not clear cached schema (preload): %s", err
+            )
+
+        # Delete ramses.db so the MessageStore starts clean — stale 0004
+        # packets in the SQLite DB would override the preloaded schema's
+        # _name via Zone.name()'s MessageStore query (issue 919).
+        try:
+            db_path = Path(hass.config.config_dir) / "ramses.db"
+            if db_path.exists():
+                await asyncio.get_event_loop().run_in_executor(None, db_path.unlink)
+                LOGGER.info("Profile load: deleted ramses.db (preload mode)")
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning(
+                "Profile load: could not delete ramses.db (preload): %s", err
             )
 
     await hass.config_entries.async_setup(entry_id)
