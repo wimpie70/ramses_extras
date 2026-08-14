@@ -339,6 +339,17 @@ except Exception as e:
             f"traits={faked_traits}",
         )
 
+        # ── Step 5b: Verify HGI is in the derived known_list ──
+        # (merged from R58 — Phase 4: HGI must be in the schema-derived
+        # known_list so it's not rejected by the device_id filter)
+        hgi_id = get_current_instance().hgi_id
+        known_keys = result.get("known_list_keys", [])
+        ctx.check(
+            f"HGI {hgi_id} in schema-derived known_list",
+            hgi_id in known_keys,
+            f"known_list keys: {known_keys}",
+        )
+
         # ── Cleanup: restore the config entry ───────────────────────
         # Remove the faked device from the schema so subsequent recipes
         # aren't affected.
