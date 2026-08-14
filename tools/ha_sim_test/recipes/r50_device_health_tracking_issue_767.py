@@ -281,7 +281,7 @@ try:
             "likely_type": "TRV",
             "codes_seen": ["3150"],
             "bound_to": "01:150000",
-            "zone_idx": "03",
+            "zone_index": "03",
             "domain_id": None,
             "rssi": -72.0,
             "confidence": "high",
