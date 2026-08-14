@@ -28,6 +28,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -81,6 +82,7 @@ class R30Phase3d4MultiremFanWithBoundAsListstr(Recipe):
             print(f"  Profile load failed: {str(e)[:80]}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        wait_for_transport_ready(timeout=30)
         # Activate FAN + both REMs for heartbeats
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (rem2, "REM2")]:
             try:

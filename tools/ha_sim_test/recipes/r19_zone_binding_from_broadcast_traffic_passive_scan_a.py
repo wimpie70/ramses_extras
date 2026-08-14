@@ -90,15 +90,33 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
             pass
         wait_for_schema_populated(timeout=15)
 
-        # Inject 30C9 (temperature) broadcast packets from TRVs with zone_idx
-        # 30C9 payload: zone_idx(2 hex) + temperature(4 hex, *100)
-        # Use valid zone indices 02-0B (ramses_rf max 12 zones: 00-0B)
+        # Activate the broadcast TRVs in the simulator so the scan engine
+        # tracks them.  They are not in the mixed profile's known_list, so
+        # they need explicit activation before packet injection.
         broadcast_trvs = [
             ("04:200002", "02"),
             ("04:200003", "03"),
             ("04:200004", "04"),
             ("04:200005", "05"),
         ]
+        print(f"  Activating {len(broadcast_trvs)} broadcast TRVs...")
+        for trv_id, _ in broadcast_trvs:
+            try:
+                await ws_send(
+                    ctx.token,
+                    {
+                        "type": "ramses_extras/device_simulator/"
+                        "activate_profile_device",
+                        "device_id": trv_id,
+                    },
+                )
+            except RuntimeError:
+                pass
+        ctx.wait(1, "for TRV activation")
+
+        # Inject 30C9 (temperature) broadcast packets from TRVs with zone_idx
+        # 30C9 payload: zone_idx(2 hex) + temperature(4 hex, *100)
+        # Use valid zone indices 02-0B (ramses_rf max 12 zones: 00-0B)
         temp_hex = "0708"  # 18.00C
 
         print(f"  Injecting 30C9 broadcast packets from {len(broadcast_trvs)} TRVs...")

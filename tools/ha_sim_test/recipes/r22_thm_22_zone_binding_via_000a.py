@@ -102,6 +102,25 @@ class R22Thm22ZoneBindingVia000a(Recipe):
         # The dst must be a valid device (not --:------) to avoid PacketInvalid.
         thm_r22 = "22:200001"
         hgi_r22 = get_current_instance().hgi_id  # the only known device
+
+        # Activate the THM in the simulator so the scan engine tracks it.
+        # The fresh_start profile has enforce_known_list=False, but the
+        # device still needs to be activated to ensure the scan engine
+        # processes its packets and creates a DiscoveredDevice entry.
+        print(f"  Activating THM {thm_r22} in simulator...")
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": thm_r22,
+                },
+            )
+            print(f"    {thm_r22} activated")
+        except RuntimeError as e:
+            print(f"    Activation failed (continuing): {str(e)[:80]}")
+        ctx.wait(1, "for activation")
+
         print(f"  Injecting RQ 000A from THM {thm_r22} to {hgi_r22} with zone 01...")
         try:
             call_service(
