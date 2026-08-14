@@ -41,9 +41,8 @@ import yaml as _yaml
 from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW, HGI
 from ..helpers import (
-    async_clear_cached_state,
     call_service,
-    get_current_instance,
+    clear_cached_state,
     get_known_list,
     get_schema_retry,
     is_ramses_cc_loaded,
@@ -92,9 +91,11 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         # .storage/ramses_cc and core.config_entries, and ramses.db replays
         # old 000C packets.  We need a truly clean slate.
         print("  Stopping ha-sim and clearing cached state...")
-        print("  Clearing cached state...")
-        await async_clear_cached_state(ctx, label="R37 pre-restart")
+        clear_cached_state(ctx.log_monitor, label="R37 pre-restart")
+        ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # --- Build a custom profile with OTB + BDR + DHW sensor ---
         # The schema declares:

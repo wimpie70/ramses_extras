@@ -9,8 +9,8 @@ import yaml as _yaml
 from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW
 from ..helpers import (
-    async_clear_cached_state,
     call_service,
+    clear_cached_state,
     get_current_instance,
     get_schema_retry,
     load_profile_yaml,
@@ -57,9 +57,12 @@ class R73AuthoritativeDomainIdFrom000CIssue931(Recipe):
         hex_fc = "356BAF"
 
         # --- Clear cached state ---
-        print("  Clearing cached state...")
-        await async_clear_cached_state(ctx, label="R73 pre-restart")
+        print("  Stopping ha-sim and clearing cached state...")
+        clear_cached_state(ctx.log_monitor, label="R73 pre-restart")
+        ctx.wait_for_ha_ready(timeout=30)
         ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # --- Build a custom profile with CTL + DHW sensor (no BDRs) ---
         # BDRs will be discovered via 3B00/3EF0 broadcasts, then accepted.

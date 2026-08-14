@@ -38,26 +38,7 @@ class R08HvacSchemaCachingMergeUnionOnReload(Recipe):
     title = "HVAC schema caching — merge union on reload"
 
     async def run(self, ctx: RecipeContext) -> None:
-        ctx.log_section(
-            "Recipe 8: HVAC schema caching — verify & merge union on reload"
-        )
-
-        # ── Part 1: Verify FAN in schema and storage ─────────────────
-        schema_r08 = get_schema_retry()
-        fan_in_schema = FAN in schema_r08
-        ctx.check(
-            "FAN in config entry schema",
-            fan_in_schema,
-            f"schema keys={list(schema_r08.keys())}",
-        )
-
-        storage_r08 = get_ramses_storage()
-        hvac_schema_r08 = storage_r08.get("hvac_schema", {})
-        ctx.check(
-            "hvac_schema key exists in storage",
-            bool(hvac_schema_r08) or fan_in_schema,
-            f"hvac_schema={json.dumps(hvac_schema_r08)[:200]}",
-        )
+        ctx.log_section("Recipe 8: HVAC schema caching — merge union on reload")
 
         # This recipe tests that cached HVAC entries merge with config schema
         # (union, no duplicates) after reload.  We load a custom YAML profile

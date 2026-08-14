@@ -48,16 +48,13 @@ import time
 from ..base import Recipe, RecipeContext
 from ..const import CTL
 from ..helpers import (
-    async_clear_cached_state,
     call_service,
+    clear_cached_state,
     docker_exec_python,
     get_current_instance,
     is_ramses_cc_loaded,
-    load_profile_yaml,
     wait_for,
-    ws_send,
 )
-from ..profile import MIXED_KL, MIXED_SCHEMA, _build_yaml
 
 # A faked THM device used to inject 30C9 packets (mirrors issue 864).
 FAKED_THM = "03:004303"
@@ -71,20 +68,124 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 60: send_packet CommandDTO + device_id filter")
 
-        # ── Setup & Step 1: Load profile with faked THM in schema ────
-        print("  Clearing cached state and loading profile with faked THM...")
-        await async_clear_cached_state(ctx, label="R60 pre-clean")
+        # ── Setup: clean slate ──────────────────────────────────────
+        print("  Stopping ha-sim and clearing cached state...")
+        clear_cached_state(ctx.log_monitor, label="R60 pre-clean")
+        ctx.wait_for_ha_ready(timeout=20)
         ctx.log_monitor.reset_baseline()
-
-        schema_r60 = dict(MIXED_SCHEMA)
-        schema_r60[FAKED_THM] = {"_class": "THM", "_faked": True}
-        yaml_r60 = _build_yaml(MIXED_KL, schema_r60)
-
-        await load_profile_yaml(ctx.token, yaml_r60, speed=0.01)
-        ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
-        ctx.check("faked THM injected into schema (_faked=true)", True, "")
-        ctx.wait(3, "for protocol/filter to stabilise")
+        ctx.wait_for_ramses_cc_loaded(timeout=20)
+
+        # ── Step 1: Inject a faked device into the schema ───────────
+        # Phase 4: the schema is the sole source of truth.  Faked devices
+        # must be in the schema (as orphans with _faked: true) so
+        # _derive_known_list_from_schema includes them in the protocol's
+        # include list.  Without this, enforce_known_list rejects every
+        # send_packet call to/from the faked device.
+        print(f"  Injecting faked THM {FAKED_THM} into schema (orphan, _faked=true)...")
+        inst = get_current_instance()
+
+        # Stop ha-sim to safely modify .storage
+        ctx.log_monitor.capture_before_restart("R60 inject faked device")
+        subprocess.run(["docker", "stop", inst.name], capture_output=True)
+        ctx.wait(2, "for container to stop")
+
+        # Read the config entry from the host-side bind mount
+        # (container is stopped, docker exec won't work).
+        host_path = f"{inst.config_dir}/.storage/core.config_entries"
+        try:
+            with open(host_path) as f:
+                raw = f.read()
+        except OSError as e:
+            ctx.check(
+                "core.config_entries readable (host mount)",
+                False,
+                f"could not read {host_path}: {e}",
+            )
+            subprocess.run(["docker", "start", inst.name], capture_output=True)
+            ctx.wait_for_ha_ready(timeout=20)
+            return
+
+        ctx.check("core.config_entries readable", bool(raw), "")
+        if not raw:
+            subprocess.run(["docker", "start", inst.name], capture_output=True)
+            ctx.wait_for_ha_ready(timeout=20)
+            return
+
+        data = json.loads(raw)
+        cc_entry = None
+        cc_idx = None
+        for i, e in enumerate(data["data"]["entries"]):
+            if e["domain"] == "ramses_cc":
+                cc_entry = e
+                cc_idx = i
+                break
+
+        ctx.check("ramses_cc config entry found", cc_entry is not None, "")
+        if cc_entry is None:
+            subprocess.run(["docker", "start", inst.name], capture_output=True)
+            ctx.wait_for_ha_ready(timeout=20)
+            return
+
+        # Modify the config entry options (Phase 4: schema-centric):
+        #   - Add faked THM to the schema as an orphan_heat entry with
+        #     _faked: true and _class: THM traits
+        #   - Ensure passive_scan is true (SSOT mode)
+        #   - Ensure send_packet is enabled
+        # Note: known_list is no longer stored in options (Phase 4).
+        options = json.loads(json.dumps(cc_entry.get("options", {})))  # deep copy
+
+        advanced = dict(options.get("advanced_features", {}))
+        advanced["passive_scan"] = True
+        advanced["send_packet"] = True
+        options["advanced_features"] = advanced
+
+        schema = dict(options.get("schema", {}))
+        # Add the faked device as a schema root entry with _ traits.
+        # _derive_known_list_from_schema walks root keys that match the
+        # device-id regex, so a root entry is sufficient (no need to also
+        # add it to orphans_heat — the root entry itself is collected).
+        schema[FAKED_THM] = {"_class": "THM", "_faked": True}
+        options["schema"] = schema
+
+        cc_entry["options"] = options
+        data["data"]["entries"][cc_idx] = cc_entry
+
+        # Write back via host mount
+        with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as f:
+            json.dump(data, f)
+            tmp_path = f.name
+
+        cp_result = subprocess.run(
+            [
+                "docker",
+                "cp",
+                tmp_path,
+                f"{inst.name}:/config/.storage/core.config_entries",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        os.unlink(tmp_path)
+
+        ctx.check(
+            f"faked THM {FAKED_THM} injected into schema (_faked=true)",
+            cp_result.returncode == 0,
+            f"docker cp exit {cp_result.returncode}: {cp_result.stderr[:80]}",
+        )
+        if cp_result.returncode != 0:
+            subprocess.run(["docker", "start", inst.name], capture_output=True)
+            ctx.wait_for_ha_ready(timeout=20)
+            return
+
+        # ── Step 2: Start ha-sim and wait for ramses_cc ──────────────
+        print("  Starting ha-sim with faked device in schema...")
+        subprocess.run(["docker", "start", inst.name], capture_output=True)
+        ctx.wait_for_ha_ready(timeout=20)
+        ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait_for_ramses_cc_loaded(timeout=20)
+        ctx.wait(5, "for protocol/filter to stabilise")
 
         # ── Step 3: Test send_packet with the faked device ───────────
         # This is the user's exact scenario from issue 864.
@@ -120,14 +221,12 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
 
         ctx.wait(3, "for log to flush")
 
-        inst_name = get_current_instance().name
-
         # Also check the HA log directly for the filter rejection
         log_result = subprocess.run(
             [
                 "docker",
                 "exec",
-                inst_name,
+                inst.name,
                 "bash",
                 "-c",
                 f"grep 'Command excluded by device_id filter.*{FAKED_THM}' "
@@ -184,7 +283,7 @@ class R60SendPacketCmdtoFilterIssue864(Recipe):
             [
                 "docker",
                 "exec",
-                inst_name,
+                inst.name,
                 "bash",
                 "-c",
                 "grep -A2 'AttributeError.*CommandDTO.*src\\|"
@@ -215,7 +314,7 @@ import json, sys
 sys.path.insert(0, "/config/custom_components")
 try:
     from ramses_cc.coordinator import RamsesCoordinator
-    schema = {repr(schema_r60)}
+    schema = {repr(schema)}
     result = RamsesCoordinator._derive_known_list_from_schema(schema)
     print(json.dumps({{
         "faked_in_known_list": {repr(FAKED_THM)} in result,
@@ -240,19 +339,47 @@ except Exception as e:
             f"traits={faked_traits}",
         )
 
-        # ── Cleanup: restore standard mixed profile ───────────────────
-        print("  Cleaning up R60...")
+        # ── Cleanup: restore the config entry ───────────────────────
+        # Remove the faked device from the schema so subsequent recipes
+        # aren't affected.
+        print("  Cleaning up: removing faked device from schema...")
+        ctx.log_monitor.capture_before_restart("R60 cleanup")
+        subprocess.run(["docker", "stop", inst.name], capture_output=True)
+        ctx.wait(2, "for container to stop")
+
+        # Re-read and restore
+        host_path = f"{inst.config_dir}/.storage/core.config_entries"
         try:
-            await ws_send(
-                ctx.token,
-                {
-                    "type": "ramses_extras/device_simulator/load_profile",
-                    "profile": "mixed",
-                    "speed": 0.01,
-                    "preload_schema": True,
-                    "reload_ramses_cc": True,
-                },
+            with open(host_path) as f:
+                raw = f.read()
+            data = json.loads(raw)
+            for e in data["data"]["entries"]:
+                if e["domain"] == "ramses_cc":
+                    opts = e.get("options", {})
+                    sch = dict(opts.get("schema", {}))
+                    sch.pop(FAKED_THM, None)
+                    opts["schema"] = sch
+                    e["options"] = opts
+                    break
+            with tempfile.NamedTemporaryFile(
+                suffix=".json", mode="w", delete=False
+            ) as f:
+                json.dump(data, f)
+                tmp_path = f.name
+            subprocess.run(
+                [
+                    "docker",
+                    "cp",
+                    tmp_path,
+                    f"{inst.name}:/config/.storage/core.config_entries",
+                ],
+                capture_output=True,
             )
-        except RuntimeError:
+            os.unlink(tmp_path)
+        except OSError:
             pass
-        ctx.wait_for_ramses_cc_reload(timeout=15)
+
+        subprocess.run(["docker", "start", inst.name], capture_output=True)
+        ctx.wait_for_ha_ready(timeout=20)
+        ctx.refresh_token()
+        ctx.wait_for_ramses_cc_loaded(timeout=20)

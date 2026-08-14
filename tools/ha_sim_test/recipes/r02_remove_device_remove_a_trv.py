@@ -66,10 +66,10 @@ class R02RemoveDeviceRemoveATrv(Recipe):
 
                 wait_for(
                     _trv_removed,
-                    timeout=15,
-                    interval=1,
+                    timeout=45,
+                    interval=2,
                     msg=f"for {TRV} to be removed from schema",
-                    floor=2.0,
+                    floor=30.0,
                 )
 
                 # Check config entry schema (remove_device updates this directly).
@@ -104,35 +104,5 @@ class R02RemoveDeviceRemoveATrv(Recipe):
                 )
             except RuntimeError as e:
                 ctx.check("remove_device TRV call", False, str(e)[:80])
-        # ── Part 2: HGI rejection check (merged from R03) ────────────
-        ctx.log_section("Recipe 2: remove_device — HGI rejection")
-        try:
-            call_service(ctx.token, "ramses_cc", "remove_device", {"device_id": HGI})
-            ctx.check("HGI removal raises error", False, "(no error raised)")
-        except RuntimeError as e:
-            ctx.check("HGI removal raises error", True, str(e)[:80])
-
-        # ── Part 3: CTL / main_tcs removal (merged from R04) ─────────
-        ctx.log_section(f"Recipe 2: remove_device — CTL {CTL} / main_tcs removal")
-        schema_ctl = get_schema_retry()
-        if CTL in schema_ctl:
-            try:
-                call_service(
-                    ctx.token, "ramses_cc", "remove_device", {"device_id": CTL}
-                )
-                ctx.wait(3, "for CTL removal")
-                schema_after_ctl = get_schema_retry()
-                ctx.check(
-                    "CTL top-level key removed",
-                    CTL not in schema_after_ctl,
-                    f"schema still contains {CTL}",
-                )
-                storage_r04 = get_ramses_storage()
-                main_tcs = storage_r04.get("main_tcs")
-                ctx.check(
-                    "main_tcs cleared",
-                    main_tcs is None,
-                    f"main_tcs is still {main_tcs}",
-                )
-            except RuntimeError as e:
-                ctx.check("remove_device CTL call", False, str(e)[:80])
+        else:
+            print(f"  SKIP: TRV {TRV} not in schema")

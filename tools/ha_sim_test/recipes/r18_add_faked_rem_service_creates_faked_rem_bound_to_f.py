@@ -155,18 +155,3 @@ class R18AddFakedRemServiceCreatesFakedRemBoundToF(Recipe):
             faked_rem_id in fan_remotes,
             f"remotes={fan_remotes}",
         )
-
-        # ── Part 2: SSOT Phase 2 migration checks (merged from R20) ──
-        ctx.log_section("Recipe 18: SSOT Phase 2 trait migration")
-        try:
-            call_service(ctx.token, "ramses_cc", "sync_topology")
-        except RuntimeError:
-            pass
-        ctx.wait_for_schema_stable(timeout=8, msg="for sync_learned_topology")
-
-        known_list_r18 = get_known_list()
-        ctx.check(
-            "FAN in known_list (derived from schema)",
-            FAN in known_list_r18,
-            f"FAN not in known_list: {list(known_list_r18.keys())[:5]}...",
-        )
