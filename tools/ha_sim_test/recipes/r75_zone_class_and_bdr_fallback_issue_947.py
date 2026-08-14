@@ -51,6 +51,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 from ..profile import MIXED_SCHEMA, get_mixed_kl
@@ -159,11 +160,9 @@ class R75ZoneClassAndBdrFallbackIssue947(Recipe):
             pass
         wait_for_schema_populated(timeout=15)
 
-        # Wait for the device simulator's MQTT client to connect.
-        # After clear_cached_state restarts the container, the device
-        # simulator's MQTT client takes ~10-15s to connect.  Injected
-        # packets are silently dropped while the client is not connected.
-        ctx.wait(15, "for simulator MQTT client to connect")
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
 
         # --- Step 1: BDR broadcasts 3B00/3EF0 I (TPI loop) ---
         # This gives the BDR a non-authoritative FC domain hint.
