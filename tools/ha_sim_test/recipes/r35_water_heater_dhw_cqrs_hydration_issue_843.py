@@ -12,6 +12,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     wait_for,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 
@@ -58,6 +59,9 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         # Activate CTL and DHW for heartbeats
         for dev_id, name in [(CTL, "CTL"), (DHW, "DHW")]:
             try:

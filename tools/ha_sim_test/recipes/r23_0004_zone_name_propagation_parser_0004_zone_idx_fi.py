@@ -26,6 +26,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_transport_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -63,6 +64,9 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         # 0004 payload format: zone_idx(2) + "00"(2) + name_hex(40, 20 bytes
         # ASCII padded with 00).  Total = 44 hex chars (22 bytes, length 022).
         # Inject "Living Room" for zone 03.

@@ -29,6 +29,7 @@ from ..helpers import (
     wait_for,
     wait_for_discovered_device,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -83,6 +84,9 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         # Activate CTL for heartbeats
         try:
             await ws_send(

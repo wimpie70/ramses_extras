@@ -19,6 +19,7 @@ from ..helpers import (
     get_schema_retry,
     is_ramses_cc_loaded,
     wait_for,
+    wait_for_transport_ready,
     ws_send,
 )
 
@@ -87,6 +88,9 @@ except (ImportError, AttributeError) as e:
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         # 2. Inject 31D9 I from FAN (32:150000) — FAN announces itself
         print(f"  Injecting 31D9 I from FAN {FAN}...")
         try:

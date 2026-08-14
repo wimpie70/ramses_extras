@@ -29,6 +29,7 @@ from ..helpers import (
     wait_for,
     wait_for_ha_ready,
     wait_for_ramses_cc_loaded,
+    wait_for_transport_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -74,6 +75,9 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         for dev_id, name in [(CTL, "CTL"), (TRV, "TRV"), (DHW, "DHW")]:
             try:
                 await ws_send(

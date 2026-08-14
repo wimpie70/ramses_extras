@@ -16,14 +16,24 @@ SOURCE_DIR ?= .
 KNOWN_TARGETS := help all install install-sim install-deps restart-ha clean status check-ha \
 	dev-install full-setup env env-test env-full lint type-check type-check-clean \
 	format fix-imports qa ruff-version ruff-install local-ci test-python test-frontend \
-	test-all build-device-db source
+	test-all build-device-db source run-sim deploy-sim
 
+# Allow numeric arguments (e.g. "make run-sim 3") to pass through as
+# container counts — they're not real targets, just positional params.
+NUMERIC_ARGS := $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
+NUMERIC_ARGS := $(foreach a,$(NUMERIC_ARGS),$(if $(filter 1 2 3 4 5 6 7 8 9,$(a)),$(a),))
 UNKNOWN_TARGETS := $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
+UNKNOWN_TARGETS := $(filter-out $(NUMERIC_ARGS),$(UNKNOWN_TARGETS))
 ifneq ($(UNKNOWN_TARGETS),)
 $(error Unknown target(s): $(UNKNOWN_TARGETS). Did you mean: install-sim, restart-ha? Run 'make help' for available targets)
 endif
 
-.PHONY: help all install install-sim install-deps restart-ha clean status check-ha dev-install full-setup env env-test env-full lint type-check type-check-clean format fix-imports qa
+# Capture the numeric arg as N if provided positionally (e.g. "make run-sim 3")
+ifneq ($(NUMERIC_ARGS),)
+override N := $(firstword $(NUMERIC_ARGS))
+endif
+
+.PHONY: help all install install-sim install-deps restart-ha clean status check-ha dev-install full-setup env env-test env-full lint type-check type-check-clean format fix-imports qa run-sim deploy-sim
 
 help:
 	@echo "Available targets:"
@@ -56,6 +66,13 @@ help:
 	@echo "  test-python  - Run Python tests only"
 	@echo "  test-frontend- Run JavaScript tests only"
 	@echo "  test-all     - Run all tests (Python + JavaScript)"
+	@echo ""
+	@echo "Simulation targets:"
+	@echo "  run-sim      - Run ha_sim_test recipes (default: 3 containers)"
+	@echo "                 Usage: make run-sim 3   or   make run-sim N=3"
+	@echo "                 Optional: RECIPES='R70 R76' to run specific recipes"
+	@echo "                 Optional: DEPLOY=1 to deploy code to containers first"
+	@echo "  deploy-sim   - Deploy extras + cc + rf to all ha-sim containers"
 
 # Deploy everything to both hass and ha-sim, then restart both containers.
 # Calls the ramses_cc and ramses_rf Makefiles so a single `make all` from this
@@ -239,3 +256,52 @@ qa: env
 		ruff check . && \
 		ruff format --check . && \
 		pytest tests/"
+
+# ---------------------------------------------------------------------------
+# Simulation targets (ha_sim_test)
+# ---------------------------------------------------------------------------
+
+# Container count: positional (make run-sim 3) or variable (make run-sim N=3)
+N ?= 3
+# Optional: specific recipes (make run-sim RECIPES='R70 R76')
+RECIPES ?=
+# Optional: deploy code to containers before running (make run-sim DEPLOY=1)
+DEPLOY ?= 0
+
+deploy-sim:
+	@echo "Deploying all integrations to ha-sim containers..."
+	@echo "  ramses_extras → ha-sim..."
+	@sudo rsync -av --delete \
+		--exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+		--exclude='.pytest_cache' --exclude='tests' --exclude='docs' \
+		--exclude='scripts' --exclude='wiki' --exclude='makefile' \
+		--exclude='.windsurf' --exclude='.github' \
+		custom_components/ramses_extras/ \
+		$(HA_SIM_CONFIG)/custom_components/ramses_extras/
+	@echo "  ramses_cc → ha-sim..."
+	@$(MAKE) --no-print-directory -C /home/willem/dev/ramses_cc install-sim
+	@echo "  ramses_rf → ha-sim..."
+	@$(MAKE) --no-print-directory -C /home/willem/dev/ramses_rf install_rf-sim
+	@echo "  Clearing Python caches in ha-sim..."
+	@docker exec ha-sim sh -c "find /config/custom_components -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true"
+	@echo "✅ All integrations deployed to ha-sim"
+
+run-sim:
+ifeq ($(DEPLOY),1)
+	@echo "Deploying code to containers first (DEPLOY=1)..."
+	@$(MAKE) --no-print-directory deploy-sim
+	@echo "Restarting ha-sim to load fresh code..."
+	@docker restart ha-sim
+	@echo "Waiting for ha-sim to start..."
+	@sleep 10
+endif
+	@echo "Running ha_sim_test on $(N) container(s)..."
+	@bash -c "source ~/venvs/extras/bin/activate && \
+		python -m tools.ha_sim_test --parallel $(N) $(if $(RECIPES),$(RECIPES),)"
+
+# Dummy rules for numeric positional args (e.g. "make run-sim 3").
+# Make treats "3" as a target to build — this no-op rule prevents
+# "No rule to make target '3'" errors.  The value is captured as N
+# by the NUMERIC_ARGS logic at the top of this Makefile.
+1 2 3 4 5 6 7 8 9:
+	@:

@@ -23,6 +23,7 @@ from ..helpers import (
     grep_ha_log,
     is_ramses_cc_loaded,
     wait_for,
+    wait_for_transport_ready,
     ws_send,
 )
 
@@ -53,6 +54,9 @@ class R47EavesdropFalseUnknownDevicesTrackedIssue767(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         # The fresh_start profile reload closes the MQTT transport and creates
         # a new one.  The old transport's paho-mqtt network thread is stopped
         # via loop_stop() in _close() (PR 969).  Wait for the new transport to

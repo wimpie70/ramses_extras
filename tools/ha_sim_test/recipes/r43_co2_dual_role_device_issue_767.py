@@ -20,6 +20,7 @@ from ..helpers import (
     get_entities,
     is_ramses_cc_loaded,
     wait_for,
+    wait_for_transport_ready,
     ws_send,
 )
 
@@ -91,6 +92,9 @@ except ImportError as e:
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         dual_role_id = "37:153002"
 
         # 2. Inject 1298 I from 37:153002 to FAN (CO2 reading)

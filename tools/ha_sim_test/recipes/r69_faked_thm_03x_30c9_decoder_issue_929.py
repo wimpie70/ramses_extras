@@ -33,6 +33,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 from ..profile import minimal_ctl_zone_yaml
@@ -88,6 +89,9 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
 
         # Activate CTL for heartbeats
         try:

@@ -35,6 +35,7 @@ from ..helpers import (
     get_schema_retry,
     load_profile_yaml,
     wait_for,
+    wait_for_transport_ready,
 )
 from ..profile import mixed_yaml
 
@@ -86,6 +87,9 @@ class R65HvacBelongsToFromTraffic(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
 
         # 2. Capture the BEFORE state: FAN has no remotes/sensors,
         #    REM/CO2 should be in orphans_hvac.
@@ -538,6 +542,9 @@ class R65HvacBelongsToFromTraffic(Recipe):
             print(f"  Profile reload failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
 
         # 6a. After reload, the schema override strips remotes/sensors, so
         #     they must be re-detected from traffic.  Wait briefly for REM

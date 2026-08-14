@@ -34,6 +34,7 @@ from ..helpers import (
     get_schema_retry,
     load_profile_yaml,
     wait_for,
+    wait_for_transport_ready,
 )
 from ..profile import minimal_hvac_yaml
 
@@ -64,6 +65,9 @@ class R68HvacActiveProbing(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
 
         # 2. Verify the BEFORE state: FAN has no remotes/sensors.
         #    Note: the scan engine may have already detected the binding
