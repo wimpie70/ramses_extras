@@ -42,10 +42,12 @@ from ..profile import minimal_hvac_yaml
 class R68HvacActiveProbing(Recipe):
     id = "R68"
     seq = 680
-    title = "Active HVAC topology probing (6f)"
+    title = "Active HVAC topology probing (6f) + 2411 parameter entities (issue 851)"
 
     async def run(self, ctx: RecipeContext) -> None:
-        ctx.log_section("Recipe 68: Active HVAC topology probing (6f)")
+        ctx.log_section(
+            "Recipe 68: Active HVAC topology probing (6f) + 2411 params (issue 851)"
+        )
 
         # 1. Load minimal HVAC profile with FAN's remotes/sensors stripped.
         #    The FAN keeps _class=FAN but has no remotes/sensors —
@@ -236,4 +238,75 @@ class R68HvacActiveProbing(Recipe):
                 "REM bound to FAN (passive or active detection)",
                 False,
                 "no binding detected — sim limitation",
+            )
+
+        # 7. Test 2411 parameter entities (issue 851).
+        #    The fix sends a 2411 probe when the FAN device is first seen,
+        #    which sets supports_2411=True, allowing entity creation.
+        print("\n  Testing 2411 parameter entities (issue 851)...")
+        ctx.wait(3, "for parameter entities to be created")
+
+        # Get all number entities for the FAN device
+        entities_resp = call_service(
+            ctx.token,
+            "entity_registry",
+            "list",
+            {},
+        )
+        all_entities = entities_resp.get("entities", [])
+
+        # Filter for number entities belonging to the FAN device
+        fan_id_normalized = FAN.replace(":", "_")
+        param_entities = [
+            e
+            for e in all_entities
+            if e.get("platform") == "ramses_cc"
+            and e.get("domain") == "number"
+            and fan_id_normalized in e.get("entity_id", "")
+            and "param" in e.get("entity_id", "")
+        ]
+
+        print(f"  Found {len(param_entities)} parameter entities")
+        if len(param_entities) > 0:
+            print(f"  Sample: {[e['entity_id'] for e in param_entities[:3]]}")
+
+        ctx.check(
+            "2411 parameter entities created (≥5 expected)",
+            len(param_entities) >= 5,
+            f"found {len(param_entities)} entities (issue 851 regression if 0)",
+        )
+
+        # Verify param 01 entity exists and is not "unknown"
+        param_01_entity_id = f"number.{fan_id_normalized}_param_01"
+        param_01_found = any(
+            e.get("entity_id") == param_01_entity_id for e in param_entities
+        )
+        if param_01_found:
+            ctx.wait(2, "for entity state to populate")
+            try:
+                state_resp = call_service(
+                    ctx.token,
+                    "homeassistant",
+                    "get_state",
+                    {"entity_id": param_01_entity_id},
+                )
+                state = state_resp.get("state")
+                print(f"  Param 01 state: {state}")
+                ctx.check(
+                    "Param 01 entity state not 'unknown'",
+                    state != "unknown",
+                    f"state={state} (issue 851 fixed)",
+                )
+            except Exception as e:
+                print(f"  Could not get param 01 state: {e}")
+                ctx.check(
+                    "Param 01 entity state not 'unknown'",
+                    False,
+                    f"failed to get state: {e}",
+                )
+        else:
+            ctx.check(
+                "Param 01 entity exists",
+                False,
+                f"entity {param_01_entity_id} not found",
             )
