@@ -1,8 +1,8 @@
 # Phase 4 Plan: known_list Removal + Event-Driven Topology
 
 **Created:** Jul 23 2026
-**Updated:** Aug 11 2026
-**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 DONE** — implemented in ramses_cc coordinator.py (`set_schema_updated_callback` registered, 2s trailing debounce, `async_create_background_task` per PR 932); verified by ha_sim_test R62 (14/14 pass). **Step 6a/6b DONE** — `load_fan` is no longer a stub (ramses_rf `schemas.py:437-438` calls `fan._update_schema(**schema)`), `HvacVentilator._remote_ids`/`_sensor_ids` implemented, `gateway.schema()` nests FAN membership, `get_hvac_orphans()` excludes owned devices; verified by R41 (7/7 pass). **Step 6d DONE** — `_parent_fan` bidirectional link set in `HvacVentilator._update_schema()`; verified by R67. **Step 6e/6f DONE** — traffic-based "belongs to" detection (R65) + active probing via `probe_hvac_binding` service (R68). **Step 6c** decided: no dual-role composite classes (R43 correctly skips). **R42 SUPERSEDED** — tested for BIND_DEVICE from TopologyBuilder, but approach changed to "belongs to" comments + load_fan; R41+R65 cover same ground. **Remaining:** Step 4 (optional), Step 7 (future — StateUpdatedEvent, no ramses_rf API yet). **Open question:** ramses_cc's 5-min `SAVE_STATE_INTERVAL` polling saves packets to `.storage/ramses_cc` (JSON), but ramses_rf's MessageStore (SQLite `ramses.db`) already stores all packets natively — the JSON save is redundant and causes unnecessary disk writes (memory stick wear). Fix is in ramses_rf: use MessageStore for state restoration on restart, then ramses_cc can stop saving packets (PWhite-Eng's plan: "deprecate the .storage/ramses_cc json mechanism entirely"). ramses_rf Phase 6 (issue 1001, payload dataclass layer) in progress, non-breaking so far (PRs 1-10 shadow-parity; PRs 11-12 will be the breaking cutover). **ha-sim test Aug 11 (cc/rf master): 459/459 pass in 4x parallel** — including R41, R62, R65, R67, R68.
+**Updated:** Aug 14 2026
+**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 DONE** — implemented in ramses_cc coordinator.py (`set_schema_updated_callback` registered, 2s trailing debounce, `async_create_background_task` per PR 932); verified by ha_sim_test R62 (14/14 pass). **Step 6a/6b DONE** — `load_fan` is no longer a stub (ramses_rf `schemas.py:437-438` calls `fan._update_schema(**schema)`), `HvacVentilator._remote_ids`/`_sensor_ids` implemented, `gateway.schema()` nests FAN membership, `get_hvac_orphans()` excludes owned devices; verified by R41 (7/7 pass). **Step 6d DONE** — `_parent_fan` bidirectional link set in `HvacVentilator._update_schema()`; verified by R67. **Step 6e/6f DONE** — traffic-based "belongs to" detection (R65) + active probing via `probe_hvac_binding` service (R68). **Step 6c** decided: no dual-role composite classes (R43 correctly skips). **R42 SUPERSEDED** — tested for BIND_DEVICE from TopologyBuilder, but approach changed to "belongs to" comments + load_fan; R41+R65 cover same ground. **SAVE_STATE_INTERVAL** increased from 5m to 30m (PR 953, implements PWhite-Eng's short-term recommendation from issue 1027) — cuts flash writes by ~83%. **ramses_rf Phase 6 CLOSED** (issue 1001) — PRs 11+12 merged (dataclass payload cutover + legacy parser purge), `payload_to_dict()` boundary adapter retained so ramses_cc still receives dict payloads. **Issue 1027** (MessageStore state restoration) — PWhite-Eng rejected the MessageStore approach (async hydration race, ghost device resurrection, double-ingestion, in-memory environments); recommended 30m interval + event-triggered saves (short-term) and Phase 9 CQRS snapshots (long-term). **Remaining:** Step 4 (optional), Step 7 (future — StateUpdatedEvent), Step 8 (remove obsolete `hvac_schema` cache — after current release feedback). **ha-sim test Aug 11 (cc/rf master): 459/459 pass in 4x parallel** — including R41, R62, R65, R67, R68. Re-run pending against post-Phase-6 masters.
 **Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED, shipped in ramses_rf 0.59.1)
 **Blocks:** nothing (this is the final phase for schema-as-SSOT)
 
@@ -92,7 +92,7 @@ confusion, and prepares the ground for event-driven topology updates
 | ~~`enforce_known_list` config option~~ | ~~config flow~~ | ~~Workaround for issue 677 (now fixed in 0.57.6)~~ | ~~Step 3~~ **DONE (PR 882)** — hardcoded `True` in `coordinator.py:271`, removed from voluptuous schema |
 | ~~`known_list[dev][commands]`~~ | ~~config entry~~ | ~~Legacy command storage (superseded by `_commands`)~~ | ~~Step 2~~ **DONE (PR 882)** |
 | `.storage[remotes]` | `.storage/ramses_cc` | Command cache (kept for crash recovery) | Keep |
-| 5-min polling for topology sync | `coordinator.py` | Safety net for Step 5 event-driven callback + packet-state persistence | Step 5 DONE — polling kept as safety net (see packet persistence redundancy note) |
+| 5-min polling for topology sync | `coordinator.py` | Safety net for Step 5 event-driven callback + packet-state persistence | Step 5 DONE — polling interval increased to 30m (PR 953), event-driven path is primary |
 | `asyncio.sleep(0)` for entity updates | `coordinator.py` | Interim solution (issue 794) | Step 7 (future) |
 | Stale `enforce_known_list` text in `translations/{en,nl}.json` | translations | Cosmetic — toggle no longer rendered | Cleanup (minor) |
 
@@ -136,7 +136,7 @@ confusion, and prepares the ground for event-driven topology updates
 | ramses_rf HVAC topology (`load_fan`) | **DONE** | `schemas.py:437-438` — `fan._update_schema(**schema)` is now live. `HvacVentilator._remote_ids`/`_sensor_ids` + `_update_schema()` + `schema()` implemented. `gateway.schema()` nests FAN membership. Step 6a/6b/6d DONE. |
 | ramses_rf Phase 4 (issue #915) | FULLY COMPLETE | 5-PR strangler fig + Phase 4e. All merged. |
 | ramses_rf Phase 5 (issue #992) | CLOSED — FULLY SHIPPED | Client API & Consumer DTO Boundary Enforcement. PR 997 delivers our Step 5 unblock. |
-| ramses_rf Phase 6 (issue #1001) | OPEN — IN PROGRESS | Dataclass payload layer, shadow-parity (non-breaking so far). Worth periodic ha-sim checks. |
+| ramses_rf Phase 6 (issue #1001) | **CLOSED** | Dataclass payload layer fully shipped (PRs 1-12). `payload_to_dict()` boundary adapter retained — ramses_cc still receives dict payloads. Polymorphic dispatchers added (PR 1037). |
 | ramses_cc PRs 863, 869, 882, 881, 914, 906-909 | **ALL MERGED** | Migration+backup, compat fixes, known_list removal (Steps 2-3), const fix, Phase 5 consumer PRs. |
 | ramses_cc manifest pin | at `ramses-rf==0.59.3` | ha-sim test Aug 9 (cc/rf at master, post Phase 5): **all recipes pass**. |
 
@@ -149,34 +149,34 @@ confusion, and prepares the ground for event-driven topology updates
 - **Step 7** (StateUpdatedEvent) — future upgrade (no ramses_rf API yet)
 - **Step 8** (remove obsolete `hvac_schema` cache) — **actionable after current release feedback** (ramses_cc-only, non-breaking)
 
-**Status as of Aug 11 2026:** Steps 5, 6a, 6b, 6d, 6e, 6f are all DONE.
-459/459 ha_sim_test pass in 4x parallel. PR 932 (CI performance fix)
-shipped. R42 SUPERSEDED. The remaining items are: Step 4 (optional),
-Step 7 (future — no ramses_rf API), and the packet persistence
-redundancy with MessageStore (ramses_rf issue to be raised). ramses_rf
-Phase 6 (issue 1001) is in progress — PRs 1-10 are shadow-parity
-(non-breaking), PRs 11-12 will be the breaking cutover.
+**Status as of Aug 14 2026:** Steps 5, 6a, 6b, 6d, 6e, 6f are all DONE.
+459/459 ha_sim_test pass in 4x parallel (Aug 11, pre-Phase-6). PR 932
+(CI performance fix) shipped. R42 SUPERSEDED. **ramses_rf Phase 6
+CLOSED** — PRs 11+12 merged (dataclass payload cutover + legacy parser
+purge), `payload_to_dict()` boundary adapter retained. **Issue 1027**
+(MessageStore state restoration) — PWhite-Eng rejected the MessageStore
+approach with 4 technical blockers (async hydration race, ghost device
+resurrection, double-ingestion, in-memory environments). **PR 953**
+open — increases `SAVE_STATE_INTERVAL` from 5m to 30m (PWhite-Eng's
+short-term recommendation), cuts flash writes by ~83%. Long-term fix
+is Phase 9 CQRS snapshots. **Step 8** (remove obsolete `hvac_schema`
+cache) pending, after current release feedback.
 
 **Immediate TODO:**
-1. ~~Implement Step 5~~ — **DONE** (coordinator.py, verified by R62).
-   ~~Step 6 (HVAC topology / `load_fan`)~~ — **DONE** (6a/6b/6d, verified
-   by R41/R67).  ~~Step 6e/6f~~ — **DONE** (verified by R65/R68).
-2. **Packet persistence redundancy**: ramses_cc's 5-min
-   `SAVE_STATE_INTERVAL` polling saves packets to `.storage/ramses_cc`
-   (JSON), but ramses_rf's MessageStore (SQLite `ramses.db`) already
-   stores all packets natively.  The JSON save is redundant and causes
-   unnecessary disk writes (memory stick wear on HA Yellow / Pi SSDs).
-   Fix is in ramses_rf: use MessageStore for state restoration on
-   restart (PWhite-Eng's plan: "deprecate the .storage/ramses_cc json
-   mechanism entirely").  A focused ramses_rf issue should be raised.
-3. Watch ramses_rf Phase 6 (issue #1001, payload dataclass layer) for
-   any breaking changes as it progresses — currently shadow-parity
-   (non-breaking, PRs 1-10) but PRs 11-12 (active cutover + legacy
-   purge) may change parser return types.  Run ha_sim_test when PR 11
-   lands.
+1. ~~Implement Step 5~~ — **DONE**.  ~~Step 6~~ — **DONE**.
+   ~~Step 6e/6f~~ — **DONE**.
+2. ~~Packet persistence redundancy~~ — **RESOLVED** (issue 1027).
+   MessageStore approach rejected by PWhite-Eng.  Short-term: PR 953
+   (30m interval) open.  Long-term: Phase 9 CQRS snapshots.
+3. ~~Watch ramses_rf Phase 6~~ — **CLOSED**.  PRs 11+12 merged.
+   `payload_to_dict()` boundary retained — ramses_cc still receives
+   dict payloads.  Re-run ha_sim_test against post-Phase-6 masters
+   to confirm no regressions.
 4. **Step 7** (StateUpdatedEvent) — future upgrade, no ramses_rf API
    yet.  Would replace `asyncio.sleep(0)` in `_on_packet` with a
    deterministic ingestion-complete hook (see ramses_rf issue 809).
+5. **Step 8** (remove obsolete `hvac_schema` cache) — actionable after
+   current release feedback (ramses_cc-only, non-breaking).
 
 ---
 
@@ -1059,7 +1059,7 @@ doesn't call `_handle_msg` directly, so impact was low.
 <a id="decision-log"></a>
 ## Decision Log
 
-Full dated decision history (Jul 23 - Aug 11 2026, ~27 entries) is
+Full dated decision history (Jul 23 - Aug 14 2026, ~30 entries) is
 archived [here](phase4_plan_archive.md#decision-log-full-history).
 Key milestones:
 
@@ -1070,7 +1070,8 @@ Key milestones:
 | Jul 30 2026 | PR 882 MERGED — Steps 2-3 SHIPPED (known_list removal + enforce always-on) |
 | Aug 7-8 2026 | ramses_rf Phase 5 fully shipped (0.59.3, PR 997 unblocks Step 5); Phase 6 started (0.59.4) |
 | Aug 9 2026 | ha-sim full suite passes against current masters; Step 5 implementation plan written; Step 6 confirmed off upstream roadmap, 3-sub-phase plan written |
-| Aug 11 2026 | Steps 5, 6a, 6b, 6d confirmed DONE (implemented in ramses_cc/ramses_rf). R41 (7/7), R62 (14/14), R65, R67, R68 pass. R42 SUPERSEDED. 459/459 ha_sim_test in 4x parallel. PR 932 (CI perf fix) shipped. Packet persistence redundancy with MessageStore identified. |
+| Aug 11 2026 | Steps 5, 6a, 6b, 6d confirmed DONE. R41/R62/R65/R67/R68 pass. R42 SUPERSEDED. 459/459 ha_sim_test in 4x parallel. PR 932 shipped. Issue 1027 raised (MessageStore state restoration). |
+| Aug 12-14 2026 | ramses_rf Phase 6 CLOSED (PRs 11+12 merged, legacy parsers purged, `payload_to_dict()` retained). PWhite-Eng rejected MessageStore approach in issue 1027 (4 technical blockers). PR 953 opened: SAVE_STATE_INTERVAL 5m→30m. Multiple bug fixes merged (issues 925, 931, 937, 947, 948). Step 8 added (hvac_schema cleanup, after release feedback). |
 
 ---
 

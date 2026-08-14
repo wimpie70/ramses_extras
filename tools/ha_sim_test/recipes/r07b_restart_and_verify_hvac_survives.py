@@ -35,6 +35,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_ha_ready,
+    wait_for_ramses_cc_loaded,
     wait_for_schema_populated,
     wait_for_transport_ready,
     write_ramses_storage,
@@ -66,25 +67,42 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
         # Re-authenticate
         print("  Re-authenticating...")
         ctx.refresh_token()
+
+        # Wait for ramses_cc to be loaded before attempting profile reload.
+        # After a docker restart, HA is up but the ramses_extras integration
+        # (which provides the device_simulator/load_profile websocket command)
+        # may not be loaded yet — the reload would fail with
+        # "unknown_command" and leave a stale schema from a previous recipe.
+        wait_for_ramses_cc_loaded(timeout=30)
+
         # Reload mixed profile — docker restart may reload a stale profile
         # (e.g. fresh_start from a later recipe in a previous test run).
         # Reloading ensures FAN/REM/CO2 are in the known_list and schema.
+        # Retry up to 3 times — the integration may still be initializing.
         print("  Reloading mixed profile after restart...")
-        try:
-            await ws_send(
-                ctx.token,
-                {
-                    "type": "ramses_extras/device_simulator/load_profile",
-                    "profile": "mixed",
-                    "speed": 0.01,
-                    "preload_schema": True,
-                    "reload_ramses_cc": True,
-                    "enable_auto_answer": True,
-                },
-            )
-            print("  mixed profile loaded")
-        except RuntimeError as e:
-            print(f"  Mixed profile reload failed: {e}")
+        profile_loaded = False
+        for attempt in range(3):
+            try:
+                await ws_send(
+                    ctx.token,
+                    {
+                        "type": "ramses_extras/device_simulator/load_profile",
+                        "profile": "mixed",
+                        "speed": 0.01,
+                        "preload_schema": True,
+                        "reload_ramses_cc": True,
+                        "enable_auto_answer": True,
+                    },
+                )
+                print("  mixed profile loaded")
+                profile_loaded = True
+                break
+            except RuntimeError as e:
+                print(f"  Mixed profile reload attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    ctx.wait(3, "before retrying profile reload")
+        if not profile_loaded:
+            print("  WARNING: profile reload failed — relying on persisted schema")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Wait for the MQTT transport to reconnect after the reload,
