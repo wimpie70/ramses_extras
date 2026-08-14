@@ -43,9 +43,13 @@ class R26Phase3cMissingClassDetection(Recipe):
         # _class from the known_list.
         from ..profile import minimal_ctl_yaml
 
-        # Minimal profile: CTL + test_device with empty schema entry
+        # Minimal profile: CTL + test_device with empty schema entry.
+        # Add test_device to the known_list (without a class) so the
+        # simulator auto-starts it after reload — otherwise the device
+        # is not active and injected packets are silently dropped.
         r26_yaml = minimal_ctl_yaml(
             schema_override={test_device: {}},
+            extra_kl={test_device: {}},
         )
 
         print(f"  Loading minimal profile with {test_device} (no _class)...")

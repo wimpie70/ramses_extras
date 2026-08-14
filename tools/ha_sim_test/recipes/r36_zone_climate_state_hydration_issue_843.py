@@ -86,13 +86,13 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
                 {
                     "type": "ramses_extras/device_simulator/silence_devices",
                     "device_ids": [CTL],
-                    "set_suppress": False,
+                    "set_suppress": True,
                 },
             )
-            print(f"    CTL {CTL} emitter silenced")
+            print(f"    CTL {CTL} emitter silenced (autonomous suppressed)")
         except RuntimeError as e:
             print(f"    Silence failed (continuing): {str(e)[:80]}")
-        ctx.wait(2, "for emitter cancellation to take effect")
+        ctx.wait(2, "for emitter cancellation to take effect", floor=2.0)
 
         # 1c. Disable auto-answer to prevent the simulator from responding to
         #     ramses_cc's RQ 2349 (sent by climate.async_added_to_hass) with
@@ -111,7 +111,7 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             print("    auto-answer disabled")
         except RuntimeError as e:
             print(f"    Disable auto-answer failed (continuing): {str(e)[:80]}")
-        ctx.wait(1, "for auto-answer disable to take effect")
+        ctx.wait(3, "for auto-answer disable to take effect", floor=3.0)
 
         # 2. Inject 2E04 I from CTL (01:150000) — system_mode = auto
         #    Payload: 00 + FFFFFFFFFFFF00 (16 hex chars, len=8)

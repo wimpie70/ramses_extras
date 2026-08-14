@@ -19,6 +19,7 @@ import urllib.request
 
 from ..base import Recipe, RecipeContext
 from ..helpers import (
+    call_service,
     docker_exec_python,
     get_current_instance,
     get_ramses_storage,
@@ -28,6 +29,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_ha_ready,
+    wait_for_transport_ready,
 )
 from ..profile import mixed_yaml
 
@@ -115,6 +117,7 @@ class R50DeviceHealthTrackingIssue767(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        wait_for_transport_ready(timeout=30)
 
         # Wait for the DiscoveryManager to start — wait_for_ramses_cc_reload
         # only checks the schema is non-empty, but the discovery scan starts
@@ -127,6 +130,18 @@ class R50DeviceHealthTrackingIssue767(Recipe):
             msg="for DiscoveryManager to start",
             floor=5.0,
         )
+
+        # The first discovery checkpoint (which persists scan_state to
+        # .storage) runs 10s after the DiscoveryManager starts.  Trigger
+        # sync_topology to force an immediate checkpoint so scan_state is
+        # available when we manipulate it below, rather than waiting for
+        # the scheduled checkpoint.
+        print("  Triggering sync_topology to persist scan_state...")
+        try:
+            call_service(ctx.token, "ramses_cc", "sync_topology")
+        except RuntimeError as e:
+            print(f"  sync_topology failed: {e}")
+        ctx.wait(5, "for scan_state to be persisted", floor=3.0)
 
         # 2. Verify schema loaded
         schema = get_schema_retry()
