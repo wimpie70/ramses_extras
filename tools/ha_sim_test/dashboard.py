@@ -37,6 +37,9 @@ from .helpers import get_current_instance
 _RUNNING_RE = re.compile(r">>> Running (\S+) \(seq=\d+\): (.*)")
 # Strip leading [N/64 M:SS] progress tag and [container-name] tag
 _TAG_RE = re.compile(r"^\s*(?:\[[\d/:]+\s+\d+:\d+\]\s*)?\[[\w-]+\]\s*")
+# Strip ANSI escape codes (e.g. \033[32mPASS\033[0m → PASS) so that
+# PASS/FAIL detection works even when colour_status() wraps the word
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _terminal_width(default: int = 100) -> int:
@@ -71,9 +74,13 @@ class _Pane:
             stripped = _TAG_RE.sub("", line).strip()
             if not stripped:
                 continue
-            if stripped.startswith("PASS:"):
+            # Strip ANSI colour codes for PASS/FAIL detection —
+            # color_status() wraps the word in \033[32m...\033[0m when
+            # stdout is a TTY, which would break startswith("PASS:").
+            plain = _ANSI_RE.sub("", stripped)
+            if plain.startswith("PASS:"):
                 self.passed += 1
-            elif stripped.startswith("FAIL:"):
+            elif plain.startswith("FAIL:"):
                 self.failed += 1
             self.lines.append(stripped)
 

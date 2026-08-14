@@ -243,9 +243,11 @@ class R76ZoneName0004PollingIssue947(Recipe):
         # Check the HA log for the name mismatch warning
         import subprocess
 
+        container_name = ctx.instance.name
+
         def _log_has_name_mismatch() -> bool:
             result = subprocess.run(
-                ["docker", "logs", "--since", "10s", "ha-sim"],
+                ["docker", "logs", "--since", "10s", container_name],
                 capture_output=True,
                 text=True,
                 timeout=10,

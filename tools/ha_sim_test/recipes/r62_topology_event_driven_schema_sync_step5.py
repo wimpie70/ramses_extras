@@ -37,6 +37,7 @@ from ..helpers import (
     get_schema_retry,
     grep_ha_log,
     wait_for,
+    wait_for_transport_ready,
 )
 
 
@@ -73,6 +74,10 @@ class R62TopologyEventDrivenSchemaSyncStep5(Recipe):
             print(f"  Profile load failed: {e}")
 
         ctx.wait_for_ramses_cc_reload(timeout=20)
+
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
 
         # Wait for DiscoveryManager to start (count-based to avoid stale
         # log matches from previous recipes — same pattern as R11).

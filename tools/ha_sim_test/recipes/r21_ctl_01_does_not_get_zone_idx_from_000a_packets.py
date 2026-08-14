@@ -26,6 +26,7 @@ from ..helpers import (
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
+    wait_for_transport_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -62,6 +63,9 @@ class R21Ctl01DoesNotGetZoneIdxFrom000aPackets(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         # Inject 000A from CTL with zone 02 payload
         # 000A I payload: zone_idx(2) + bitmap(2) + min_temp(4) + max_temp(4) = 12 hex
         ctl_r21 = CTL  # 01:150000

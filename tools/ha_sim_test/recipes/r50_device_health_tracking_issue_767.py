@@ -23,6 +23,7 @@ from ..helpers import (
     get_current_instance,
     get_ramses_storage,
     get_schema_retry,
+    grep_ha_log,
     is_ramses_cc_loaded,
     load_profile_yaml,
     wait_for,
@@ -114,6 +115,19 @@ class R50DeviceHealthTrackingIssue767(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+
+        # Wait for the DiscoveryManager to start — wait_for_ramses_cc_reload
+        # only checks the schema is non-empty, but the discovery scan starts
+        # later in the coordinator's async_start.  Without this wait, the
+        # config flow step shows "Passive device scan is not enabled."
+        wait_for(
+            lambda: len(grep_ha_log("DiscoveryManager: started", since_lines=200)) > 0,
+            timeout=30,
+            interval=2,
+            msg="for DiscoveryManager to start",
+            floor=5.0,
+        )
+
         # 2. Verify schema loaded
         schema = get_schema_retry()
         ctx.check(

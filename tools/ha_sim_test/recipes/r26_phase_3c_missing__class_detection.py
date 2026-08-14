@@ -13,6 +13,7 @@ from ..helpers import (
     get_schema_retry,
     load_profile_yaml,
     wait_for,
+    wait_for_transport_ready,
     ws_send,
 )
 
@@ -51,6 +52,10 @@ class R26Phase3cMissingClassDetection(Recipe):
         await load_profile_yaml(ctx.token, r26_yaml, speed=0.01)
         ctx.wait_for_ramses_cc_reload(msg="for profile reload")
         ctx.refresh_token()
+
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
 
         # Activate CTL for heartbeats so the scan engine is active
         try:

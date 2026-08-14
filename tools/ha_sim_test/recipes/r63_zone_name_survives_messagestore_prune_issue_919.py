@@ -32,6 +32,7 @@ from ..helpers import (
     wait_for_ha_ready,
     wait_for_ramses_cc_loaded,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 from ..profile import minimal_ctl_zone_yaml
@@ -128,6 +129,11 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
 
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise sync_topology/force_update can't reach the gateway
+        # and the device registry won't update.
+        wait_for_transport_ready(timeout=30)
+
         # Activate CTL for heartbeats
         try:
             await ws_send(
@@ -218,6 +224,11 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
             print(f"  Profile reload failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise sync_topology/force_update can't reach the gateway
+        # and the device registry won't update.
+        wait_for_transport_ready(timeout=30)
 
         # Activate CTL again
         try:

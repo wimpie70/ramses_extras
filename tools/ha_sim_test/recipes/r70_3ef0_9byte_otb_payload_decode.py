@@ -11,6 +11,7 @@ from ..helpers import (
     docker_exec_python,
     grep_ha_log,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 
@@ -57,6 +58,9 @@ class R70ThreeEf0NineByteOtbPayloadDecode(Recipe):
             print(f"  Profile load failed: {e}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise injected packets are silently dropped.
+        wait_for_transport_ready(timeout=30)
         wait_for_schema_populated(min_keys=5, timeout=20)
 
         # --- 9-byte 3EF0 I from CTL ---
@@ -129,32 +133,25 @@ class R70ThreeEf0NineByteOtbPayloadDecode(Recipe):
         # Call the parser directly inside the container to verify the
         # decoded fields.  This is more reliable than grepping logs, which
         # depends on ramses_rf's event logging format and level.
+        #
+        # ramses_rf exposes 3EF0 as the ActuatorStatePayload dataclass
+        # (ramses_rf.payloads.heating).  from_bytes() unpacks the raw
+        # binary and to_dict() produces the legacy dictionary layout that
+        # includes ch_enabled, ch_setpoint, max_rel_modulation, etc.
         decode_code = f"""
 import json
 
 try:
-    from ramses_rf.parsers.heating import parser_3ef0
-
-    # Build a mock message — parser_3ef0(payload, msg) accesses
-    # msg.src.type and msg.len
-    class MockSrc:
-        type = None  # not JIM, so skips the Jasper branch
-
-    class MockMsg:
-        def __init__(self, length):
-            self.len = length
-            self.src = MockSrc()
+    from ramses_rf.payloads.heating import ActuatorStatePayload
 
     # 9-byte payload: 00C8100000FF035064
-    msg9 = MockMsg(9)
-    result9 = parser_3ef0("{payload_9byte}", msg9)
+    result9 = ActuatorStatePayload.from_bytes(bytes.fromhex("{payload_9byte}"))
+    d9 = result9.to_dict() if result9 else {{}}
 
     # 6-byte payload: 0000100000FF
-    msg6 = MockMsg(6)
-    result6 = parser_3ef0("{payload_6byte}", msg6)
+    result6 = ActuatorStatePayload.from_bytes(bytes.fromhex("{payload_6byte}"))
+    d6 = result6.to_dict() if result6 else {{}}
 
-    d9 = result9 if isinstance(result9, dict) else {{}}
-    d6 = result6 if isinstance(result6, dict) else {{}}
     print(json.dumps({{
         "ok": True,
         "r9_keys": sorted(d9.keys()),
