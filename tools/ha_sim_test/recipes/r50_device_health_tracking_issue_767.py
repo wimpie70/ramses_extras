@@ -134,7 +134,8 @@ class R50DeviceHealthTrackingIssue767(Recipe):
         # The first discovery checkpoint (which persists scan_state to
         # .storage) runs 10s after the DiscoveryManager starts.  Trigger
         # sync_topology to force an immediate checkpoint so scan_state is
-        # available when we manipulate it below.
+        # available when we manipulate it below, rather than waiting for
+        # the scheduled checkpoint.
         print("  Triggering sync_topology to persist scan_state...")
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")

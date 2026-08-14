@@ -257,10 +257,11 @@ re-prompting issues.
 
 1. **Bug C** (ramses_rf) — add `to_dict()` to `PuzzlePayload`, make
    `get_state()` call `to_dict()`. This unblocks the save cycle and
-   may resolve several ha_sim_test failures (R50, R30). **STILL PRESENT**
-   as of 2026-08-14.
+   may resolve several ha_sim_test failures (R50, R30). **FIXED** in
+   PR https://github.com/ramses-rf/ramses_rf/pull/1056.
 2. **Bug A** (ramses_cc) — skip 18: in `get_devices()`. Small,
-   uncontroversial. **STILL PRESENT** as of 2026-08-14.
+   uncontroversial. **FIXED** in PR
+   https://github.com/ramses-rf/ramses_cc/pull/957.
 3. **Bug B** (ramses_cc) — align the two extraction paths. Small but
    needs careful testing to ensure no devices are lost from the
    known_list. **FIXED** as of 2026-08-14
