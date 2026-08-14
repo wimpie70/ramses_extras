@@ -286,8 +286,8 @@ try:
             "rssi": -72.0,
             "confidence": "high",
             "is_battery": True,
-            "src_count": 10,
-            "dst_count": 2,
+            "source_count": 10,
+            "destination_count": 2,
         }})
 
     discovery["scan_state"] = json.dumps(scan_state, indent=2)
