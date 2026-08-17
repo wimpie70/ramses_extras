@@ -716,14 +716,28 @@ class RamsesCommands:
     async def _get_ramses_cc_coordinator(self) -> RamsesCoordinator | None:
         """Get the ramses_cc coordinator instance.
 
+        ramses_cc stores the coordinator in ``entry.runtime_data``
+        (not ``hass.data["ramses_cc"]`` as in older versions).
+        The coordinator's ``client`` attribute may be None during
+        early startup — we check for a non-None client.
+
         :return: RamsesCoordinator instance or None if not found
         """
         try:
-            ramses_cc_data = self.hass.data.get("ramses_cc", {})
+            # New approach: iterate config entries via hass.config_entries
+            entries = self.hass.config_entries.async_entries("ramses_cc")
+            for entry in entries:
+                coordinator = getattr(entry, "runtime_data", None)
+                if (
+                    coordinator is not None
+                    and getattr(coordinator, "client", None) is not None
+                ):
+                    return coordinator
 
-            # Find the coordinator instance (there should be one per config entry)
-            for entry_id, coordinator_instance in ramses_cc_data.items():
-                if hasattr(coordinator_instance, "client"):
+            # Fallback: old approach via hass.data (for backward compat)
+            ramses_cc_data = self.hass.data.get("ramses_cc", {})
+            for _entry_id, coordinator_instance in ramses_cc_data.items():
+                if getattr(coordinator_instance, "client", None) is not None:
                     return coordinator_instance
 
         except Exception as e:

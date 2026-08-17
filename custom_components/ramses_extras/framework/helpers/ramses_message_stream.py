@@ -145,7 +145,7 @@ class RamsesMessageStream:
 
     async def _async_attach_client_listener(self) -> None:
         commands = RamsesCommands(self._hass)
-        max_attempts = 15
+        max_attempts = 30  # 30s total — coordinator.client may take ~20s
 
         for attempt in range(max_attempts):
             if self._msg_handler_unsub is not None:
