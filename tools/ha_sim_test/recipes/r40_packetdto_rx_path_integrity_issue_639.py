@@ -222,7 +222,7 @@ except Exception as e:
                 if not e["entity_id"].startswith("climate."):
                     continue
                 attrs = e.get("attributes", {})
-                if attrs.get("zone_idx") == "03":
+                if attrs.get("zone_index") == "03":
                     return True
             _30c9_retry_count += 1
             if _30c9_retry_count % 2 == 0:
@@ -261,7 +261,7 @@ except Exception as e:
             if not e["entity_id"].startswith("climate."):
                 continue
             attrs = e.get("attributes", {})
-            if attrs.get("zone_idx") == "03":
+            if attrs.get("zone_index") == "03":
                 zone_climate = e
                 break
 
@@ -274,7 +274,7 @@ except Exception as e:
         ctx.check(
             "climate entity for zone 03 exists after 30C9 RX",
             zone_climate is not None,
-            "no climate entity with zone_idx=03",
+            "no climate entity with zone_index=03",
         )
 
         if zone_climate:
