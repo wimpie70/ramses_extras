@@ -924,6 +924,30 @@ def wait_for_ramses_cc_reload(
     )
 
 
+def wait_for_ramses_extras_ready(
+    timeout: int = 120, msg: str = "for ramses_extras to be ready"
+) -> bool:
+    """Wait for ramses_extras device simulator to be fully ready.
+
+    After a docker restart, ramses_extras takes ~60s to load after HA
+    is ready.  The ``device_simulator`` websocket commands are only
+    available once ramses_extras' websocket_integration setup completes,
+    and the simulator itself is only ready after "Device Simulator
+    marked as ready" is logged.  Without this wait, profile loads via
+    WS fail with ``unknown_command`` or ``not_ready`` errors.
+
+    Uses a 30s floor because ramses_extras takes ~60s to load after a
+    restart, and ``WAIT_SCALE_POLL`` may scale the timeout aggressively.
+    """
+    return wait_for(
+        is_ramses_extras_ready,
+        timeout=timeout,
+        interval=2,
+        msg=msg,
+        floor=30.0,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Composite wait helpers — poll for common conditions instead of fixed sleeps
 # ---------------------------------------------------------------------------
@@ -1282,16 +1306,25 @@ def is_ramses_cc_loaded() -> bool:
 
 
 def is_ramses_extras_ready() -> bool:
-    """Check if ramses_extras websocket commands are registered.
+    """Check if ramses_extras device simulator is fully ready.
 
-    During a cold start, ramses_extras takes ~60s to load after HA is ready.
-    The ``device_simulator`` websocket commands are only available once
-    ramses_extras' websocket_integration setup completes.
+    During a cold start, ramses_extras takes ~60s to load after HA is
+    ready.  The ``device_simulator`` websocket commands are only
+    available once ramses_extras' websocket_integration setup completes,
+    and the simulator itself is only ready after "Device Simulator
+    marked as ready" is logged.  Checking only for the WS integration
+    line is insufficient — the simulator may still return
+    ``not_ready`` for profile load commands.
+
+    Uses ``--tail 80`` to only check recent logs (after a restart,
+    the full log history still contains stale "ready" lines from the
+    previous run).
     """
     inst = get_current_instance()
-    # HA logs go to stderr; check the full log for the setup-complete line
+    # Use --tail to only check recent logs (avoids matching stale
+    # "ready" lines from before a docker restart).
     result = subprocess.run(
-        ["docker", "logs", inst.name],
+        ["docker", "logs", "--tail", "80", inst.name],
         capture_output=True,
         text=True,
         timeout=15,
@@ -1300,7 +1333,11 @@ def is_ramses_extras_ready() -> bool:
         return False
     # docker logs output goes to stderr
     logs = result.stderr or ""
-    return "WebSocket integration setup complete" in logs
+    # "Device Simulator marked as ready" fires after both the WS
+    # integration AND the simulator's own setup complete (config profile
+    # store, ramses_cc isolation, etc).  Checking for just this line is
+    # sufficient — it's the last step in the startup sequence.
+    return "Device Simulator marked as ready" in logs
 
 
 def clear_cached_state(
