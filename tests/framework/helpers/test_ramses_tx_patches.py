@@ -99,7 +99,8 @@ def test_patch_want_rply_import_error(caplog):
     ):
         ramses_tx_patches._patch_want_rply()
 
-    assert "WantRply not found, skipping patch" in caplog.text
+    assert "WantRply not found" in caplog.text
+    assert "skipping" in caplog.text
     sys.modules.clear()
     sys.modules.update(original_modules)
 
@@ -109,6 +110,9 @@ def test_patch_want_echo_applies_patch():
     mock_want_echo = MagicMock()
     original_pkt_rcvd = MagicMock()
     mock_want_echo.pkt_rcvd = original_pkt_rcvd
+    # MagicMock auto-creates packet_rcvd; delete it so the code falls
+    # back to patching the old-style pkt_rcvd attribute
+    del mock_want_echo.packet_rcvd
 
     import sys
 
@@ -132,6 +136,9 @@ def test_patch_want_rply_applies_patch():
     """_patch_want_rply should patch WantRply.pkt_rcvd when available."""
     mock_want_rply = MagicMock()
     mock_want_rply.pkt_rcvd = MagicMock()
+    # MagicMock auto-creates packet_rcvd; delete it so the code falls
+    # back to patching the old-style pkt_rcvd attribute
+    del mock_want_rply.packet_rcvd
 
     import sys
 
@@ -158,6 +165,9 @@ def test_patched_pkt_rcvd_sent_cmd_none():
     original_called = MagicMock()
     mock_want_echo = MagicMock()
     mock_want_echo.pkt_rcvd = original_called
+    # MagicMock auto-creates packet_rcvd; delete it so the code falls
+    # back to patching the old-style pkt_rcvd attribute
+    del mock_want_echo.packet_rcvd
 
     import sys
 
