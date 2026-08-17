@@ -26,6 +26,7 @@ See: phase4_plan.md step 6f
 from __future__ import annotations
 
 import json
+import time
 
 from ..base import Recipe, RecipeContext
 from ..const import FAN, REM
@@ -245,37 +246,38 @@ class R68HvacActiveProbing(Recipe):
         # 7. Test 2411 parameter entities (issue 851).
         #    The fix sends a 2411 probe when the FAN device is first seen,
         #    which sets supports_2411=True, allowing entity creation.
+        #    Under parallel load, the 2411 probe response can take 10-15s
+        #    (the device simulator is busy servicing other containers).
+        #    Poll for entities instead of using a fixed sleep.
         print("\n  Testing 2411 parameter entities (issue 851)...")
-        ctx.wait(3, "for parameter entities to be created")
 
-        # Get all number entities for the FAN device
-        # Use the WebSocket API (config/entity_registry/list) instead of
-        # REST, since entity_registry is not a REST service domain in HA.
-        # The WS response is a list of entity dicts directly (not wrapped
-        # in {"entities": [...]}).
-        entities_resp = await ws_send(
-            ctx.token,
-            {"type": "config/entity_registry/list"},
-        )
-        all_entities = (
-            entities_resp
-            if isinstance(entities_resp, list)
-            else entities_resp.get("entities", [])
-        )
-
-        # Filter for number entities belonging to the FAN device.
-        # Parameter entities have has_entity_name=True, so their entity_id
-        # is just the name (e.g. "number.support"), not device-prefixed.
-        # Filter by unique_id which contains the device ID and param ID
-        # (e.g. "32:150000-param_01").
         fan_id_normalized = FAN  # keep the colon for unique_id match
-        param_entities = [
-            e
-            for e in all_entities
-            if e.get("platform") == "ramses_cc"
-            and e.get("entity_id", "").startswith("number.")
-            and f"{fan_id_normalized}-param_" in e.get("unique_id", "")
-        ]
+
+        # Poll for parameter entity creation (async loop — ws_send is async)
+        import asyncio as _aio
+
+        param_entities: list = []
+        poll_deadline = time.time() + 30
+        while time.time() < poll_deadline:
+            entities_resp = await ws_send(
+                ctx.token,
+                {"type": "config/entity_registry/list"},
+            )
+            all_entities = (
+                entities_resp
+                if isinstance(entities_resp, list)
+                else entities_resp.get("entities", [])
+            )
+            param_entities = [
+                e
+                for e in all_entities
+                if e.get("platform") == "ramses_cc"
+                and e.get("entity_id", "").startswith("number.")
+                and f"{fan_id_normalized}-param_" in e.get("unique_id", "")
+            ]
+            if len(param_entities) >= 5:
+                break
+            await _aio.sleep(3)
 
         print(f"  Found {len(param_entities)} parameter entities")
         if len(param_entities) > 0:
@@ -299,32 +301,33 @@ class R68HvacActiveProbing(Recipe):
             param_01_entity.get("entity_id") if param_01_entity else None
         )
         if param_01_entity_id:
-            ctx.wait(2, "for entity state to populate")
-            try:
-                # Use REST API to get entity state (not a service call).
-                import urllib.request
+            # Poll for the entity state to be populated (not "unknown").
+            state = "unknown"
+            state_deadline = time.time() + 15
+            while time.time() < state_deadline:
+                try:
+                    import urllib.request
 
-                state_req = urllib.request.Request(
-                    f"{get_current_instance().ha_url}/api/states/{param_01_entity_id}",
-                    headers={"Authorization": f"Bearer {ctx.token}"},
-                )
-                state_resp = json.loads(
-                    urllib.request.urlopen(state_req, timeout=10).read()
-                )
-                state = state_resp.get("state")
-                print(f"  Param 01 state: {state}")
-                ctx.check(
-                    "Param 01 entity state not 'unknown'",
-                    state != "unknown",
-                    f"state={state} (issue 851 fixed)",
-                )
-            except Exception as e:
-                print(f"  Could not get param 01 state: {e}")
-                ctx.check(
-                    "Param 01 entity state not 'unknown'",
-                    False,
-                    f"failed to get state: {e}",
-                )
+                    state_req = urllib.request.Request(
+                        f"{get_current_instance().ha_url}/api/states/{param_01_entity_id}",
+                        headers={"Authorization": f"Bearer {ctx.token}"},
+                    )
+                    state_resp = json.loads(
+                        urllib.request.urlopen(state_req, timeout=10).read()
+                    )
+                    state = state_resp.get("state")
+                    if state != "unknown":
+                        break
+                except Exception:
+                    pass
+                await _aio.sleep(2)
+
+            print(f"  Param 01 state: {state}")
+            ctx.check(
+                "Param 01 entity state not 'unknown'",
+                state != "unknown",
+                f"state={state} (issue 851 fixed)",
+            )
         else:
             ctx.check(
                 "Param 01 entity exists",

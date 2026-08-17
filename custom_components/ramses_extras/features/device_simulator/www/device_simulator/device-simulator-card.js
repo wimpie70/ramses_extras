@@ -406,9 +406,18 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   async _fetchData() {
     if (!this._hass) return;
+    // Debounce: if a fetch is already in-flight, don't start another.
+    // This prevents flooding HA with get_status calls when many device
+    // update events fire in rapid succession (e.g. during test runs).
+    if (this._fetchInFlight) {
+      this._fetchPending = true;
+      return;
+    }
+    this._fetchInFlight = true;
     if (!this._ready) {
       await this._waitForSimulatorReady();
       if (!this._ready) {
+        this._fetchInFlight = false;
         return;
       }
     }
@@ -527,6 +536,13 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._scheduleRender();
     } catch {
       // leave previous list intact
+    }
+
+    // Clear in-flight flag and process any pending fetch (debounce)
+    this._fetchInFlight = false;
+    if (this._fetchPending) {
+      this._fetchPending = false;
+      void this._fetchData();
     }
   }
 

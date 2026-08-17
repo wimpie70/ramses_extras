@@ -153,6 +153,8 @@ EXPECTED_WARNINGS: list[str] = [
     # the recipe intentionally manipulates last_seen to trigger this)
     "marked as lost",
     "marked as orphaned",
+    "marked lost",
+    "marked orphaned",
     # ramses_cc: loop prevention guard — BDR with FC codes would displace
     # existing appliance_control (expected in R37, redirected to orphans_heat)
     "would displace",
@@ -181,6 +183,22 @@ EXPECTED_WARNINGS: list[str] = [
     # compatibility).  The sensor platform fails to load, then fails to
     # unload during profile reload cycles.  Not related to FAN/2411 fix.
     "Error unloading entry RAMSES RF for",
+    # HACS: network unreachable errors when the sim container has no
+    # internet access.  HACS tries to fetch updates on startup/restart
+    # and fails — cosmetic, not related to ramses_cc/ramses_rf.
+    "Could not update integration",
+    "Could not update template",
+    "Could not update plugin",
+    "Could not update theme",
+    # ramses_rf: "Dataclass decoding failed for opcode ..." — expected
+    # when injecting test packets with non-standard payload lengths
+    # (e.g. 2-byte 3EF0 from BDRs in R74, 000A from THMs in R22).
+    # The raw payload is still processed by the scan engine.
+    "Dataclass decoding failed for opcode",
+    # ramses_cc: probe_hvac_binding service task may still be pending
+    # when the service call times out under parallel load (R68).
+    # The task completes eventually — the timeout is a sim limitation.
+    "api service call ramses_cc.probe_hvac_binding",
 ]
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")

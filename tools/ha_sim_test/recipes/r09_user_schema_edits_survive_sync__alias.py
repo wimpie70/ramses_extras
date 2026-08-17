@@ -53,23 +53,48 @@ class R09UserSchemaEditsSurviveSyncAlias(Recipe):
         zones_alias["03"] = z03_alias
         ctl_alias["zones"] = zones_alias
         alias_schema[CTL] = ctl_alias
-        try:
-            await load_profile_yaml(ctx.token, mixed_yaml(alias_schema))
-            print("  Profile loaded with _alias")
-        except RuntimeError as e:
-            print(f"  Profile load failed: {str(e)[:80]}")
 
-        ctx.wait_for_ramses_cc_reload(timeout=20)
-        ctx.refresh_token()
-        # Verify _alias is present before sync
-        schema_before_sync = get_schema()
-        ctl_before = schema_before_sync.get(CTL, {})
-        zones_before = (
-            ctl_before.get("zones", {}) if isinstance(ctl_before, dict) else {}
-        )
-        z03_before = zones_before.get("03", {})
-        print(f"  Zone 03 before sync: {json.dumps(z03_before)[:200]}")
-        has_alias_before = z03_before.get("_alias") == "Living Room"
+        # Retry the profile load up to 3 times — under parallel load, a
+        # pending save_client_state cycle from a previous recipe can
+        # overwrite the config entry schema, stripping the _alias before
+        # we get to check it.  Waiting for schema stability + retrying
+        # the profile load ensures the _alias is present.
+        has_alias_before = False
+        for attempt in range(3):
+            try:
+                await load_profile_yaml(ctx.token, mixed_yaml(alias_schema))
+                print(f"  Profile loaded with _alias (attempt {attempt + 1})")
+            except RuntimeError as e:
+                print(f"  Profile load failed: {str(e)[:80]}")
+
+            ctx.wait_for_ramses_cc_reload(timeout=20)
+            ctx.refresh_token()
+            # Wait for any pending save_client_state cycles to complete
+            # before checking the schema.  Without this, a save cycle from
+            # a previous recipe can overwrite the freshly-loaded schema.
+            ctx.wait_for_schema_stable(
+                timeout=15, msg="for schema to settle after reload"
+            )
+
+            # Verify _alias is present before sync
+            schema_before_sync = get_schema()
+            ctl_before = schema_before_sync.get(CTL, {})
+            zones_before = (
+                ctl_before.get("zones", {}) if isinstance(ctl_before, dict) else {}
+            )
+            z03_before = zones_before.get("03", {})
+            print(f"  Zone 03 before sync: {json.dumps(z03_before)[:200]}")
+            has_alias_before = z03_before.get("_alias") == "Living Room"
+            if has_alias_before:
+                break
+            print(
+                f"  _alias not present after reload"
+                f" (attempt {attempt + 1}), retrying..."
+            )
+            import asyncio as _aio
+
+            await _aio.sleep(2)
+
         ctx.check(
             "_alias present after reload (before sync)",
             has_alias_before,

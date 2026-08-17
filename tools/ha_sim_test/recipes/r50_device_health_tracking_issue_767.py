@@ -30,6 +30,7 @@ from ..helpers import (
     wait_for,
     wait_for_ha_ready,
     wait_for_transport_ready,
+    ws_send,
 )
 from ..profile import mixed_yaml
 
@@ -245,6 +246,25 @@ except ImportError as e:
         #    check_orphaned_devices (called in the config flow step)
         #    will flag it.
         trv_id = "04:150003"
+
+        # Silence the TRV's periodic emitter before restarting, otherwise
+        # the simulator sends heartbeats after restart that update last_seen
+        # to "now", preventing the device from being detected as lost.
+        print(f"  Silencing TRV {trv_id} periodic emitter...")
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/silence_devices",
+                    "device_ids": [trv_id],
+                    "set_suppress": False,
+                },
+            )
+            print(f"    TRV {trv_id} emitter silenced")
+        except RuntimeError as e:
+            print(f"    Silence failed (continuing): {str(e)[:80]}")
+        ctx.wait(2, "for emitter cancellation to take effect")
+
         print(f"  Manipulating last_seen for {trv_id} to 10 days ago...")
 
         inject_code = f"""
@@ -349,23 +369,79 @@ except Exception as e:
         ctx.refresh_token()
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
-        ctx.wait(5, "for discovery manager to initialize")
 
-        # 8. Re-drive the flow — now the orphaned device should show up
+        # 7b. Wait for the discovery scan state to be restored from .storage.
+        #     The scan engine restores devices via import_json on startup,
+        #     but this happens asynchronously after ramses_cc loads.
+        #     We need the TRV to be in the scan engine's device list before
+        #     check_orphaned_devices can flag it.
+        print("  Waiting for discovery scan state to be restored...")
+
+        def _scan_has_trv() -> bool:
+            try:
+                result = call_service(
+                    ctx.token,
+                    "ramses_cc",
+                    "get_discovered_devices",
+                )
+                devices = (
+                    result if isinstance(result, list) else result.get("devices", [])
+                )
+                return any(d.get("device_id") == trv_id for d in devices)
+            except RuntimeError:
+                return False
+
+        wait_for(
+            _scan_has_trv,
+            timeout=30,
+            interval=3,
+            msg="for scan state to restore TRV",
+            floor=5.0,
+        )
+
+        # 8. Re-drive the flow — now the orphaned device should show up.
+        #    After a container restart, the discovery manager needs time
+        #    to load the scan state and evaluate device health.  Retry
+        #    the config flow query until the orphaned device appears.
         print("  Re-driving options flow to see orphaned device...")
-        init_result2 = _options_flow_start(ctx.token, entry_id)
-        flow_id2 = init_result2["flow_id"]
-        step_result2 = _options_flow_configure(
-            ctx.token, flow_id2, {"next_step_id": "review_device_health"}
+        step_result2 = None
+        flow_id2 = None
+        orphaned_found = False
+
+        def _check_orphaned() -> bool:
+            nonlocal step_result2, flow_id2, orphaned_found
+            try:
+                init_r = _options_flow_start(ctx.token, entry_id)
+                flow_id2 = init_r["flow_id"]
+                step_result2 = _options_flow_configure(
+                    ctx.token, flow_id2, {"next_step_id": "review_device_health"}
+                )
+                placeholders = step_result2.get("description_placeholders", {})
+                msg = placeholders.get("message", "")
+                if trv_id in msg:
+                    orphaned_found = True
+                    return True
+            except Exception:
+                pass
+            return False
+
+        wait_for(
+            _check_orphaned,
+            timeout=60,
+            interval=5,
+            msg="for discovery manager to detect orphaned device",
+            floor=15.0,
         )
 
         ctx.check(
             "review_device_health step is FORM (with orphaned device)",
-            step_result2.get("type") == "form",
-            f"type={step_result2.get('type')}",
+            step_result2 is not None and step_result2.get("type") == "form",
+            f"type={step_result2.get('type') if step_result2 else 'None'}",
         )
 
-        placeholders2 = step_result2.get("description_placeholders", {})
+        placeholders2 = (
+            step_result2.get("description_placeholders", {}) if step_result2 else {}
+        )
         message2 = placeholders2.get("message", "")
         ctx.check(
             f"orphaned device {trv_id} shown in step description",
@@ -374,7 +450,7 @@ except Exception as e:
         )
 
         # 9. Verify the form has a per-device selector field
-        data_schema = step_result2.get("data_schema")
+        data_schema = step_result2.get("data_schema") if step_result2 else None
         schema_str = json.dumps(data_schema) if data_schema else ""
         ctx.check(
             f"form has selector field for {trv_id}",
@@ -414,12 +490,34 @@ except Exception as e:
                 f"submission failed: {str(e)[:120]}",
             )
 
-        # 11. Verify the orphaned flag was cleared in .storage
-        ctx.wait(5, "for state save to flush")
+        # 11. Verify the orphaned flag was cleared in .storage.
+        #     Poll for the state save to flush — after a container restart,
+        #     the state save can take 5-10s to persist.
+        storage = {}
+        discovery = {}
+        devices = {}
+
+        def _check_storage() -> bool:
+            nonlocal devices
+            storage = get_ramses_storage()
+            discovery = storage.get("discovery", {})
+            devices = discovery.get("devices", {})
+            return len(devices) > 0
+
+        wait_for(
+            _check_storage,
+            timeout=15,
+            interval=2,
+            msg="for state save to flush",
+            floor=5.0,
+        )
+
+        # Re-read after the wait completes
         storage = get_ramses_storage()
         discovery = storage.get("discovery", {})
         devices = discovery.get("devices", {})
         trv_meta = devices.get(trv_id, {})
+
         ctx.check(
             f"orphaned flag cleared for {trv_id} after 'keep'",
             not trv_meta.get("orphaned"),
@@ -427,6 +525,23 @@ except Exception as e:
         )
 
         # 12. Verify discovery scan engine is tracking devices
+        #     The discovery state may not have been saved to .storage yet
+        #     if the save timer hasn't fired.  Poll for it.
+        def _check_discovery_tracked() -> bool:
+            nonlocal devices
+            storage = get_ramses_storage()
+            discovery = storage.get("discovery", {})
+            devices = discovery.get("devices", {})
+            return len(devices) > 0
+
+        wait_for(
+            _check_discovery_tracked,
+            timeout=30,
+            interval=3,
+            msg="for discovery devices to appear in storage",
+            floor=5.0,
+        )
+
         ctx.check(
             "discovery scan engine has tracked devices",
             len(devices) > 0,
