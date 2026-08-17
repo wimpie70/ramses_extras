@@ -31,6 +31,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for_ha_ready,
     wait_for_ramses_cc_loaded,
+    wait_for_ramses_extras_ready,
     wait_for_schema_populated,
     wait_for_transport_ready,
     ws_send,
@@ -208,6 +209,10 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
         wait_for_ramses_cc_loaded(
             timeout=30, msg="for ramses_cc to initialize after restart"
         )
+        # Wait for ramses_extras websocket commands to be registered
+        # before trying to load the profile via WS (otherwise we get
+        # 'unknown_command' or 'not_ready' errors).
+        wait_for_ramses_extras_ready(timeout=90, msg="for ramses_extras after restart")
 
         # Reload the profile after restart (the restart clears the
         # simulator state, so we need to re-load the profile with _name)
