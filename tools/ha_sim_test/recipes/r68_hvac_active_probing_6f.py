@@ -31,10 +31,12 @@ from ..base import Recipe, RecipeContext
 from ..const import FAN, REM
 from ..helpers import (
     call_service,
+    get_current_instance,
     get_schema_retry,
     load_profile_yaml,
     wait_for,
     wait_for_transport_ready,
+    ws_send,
 )
 from ..profile import minimal_hvac_yaml
 
@@ -247,23 +249,32 @@ class R68HvacActiveProbing(Recipe):
         ctx.wait(3, "for parameter entities to be created")
 
         # Get all number entities for the FAN device
-        entities_resp = call_service(
+        # Use the WebSocket API (config/entity_registry/list) instead of
+        # REST, since entity_registry is not a REST service domain in HA.
+        # The WS response is a list of entity dicts directly (not wrapped
+        # in {"entities": [...]}).
+        entities_resp = await ws_send(
             ctx.token,
-            "entity_registry",
-            "list",
-            {},
+            {"type": "config/entity_registry/list"},
         )
-        all_entities = entities_resp.get("entities", [])
+        all_entities = (
+            entities_resp
+            if isinstance(entities_resp, list)
+            else entities_resp.get("entities", [])
+        )
 
-        # Filter for number entities belonging to the FAN device
-        fan_id_normalized = FAN.replace(":", "_")
+        # Filter for number entities belonging to the FAN device.
+        # Parameter entities have has_entity_name=True, so their entity_id
+        # is just the name (e.g. "number.support"), not device-prefixed.
+        # Filter by unique_id which contains the device ID and param ID
+        # (e.g. "32:150000-param_01").
+        fan_id_normalized = FAN  # keep the colon for unique_id match
         param_entities = [
             e
             for e in all_entities
             if e.get("platform") == "ramses_cc"
-            and e.get("domain") == "number"
-            and fan_id_normalized in e.get("entity_id", "")
-            and "param" in e.get("entity_id", "")
+            and e.get("entity_id", "").startswith("number.")
+            and f"{fan_id_normalized}-param_" in e.get("unique_id", "")
         ]
 
         print(f"  Found {len(param_entities)} parameter entities")
@@ -276,19 +287,29 @@ class R68HvacActiveProbing(Recipe):
             f"found {len(param_entities)} entities (issue 851 regression if 0)",
         )
 
-        # Verify param 01 entity exists and is not "unknown"
-        param_01_entity_id = f"number.{fan_id_normalized}_param_01"
-        param_01_found = any(
-            e.get("entity_id") == param_01_entity_id for e in param_entities
+        # Verify param 01 entity exists and is not "unknown".
+        # The entity_id is generated from the entity name (e.g.
+        # "number.support"), so we look it up by unique_id.
+        param_01_unique_id = f"{FAN}-param_01"
+        param_01_entity = next(
+            (e for e in param_entities if e.get("unique_id") == param_01_unique_id),
+            None,
         )
-        if param_01_found:
+        param_01_entity_id = (
+            param_01_entity.get("entity_id") if param_01_entity else None
+        )
+        if param_01_entity_id:
             ctx.wait(2, "for entity state to populate")
             try:
-                state_resp = call_service(
-                    ctx.token,
-                    "homeassistant",
-                    "get_state",
-                    {"entity_id": param_01_entity_id},
+                # Use REST API to get entity state (not a service call).
+                import urllib.request
+
+                state_req = urllib.request.Request(
+                    f"{get_current_instance().ha_url}/api/states/{param_01_entity_id}",
+                    headers={"Authorization": f"Bearer {ctx.token}"},
+                )
+                state_resp = json.loads(
+                    urllib.request.urlopen(state_req, timeout=10).read()
                 )
                 state = state_resp.get("state")
                 print(f"  Param 01 state: {state}")
@@ -308,5 +329,5 @@ class R68HvacActiveProbing(Recipe):
             ctx.check(
                 "Param 01 entity exists",
                 False,
-                f"entity {param_01_entity_id} not found",
+                f"unique_id {param_01_unique_id} not found",
             )
