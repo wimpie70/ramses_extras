@@ -1016,7 +1016,7 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
 
     def _check() -> bool:
         result = subprocess.run(
-            ["docker", "logs", "--since", "2s", inst.name],
+            ["docker", "logs", "--since", "10s", inst.name],
             capture_output=True,
             text=True,
             timeout=10,
@@ -1025,8 +1025,8 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
             return False
         logs = result.stderr or ""
         # The MQTT transport logs this when it (re)subscribes after connecting.
-        # Use a short --since window (2s) so we only catch the reconnection
-        # after the profile reload, not a stale message from a previous reload.
+        # Use a 10s --since window so we don't miss the reconnection message
+        # between polling intervals (3s).
         return "Subscribed to status topic" in logs
 
     return wait_for(

@@ -66,7 +66,13 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
         ctx.refresh_token()
         # Wait for the MQTT transport to reconnect after the reload,
         # otherwise injected packets are silently dropped.
-        wait_for_transport_ready(timeout=30)
+        # The reload can cause two MQTT disconnects (one for the unload,
+        # one for the reload), so we wait extra after the first reconnect.
+        if not wait_for_transport_ready(timeout=30):
+            print("  WARN: transport not ready after 30s, retrying...")
+            ctx.wait(5, "for MQTT to stabilise")
+            wait_for_transport_ready(timeout=30)
+        ctx.wait(3, "for MQTT transport to stabilise after reconnect")
         # 0004 payload format: zone_idx(2) + "00"(2) + name_hex(40, 20 bytes
         # ASCII padded with 00).  Total = 44 hex chars (22 bytes, length 022).
         # Inject "Living Room" for zone 03.
@@ -154,11 +160,11 @@ class R230004ZoneNamePropagationParser0004ZoneIdxFi(Recipe):
         log_text = urllib.request.urlopen(req).read().decode()
         ctx.check(
             f"0004 I packet for zone {zone_r23} processed by scan engine",
-            f"zone_idx': '{zone_r23}'" in log_text,
+            f"zone_index': '{zone_r23}'" in log_text,
             f"no 0004 I packet for zone {zone_r23} in log",
         )
         ctx.check(
             f"0004 I packet for zone {zone_r23b} processed by scan engine",
-            f"zone_idx': '{zone_r23b}'" in log_text,
+            f"zone_index': '{zone_r23b}'" in log_text,
             f"no 0004 I packet for zone {zone_r23b} in log",
         )

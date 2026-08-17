@@ -26,6 +26,7 @@ from ..helpers import (
     get_schema_retry,
     load_profile_yaml,
     wait_for,
+    wait_for_transport_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -39,6 +40,27 @@ class R06ZoneBindingViaInjectMessage(Recipe):
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 6/14: Zone binding via inject_message")
+
+        # Ensure the mixed profile is loaded (CTL + TRVs) so the CTL is
+        # in the known_list and the 000C packet won't be filtered out.
+        # In parallel mode, previous recipes may have loaded a minimal
+        # HVAC-only profile without the CTL.
+        schema_before = get_schema_retry()
+        if CTL not in schema_before:
+            print("  CTL not in schema — loading mixed profile...")
+            try:
+                await load_profile_yaml(
+                    ctx.token,
+                    mixed_yaml(),
+                    speed=0.01,
+                    preload_schema=True,
+                    reload_ramses=True,
+                )
+            except RuntimeError as e:
+                print(f"  Profile load failed: {e}")
+            ctx.wait_for_ramses_cc_reload(timeout=20)
+            ctx.refresh_token()
+            wait_for_transport_ready(timeout=30)
 
         # 000C payload format: zone_idx(1) + zone_type(1) + pad(1) + dev_hex_id(3)
         # The dev_hex_id is NOT the raw device address — it's the transformed hex
