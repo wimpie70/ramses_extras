@@ -147,7 +147,7 @@ confusion, and prepares the ground for event-driven topology updates
 - **Step 6d** (via_device parent link) — **DONE** (`_parent_fan` set in `_update_schema`). Verified by R67.
 - **Step 6e/6f** (traffic-based + active probing) — **DONE**. Verified by R65, R68.
 - **Step 7** (StateUpdatedEvent) — future upgrade (no ramses_rf API yet)
-- **Step 8** (remove obsolete `hvac_schema` cache) — **actionable after current release feedback** (ramses_cc-only, non-breaking)
+- **Step 8** (remove obsolete `hvac_schema` cache) — **DONE** (PR 994, ramses_cc-only, non-breaking)
 
 **Status as of Aug 17 2026:** Steps 5, 6a, 6b, 6d, 6e, 6f are all DONE.
 459/459 ha_sim_test pass in 4x parallel (Aug 11, pre-Phase-6). PR 932
@@ -164,9 +164,7 @@ PR 993, verified by R77. **Issue 988** (orphaned notification) FIXED
 in PR 993 (`_suppress_not_seen`), verified by R78. **Issue 954**
 (foreign HGI re-prompted) FIXED in PR 957/959. **ramses_rf 0.59.7**
 released (pkt→packet, idx→index, pythonic naming, Code/Verb enums).
-**ramses_extras issue 162** (traffic analyser) FIXED. **Step 8**
-(remove obsolete `hvac_schema` cache) pending, after current release
-feedback.
+**ramses_extras issue 162** (traffic analyser) FIXED. **Step 8** (remove obsolete `hvac_schema` cache) **DONE** (PR 994).
 
 **Immediate TODO:**
 1. ~~Implement Step 5~~ — **DONE**.  ~~Step 6~~ — **DONE**.
@@ -181,8 +179,8 @@ feedback.
 4. **Step 7** (StateUpdatedEvent) — future upgrade, no ramses_rf API
    yet.  Would replace `asyncio.sleep(0)` in `_on_packet` with a
    deterministic ingestion-complete hook (see ramses_rf issue 809).
-5. **Step 8** (remove obsolete `hvac_schema` cache) — actionable after
-   current release feedback (ramses_cc-only, non-breaking).
+5. ~~**Step 8**~~ (remove obsolete `hvac_schema` cache) — **DONE** (PR 994).
+   8 files changed, 3 insertions, 440 deletions. Verified by R07/R15 (7/7 pass).
 
 ---
 
@@ -871,7 +869,7 @@ pass). This is a quality-of-life upgrade.
 ---
 
 <a id="step-8-remove-obsolete-hvac-schema-cache"></a>
-### Step 8: Remove obsolete `hvac_schema` cache  ✅ Actionable (ramses_cc-only, after current release feedback)
+### Step 8: Remove obsolete `hvac_schema` cache  ✅ DONE (PR 994)
 
 **What:** Remove the separate `.storage/ramses_cc[hvac_schema]` cache
 and the `merge_hvac_schema()` / `extract_hvac_schema()` logic.
