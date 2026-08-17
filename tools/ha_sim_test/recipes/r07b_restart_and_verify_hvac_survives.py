@@ -5,6 +5,9 @@ test runs immediately after the restart+profile-reload, which guarantees
 the mixed profile (FAN/REM/CO2) is active.  R12 previously assumed the
 setup profile was still loaded, which broke when profile-stripping recipes
 (R01, fresh_start recipes) ran before it on the same container.
+
+After Step 8, the separate hvac_schema cache is removed — the FAN entry
+with remotes/sensors lives in the schema itself (client_state.schema).
 """
 
 from __future__ import annotations
@@ -133,11 +136,14 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
         )
 
         storage_after = get_ramses_storage()
-        hvac_after = storage_after.get("hvac_schema", {})
+        # Step 8: hvac_schema cache key removed — FAN structure is in schema
+        client_state_after = storage_after.get("client_state", {})
+        schema_stored_after = client_state_after.get("schema", {})
+        fan_stored_after = schema_stored_after.get(FAN, {})
         ctx.check(
-            "hvac_schema preserved in storage after restart",
-            bool(hvac_after),
-            f"hvac_schema={json.dumps(hvac_after)[:200]}",
+            "FAN with remotes preserved in schema after restart (Step 8)",
+            bool(fan_stored_after) and "remotes" in fan_stored_after,
+            f"fan_entry={json.dumps(fan_stored_after)[:200]}",
         )
 
         # ── Part 2: HVAC device-loss scenario (merged from R12) ──────
@@ -191,13 +197,14 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             "FAN entity not found during loss",
         )
 
-        # Check HVAC schema preserved during loss (use hvac_schema from .storage)
+        # Check HVAC schema preserved during loss (use schema from .storage)
         storage_loss = get_ramses_storage()
-        hvac_schema_loss = storage_loss.get("hvac_schema", {})
-        fan_hvac_loss = hvac_schema_loss.get(FAN, {})
-        remotes_during = fan_hvac_loss.get("remotes", [])
+        client_state_loss = storage_loss.get("client_state", {})
+        schema_loss = client_state_loss.get("schema", {})
+        fan_schema_loss = schema_loss.get(FAN, {})
+        remotes_during = fan_schema_loss.get("remotes", [])
         ctx.check(
-            "HVAC schema preserved during REM loss",
+            "HVAC schema preserved during REM loss (in schema, Step 8)",
             REM in remotes_during,
             f"remotes={remotes_during}",
         )

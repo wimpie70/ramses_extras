@@ -1,4 +1,10 @@
-"""Recipe R07: HVAC schema caching — verify FAN in schema + cache."""
+"""Recipe R07: HVAC schema — verify FAN in schema (Step 8).
+
+After Step 8, the separate hvac_schema cache is removed.  The FAN entry
+with remotes/sensors lives in the schema itself (client_state.schema).
+This recipe verifies that the FAN entry with remotes is persisted in
+.storage/ramses_cc[client_state][schema] after a force_update.
+"""
 
 from __future__ import annotations
 
@@ -33,10 +39,10 @@ from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
 class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
     id = "R07"
     seq = 60
-    title = "HVAC schema caching — verify FAN in schema + cache"
+    title = "HVAC schema — verify FAN in schema (Step 8)"
 
     async def run(self, ctx: RecipeContext) -> None:
-        ctx.log_section("Recipe 7: HVAC schema caching — FAN + REM")
+        ctx.log_section("Recipe 7: HVAC schema — FAN + REM (Step 8)")
 
         schema = get_schema_retry()
         fan_in_schema = FAN in schema
@@ -60,11 +66,26 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
         ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
         storage = get_ramses_storage()
-        hvac_schema = storage.get("hvac_schema", {})
-        print(f"  hvac_schema after save: {json.dumps(hvac_schema)[:300]}")
 
+        # Step 8: hvac_schema cache key should be gone
         ctx.check(
-            "hvac_schema populated",
-            bool(hvac_schema),
-            f"hvac_schema={json.dumps(hvac_schema)[:200]}",
+            "hvac_schema cache key NOT in storage (Step 8)",
+            "hvac_schema" not in storage,
+            f"keys={list(storage.keys())}",
         )
+
+        # FAN with remotes should be in the persisted schema
+        client_state = storage.get("client_state", {})
+        stored_schema = client_state.get("schema", {})
+        fan_stored = stored_schema.get(FAN, {})
+        ctx.check(
+            "FAN entry persisted in schema (client_state.schema)",
+            bool(fan_stored),
+            f"schema keys={list(stored_schema.keys())[:10]}",
+        )
+        ctx.check(
+            "FAN remotes persisted in schema",
+            "remotes" in fan_stored if fan_stored else False,
+            f"fan_entry={json.dumps(fan_stored)[:200]}",
+        )
+        print(f"  FAN stored schema: {json.dumps(fan_stored)[:200]}")

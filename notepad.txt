@@ -1,6 +1,3 @@
 issues:
 
-- last seen keeps coming back directly after being dismissed (check for another 7 (?) days)
-- new device discovered (HGI 19:149488 on hass) keeps being detected, even after accepting it as not me owner
-
 dis/fan: improve detection (who can send what in what direction (31da))
