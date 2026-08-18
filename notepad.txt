@@ -1,3 +1,10 @@
 issues:
 
-dis/fan: improve detection (who can send what in what direction (31da))
+_extras:
+- https://github.com/wimpie70/ramses_extras/issues/88 is this still an issue?
+- https://github.com/wimpie70/ramses_extras/issues/102 is this still an issue ?
+- https://github.com/wimpie70/ramses_extras/issues/165 is this still an issue ?
+- https://github.com/wimpie70/ramses_extras/issues/166 is this still an issue ?
+
+RF:
+- dis/fan: improve detection (who can send what in what direction (31da))

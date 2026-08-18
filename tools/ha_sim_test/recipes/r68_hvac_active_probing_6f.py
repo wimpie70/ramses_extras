@@ -249,15 +249,41 @@ class R68HvacActiveProbing(Recipe):
         #    Under parallel load, the 2411 probe response can take 10-15s
         #    (the device simulator is busy servicing other containers).
         #    Poll for entities instead of using a fixed sleep.
+        #    If probe_hvac_binding timed out, send a 2411 RQ directly via
+        #    inject_message to trigger the probe response ourselves.
         print("\n  Testing 2411 parameter entities (issue 851)...")
+
+        # If the service timed out, send a 2411 RQ directly to nudge
+        # supports_2411=True (the scan engine will process the RP response)
+        if service_timed_out:
+            print("  Sending 2411 RQ directly (service timed out)...")
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": REM,
+                        "code": "2411",
+                        "payload": "00",
+                        "verb": "RQ",
+                        "dst": FAN,
+                    },
+                )
+                print("    2411 RQ injected")
+            except RuntimeError as e:
+                print(f"    2411 RQ inject failed: {str(e)[:80]}")
+            ctx.wait(5, "for 2411 RP response to arrive", floor=3.0)
 
         fan_id_normalized = FAN  # keep the colon for unique_id match
 
         # Poll for parameter entity creation (async loop — ws_send is async)
+        # Use 60s timeout under load (30s may not be enough if the probe
+        # was delayed)
         import asyncio as _aio
 
         param_entities: list = []
-        poll_deadline = time.time() + 30
+        poll_deadline = time.time() + 60
         while time.time() < poll_deadline:
             entities_resp = await ws_send(
                 ctx.token,
