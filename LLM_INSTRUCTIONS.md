@@ -10,6 +10,7 @@ For all general coding, typing, docstring, and architectural standards, you **mu
 - **No Advertising**: Never add signatures like "co-authored by Devin" or promote AI tools in commits, comments, code, or PR descriptions.
 - **Wait for Approval**: Do not automatically commit or push code unless explicitly instructed by the user.
 - **Must Pass Tests**: Ensure all linter checks (`prek`, `ruff`, `mypy`) and test suites (`pytest`) pass cleanly before declaring success.
+- **No Recipe Failures**: All `ha_sim_test` recipes must pass (0 failures). Recipes exist to test ramses_rf's correct behavior — never dismiss a recipe failure as "transient" or "parallel contention" without investigating the root cause. If a recipe fails, find and fix the real cause (race condition, timing issue, missing wait, stale cache, etc.). Do not camouflage issues by increasing timeouts without understanding why the timeout was exceeded.
 - **PR Description Framing**: Keep PR titles and descriptions lean, factual, and scaled to the complexity of the change. Avoid AI-generated lengthy risk analyses or hypothetical scenarios.
 
 ## 2. Code Modification Guardrails

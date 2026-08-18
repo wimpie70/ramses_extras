@@ -1,12 +1,14 @@
 // Ramses Message Broker - Global singleton for handling ramses_cc messages
 // Provides real-time message routing for cards and features
 //
-// Subscribes to state_changed on event.ramses_cc_regex_event
-// (HA Event Entity, available to all users — in SUBSCRIBE_ALLOWLIST).
+// Subscribes to the ramses_extras/subscribe_messages WebSocket command,
+// which bridges the in-process RamsesMessageStream (add_msg_handler)
+// directly to the browser.  No HA bus events or EventEntity configuration
+// required.
 
 import * as logger from './logger.js';
 
-const EVENT_ENTITY_ID = 'event.ramses_cc_regex_event';
+const WS_SUBSCRIBE_TYPE = 'ramses_extras/subscribe_messages';
 const DEDUP_TTL_MS = 5000;
 
 class RamsesMessageBroker {
@@ -14,7 +16,7 @@ class RamsesMessageBroker {
         this.listeners = new Map(); // device_id -> [[card, handle_codes], ...]
         this._recentMessages = new Map(); // dedup: key -> timestamp
         this._dedupInterval = null;
-        this._eventEntityActive = false;
+        this._wsActive = false;
         this.setupHAConnection();
     }
 
@@ -45,8 +47,8 @@ class RamsesMessageBroker {
                 return;
             }
 
-            // Subscribe to state_changed, filter for event entity
-            this._subscribeToEventEntity(conn);
+            // Subscribe to ramses_extras/subscribe_messages WebSocket command
+            this._subscribeToMessages(conn);
 
             // Start dedup cleanup
             this._startDedupCleanup();
@@ -55,32 +57,26 @@ class RamsesMessageBroker {
         }
     }
 
-    // --- Modern path: Event Entity via state_changed ---
+    // --- WebSocket subscription: RamsesMessageStream → browser ---
 
-    _subscribeToEventEntity(conn) {
-        conn.subscribeEvents(
+    _subscribeToMessages(conn) {
+        conn.subscribeMessage(
             (event) => {
-                if (
-                    event.event_type === 'state_changed' &&
-                    event.data?.entity_id === EVENT_ENTITY_ID &&
-                    event.data?.new_state
-                ) {
-                    this._handleEventEntityState(event.data.new_state);
-                }
+                if (event?.event_type !== 'ramses_message') return;
+                const data = event?.data;
+                if (!data) return;
+                this._handleMessage(data);
             },
-            'state_changed'
+            { type: WS_SUBSCRIBE_TYPE }
         ).then(() => {
-            this._eventEntityActive = true;
-            logger.debug('RamsesMessageBroker: Subscribed to state_changed for event entity (modern path)');
+            this._wsActive = true;
+            logger.debug('RamsesMessageBroker: Subscribed to ramses_extras/subscribe_messages (WS path)');
         }).catch((error) => {
-            logger.warn('RamsesMessageBroker: Failed to subscribe to state_changed:', error);
+            logger.warn('RamsesMessageBroker: Failed to subscribe to messages WS:', error);
         });
     }
 
-    _handleEventEntityState(newState) {
-        const data = newState.attributes?.data;
-        if (!data) return;
-
+    _handleMessage(data) {
         const deviceId = data.src || data.device_id;
         const messageCode = data.code;
         if (!deviceId || !messageCode) return;
@@ -88,17 +84,17 @@ class RamsesMessageBroker {
         // Dedup — skip if already seen
         const dedupKey = this._makeDedupKey(deviceId, messageCode, data.dtm);
         if (this._isDuplicate(dedupKey)) {
-            logger.debug(`RamsesMessageBroker: Dedup (event entity) ${messageCode} from ${deviceId}`);
+            logger.debug(`RamsesMessageBroker: Dedup (WS) ${messageCode} from ${deviceId}`);
             return;
         }
 
         // Normalize so card handlers can access messageData.data.payload uniformly
         const normalizedEvent = {
-            event_type: 'ramses_cc_message',
+            event_type: 'ramses_message',
             data: data,
         };
 
-        logger.debug(`RamsesMessageBroker: (event entity) ${messageCode} from ${deviceId}`);
+        logger.debug(`RamsesMessageBroker: (WS) ${messageCode} from ${deviceId}`);
         this.routeMessage(deviceId, messageCode, normalizedEvent);
     }
 
@@ -131,12 +127,13 @@ class RamsesMessageBroker {
 
     // --- Message routing ---
 
-    // Handle ramses_cc_message events from window/document (legacy dispatch)
+    // Handle messages from window/document (legacy dispatch)
     handleRamsesMessage(event) {
         try {
             const messageData = event.detail;
 
-            if (messageData?.event_type === 'ramses_cc_message') {
+            if (messageData?.event_type === 'ramses_message' ||
+                messageData?.event_type === 'ramses_cc_message') {
                 const messageCode = messageData.data?.code;
                 const deviceId = messageData.data?.src;
 
@@ -222,7 +219,7 @@ class RamsesMessageBroker {
 
     getDeliveryInfo() {
         return {
-            event_entity: this._eventEntityActive,
+            ws_subscription: this._wsActive,
         };
     }
 }

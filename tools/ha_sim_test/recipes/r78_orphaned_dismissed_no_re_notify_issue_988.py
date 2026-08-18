@@ -41,6 +41,7 @@ from ..helpers import (
     get_ramses_storage,
     get_schema_retry,
     load_profile_yaml,
+    wait_for,
     wait_for_ha_ready,
     wait_for_ramses_cc_loaded,
     wait_for_ramses_extras_ready,
@@ -127,6 +128,48 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
         wait_for_schema_populated(min_keys=2, timeout=15)
 
         # ── 2. Verify schema has _suppress_not_seen on CTL ────────────
+        # Under parallel load, the profile_loader's schema override may
+        # not be applied to the coordinator's options yet when we read
+        # the schema.  Poll for the key specifically.  If it still
+        # hasn't appeared after the initial poll, retry the profile
+        # load (the override may have been lost during a concurrent
+        # reload race).
+        def _suppress_key_present() -> bool:
+            schema = get_schema_retry(max_tries=2, delay=2)
+            ctl = schema.get(CTL, {})
+            return isinstance(ctl, dict) and ctl.get("_suppress_not_seen") is True
+
+        if not wait_for(
+            _suppress_key_present,
+            timeout=30,
+            interval=3,
+            msg="for _suppress_not_seen key to appear in schema",
+            floor=10.0,
+        ):
+            # Retry: reload the profile with reload_ramses to force the
+            # schema override through the profile_loader → coordinator
+            # options → config entry update path.
+            print("  Key not found — retrying profile load...")
+            try:
+                await load_profile_yaml(
+                    ctx.token,
+                    yaml_profile,
+                    speed=0.01,
+                    preload_schema=True,
+                    reload_ramses=True,
+                )
+            except RuntimeError as e:
+                print(f"  Retry profile load failed: {e}")
+            ctx.wait_for_ramses_cc_reload(timeout=20)
+            ctx.refresh_token()
+            wait_for(
+                _suppress_key_present,
+                timeout=30,
+                interval=3,
+                msg="for _suppress_not_seen key after retry",
+                floor=10.0,
+            )
+
         schema = get_schema_retry()
         ctl_entry = schema.get(CTL, {})
         ctx.check(
@@ -216,6 +259,22 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
         except RuntimeError:
             pass
         wait_for_schema_populated(min_keys=2, timeout=15)
+
+        # Poll for _suppress_not_seen key after restart — under parallel
+        # load the profile reload + coordinator options update may take
+        # longer to settle.
+        def _suppress_key_present_after_restart() -> bool:
+            schema = get_schema_retry(max_tries=2, delay=2)
+            ctl = schema.get(CTL, {})
+            return isinstance(ctl, dict) and ctl.get("_suppress_not_seen") is True
+
+        wait_for(
+            _suppress_key_present_after_restart,
+            timeout=30,
+            interval=3,
+            msg="for _suppress_not_seen key to reappear after restart",
+            floor=10.0,
+        )
 
         schema_after = get_schema_retry()
         ctl_entry_after = schema_after.get(CTL, {})

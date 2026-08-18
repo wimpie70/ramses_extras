@@ -29,13 +29,9 @@ _LOGGER = logging.getLogger(__name__)
 
 # ramses_cc config keys (imported lazily to avoid hard dependency)
 _CONF_ADVANCED_FEATURES = "advanced_features"
-_CONF_MESSAGE_EVENTS = "message_events"
 _CONF_SEND_PACKET = "send_packet"
 _SZ_KNOWN_LIST = "known_list"
 _SZ_BOUND_TO = "bound_to"
-
-# Message codes that ramses_extras features rely on
-_REQUIRED_MSG_CODES = ("31DA", "10D0")
 
 # Log-once key for the missing-bound-REM warning.  Used by the caller
 # (framework/setup/validation.py) with the LogOnce helper so that the
@@ -94,25 +90,6 @@ def _check_bound_rem(options: dict[str, Any]) -> bool:
     return False
 
 
-def _check_message_events(options: dict[str, Any]) -> tuple[bool, bool]:
-    """Check if message events are enabled and match required codes.
-
-    Returns (enabled, matches_required_codes).
-    """
-
-    advanced = options.get(_CONF_ADVANCED_FEATURES)
-    if not isinstance(advanced, dict):
-        return False, False
-
-    regex_str = advanced.get(_CONF_MESSAGE_EVENTS)
-    if not regex_str or not isinstance(regex_str, str):
-        return False, False
-
-    # Check if the regex contains the required message codes
-    matches = any(code in regex_str for code in _REQUIRED_MSG_CODES)
-    return True, matches
-
-
 def _check_send_packet(options: dict[str, Any]) -> bool:
     """Check if the send_packet advanced feature is enabled."""
 
@@ -135,8 +112,6 @@ async def validate_ramses_cc_config(hass: HomeAssistant) -> dict[str, bool]:
     Returns a dict with keys:
     - ramses_cc_loaded: True if ramses_cc config entry exists
     - has_bound_rem: True if at least one FAN has a bound REM
-    - message_events_enabled: True if message events feature is on
-    - message_events_matches: True if regex includes 31DA or 10D0
     - send_packet_enabled: True if send_packet is enabled
     - recorder_loaded: True if HA recorder component is loaded
     """
@@ -144,8 +119,6 @@ async def validate_ramses_cc_config(hass: HomeAssistant) -> dict[str, bool]:
     result = {
         "ramses_cc_loaded": False,
         "has_bound_rem": False,
-        "message_events_enabled": False,
-        "message_events_matches": False,
         "send_packet_enabled": False,
         "recorder_loaded": False,
     }
@@ -167,9 +140,6 @@ async def validate_ramses_cc_config(hass: HomeAssistant) -> dict[str, bool]:
 
     # Run checks
     result["has_bound_rem"] = _check_bound_rem(options)
-    result["message_events_enabled"], result["message_events_matches"] = (
-        _check_message_events(options)
-    )
     result["send_packet_enabled"] = _check_send_packet(options)
 
     return result
@@ -201,23 +171,6 @@ def log_validation_results(results: dict[str, bool]) -> None:
             "ramses_extras cannot send commands to FAN devices (bypass, "
             "fan speed, parameter updates). Enable it in ramses_cc "
             "configuration under Advanced Features."
-        )
-
-    if not results.get("message_events_enabled"):
-        _LOGGER.warning(
-            "ramses_cc 'Message Events' advanced feature is not enabled — "
-            "the hvac_fan_card and message stream will not receive "
-            "real-time FAN status updates. Enable it in ramses_cc "
-            "configuration under Advanced Features with a regex that "
-            "includes '31DA|10D0'."
-        )
-    elif not results.get("message_events_matches"):
-        _LOGGER.warning(
-            "ramses_cc 'Message Events' regex does not include required "
-            "message codes 31DA|10D0 — the hvac_fan_card will not "
-            "receive real-time FAN status updates. Update the regex in "
-            "ramses_cc configuration under Advanced Features to include "
-            "'31DA|10D0'."
         )
 
     if not results.get("recorder_loaded"):

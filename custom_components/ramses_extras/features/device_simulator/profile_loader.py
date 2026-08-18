@@ -520,6 +520,22 @@ async def _update_known_list_and_reload(
 
     object.__setattr__(entry, "options", MappingProxyType(new_options))
 
+    # Update the running coordinator's self.options to match, so its
+    # async_save_client_state doesn't overwrite the new schema with the
+    # stale one.  The coordinator deep-copies entry.options at init time
+    # (coordinator.py line 208), so it won't see the update we just made
+    # to entry.options unless we explicitly update it here.
+    ra = hass.data.get("ramses_cc", {})
+    coordinator = ra.get("coordinator")
+    if coordinator is not None:
+        try:
+            coordinator.options = dict(new_options)  # noqa: SLF001
+            LOGGER.debug("Profile load: updated running coordinator options")
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning(
+                "Profile load: could not update coordinator options: %s", err
+            )
+
     try:
         from homeassistant.helpers.storage import Store as HaStore
 
