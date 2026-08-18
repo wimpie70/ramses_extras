@@ -288,8 +288,9 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
             ]
         ):
             pkt = Packet(dt_obj, frame)
-            m = Message._from_pkt(pkt)
-    except Exception:
+            m = Message._from_packet(pkt)
+    except Exception as exc:
+        _LOGGER.debug("decode_message_with_ramses_rf failed for %s: %s", frame, exc)
         return None
 
     try:
