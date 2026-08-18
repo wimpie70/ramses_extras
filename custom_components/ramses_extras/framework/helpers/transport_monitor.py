@@ -9,7 +9,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import HomeAssistant
 
 if TYPE_CHECKING:
     from custom_components.ramses_cc.coordinator import RamsesCoordinator
@@ -45,7 +45,6 @@ class TransportMonitor:
         self._device_states: dict[str, bool] = {}  # Current online/offline state
         self._command_timeout: float = 61.0  # Wait 61s for reply after sending command
         self._hass: HomeAssistant | None = None
-        self._event_unsub: Callable[[], None] | None = None
         self._msg_handler_unsub: Callable[[], None] | None = None
 
     def register_callback(
@@ -287,24 +286,6 @@ class TransportMonitor:
                 )
             self._ensure_msg_handler(client)
 
-            # NOTE: ramses_cc_message event bus is deprecated in newer ramses_cc
-            # We rely on add_msg_handler callback instead
-            if self._hass and not self._event_unsub:
-                # Try to listen for legacy event (for backward compatibility)
-                try:
-                    self._event_unsub = self._hass.bus.async_listen(
-                        "ramses_cc_message",
-                        self._handle_ramses_cc_message,
-                    )
-                    _LOGGER.debug(
-                        "Transport monitor listening for ramses_cc_message "
-                        "events (legacy)"
-                    )
-                except Exception as e:
-                    _LOGGER.debug(
-                        "Transport monitor: could not listen for ramses_cc_message: %s",
-                        e,
-                    )
             self._monitor_task = asyncio.create_task(self._monitor_loop())
             _LOGGER.info("Started transport state monitoring")
 
@@ -318,12 +299,6 @@ class TransportMonitor:
                 except asyncio.CancelledError:
                     pass
                 _LOGGER.info("Stopped transport state monitoring")
-
-            # Clean up event listener
-            if self._event_unsub:
-                self._event_unsub()
-                self._event_unsub = None
-                _LOGGER.debug("Stopped listening for ramses_cc_message events")
 
             if self._msg_handler_unsub:
                 self._msg_handler_unsub()
@@ -374,33 +349,6 @@ class TransportMonitor:
             if existing_task and not existing_task.done():
                 existing_task.cancel()
             await self._mark_device_offline(device_id)
-
-    def _handle_ramses_cc_message(self, event: Event) -> None:
-        """Handle ramses_cc_message events to track device replies.
-
-        :param event: Home Assistant event containing ramses_cc_message data
-        """
-        try:
-            self._refresh_coordinator()
-            data = event.data
-            if not isinstance(data, dict):
-                return
-
-            src = data.get("src")
-
-            # Only process messages FROM devices we're monitoring, not TO them
-            if isinstance(src, str) and ":" in src:
-                normalized_src = src.replace("_", ":")
-                tracked_device_ids = {
-                    device_id
-                    for device_id, _ in self._callbacks.values()
-                    if device_id is not None
-                }
-
-                if normalized_src in tracked_device_ids:
-                    self.update_device_message_received(src)
-        except Exception as e:
-            _LOGGER.error("Error handling ramses_cc_message event: %s", e)
 
     def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         """Handle live ramses_cc client messages to track device replies.

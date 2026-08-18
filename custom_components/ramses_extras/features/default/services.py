@@ -10,6 +10,7 @@ import ast
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -483,19 +484,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Schedule task creation safely on HA's event-loop thread.
         hass.loop.call_soon_threadsafe(_create_task)
 
-    def _handle_remote_event(event: object) -> None:
-        data = getattr(event, "data", None)
-        if not isinstance(data, dict):
-            return
-
-        _schedule_observed_remote_packet(
-            data.get("src"),
-            data.get("dst"),
-            data.get("code"),
-            data.get("payload"),
-            data.get("verb"),
-        )
-
     def _handle_remote_msg(msg: object, *args: object, **kwargs: object) -> None:
         # PacketDTO uses addr1/addr2 (str); Message uses src/dst (Address.id)
         src = getattr(msg, "addr1", None)
@@ -683,8 +671,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     domain_data = hass.data.setdefault(DOMAIN, {})
     if not domain_data.get("_fan_remote_listener_started"):
-        event_unsub = hass.bus.async_listen("ramses_cc_message", _handle_remote_event)
-        unsubs = [event_unsub]
+        unsubs: list[Callable[[], None]] = []
 
         coordinator = await RamsesCommands(hass)._get_ramses_cc_coordinator()
         client = (

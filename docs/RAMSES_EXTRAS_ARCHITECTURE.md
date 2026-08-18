@@ -463,8 +463,8 @@ async def _find_device_by_id(broker, device_id):
 
 ### Event System Integration
 ```python
-# Listen to ramses_cc events for real-time device updates
-self.hass.bus.async_listen("ramses_cc_message", self._on_ramses_message)
+# Register a message handler with the ramses_cc coordinator for real-time updates
+coordinator.client.add_msg_handler(self._on_ramses_message)
 
 # Enhanced device discovery events
 self.hass.bus.async_listen("ramses_device_ready_for_entities", self._on_device_ready)
@@ -820,7 +820,7 @@ This works best with a dedicated dashboard page.
 - **Components**: Multiple specialized Lovelace cards with WebSocket-based real-time communication
 - **Architecture**: Event-driven backend with TrafficCollector, log parsing providers, and unified message API
 - **Features**:
-  - **Traffic Analyzer**: Real-time monitoring of ramses_cc_message events with device pair filtering, verb/code filtering, and cross-referencing to log entries
+  - **Traffic Analyzer**: Real-time monitoring of ramses_cc messages via add_msg_handler with device pair filtering, verb/code filtering, and cross-referencing to log entries
   - **Log Explorer**: Advanced search and context extraction from Home Assistant logs with traceback highlighting and configurable context windows
   - **Packet Log Explorer**: Deep packet-level analysis with parsed payload display and message normalization
   - **Unified Messages API**: Single WebSocket endpoint (`messages/get_messages`) that aggregates data from traffic buffer, packet logs, and HA logs with deduplication

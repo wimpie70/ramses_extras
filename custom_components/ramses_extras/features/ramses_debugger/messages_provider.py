@@ -402,7 +402,7 @@ class TrafficBufferProvider(MessagesProvider):
         self._per_flow_buffers.pop(key, None)
 
     def ingest_event(self, event_data: dict[str, Any]) -> None:
-        """Ingest a ramses_cc_message event into buffers."""
+        """Ingest a message event into buffers."""
         self._global_buffer.append(event_data)
         src = event_data.get("src")
         dst = event_data.get("dst")

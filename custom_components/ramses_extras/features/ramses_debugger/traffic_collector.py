@@ -1,7 +1,9 @@
 """Collect and summarize ramses_cc traffic for the Ramses Debugger.
 
-The :class:`~TrafficCollector` listens for Home Assistant ``ramses_cc_message``
-events and aggregates message counts into *flows*.
+The :class:`~TrafficCollector` subscribes to the shared
+:class:`~RamsesMessageStream` (which receives messages via
+``coordinator.client.add_msg_handler()``) and aggregates message counts
+into *flows*.
 
 A *flow* is a unique ``(src, dst)`` pair observed in the incoming message
 stream.
@@ -61,7 +63,7 @@ class TrafficFlowStats:
 
 
 class TrafficCollector:
-    """Collect traffic statistics from ``ramses_cc_message`` events.
+    """Collect traffic statistics from the shared message stream.
 
     The collector maintains aggregated counters across all messages as well as
     per-flow counters. It also feeds a shared
