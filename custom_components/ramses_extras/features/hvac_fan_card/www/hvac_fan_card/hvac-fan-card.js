@@ -51,6 +51,8 @@ class HvacFanCard extends RamsesBaseCard {
     this._cachedEntities = null; // Cache for getRequiredEntities
     this._entityMappings = null;
     this._entityMappingsLoading = false;
+    this._entityRegistryCache = null; // unique_id → entity_id map
+    this._entityRegistryLoading = false;
     this._sensorSources = null; // Store sensor source information
     this._rawInternalMappings = null; // Store raw internal mappings
     this._areaSensors = []; // Store sensor_control area sensors
@@ -550,6 +552,12 @@ class HvacFanCard extends RamsesBaseCard {
 
     this._entityMappingsLoading = true;
     logger.debug(`HvacFanCard: Loading entity mappings for device ${this._config.device_id}`);
+
+    // Load the entity registry in parallel (needed to resolve
+    // param_75 unique_id to entity_id for has_entity_name=True).
+    if (!this._entityRegistryCache && !this._entityRegistryLoading) {
+      this._loadEntityRegistry();
+    }
 
     try {
       const result = await this._sendWebSocketCommand({
@@ -1201,16 +1209,27 @@ class HvacFanCard extends RamsesBaseCard {
     //   1. comfort_temp_entity from sensor_control resolver (external)
     //   2. param_75 (FAN default, internal)
     //   3. none → show "?" and error state
-    // The base hvac_fan_card mapping sets comfort_temp_entity to
-    // param_75 by default, so we must compare against that to know
-    // whether the resolver actually overrode it with an external entity.
-    const defaultComfortEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
+    // With has_entity_name=True, the param_75 entity_id is derived
+    // from the entity name, not the template pattern.  We use the
+    // entity registry (unique_id lookup) to determine whether the
+    // resolved entity is the internal param_75 or an external override.
+    const defaultPatternEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
     const configComfortEntity = this._config.comfort_temp_entity
       || this._entityMappings?.comfort_temp_entity;
-    // Only treat as external if it differs from the default param_75
-    const isExternal = configComfortEntity
-      && configComfortEntity !== defaultComfortEntity;
-    const actualComfortEntity = configComfortEntity || defaultComfortEntity;
+    const param75Entity = this._resolveParam75Entity();
+    // Determine if external: compare against the resolved param_75
+    // entity_id (from registry) if available, otherwise fall back to
+    // the old template pattern comparison.
+    let isExternal;
+    if (param75Entity) {
+      isExternal = configComfortEntity && configComfortEntity !== param75Entity;
+    } else {
+      isExternal = configComfortEntity
+        && configComfortEntity !== defaultPatternEntity;
+    }
+    const actualComfortEntity = configComfortEntity
+      || param75Entity
+      || defaultPatternEntity;
     const comfortState = this.getEntityState(actualComfortEntity);
     const comfortAvailable = comfortState
       && comfortState.state !== 'unavailable'
@@ -1773,15 +1792,78 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   /**
+   * Load the HA entity registry via WebSocket and cache it as a
+   * unique_id → entity_id map.  This is needed because ramses_cc
+   * entities with has_entity_name=True generate entity_ids from the
+   * entity name, not the unique_id — so the only stable reference is
+   * the unique_id (e.g. "32:150000-param_75").
+   * @returns {Promise<Map<string, string>|null>}
+   */
+  async _loadEntityRegistry() {
+    if (this._entityRegistryCache) return this._entityRegistryCache;
+    if (this._entityRegistryLoading) return null;
+    if (!this._hass) return null;
+
+    this._entityRegistryLoading = true;
+    try {
+      const entries = await this._hass.callWS({
+        type: 'config/entity_registry/list',
+      });
+      this._entityRegistryCache = new Map();
+      for (const entry of entries) {
+        if (entry.unique_id) {
+          this._entityRegistryCache.set(entry.unique_id, entry.entity_id);
+        }
+      }
+      return this._entityRegistryCache;
+    } catch (e) {
+      logger.debug('Failed to load entity registry:', e);
+      return null;
+    } finally {
+      this._entityRegistryLoading = false;
+    }
+  }
+
+  /**
+   * Resolve the param_75 comfort temp entity_id for the current device
+   * by looking up the unique_id in the entity registry.
+   * @returns {string|null} Resolved entity_id or null if not found.
+   */
+  _resolveParam75Entity() {
+    const deviceId = this._config?.device_id;
+    if (!deviceId) return null;
+    const uniqueId = `${deviceId}-param_75`;
+    return this._entityRegistryCache?.get(uniqueId) || null;
+  }
+
+  /**
    * Get the current comfort temp value from the resolved entity.
+   *
+   * With has_entity_name=True, the entity_id is derived from the
+   * entity name (e.g. "number.comfort_temperature_degc"), not the
+   * template pattern.  We determine whether the comfort temp is
+   * "external" (user-configured override) or "internal" (param_75)
+   * by comparing the resolved entity against the param_75 unique_id
+   * in the entity registry.
    * @returns {Object} { entity, value, isExternal }
    */
   _getComfortTempValue() {
-    const defaultEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
+    const defaultPatternEntity = `number.${this._config.device_id.replace(/:/g, '_')}_param_75`;
     const configEntity = this._config.comfort_temp_entity
       || this._entityMappings?.comfort_temp_entity;
-    const isExternal = configEntity && configEntity !== defaultEntity;
-    const entity = configEntity || defaultEntity;
+    const param75Entity = this._resolveParam75Entity();
+
+    // Determine if the comfort temp is external (user override) or
+    // internal (param_75).  If we have a registry lookup, compare
+    // against the resolved param_75 entity_id.  Otherwise fall back
+    // to comparing against the old template pattern.
+    let isExternal;
+    if (param75Entity) {
+      isExternal = configEntity && configEntity !== param75Entity;
+    } else {
+      isExternal = configEntity && configEntity !== defaultPatternEntity;
+    }
+    const entity = configEntity || param75Entity || defaultPatternEntity;
     const state = this.getEntityState(entity);
     let value = '—';
     if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
