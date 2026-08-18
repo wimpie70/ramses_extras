@@ -335,7 +335,7 @@ async def load_profile_yaml(
     import asyncio as _asyncio
 
     last_err: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(5):
         profile_name = f"test_{int(time.time())}_{attempt}"
         try:
             result = await ws_send(
@@ -356,11 +356,16 @@ async def load_profile_yaml(
             return result
         except RuntimeError as e:
             last_err = e
-            if attempt < 2:
-                print(f"  Profile load failed (attempt {attempt + 1}/3): {str(e)[:80]}")
-                await _asyncio.sleep(2)
+            if attempt < 4:
+                # "unknown_command" means ramses_extras WS integration
+                # hasn't registered yet after a restart — wait longer
+                # (10s) before retrying.  Other errors (not_ready, etc.)
+                # use a shorter delay (3s).
+                delay = 10 if "unknown_command" in str(e) else 3
+                print(f"  Profile load failed (attempt {attempt + 1}/5): {str(e)[:80]}")
+                await _asyncio.sleep(delay)
     raise RuntimeError(
-        f"Profile load failed after 3 attempts: {last_err}"
+        f"Profile load failed after 5 attempts: {last_err}"
     ) from last_err
 
 
