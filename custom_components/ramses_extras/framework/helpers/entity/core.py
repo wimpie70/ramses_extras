@@ -22,7 +22,10 @@ from ..common import (
     RamsesValidator,
     _singularize_entity_type,
 )
-from .entity_id_fallbacks import iter_ramses_cc_entity_id_fallbacks
+from .entity_id_fallbacks import (
+    extract_unique_id_from_param_entity,
+    iter_ramses_cc_entity_id_fallbacks,
+)
 
 # AVAILABLE_FEATURES import removed to avoid blocking imports
 # from ....const import AVAILABLE_FEATURES
@@ -842,6 +845,24 @@ async def _async_apply_entity_id_fallbacks(
             if registry.async_get(candidate) is not None:
                 resolved[state_name] = candidate
                 break
+
+        # If entity_id fallbacks didn't resolve, try unique_id-based
+        # lookup for ramses_cc parameter entities.  With
+        # has_entity_name=True, the entity_id is derived from the
+        # entity name (e.g. "number.comfort_temperature_degc"), not
+        # the template pattern.  The unique_id (e.g.
+        # "32:150000-param_75") is stable, so we can search the
+        # registry by unique_id to find the actual entity_id.
+        if resolved[state_name] == entity_id:
+            unique_id = extract_unique_id_from_param_entity(
+                entity_id,
+                device_id_underscore=device_id_underscore,
+            )
+            if unique_id:
+                for entry in registry.entities.values():
+                    if entry.unique_id == unique_id:
+                        resolved[state_name] = entry.entity_id
+                        break
 
     return resolved
 

@@ -222,7 +222,9 @@ function createTempControlItem(entity, tr) {
  * - If an external comfort_temp_entity is configured, show a number
  *   input to edit that entity's value directly (via set_value service).
  * - If no external entity is configured (using default param_75), show
- *   the current param_75 value as read-only info.
+ *   the current param_75 value as read-only info.  The entity_id is
+ *   resolved at runtime via the entity registry (unique_id lookup)
+ *   because ramses_cc uses has_entity_name=True.
  *
  * @param {Object} comfortTemp { entity, value, isExternal }
  * @param {Function} tr Translation helper.

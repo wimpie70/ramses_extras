@@ -122,6 +122,11 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             "sensor.*_outdoor_temperature",
             "sensor.*_supply_temp",
             "sensor.*_supply_temperature",
+            # Backward compat: match old-style param_75 entity_ids
+            # (number.{device_id}_param_75).  With has_entity_name=True
+            # the entity_id is derived from the entity name, so this
+            # pattern may not match — the resolved entity_id is added
+            # below as a concrete listener.
             "number.*_param_75",
             "sensor.*_indoor_humidity",
             "number.relative_humidity_minimum_*",
@@ -131,6 +136,44 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             "sensor.co2_zone_status_*",
             "binary_sensor.*_bypass_position",
         ]
+
+        # Resolve param_75 comfort temp entities by unique_id and add
+        # them as concrete listeners.  With has_entity_name=True, the
+        # entity_id is derived from the entity name (e.g.
+        # "number.comfort_temperature_degc"), not the template pattern.
+        # The unique_id (e.g. "32:150000-param_75") is stable, so we
+        # search the entity registry to find the actual entity_id.
+        try:
+            from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+            from custom_components.ramses_extras.framework.helpers.entity import (  # noqa: PLC0415
+                entity_id_fallbacks as _fb,
+            )
+
+            extract_unique_id_from_param_entity = (
+                _fb.extract_unique_id_from_param_entity
+            )
+
+            registry = er.async_get(self.hass)
+            for device_id in self._iter_candidate_device_ids():
+                template_entity = f"number.{device_id.replace(':', '_')}_param_75"
+                # If the old-style entity_id exists, the pattern above
+                # already covers it — skip the registry lookup.
+                if registry.async_get(template_entity) is not None:
+                    continue
+                unique_id = extract_unique_id_from_param_entity(
+                    template_entity,
+                    device_id=device_id,
+                )
+                if not unique_id:
+                    continue
+                for entry in registry.entities.values():
+                    if entry.unique_id == unique_id:
+                        if entry.entity_id not in patterns:
+                            patterns.append(entry.entity_id)
+                        break
+        except Exception:
+            pass
 
         # Also listen for changes to the configured comfort_temp_entity
         # (external HA helper like input_number) so the automation
@@ -1110,6 +1153,51 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             )
             return None
 
+    def _resolve_param_75_entity(self, device_id: str) -> str:
+        """Resolve the param_75 comfort temp entity_id for a device.
+
+        With ``has_entity_name=True``, ramses_cc generates entity_ids
+        from the entity name, not the unique_id.  This method tries
+        the old-style pattern first (backward compat), then falls back
+        to a unique_id-based entity registry lookup.
+
+        :param device_id: Device ID (colon or underscore format)
+        :returns: Resolved entity_id (may not exist in HA states)
+        """
+        device_id_underscore = device_id.replace(":", "_")
+        template_entity = f"number.{device_id_underscore}_param_75"
+
+        # Backward compat: if the old-style entity_id exists in states,
+        # use it directly.
+        if self.hass.states.get(template_entity) is not None:
+            return template_entity
+
+        # Fall back to unique_id-based registry lookup.
+        try:
+            from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+            from custom_components.ramses_extras.framework.helpers.entity import (  # noqa: PLC0415
+                entity_id_fallbacks as _fb,
+            )
+
+            extract_unique_id_from_param_entity = (
+                _fb.extract_unique_id_from_param_entity
+            )
+
+            registry = er.async_get(self.hass)
+            unique_id = extract_unique_id_from_param_entity(
+                template_entity,
+                device_id=device_id,
+            )
+            if unique_id:
+                for entry in registry.entities.values():
+                    if entry.unique_id == unique_id:
+                        return str(entry.entity_id)
+        except Exception:
+            pass
+
+        return template_entity
+
     async def _evaluate_areas(
         self,
         device_id: str,
@@ -1132,8 +1220,10 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             return []
 
         # Get the FAN global comfort temp as fallback for areas without
-        # their own comfort_temperature_entity.
-        global_comfort_entity = f"number.{device_id.replace(':', '_')}_param_75"
+        # their own comfort_temperature_entity.  Resolve via unique_id
+        # lookup since has_entity_name=True means the entity_id may not
+        # follow the number.{device_id}_param_75 pattern.
+        global_comfort_entity = self._resolve_param_75_entity(device_id)
         global_comfort_state = self.hass.states.get(global_comfort_entity)
         global_comfort: float | None = None
         if global_comfort_state and global_comfort_state.state not in (

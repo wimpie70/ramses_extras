@@ -4,6 +4,7 @@ import pytest
 
 from custom_components.ramses_extras.framework.helpers.entity.entity_id_fallbacks import (  # noqa: E501
     _unique_in_order,
+    extract_unique_id_from_param_entity,
     iter_ramses_cc_entity_id_fallbacks,
     iter_ramses_cc_entity_ids,
 )
@@ -348,3 +349,70 @@ class TestIterRamsesccEntityIdFallbacks:
             device_id_underscore="32_153289",
         )
         assert result == result_upper
+
+
+class TestExtractUniqueIdFromParamEntity:
+    """Test cases for extract_unique_id_from_param_entity helper."""
+
+    def test_basic_param_75_extraction(self):
+        """Test extracting unique_id from param_75 entity_id."""
+        result = extract_unique_id_from_param_entity(
+            "number.32_150000_param_75",
+            device_id="32:150000",
+        )
+        assert result == "32:150000-param_75"
+
+    def test_extraction_with_underscore_device_id(self):
+        """Test using device_id_underscore parameter."""
+        result = extract_unique_id_from_param_entity(
+            "number.32_150000_param_75",
+            device_id_underscore="32_150000",
+        )
+        assert result == "32:150000-param_75"
+
+    def test_extraction_different_param_code(self):
+        """Test extracting unique_id for a different param code."""
+        result = extract_unique_id_from_param_entity(
+            "number.32_150000_param_01",
+            device_id="32:150000",
+        )
+        assert result == "32:150000-param_01"
+
+    def test_extraction_wrong_device_id(self):
+        """Test that mismatched device_id returns None."""
+        result = extract_unique_id_from_param_entity(
+            "number.32_150000_param_75",
+            device_id="32:153289",
+        )
+        assert result is None
+
+    def test_extraction_non_param_entity(self):
+        """Test that non-param entity_ids return None."""
+        result = extract_unique_id_from_param_entity(
+            "sensor.32_150000_indoor_temp",
+            device_id="32:150000",
+        )
+        assert result is None
+
+    def test_extraction_no_device_id(self):
+        """Test that missing device_id returns None."""
+        result = extract_unique_id_from_param_entity(
+            "number.32_150000_param_75",
+        )
+        assert result is None
+
+    def test_extraction_invalid_entity_id(self):
+        """Test that invalid entity_id returns None."""
+        result = extract_unique_id_from_param_entity(
+            "invalid",
+            device_id="32:150000",
+        )
+        assert result is None
+
+    def test_extraction_case_insensitive(self):
+        """Test that device_id_underscore is case-insensitive."""
+        result = extract_unique_id_from_param_entity(
+            "number.32_150000_param_75",
+            device_id_underscore="32_150000",
+        )
+        assert result == "32:150000-param_75"
