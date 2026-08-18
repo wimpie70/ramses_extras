@@ -575,6 +575,12 @@ doesn't call `_handle_msg` directly, so impact was low. Related: PRs
 | Aug 14 2026 | Issue 1027 — PWhite-Eng responded | Rejected MessageStore state restoration approach with 4 technical blockers: (1) async hydration race in `_hydrate_ram`, (2) ghost device resurrection (no known_list filtering in SQLite), (3) double-ingestion overhead, (4) in-memory/ephemeral environments lose persistence. Recommended: short-term = increase SAVE_STATE_INTERVAL + event-triggered saves; long-term = Phase 9 CQRS snapshots. |
 | Aug 14 2026 | PR 953 opened (ramses_cc) | SAVE_STATE_INTERVAL increased from 5m to 30m. Implements PWhite-Eng's short-term recommendation. Cuts flash writes by ~83%. Event-driven topology sync (Step 5) + shutdown save remain as primary paths. |
 | Aug 14 2026 | Step 8 added to plan | Remove obsolete `hvac_schema` cache (workaround for load_fan stub, now DONE). Actionable after current release feedback. ramses_cc-only, non-breaking. |
+| Aug 15 2026 | ramses_rf 0.59.7 refactors land | PRs 1051-1074: pythonic naming (pkt→packet, idx→index, issue 1039), Code/Verb enums (issue 1040), HCC100 cooling support, OTB telemetry restoration (issue 975), multi-TCS DHW isolation (issue 973/1069), zone temp multi-TRV fix (issue 976/1070). All non-breaking for ramses_cc via `payload_to_dict()` boundary adapter. |
+| Aug 16 2026 | PR 953 MERGED (ramses_cc) | SAVE_STATE_INTERVAL 5m→30m shipped. Cuts flash writes by ~83%. |
+| Aug 16 2026 | Issue 954 FIXED (PR 957/959) | Foreign HGI no longer re-prompted every discovery cycle. |
+| Aug 17 2026 | Issue 987 FIXED (PR 993) | HGI re-discovery: `_extract_schema_device_ids` now operates on unstripped schema (includes HGI entries). R77 recipe 3/3 pass. |
+| Aug 17 2026 | Issue 988 FIXED (PR 993) | Orphaned notification suppression: `_suppress_not_seen` schema key (True=forever, int=N days, default 7), `last_orphaned_log` for periodic INFO, auto-clears when device seen again. R78 recipe 4/4 pass. |
+| Aug 17 2026 | ramses_extras issue 162 FIXED | Traffic analyser not showing live msgs: coordinator lookup updated from `hass.data["ramses_cc"]` to `entry.runtime_data`, Python 2 `except` syntax fixed, ramses_tx 0.59.7 compat (`pkt_rcvd`→`packet_rcvd`). |
 
 ---
 

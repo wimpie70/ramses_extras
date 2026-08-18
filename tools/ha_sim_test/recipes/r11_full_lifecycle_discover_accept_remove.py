@@ -106,6 +106,13 @@ class R11FullLifecycleDiscoverAcceptRemove(Recipe):
             floor=15.0,
         )
 
+        # The profile load can trigger a double reload (profile loader
+        # triggers ramses_cc reload, which triggers a second profile load
+        # and another reload).  Wait for the transport to be stable
+        # RIGHT BEFORE injecting heartbeats to avoid sending packets
+        # during the second disconnect cycle.
+        wait_for_transport_ready(timeout=30)
+
         # Inject several 1FC9 heartbeats from the new TRV to trigger discovery
         print(f"  Injecting 1FC9 heartbeats from {new_trv}...")
         for i in range(3):

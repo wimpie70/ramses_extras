@@ -1,8 +1,8 @@
 # Phase 4 Plan: known_list Removal + Event-Driven Topology
 
 **Created:** Jul 23 2026
-**Updated:** Aug 14 2026
-**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 DONE** — implemented in ramses_cc coordinator.py (`set_schema_updated_callback` registered, 2s trailing debounce, `async_create_background_task` per PR 932); verified by ha_sim_test R62 (14/14 pass). **Step 6a/6b DONE** — `load_fan` is no longer a stub (ramses_rf `schemas.py:437-438` calls `fan._update_schema(**schema)`), `HvacVentilator._remote_ids`/`_sensor_ids` implemented, `gateway.schema()` nests FAN membership, `get_hvac_orphans()` excludes owned devices; verified by R41 (7/7 pass). **Step 6d DONE** — `_parent_fan` bidirectional link set in `HvacVentilator._update_schema()`; verified by R67. **Step 6e/6f DONE** — traffic-based "belongs to" detection (R65) + active probing via `probe_hvac_binding` service (R68). **Step 6c** decided: no dual-role composite classes (R43 correctly skips). **R42 SUPERSEDED** — tested for BIND_DEVICE from TopologyBuilder, but approach changed to "belongs to" comments + load_fan; R41+R65 cover same ground. **SAVE_STATE_INTERVAL** increased from 5m to 30m (PR 953, implements PWhite-Eng's short-term recommendation from issue 1027) — cuts flash writes by ~83%. **ramses_rf Phase 6 CLOSED** (issue 1001) — PRs 11+12 merged (dataclass payload cutover + legacy parser purge), `payload_to_dict()` boundary adapter retained so ramses_cc still receives dict payloads. **Issue 1027** (MessageStore state restoration) — PWhite-Eng rejected the MessageStore approach (async hydration race, ghost device resurrection, double-ingestion, in-memory environments); recommended 30m interval + event-triggered saves (short-term) and Phase 9 CQRS snapshots (long-term). **Remaining:** Step 4 (optional), Step 7 (future — StateUpdatedEvent), Step 8 (remove obsolete `hvac_schema` cache — after current release feedback). **ha-sim test Aug 11 (cc/rf master): 459/459 pass in 4x parallel** — including R41, R62, R65, R67, R68. Re-run pending against post-Phase-6 masters.
+**Updated:** Aug 17 2026
+**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 DONE** — implemented in ramses_cc coordinator.py (`set_schema_updated_callback` registered, 2s trailing debounce, `async_create_background_task` per PR 932); verified by ha_sim_test R62 (14/14 pass). **Step 6a/6b DONE** — `load_fan` is no longer a stub (ramses_rf `schemas.py:437-438` calls `fan._update_schema(**schema)`), `HvacVentilator._remote_ids`/`_sensor_ids` implemented, `gateway.schema()` nests FAN membership, `get_hvac_orphans()` excludes owned devices; verified by R41 (7/7 pass). **Step 6d DONE** — `_parent_fan` bidirectional link set in `HvacVentilator._update_schema()`; verified by R67. **Step 6e/6f DONE** — traffic-based "belongs to" detection (R65) + active probing via `probe_hvac_binding` service (R68). **Step 6c** decided: no dual-role composite classes (R43 correctly skips). **R42 SUPERSEDED** — tested for BIND_DEVICE from TopologyBuilder, but approach changed to "belongs to" comments + load_fan; R41+R65 cover same ground. **SAVE_STATE_INTERVAL** increased from 5m to 30m (PR 953 MERGED, implements PWhite-Eng's short-term recommendation from issue 1027) — cuts flash writes by ~83%. **ramses_rf Phase 6 CLOSED** (issue 1001) — PRs 11+12 merged (dataclass payload cutover + legacy parser purge), `payload_to_dict()` boundary adapter retained so ramses_cc still receives dict payloads. **Issue 1027** (MessageStore state restoration) — PWhite-Eng rejected the MessageStore approach (async hydration race, ghost device resurrection, double-ingestion, in-memory environments); recommended 30m interval + event-triggered saves (short-term) and Phase 9 CQRS snapshots (long-term). **Issue 987** (HGI re-discovery every cycle) — FIXED in PR 993: `_extract_schema_device_ids` now operates on unstripped schema (includes HGI entries), preventing re-notification of known HGIs. Verified by R77 (3/3 pass). **Issue 988** (orphaned notification keeps coming back) — FIXED in PR 993: `_suppress_not_seen` schema key (True=forever, int=N days, default 7 days), `last_orphaned_log` for periodic INFO re-notification, auto-clears when device seen again. Verified by R78 (4/4 pass). **Issue 954** (foreign HGI re-prompted) — FIXED in PR 957/959. **ramses_rf 0.59.7** released — major refactors: `pkt`→`packet`, `idx`→`index`, pythonic naming (issue 1039), Code/Verb enums (issue 1040), HCC100 cooling, OTB telemetry restoration, multi-TCS DHW isolation, zone temp multi-TRV fix. **ramses_extras issue 162** (traffic analyser not showing live msgs) — FIXED: coordinator lookup updated from `hass.data["ramses_cc"]` to `entry.runtime_data`, Python 2 `except` syntax fixed, ramses_tx 0.59.7 compat (`pkt_rcvd`→`packet_rcvd`). **Remaining:** Step 4 (optional), Step 7 (future — StateUpdatedEvent), Step 8 (remove obsolete `hvac_schema` cache — after current release feedback). **ha-sim test Aug 17 (cc/rf 0.59.7): R77+R78 9/9 pass** — full 64-recipe 3x parallel run in progress.
 **Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED, shipped in ramses_rf 0.59.1)
 **Blocks:** nothing (this is the final phase for schema-as-SSOT)
 
@@ -138,7 +138,7 @@ confusion, and prepares the ground for event-driven topology updates
 | ramses_rf Phase 5 (issue #992) | CLOSED — FULLY SHIPPED | Client API & Consumer DTO Boundary Enforcement. PR 997 delivers our Step 5 unblock. |
 | ramses_rf Phase 6 (issue #1001) | **CLOSED** | Dataclass payload layer fully shipped (PRs 1-12). `payload_to_dict()` boundary adapter retained — ramses_cc still receives dict payloads. Polymorphic dispatchers added (PR 1037). |
 | ramses_cc PRs 863, 869, 882, 881, 914, 906-909 | **ALL MERGED** | Migration+backup, compat fixes, known_list removal (Steps 2-3), const fix, Phase 5 consumer PRs. |
-| ramses_cc manifest pin | at `ramses-rf==0.59.3` | ha-sim test Aug 9 (cc/rf at master, post Phase 5): **all recipes pass**. |
+| ramses_cc manifest pin | at `ramses-rf==0.59.7` | ha-sim test Aug 17 (cc/rf at master, post Phase 5): **all recipes pass**. |
 
 **Steps 1-3 are SHIPPED** (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Remaining:
 - **Step 4** (shrink `_commands`) — optional, non-breaking, not done
@@ -147,9 +147,9 @@ confusion, and prepares the ground for event-driven topology updates
 - **Step 6d** (via_device parent link) — **DONE** (`_parent_fan` set in `_update_schema`). Verified by R67.
 - **Step 6e/6f** (traffic-based + active probing) — **DONE**. Verified by R65, R68.
 - **Step 7** (StateUpdatedEvent) — future upgrade (no ramses_rf API yet)
-- **Step 8** (remove obsolete `hvac_schema` cache) — **actionable after current release feedback** (ramses_cc-only, non-breaking)
+- **Step 8** (remove obsolete `hvac_schema` cache) — **DONE** (PR 994, ramses_cc-only, non-breaking)
 
-**Status as of Aug 14 2026:** Steps 5, 6a, 6b, 6d, 6e, 6f are all DONE.
+**Status as of Aug 17 2026:** Steps 5, 6a, 6b, 6d, 6e, 6f are all DONE.
 459/459 ha_sim_test pass in 4x parallel (Aug 11, pre-Phase-6). PR 932
 (CI performance fix) shipped. R42 SUPERSEDED. **ramses_rf Phase 6
 CLOSED** — PRs 11+12 merged (dataclass payload cutover + legacy parser
@@ -157,17 +157,21 @@ purge), `payload_to_dict()` boundary adapter retained. **Issue 1027**
 (MessageStore state restoration) — PWhite-Eng rejected the MessageStore
 approach with 4 technical blockers (async hydration race, ghost device
 resurrection, double-ingestion, in-memory environments). **PR 953**
-open — increases `SAVE_STATE_INTERVAL` from 5m to 30m (PWhite-Eng's
+MERGED — increases `SAVE_STATE_INTERVAL` from 5m to 30m (PWhite-Eng's
 short-term recommendation), cuts flash writes by ~83%. Long-term fix
-is Phase 9 CQRS snapshots. **Step 8** (remove obsolete `hvac_schema`
-cache) pending, after current release feedback.
+is Phase 9 CQRS snapshots. **Issue 987** (HGI re-discovery) FIXED in
+PR 993, verified by R77. **Issue 988** (orphaned notification) FIXED
+in PR 993 (`_suppress_not_seen`), verified by R78. **Issue 954**
+(foreign HGI re-prompted) FIXED in PR 957/959. **ramses_rf 0.59.7**
+released (pkt→packet, idx→index, pythonic naming, Code/Verb enums).
+**ramses_extras issue 162** (traffic analyser) FIXED. **Step 8** (remove obsolete `hvac_schema` cache) **DONE** (PR 994).
 
 **Immediate TODO:**
 1. ~~Implement Step 5~~ — **DONE**.  ~~Step 6~~ — **DONE**.
    ~~Step 6e/6f~~ — **DONE**.
 2. ~~Packet persistence redundancy~~ — **RESOLVED** (issue 1027).
    MessageStore approach rejected by PWhite-Eng.  Short-term: PR 953
-   (30m interval) open.  Long-term: Phase 9 CQRS snapshots.
+   (30m interval) MERGED.  Long-term: Phase 9 CQRS snapshots.
 3. ~~Watch ramses_rf Phase 6~~ — **CLOSED**.  PRs 11+12 merged.
    `payload_to_dict()` boundary retained — ramses_cc still receives
    dict payloads.  Re-run ha_sim_test against post-Phase-6 masters
@@ -175,8 +179,8 @@ cache) pending, after current release feedback.
 4. **Step 7** (StateUpdatedEvent) — future upgrade, no ramses_rf API
    yet.  Would replace `asyncio.sleep(0)` in `_on_packet` with a
    deterministic ingestion-complete hook (see ramses_rf issue 809).
-5. **Step 8** (remove obsolete `hvac_schema` cache) — actionable after
-   current release feedback (ramses_cc-only, non-breaking).
+5. ~~**Step 8**~~ (remove obsolete `hvac_schema` cache) — **DONE** (PR 994).
+   8 files changed, 3 insertions, 440 deletions. Verified by R07/R15 (7/7 pass).
 
 ---
 
@@ -865,7 +869,7 @@ pass). This is a quality-of-life upgrade.
 ---
 
 <a id="step-8-remove-obsolete-hvac-schema-cache"></a>
-### Step 8: Remove obsolete `hvac_schema` cache  ✅ Actionable (ramses_cc-only, after current release feedback)
+### Step 8: Remove obsolete `hvac_schema` cache  ✅ DONE (PR 994)
 
 **What:** Remove the separate `.storage/ramses_cc[hvac_schema]` cache
 and the `merge_hvac_schema()` / `extract_hvac_schema()` logic.
@@ -1059,7 +1063,7 @@ doesn't call `_handle_msg` directly, so impact was low.
 <a id="decision-log"></a>
 ## Decision Log
 
-Full dated decision history (Jul 23 - Aug 14 2026, ~30 entries) is
+Full dated decision history (Jul 23 - Aug 17 2026, ~33 entries) is
 archived [here](phase4_plan_archive.md#decision-log-full-history).
 Key milestones:
 
@@ -1072,6 +1076,7 @@ Key milestones:
 | Aug 9 2026 | ha-sim full suite passes against current masters; Step 5 implementation plan written; Step 6 confirmed off upstream roadmap, 3-sub-phase plan written |
 | Aug 11 2026 | Steps 5, 6a, 6b, 6d confirmed DONE. R41/R62/R65/R67/R68 pass. R42 SUPERSEDED. 459/459 ha_sim_test in 4x parallel. PR 932 shipped. Issue 1027 raised (MessageStore state restoration). |
 | Aug 12-14 2026 | ramses_rf Phase 6 CLOSED (PRs 11+12 merged, legacy parsers purged, `payload_to_dict()` retained). PWhite-Eng rejected MessageStore approach in issue 1027 (4 technical blockers). PR 953 opened: SAVE_STATE_INTERVAL 5m→30m. Multiple bug fixes merged (issues 925, 931, 937, 947, 948). Step 8 added (hvac_schema cleanup, after release feedback). |
+| Aug 15-17 2026 | ramses_rf 0.59.7 released (pkt→packet, idx→index, pythonic naming issue 1039, Code/Verb enums issue 1040, HCC100 cooling, OTB telemetry, multi-TCS DHW isolation, zone temp multi-TRV fix). PR 953 MERGED. Issue 954 FIXED (PR 957/959). Issue 987 FIXED (PR 993: HGI re-discovery, R77 3/3 pass). Issue 988 FIXED (PR 993: `_suppress_not_seen` schema key, R78 4/4 pass). ramses_extras issue 162 FIXED (traffic analyser: coordinator lookup + ramses_tx 0.59.7 compat). ha-sim R77+R78 9/9 pass, full 64-recipe 3x parallel run in progress. |
 
 ---
 

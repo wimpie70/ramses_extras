@@ -28,6 +28,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -83,6 +84,7 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             print(f"  Profile load failed: {str(e)[:80]}")
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        wait_for_transport_ready(timeout=30)
         # Activate FAN + REM for heartbeats
         for dev_id, name in [(FAN, "FAN"), (REM, "REM"), (CO2, "CO2")]:
             try:
@@ -169,6 +171,9 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             # build the packet from the dict template and send it.
             # We capture the log before/after to verify "Intercepted fan_mode"
             # appears (the override path logs this).
+            import datetime as _dt
+
+            _log_baseline_r31 = _dt.datetime.now(_dt.UTC).isoformat()
             print(f"  Calling climate.set_fan_mode(low) on {climate_eid}...")
             try:
                 call_service(
@@ -191,25 +196,28 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             ctx.wait(3, "for log to flush")
 
             # Check 5: log shows "Intercepted fan_mode" (override path was taken)
-            # log_monitor may not capture INFO by default, so we read the raw
-            # log file directly.  Use grep instead of tail — the log may have
-            # rotated past the last 100 lines by the time we check.
+            # Use docker logs --since with the baseline timestamp to search
+            # only recent logs (avoids matching stale entries from previous
+            # recipes in the full suite).
+            baseline_docker_r31 = _dt.datetime.fromisoformat(
+                _log_baseline_r31
+            ).strftime("%Y-%m-%dT%H:%M:%S")
             raw_log_result = subprocess.run(
                 [
                     "docker",
-                    "exec",
+                    "logs",
+                    "--since",
+                    baseline_docker_r31,
                     get_current_instance().name,
-                    "grep",
-                    "Intercepted fan_mode",
-                    "/config/home-assistant.log",
                 ],
                 capture_output=True,
                 text=True,
+                timeout=10,
             )
-            raw_log_r31 = raw_log_result.stdout
+            raw_log_r31 = raw_log_result.stderr or raw_log_result.stdout
             intercepted = "Intercepted fan_mode" in raw_log_r31
             ctx.check(
                 "Log shows 'Intercepted fan_mode' (override path taken)",
                 intercepted,
-                f"{'found' if intercepted else 'NOT found in last 100 log lines'}",
+                f"{'found' if intercepted else 'NOT found in logs since baseline'}",
             )

@@ -888,7 +888,7 @@ def wait_for_ha_ready(timeout: int = 30, msg: str = "for ha-sim to start up") ->
     of 10s — docker restarts take a hard 3-5s minimum before the API is
     even reachable, so scaling the timeout below 10s makes no sense.
     """
-    return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=3.0)
+    return wait_for(is_ha_ready, timeout=timeout, interval=2, msg=msg, floor=10.0)
 
 
 def wait_for_ramses_cc_loaded(
@@ -904,7 +904,7 @@ def wait_for_ramses_cc_loaded(
     a safety margin for parallel contention.
     """
     return wait_for(
-        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=5.0
+        is_ramses_cc_loaded, timeout=timeout, interval=1, msg=msg, floor=10.0
     )
 
 
@@ -1035,12 +1035,18 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
     during this window.  This helper polls the HA log for the
     ``Subscribed to status topic`` message that indicates the MQTT transport
     has reconnected and the FSM is back in ``IsInIdle``.
+
+    A profile reload can cause TWO disconnect/reconnect cycles (the old
+    coordinator unloads, then the new one starts).  To avoid returning on
+    the first (transient) reconnect, we require that the most recent
+    ``Subscribed to status topic`` message is NOT followed by a
+    ``MQTT disconnected`` message in the log window.
     """
     inst = get_current_instance()
 
     def _check() -> bool:
         result = subprocess.run(
-            ["docker", "logs", "--since", "10s", inst.name],
+            ["docker", "logs", "--since", "15s", inst.name],
             capture_output=True,
             text=True,
             timeout=10,
@@ -1048,17 +1054,24 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
         if result.returncode != 0:
             return False
         logs = result.stderr or ""
-        # The MQTT transport logs this when it (re)subscribes after connecting.
-        # Use a 10s --since window so we don't miss the reconnection message
-        # between polling intervals (3s).
-        return "Subscribed to status topic" in logs
+        # Find the last "Subscribed to status topic" line and check that
+        # no "MQTT disconnected" appears after it.  This ensures the
+        # transport is stably connected, not in a transient reconnect
+        # during the double-disconnect cycle of a profile reload.
+        sub_idx = logs.rfind("Subscribed to status topic")
+        if sub_idx == -1:
+            return False
+        after_sub = logs[sub_idx:]
+        if "MQTT disconnected" in after_sub:
+            return False
+        return True
 
     return wait_for(
         _check,
         timeout=timeout,
         interval=3,
         msg="for transport to reconnect",
-        floor=5.0,
+        floor=15.0,
     )
 
 

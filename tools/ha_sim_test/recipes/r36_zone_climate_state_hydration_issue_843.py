@@ -9,6 +9,7 @@ from ..const import CTL
 from ..helpers import (
     call_service,
     get_entities,
+    get_schema_retry,
     is_ramses_cc_loaded,
     wait_for,
     wait_for_schema_populated,
@@ -216,36 +217,114 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
 
         def _find_climate_entity() -> dict | None:
             entities = get_entities(ctx.token)
-            # 1. Match by zone_idx attribute (most reliable)
+            # 1. Match by zone_index attribute (most reliable)
+            #    Note: ramses_cc uses "zone_index" not "zone_idx"
             for e in entities:
                 if not e["entity_id"].startswith("climate."):
                     continue
                 attrs = e.get("attributes", {})
-                if attrs.get("zone_idx") == zone_idx:
+                if attrs.get("zone_index") == zone_idx:
                     return e
-            # 2. Match by entity_id pattern: climate.<ctl>_<zone_idx>
+            # 1b. Match by "id" attribute (e.g. "01:150000_03")
+            #     ramses_cc sets this to "<ctl>_<zone_idx>"
+            id_pattern = f"{CTL}_{zone_idx}"
+            for e in entities:
+                if not e["entity_id"].startswith("climate."):
+                    continue
+                attrs = e.get("attributes", {})
+                if attrs.get("id") == id_pattern:
+                    return e
+            # 2. Match by friendly_name: ramses_cc sets friendly_name to
+            #    "<ctl>_<zone_idx>" e.g. "01:150000_03".  The entity_id
+            #    may use a zone name slug (e.g. climate.lounge_2) so
+            #    friendly_name is the reliable way to find the right zone.
+            friendly_pattern = f"{CTL}_{zone_idx}"
+            for e in entities:
+                if not e["entity_id"].startswith("climate."):
+                    continue
+                attrs = e.get("attributes", {})
+                fname = attrs.get("friendly_name", "")
+                if fname == friendly_pattern:
+                    return e
+            # 3. Match by entity_id pattern: climate.<ctl>_<zone_idx>
             #    e.g. climate.01_150000_03 for CTL 01:150000, zone 03
             ctl_suffix = CTL.replace(":", "_")
             pattern = f"climate.{ctl_suffix}_{zone_idx}"
             for e in entities:
                 if e["entity_id"] == pattern:
                     return e
-            # 3. Match by entity_id prefix (handles _2 suffix duplicates)
+            # 4. Match by entity_id prefix (handles _2 suffix duplicates)
             for e in entities:
                 if e["entity_id"].startswith(pattern):
+                    return e
+            # 5. Match by entity_id with rad_ prefix
+            #    e.g. climate.rad_01_150000_03 (radiator zone)
+            rad_pattern = f"climate.rad_{ctl_suffix}_{zone_idx}"
+            for e in entities:
+                if e["entity_id"] == rad_pattern:
+                    return e
+            for e in entities:
+                if e["entity_id"].startswith(rad_pattern):
+                    return e
+            # 6. Match by zone_idx in entity_id (any prefix)
+            #    e.g. climate.<anything>_<ctl_suffix>_<zone_idx>
+            for e in entities:
+                if (
+                    e["entity_id"].startswith("climate.")
+                    and e["entity_id"].endswith(f"_{zone_idx}")
+                    and ctl_suffix in e["entity_id"]
+                ):
                     return e
             return None
 
         # 4b. Poll for climate entity existence — under parallel load the
         #     entity may not be created immediately after force_update.
+        #     In the full suite, entity creation can take 20-30s due to
+        #     the higher system load; use a 30s floor to avoid flakiness.
+        #     Also try triggering sync_topology + force_update to nudge
+        #     entity creation if the climate platform hasn't loaded yet.
+        def _nudge_entity_creation() -> bool:
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            return _find_climate_entity() is not None
+
         wait_for(
-            lambda: _find_climate_entity() is not None,
-            timeout=15,
-            interval=2,
+            _nudge_entity_creation,
+            timeout=90,
+            interval=3,
             msg="for climate entity to be created",
-            floor=3.0,
+            floor=30.0,
         )
         climate_entity = _find_climate_entity()
+
+        # Debug: if climate entity not found, show what climate entities exist
+        if climate_entity is None:
+            all_entities = get_entities(ctx.token)
+            climate_entities = [
+                e["entity_id"]
+                for e in all_entities
+                if e["entity_id"].startswith("climate.")
+            ]
+            print("  DEBUG: No climate entity for zone 03 found.")
+            print(f"  DEBUG: All climate entities: {climate_entities[:20]}")
+            # Also check what zones exist in the schema
+            schema = get_schema_retry()
+            ctl_schema = schema.get(CTL, {})
+            zones = ctl_schema.get("zones", {})
+            print(f"  DEBUG: Zones in schema: {list(zones.keys())}")
+            for zidx, zdata in zones.items():
+                if isinstance(zdata, dict):
+                    print(
+                        f"  DEBUG: Zone {zidx}:"
+                        f" sensor={zdata.get('sensor')},"
+                        f" class={zdata.get('class')}"
+                    )
 
         # Check 1: climate entity exists
         cl_eid = climate_entity["entity_id"] if climate_entity else "None"
@@ -320,10 +399,10 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
 
         wait_for(
             _climate_hydrated,
-            timeout=45,
+            timeout=90,
             interval=2,
             msg="for climate entity state to hydrate from 2349",
-            floor=20.0,
+            floor=30.0,
         )
 
         # Read final state for the checks

@@ -28,6 +28,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_discovered_device,
+    wait_for_ramses_extras_ready,
     wait_for_schema_populated,
     wait_for_transport_ready,
     write_ramses_storage,
@@ -64,6 +65,9 @@ class R29BdrBroadcasting3b003ef0ApplianceControlIssue(Recipe):
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
         ctx.wait_for_ramses_cc_loaded(timeout=20)
+        # Wait for ramses_extras device simulator to be ready before
+        # loading the profile (otherwise WS commands fail with "not_ready")
+        wait_for_ramses_extras_ready(timeout=90, msg="for ramses_extras after restart")
 
         # Load mixed profile (has CTL 01:150000 as main_tcs for TCS placement)
         print("  Loading mixed profile (has CTL for TCS placement)...")

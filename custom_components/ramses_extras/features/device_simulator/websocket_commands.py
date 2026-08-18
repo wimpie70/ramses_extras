@@ -842,7 +842,7 @@ def ws_get_ui_status(
     msg: dict[str, Any],
 ) -> None:
     """Return full simulator status for UI card."""
-    LOGGER.info("ws_get_ui_status called")
+    LOGGER.debug("ws_get_ui_status called")
     ra = hass.data.setdefault("ramses_extras", {})
 
     # Get profiles from config store

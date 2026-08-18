@@ -27,6 +27,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_async,
+    wait_for_transport_ready,
     write_ramses_storage,
     ws_send,
 )
@@ -73,6 +74,10 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
         ctx.wait_for_ramses_cc_reload(msg="for profile reload")
         ctx.refresh_token()
+        # Wait for the MQTT transport to reconnect after the reload,
+        # otherwise the 1FC9 heartbeat injection is silently dropped
+        # and the scan engine never sees 32:150000.
+        wait_for_transport_ready(timeout=30)
 
         # Activate the FAN device so it starts sending messages and the
         # remote entity is created.  On fresh containers (parallel runs),

@@ -15,6 +15,7 @@ from ..helpers import (
     get_schema_retry,
     load_profile_yaml,
     wait_for,
+    wait_for_ramses_extras_ready,
     wait_for_schema_populated,
     ws_send,
 )
@@ -65,6 +66,9 @@ class R74ManualPlacementPreservedCommentStalenessIssue931(Recipe):
         ctx.log_monitor.reset_baseline()
         ctx.refresh_token()
         ctx.wait_for_ramses_cc_loaded(timeout=30)
+        # Wait for ramses_extras device simulator to be ready before
+        # loading the profile (otherwise WS commands fail with "not_ready")
+        wait_for_ramses_extras_ready(timeout=90, msg="for ramses_extras after restart")
 
         # --- Build a custom profile with manual hotwater_valve placement ---
         # The BDR is manually placed as hotwater_valve in the config schema.
