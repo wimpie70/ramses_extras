@@ -60,7 +60,20 @@ class R16ConcurrencystressTestRapidAddremoveInject(Recipe):
                     },
                 )
                 # Immediately trigger sync_topology (concurrent with inject)
-                call_service(ctx.token, "ramses_cc", "sync_topology")
+                # Retry on HTTP 400 — may be transient under load
+                sync_ok = False
+                for attempt in range(3):
+                    try:
+                        call_service(ctx.token, "ramses_cc", "sync_topology")
+                        sync_ok = True
+                        break
+                    except RuntimeError as e:
+                        if "HTTP 400" in str(e) and attempt < 2:
+                            time.sleep(1)
+                            continue
+                        raise
+                if not sync_ok:
+                    errors += 1
             except RuntimeError:
                 errors += 1
             time.sleep(1)

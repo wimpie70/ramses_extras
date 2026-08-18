@@ -375,20 +375,23 @@ except Exception as e:
         #     but this happens asynchronously after ramses_cc loads.
         #     We need the TRV to be in the scan engine's device list before
         #     check_orphaned_devices can flag it.
+        #     NOTE: get_discovered_devices service fires an event rather than
+        #     returning data via HTTP response, so we check .storage directly.
         print("  Waiting for discovery scan state to be restored...")
 
         def _scan_has_trv() -> bool:
             try:
-                result = call_service(
-                    ctx.token,
-                    "ramses_cc",
-                    "get_discovered_devices",
+                storage = get_ramses_storage()
+                scan_state_str = storage.get("discovery", {}).get("scan_state", "")
+                if not scan_state_str:
+                    return False
+                import json as _json
+
+                scan_state = _json.loads(scan_state_str)
+                return any(
+                    d.get("device_id") == trv_id for d in scan_state.get("devices", [])
                 )
-                devices = (
-                    result if isinstance(result, list) else result.get("devices", [])
-                )
-                return any(d.get("device_id") == trv_id for d in devices)
-            except RuntimeError:
+            except RuntimeError, ValueError:
                 return False
 
         wait_for(

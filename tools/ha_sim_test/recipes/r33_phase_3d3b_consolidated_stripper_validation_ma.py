@@ -16,6 +16,7 @@ from ..helpers import (
     load_profile_yaml,
     wait_for,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl
@@ -128,6 +129,7 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
 
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
+        wait_for_transport_ready(timeout=30)
         # Activate CTL + FAN + REM for heartbeats
         for dev_id, name in [(CTL, "CTL"), (FAN, "FAN"), (REM, "REM")]:
             try:
@@ -168,33 +170,8 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
         # happens at gateway feed time.  We verify the gateway's view by
         # grepping the log for "Schema passed to ramses_rf" — this is the
         # stripped schema that _strip_and_orchestrate() produced.
-        # Use --since 120s to filter to only this recipe's reload window,
-        # avoiding stale lines from previous recipes in the full suite.
-        gw_log = (
-            subprocess.run(
-                [
-                    "docker",
-                    "logs",
-                    "--since",
-                    "120s",
-                    get_current_instance().name,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            ).stderr
-            or ""
-        )
-        # Filter to only lines after our baseline timestamp.
-        # The log lines have ANSI color codes at the start, so we need to
-        # strip them before extracting the timestamp.
-        # Log format (after ANSI strip): "2026-08-17 22:19:26.625 DEBUG ..."
-        # The container logs are in the container's local timezone, while
-        # _log_baseline is in UTC.  We get the container's UTC offset and
-        # convert the baseline accordingly.
-        import re as _re
-
-        _ansi_re = _re.compile(r"\x1b\[[0-9;]*m")
+        # Use --since with the baseline timestamp converted to container
+        # local time (docker logs interprets --since as local time).
         # Get container timezone offset (e.g. +0200)
         try:
             tz_out = subprocess.run(
@@ -212,29 +189,36 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
 
         baseline_utc = _dt2.fromisoformat(_log_baseline)
         baseline_local = baseline_utc + _td2(hours=tz_hours, minutes=tz_mins)
-        baseline_str = baseline_local.strftime("%Y-%m-%d %H:%M:%S")
+        baseline_docker = baseline_local.strftime("%Y-%m-%dT%H:%M:%S")
+        gw_log = (
+            subprocess.run(
+                [
+                    "docker",
+                    "logs",
+                    "--since",
+                    baseline_docker,
+                    get_current_instance().name,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stderr
+            or ""
+        )
+        # Filter for "Schema passed to ramses_rf" lines
         all_gw_lines = [
             line for line in gw_log.splitlines() if "Schema passed to ramses_rf" in line
         ]
-        gw_lines = []
-        for line in all_gw_lines:
-            # Strip ANSI codes then extract timestamp (first 19 chars)
-            clean = _ansi_re.sub("", line)
-            ts = clean[:19] if len(clean) >= 19 else ""
-            if ts >= baseline_str:
-                gw_lines.append(line)
-        # Use the first NON-EMPTY schema line after the baseline — the first
-        # line after a profile reload is often {} (from the unload phase),
-        # and the second line has the actual stripped schema from the reload.
-        # Subsequent lines (from sync/force_update) may have a different
-        # schema that doesn't include all test devices.
+        # Use the first NON-EMPTY schema line — the first line after a
+        # profile reload is often {} (from the unload phase), and the
+        # second line has the actual stripped schema from the reload.
         gw_schema_str = ""
-        for line in gw_lines:
+        for line in all_gw_lines:
             if "{}" not in line.split("Schema passed to ramses_rf: ", 1)[-1]:
                 gw_schema_str = line
                 break
-        if not gw_schema_str and gw_lines:
-            gw_schema_str = gw_lines[0]
+        if not gw_schema_str and all_gw_lines:
+            gw_schema_str = all_gw_lines[0]
         ctx.check(
             "Gateway received stripped schema (log captured)",
             bool(gw_schema_str),

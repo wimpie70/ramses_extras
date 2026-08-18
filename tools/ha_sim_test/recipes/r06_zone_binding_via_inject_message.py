@@ -102,6 +102,10 @@ class R06ZoneBindingViaInjectMessage(Recipe):
         # (sync_topology on the next line will process it from the queue)
         ctx.wait(2, "for 000C packet to arrive in dispatcher")
 
+        # Ensure MQTT transport is ready before calling sync_topology
+        # (profile reloads can cause double-disconnect cycles)
+        wait_for_transport_ready(timeout=30)
+
         # Trigger sync_topology to process the injected packet
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
