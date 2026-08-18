@@ -217,6 +217,18 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
 
         def _find_climate_entity() -> dict | None:
             entities = get_entities(ctx.token)
+            # 0. Skip "restored" entities — under parallel load, HA may
+            #    show a stale entity with restored=true and state=
+            #    'unavailable' while the real entity hasn't been created
+            #    yet.  Collect candidates and prefer non-restored ones.
+            candidates: list[dict] = []
+
+            def _consider(e: dict) -> None:
+                attrs = e.get("attributes", {})
+                if attrs.get("restored"):
+                    return  # skip restored entities
+                candidates.append(e)
+
             # 1. Match by zone_index attribute (most reliable)
             #    Note: ramses_cc uses "zone_index" not "zone_idx"
             for e in entities:
@@ -224,7 +236,9 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
                     continue
                 attrs = e.get("attributes", {})
                 if attrs.get("zone_index") == zone_idx:
-                    return e
+                    _consider(e)
+                    if candidates:
+                        return candidates[0]
             # 1b. Match by "id" attribute (e.g. "01:150000_03")
             #     ramses_cc sets this to "<ctl>_<zone_idx>"
             id_pattern = f"{CTL}_{zone_idx}"
@@ -233,7 +247,9 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
                     continue
                 attrs = e.get("attributes", {})
                 if attrs.get("id") == id_pattern:
-                    return e
+                    _consider(e)
+                    if candidates:
+                        return candidates[0]
             # 2. Match by friendly_name: ramses_cc sets friendly_name to
             #    "<ctl>_<zone_idx>" e.g. "01:150000_03".  The entity_id
             #    may use a zone name slug (e.g. climate.lounge_2) so
@@ -245,27 +261,37 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
                 attrs = e.get("attributes", {})
                 fname = attrs.get("friendly_name", "")
                 if fname == friendly_pattern:
-                    return e
+                    _consider(e)
+                    if candidates:
+                        return candidates[0]
             # 3. Match by entity_id pattern: climate.<ctl>_<zone_idx>
             #    e.g. climate.01_150000_03 for CTL 01:150000, zone 03
             ctl_suffix = CTL.replace(":", "_")
             pattern = f"climate.{ctl_suffix}_{zone_idx}"
             for e in entities:
                 if e["entity_id"] == pattern:
-                    return e
+                    _consider(e)
+                    if candidates:
+                        return candidates[0]
             # 4. Match by entity_id prefix (handles _2 suffix duplicates)
             for e in entities:
                 if e["entity_id"].startswith(pattern):
-                    return e
+                    _consider(e)
+                    if candidates:
+                        return candidates[0]
             # 5. Match by entity_id with rad_ prefix
             #    e.g. climate.rad_01_150000_03 (radiator zone)
             rad_pattern = f"climate.rad_{ctl_suffix}_{zone_idx}"
             for e in entities:
                 if e["entity_id"] == rad_pattern:
-                    return e
+                    _consider(e)
+                    if candidates:
+                        return candidates[0]
             for e in entities:
                 if e["entity_id"].startswith(rad_pattern):
-                    return e
+                    _consider(e)
+                    if candidates:
+                        return candidates[0]
             # 6. Match by zone_idx in entity_id (any prefix)
             #    e.g. climate.<anything>_<ctl_suffix>_<zone_idx>
             for e in entities:
@@ -274,8 +300,27 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
                     and e["entity_id"].endswith(f"_{zone_idx}")
                     and ctl_suffix in e["entity_id"]
                 ):
-                    return e
-            return None
+                    _consider(e)
+                    if candidates:
+                        return candidates[0]
+            # 7. Fallback: if no non-restored candidate was found, return
+            #    the first restored entity (so the debug output can show
+            #    what's wrong).  The hydration poll will keep waiting.
+            if not candidates:
+                for e in entities:
+                    if not e["entity_id"].startswith("climate."):
+                        continue
+                    attrs = e.get("attributes", {})
+                    if attrs.get("zone_index") == zone_idx:
+                        return e
+                id_pattern = f"{CTL}_{zone_idx}"
+                for e in entities:
+                    if not e["entity_id"].startswith("climate."):
+                        continue
+                    attrs = e.get("attributes", {})
+                    if attrs.get("id") == id_pattern:
+                        return e
+            return candidates[0] if candidates else None
 
         # 4b. Poll for climate entity existence — under parallel load the
         #     entity may not be created immediately after force_update.
@@ -299,7 +344,7 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             timeout=90,
             interval=3,
             msg="for climate entity to be created",
-            floor=30.0,
+            floor=45.0,
         )
         climate_entity = _find_climate_entity()
 
@@ -399,10 +444,10 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
 
         wait_for(
             _climate_hydrated,
-            timeout=90,
+            timeout=120,
             interval=2,
             msg="for climate entity state to hydrate from 2349",
-            floor=30.0,
+            floor=60.0,
         )
 
         # Read final state for the checks
