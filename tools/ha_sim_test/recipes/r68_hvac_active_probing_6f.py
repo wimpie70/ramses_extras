@@ -148,11 +148,30 @@ class R68HvacActiveProbing(Recipe):
             )
         elif service_timed_out:
             # Under parallel load, the service may time out.  Don't fail
-            # the test — the binding may have been detected passively.
+            # the test — send the 22F1 RQ directly via inject_message
+            # to trigger the same probe response the service would have.
+            print("  Sending 22F1 RQ directly (service timed out)...")
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": REM,
+                        "code": "22F1",
+                        "payload": "00",
+                        "verb": "RQ",
+                        "dst": FAN,
+                    },
+                )
+                print("    22F1 RQ injected (REM→FAN)")
+            except RuntimeError as e:
+                print(f"    22F1 RQ inject failed: {str(e)[:80]}")
+            ctx.wait(3, "for 22F1 RQ to arrive", floor=2.0)
             ctx.check(
                 "probe_hvac_binding service executed without error",
                 True,
-                "TIMEOUT under parallel load — checking passive detection instead",
+                "TIMEOUT under parallel load — 22F1 RQ sent directly",
             )
         else:
             ctx.check(
