@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 
 def _unique_in_order(items: list[str]) -> list[str]:
     seen: set[str] = set()
@@ -122,3 +124,53 @@ def iter_ramses_cc_entity_id_fallbacks(
     )
 
     return [c for c in candidates if c != entity_id]
+
+
+def extract_unique_id_from_param_entity(
+    entity_id: str,
+    *,
+    device_id: str | None = None,
+    device_id_underscore: str | None = None,
+) -> str | None:
+    """Extract the ramses_cc unique_id from a param entity_id pattern.
+
+    ramses_cc entities with ``has_entity_name=True`` generate entity_ids
+    from the entity *name*, not the unique_id.  The unique_id for a
+    parameter entity follows the pattern ``{device_id}-param_{code}``
+    (e.g. ``32:150000-param_75``), while the template entity_id is
+    ``number.{device_id}_param_{code}`` (e.g.
+    ``number.32_150000_param_75``).
+
+    :param entity_id: Entity ID like ``number.{device_id}_param_{code}``
+    :param device_id: Device ID with colons (e.g. ``32:150000``)
+    :param device_id_underscore: Device ID with underscores
+        (e.g. ``32_150000``)
+    :returns: unique_id string (e.g. ``32:150000-param_75``) or None
+        if the entity_id is not a param pattern for the given device
+    """
+    if not isinstance(entity_id, str) or "." not in entity_id:
+        return None
+
+    domain, object_id = entity_id.split(".", 1)
+    if not domain or not object_id:
+        return None
+
+    match = re.match(r"^(.+?)_param_(\d+)$", object_id)
+    if not match:
+        return None
+
+    prefix = match.group(1)
+    param_code = match.group(2)
+
+    if device_id_underscore is not None:
+        expected_prefix = device_id_underscore.lower()
+    elif device_id is not None:
+        expected_prefix = _device_id_to_underscore(device_id)
+    else:
+        return None
+
+    if prefix.lower() != expected_prefix:
+        return None
+
+    device_id_colon = expected_prefix.replace("_", ":")
+    return f"{device_id_colon}-param_{param_code}"
