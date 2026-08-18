@@ -1919,7 +1919,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return label
         try:
             rh_value = float(current_rh)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return label
         return f"{label} ({rh_value:.0f}%)"
 

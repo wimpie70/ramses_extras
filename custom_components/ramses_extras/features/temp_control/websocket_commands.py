@@ -141,7 +141,7 @@ async def ws_set_temp_control_device_config(
                     )
                 else:
                     settings[key] = coerce(raw_val)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 connection.send_error(
                     msg["id"],
                     "invalid_value",

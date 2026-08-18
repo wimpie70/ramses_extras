@@ -183,12 +183,12 @@ class RamsesMessageStream:
         return None
 
     def _parse_payload(self, data: dict[str, Any]) -> None:
-        """Enrich ``data["payload"]`` with a parsed dict if possible.
+        """Enrich ``data["decoded_payload"]`` with a parsed dict if possible.
 
         If the payload is a raw hex string, try to parse it via
-        ramses_rf's Message parser.  If it's already a dict (e.g. from
-        old ramses_cc events), keep it as-is.  Falls back to the raw
-        string if parsing fails or ramses_rf is not available.
+        ramses_rf's Message parser and store the result in
+        ``data["decoded_payload"]``.  ``data["payload"]`` is left as the
+        raw hex string so it remains hashable and decodable.
         """
         payload = data.get("payload")
         if payload is None or isinstance(payload, dict):
@@ -213,12 +213,12 @@ class RamsesMessageStream:
                     payload=str(payload),
                 )
                 parsed_msg = Message(dto)
-                data["payload"] = parsed_msg.payload
+                data["decoded_payload"] = parsed_msg.payload
                 return
-            except PacketInvalid, Exception:
+            except (PacketInvalid, Exception):
                 pass
 
-        # Keep as string if we couldn't parse
+        # Keep payload as string if we couldn't parse
         data["payload"] = str(payload) if payload is not None else None
 
     def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
@@ -250,13 +250,13 @@ class RamsesMessageStream:
             data.setdefault("frame", packet)
 
         # Parse raw hex payload into a dict via ramses_rf's Message parser.
-        # msg is already a PacketDTO, so try Message(msg) directly first
-        # (faster than reconstructing a PacketDTO from the data dict).
+        # Store the parsed result separately so data["payload"] stays as
+        # the raw hex string (needed for dedupe keys and decode).
         if Message is not None and raw_payload is not None:
             try:
                 parsed_msg = Message(msg)
-                data["payload"] = parsed_msg.payload
-            except PacketInvalid, Exception:
+                data["decoded_payload"] = parsed_msg.payload
+            except (PacketInvalid, Exception):
                 self._parse_payload(data)
         else:
             self._parse_payload(data)

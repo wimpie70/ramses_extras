@@ -443,7 +443,7 @@ def test_decode_message_with_ramses_rf_packet_ctor_failure(monkeypatch) -> None:
 
     class DummyMessage:
         @staticmethod
-        def _from_pkt(pkt: DummyPacket):
+        def _from_packet(pkt: DummyPacket):
             return None
 
     mod_ramses_rf = types.ModuleType("ramses_rf")
@@ -532,7 +532,7 @@ def test_decode_message_with_ramses_rf_validation_returns_none(
 
     class DummyMessage:  # pragma: no cover
         @staticmethod
-        def _from_pkt(pkt: DummyPacket):
+        def _from_packet(pkt: DummyPacket):
             return None
 
     mod_ramses_rf = types.ModuleType("ramses_rf")
@@ -571,7 +571,7 @@ def test_decode_message_with_ramses_rf_success(monkeypatch) -> None:
             return {"ok": True}
 
         @staticmethod
-        def _from_pkt(pkt: DummyPacket) -> DummyMessage:
+        def _from_packet(pkt: DummyPacket) -> DummyMessage:
             tokens = pkt.frame.split()
             # 000 VERB SEQN SRC DST VIA CODE LEN HEX
             verb = tokens[1]

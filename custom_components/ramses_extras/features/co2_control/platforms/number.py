@@ -60,7 +60,7 @@ class CO2ControlNumber(ExtrasNumberEntity, RestoreEntity):
         if (last_state := await self.async_get_last_state()) is not None:
             try:
                 self._attr_native_value = float(last_state.state)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 pass
 
     @property

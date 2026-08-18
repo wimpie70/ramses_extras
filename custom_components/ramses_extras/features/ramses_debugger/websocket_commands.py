@@ -765,6 +765,13 @@ async def ws_messages_get_messages(
             from .messages_provider import decode_message_with_ramses_rf
 
             for m in messages:
+                # If the traffic buffer already has a decoded payload
+                # from ramses_rf, use it directly instead of re-decoding.
+                if m.get("decoded_payload") is not None:
+                    m["decoded"] = {
+                        "payload": m["decoded_payload"],
+                    }
+                    continue
                 decoded = decode_message_with_ramses_rf(m)
                 if decoded is not None:
                     m["decoded"] = decoded

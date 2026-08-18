@@ -49,14 +49,14 @@ class TempControlConfig:
             raw = section.get(key, TEMP_CONTROL_DEFAULTS.get(key, default))
             try:
                 return float(raw)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 return float(default)
 
         def _get_int(key: str, default: int) -> int:
             raw = section.get(key, TEMP_CONTROL_DEFAULTS.get(key, default))
             try:
                 return int(raw)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 return int(default)
 
         def _get_bool(key: str, default: bool) -> bool:

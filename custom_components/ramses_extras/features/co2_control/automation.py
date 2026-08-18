@@ -932,7 +932,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             }:
                 try:
                     internal_val = float(internal_state.state)
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     pass
             _LOGGER.debug(
                 "CO2 no trigger %s: threshold=%d act_hyst=%d "
@@ -959,12 +959,12 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
                 try:
                     return int(float(state.state))
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     pass
 
         try:
             return int(area_sensor.get("co2_threshold") or threshold_default)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return threshold_default
 
     def _evaluate_source_trigger(
@@ -986,7 +986,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         try:
             co2_value = float(state.state)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             source_states[source_id] = False
             return None
 
@@ -1072,7 +1072,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
             try:
                 return int(float(state.state))
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 pass
         return int(self.config.default_threshold)
 
@@ -1085,7 +1085,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
             try:
                 return int(float(state.state))
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 pass
         return int(self.config.activation_hysteresis)
 
@@ -1098,7 +1098,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
             try:
                 return int(float(state.state))
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 pass
         return int(self.config.deactivation_hysteresis)
 

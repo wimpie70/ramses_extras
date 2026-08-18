@@ -77,7 +77,7 @@ def _decode_payload(
 
     try:
         from ramses_rf import Message, Packet
-    except ModuleNotFoundError, ImportError:
+    except (ModuleNotFoundError, ImportError):
         return None
 
     via = (
