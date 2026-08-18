@@ -265,31 +265,6 @@ class TestTransportMonitorCoverage:
         await monitor._notify_device_state_changed("32:123456", True)
         error_callback.assert_called_once_with(True)
 
-    def test__handle_ramses_cc_message_no_src(self, monitor):
-        """Test _handle_ramses_cc_message with no src."""
-        event = MagicMock()
-        event.data = {"dst": "32:123456"}  # No src
-
-        monitor._handle_ramses_cc_message(event)
-        # Should not crash
-
-    def test__handle_ramses_cc_message_no_colon_in_src(self, monitor):
-        """Test _handle_ramses_cc_message when src has no colon."""
-        event = MagicMock()
-        event.data = {"src": "invalid", "dst": "32:123456"}
-
-        monitor._handle_ramses_cc_message(event)
-        # Should not crash
-
-    def test__handle_ramses_cc_message_no_timer_for_device(self, monitor):
-        """Test _handle_ramses_cc_message when no timer for device."""
-        event = MagicMock()
-        event.data = {"src": "29:123456", "dst": "32:123456"}
-
-        # No timer for this device
-        monitor._handle_ramses_cc_message(event)
-        # Should not crash
-
     def test__handle_msg_exception(self, monitor):
         """Test _handle_msg handles exceptions."""
         msg = MagicMock()
@@ -493,35 +468,6 @@ class TestTransportMonitorCoverage:
         # Should not crash
         assert monitor._client is new_client
 
-    def test_handle_ramses_cc_message_no_data(self, monitor):
-        """Test _handle_ramses_cc_message with no data."""
-        event = MagicMock()
-        event.data = None
-
-        monitor._handle_ramses_cc_message(event)
-
-        # Should not crash
-
-    def test_handle_ramses_cc_message_invalid_data(self, monitor):
-        """Test _handle_ramses_cc_message with invalid data."""
-        event = MagicMock()
-        event.data = "not a dict"
-
-        monitor._handle_ramses_cc_message(event)
-
-        # Should not crash
-
-    def test_handle_ramses_cc_message_not_tracked_device(self, monitor):
-        """Test _handle_ramses_cc_message for untracked device."""
-        event = MagicMock()
-        event.data = {"src": "29:999999", "dst": "32:123456"}
-
-        monitor.register_callback("cb", MagicMock(), "32:123456")
-
-        monitor._handle_ramses_cc_message(event)
-
-        # Should not crash, device not tracked
-
     def test_handle_msg_no_src(self, monitor):
         """Test _handle_msg when msg has no src."""
         msg = MagicMock()
@@ -592,18 +538,23 @@ class TestTransportMonitorCoverage:
 
     @pytest.mark.asyncio
     async def test_stop_monitoring_cleanup_event_unsub(self, monitor):
-        """Test stop_monitoring cleans up event listener."""
+        """Test stop_monitoring cleans up event listener.
+
+        Note: _event_unsub was removed in issue 166 (ramses_cc_message
+        bus event listener removed).  This test now verifies that
+        stop_monitoring completes without error when there's no event
+        listener to clean up.
+        """
 
         async def dummy_task():
             await asyncio.sleep(1)
 
         monitor._monitor_task = asyncio.create_task(dummy_task())
-        monitor._event_unsub = MagicMock()
 
         await monitor.stop_monitoring()
 
-        # Verify unsub was set to None (cleanup happened)
-        assert monitor._event_unsub is None
+        # No _event_unsub to clean up (removed in issue 166)
+        assert not hasattr(monitor, "_event_unsub") or monitor._event_unsub is None
 
     @pytest.mark.asyncio
     async def test_stop_monitoring_cleanup_msg_handler_unsub(self, monitor):
