@@ -102,156 +102,6 @@ class TestRamsesMessageStream:
         assert data["dtm"] == "2026-04-18T09:00:00.000000"
         assert data["dst"] == "37:170000"
 
-    def test_event_path_kept_for_requests_when_handler_attached(self) -> None:
-        hass = MagicMock()
-        hass.bus.async_listen = MagicMock()
-        stream = RamsesMessageStream(hass)
-        stream._msg_handler_unsub = MagicMock()
-        callback = MagicMock()
-        stream.subscribe(callback)
-
-        event = SimpleNamespace(
-            data={
-                "src": "37:170000",
-                "dst": "32:150000",
-                "verb": "RQ",
-                "code": "2411",
-                "payload": "0000",
-            },
-            time_fired=datetime(2026, 4, 18, 9, 35, 1, 327000),
-        )
-
-        stream._handle_ramses_cc_message(event)
-
-        callback.assert_called_once()
-
-    def test_event_path_skips_rp_when_handler_attached(self) -> None:
-        hass = MagicMock()
-        hass.bus.async_listen = MagicMock()
-        stream = RamsesMessageStream(hass)
-        stream._msg_handler_unsub = MagicMock()
-        callback = MagicMock()
-        stream.subscribe(callback)
-
-        event = SimpleNamespace(
-            data={
-                "src": "32:150000",
-                "dst": "37:170000",
-                "verb": "RP",
-                "code": "2411",
-                "payload": "0000",
-            },
-            time_fired=datetime(2026, 4, 18, 9, 35, 1, 434000),
-        )
-
-        stream._handle_ramses_cc_message(event)
-
-        callback.assert_not_called()
-
-    def test_handle_msg_fires_ha_bus_event(self) -> None:
-        """_handle_msg should fire ramses_cc_message on the HA bus for frontend
-        when ramses_cc >= 0.55.6 (no longer fires its own events)."""
-        hass = MagicMock()
-        stream = RamsesMessageStream(hass)
-        stream._ramses_cc_fires_events = False  # newer ramses_cc
-        callback = MagicMock()
-        stream.subscribe(callback)
-
-        msg = SimpleNamespace(
-            addr1="32:150000",
-            addr2="37:170000",
-            verb="RP",
-            code="31DA",
-            payload="00EF007FFF3F3009BA0A8209690A256000C81822110000EFEF04C6076000",
-            timestamp=datetime(2026, 6, 23, 21, 28, 40),
-        )
-
-        stream._handle_msg(msg)
-
-        # Python subscribers notified
-        callback.assert_called_once()
-        # HA bus event fired for frontend message broker
-        hass.bus.async_fire.assert_called_once()
-        fired_event = hass.bus.async_fire.call_args
-        assert fired_event.args[0] == "ramses_cc_message"
-        fired_data = fired_event.kwargs.get("data") or fired_event.args[1]
-        assert fired_data["code"] == "31DA"
-        assert fired_data["src"] == "32:150000"
-        assert fired_data["_from_msg_handler"] is True
-
-    def test_handle_msg_skips_ha_bus_event_for_older_ramses_cc(self) -> None:
-        """_handle_msg should NOT fire ramses_cc_message on the HA bus when
-        ramses_cc < 0.55.6 (it fires its own events)."""
-        hass = MagicMock()
-        stream = RamsesMessageStream(hass)
-        stream._ramses_cc_fires_events = True  # older ramses_cc
-        callback = MagicMock()
-        stream.subscribe(callback)
-
-        msg = SimpleNamespace(
-            addr1="32:150000",
-            addr2="37:170000",
-            verb="RP",
-            code="31DA",
-            payload="00EF00",
-            timestamp=datetime(2026, 6, 23, 21, 28, 40),
-        )
-
-        stream._handle_msg(msg)
-
-        # Python subscribers still notified
-        callback.assert_called_once()
-        # HA bus event NOT fired (ramses_cc fires its own)
-        hass.bus.async_fire.assert_not_called()
-
-    def test_handle_msg_fires_event_when_version_unknown(self) -> None:
-        """_handle_msg should fire HA bus event when version is not yet
-        determined (default to firing for safety)."""
-        hass = MagicMock()
-        stream = RamsesMessageStream(hass)
-        # _ramses_cc_fires_events is None (not yet checked)
-        callback = MagicMock()
-        stream.subscribe(callback)
-
-        msg = SimpleNamespace(
-            addr1="32:150000",
-            addr2="37:170000",
-            verb="RP",
-            code="31DA",
-            payload="00EF00",
-            timestamp=datetime(2026, 6, 23, 21, 28, 40),
-        )
-
-        stream._handle_msg(msg)
-
-        callback.assert_called_once()
-        # Should fire because None is not False
-        hass.bus.async_fire.assert_called_once()
-
-    def test_handle_ramses_cc_message_skips_msg_handler_events(self) -> None:
-        """Events fired by _handle_msg should not duplicate subscriber notifications."""
-        hass = MagicMock()
-        hass.bus.async_listen = MagicMock()
-        stream = RamsesMessageStream(hass)
-        callback = MagicMock()
-        stream.subscribe(callback)
-
-        event = SimpleNamespace(
-            data={
-                "src": "32:150000",
-                "dst": "37:170000",
-                "verb": "RP",
-                "code": "31DA",
-                "payload": "00EF00",
-                "_from_msg_handler": True,
-            },
-            time_fired=datetime(2026, 6, 23, 21, 28, 40),
-        )
-
-        stream._handle_ramses_cc_message(event)
-
-        callback.assert_not_called()
-
     @pytest.mark.asyncio
     async def test_attach_client_listener_retries_until_available(self) -> None:
         """Listener attachment should retry while coordinator/client initializes."""
@@ -275,16 +125,10 @@ class TestRamsesMessageStream:
                 "custom_components.ramses_extras.framework.helpers.ramses_message_stream.asyncio.sleep",
                 new=AsyncMock(),
             ) as sleep_mock:
-                with patch(
-                    "custom_components.ramses_extras.framework.helpers.ramses_message_stream.async_get_integration",
-                    new=AsyncMock(side_effect=Exception("not found")),
-                ):
-                    await stream._async_attach_client_listener()
+                await stream._async_attach_client_listener()
 
         assert stream._msg_handler_unsub is unsub
         assert sleep_mock.await_count == 1
-        # Version detection ran but defaulted to False (no bus events)
-        assert stream._ramses_cc_fires_events is False
 
     def test_resolve_add_msg_handler_prefers_coordinator_when_available(self) -> None:
         """Support coordinator shapes exposing add_msg_handler directly."""
@@ -298,91 +142,24 @@ class TestRamsesMessageStream:
 
         assert resolved is add_handler
 
-    @pytest.mark.asyncio
-    async def test_ramses_cc_fires_events_old_version(self) -> None:
-        """Older ramses_cc (< 0.55.6) fires its own ramses_cc_message events."""
-        hass = MagicMock()
-        stream = RamsesMessageStream(hass)
-
-        integration = SimpleNamespace(manifest={"version": "0.55.5"})
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_message_stream.async_get_integration",
-            new=AsyncMock(return_value=integration),
-        ):
-            result = await stream._async_ramses_cc_fires_events()
-
-        assert result is True
-        assert stream._ramses_cc_fires_events is True
-
-    @pytest.mark.asyncio
-    async def test_ramses_cc_fires_events_new_version(self) -> None:
-        """Newer ramses_cc (>= 0.55.6) does not fire ramses_cc_message events."""
-        hass = MagicMock()
-        stream = RamsesMessageStream(hass)
-
-        integration = SimpleNamespace(manifest={"version": "0.55.6"})
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_message_stream.async_get_integration",
-            new=AsyncMock(return_value=integration),
-        ):
-            result = await stream._async_ramses_cc_fires_events()
-
-        assert result is False
-        assert stream._ramses_cc_fires_events is False
-
-    @pytest.mark.asyncio
-    async def test_ramses_cc_fires_events_not_installed(self) -> None:
-        """When ramses_cc is not found, default to not firing events."""
-        hass = MagicMock()
-        stream = RamsesMessageStream(hass)
-
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_message_stream.async_get_integration",
-            new=AsyncMock(side_effect=Exception("not found")),
-        ):
-            result = await stream._async_ramses_cc_fires_events()
-
-        assert result is False
-        assert stream._ramses_cc_fires_events is False
-
-    @pytest.mark.asyncio
-    async def test_ramses_cc_fires_events_caches_result(self) -> None:
-        """Version detection result should be cached."""
-        hass = MagicMock()
-        stream = RamsesMessageStream(hass)
-        stream._ramses_cc_fires_events = True  # already set
-
-        # Should return cached value without calling async_get_integration
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_message_stream.async_get_integration",
-            new=AsyncMock(),
-        ) as mock_get:
-            result = await stream._async_ramses_cc_fires_events()
-
-        assert result is True
-        mock_get.assert_not_called()
-
     def test_start_already_started(self) -> None:
         """Test start does nothing if already started."""
         hass = MagicMock()
         stream = RamsesMessageStream(hass)
-        stream._event_unsub = MagicMock()
         stream._msg_handler_unsub = MagicMock()
         stream.start()
-        # Should not call async_listen again
-        hass.bus.async_listen.assert_not_called()
+        # Should not create another attach task
+        assert stream._attach_task is None
 
     def test_stop_clears_subscribers(self) -> None:
         """Test stop clears unsubscribe callbacks and cancels task."""
         hass = MagicMock()
         stream = RamsesMessageStream(hass)
-        stream._event_unsub = MagicMock()
         stream._msg_handler_unsub = MagicMock()
         attach_task = MagicMock()
         attach_task.done.return_value = False
         stream._attach_task = attach_task
         stream.stop()
-        assert stream._event_unsub is None
         assert stream._msg_handler_unsub is None
         attach_task.cancel.assert_called_once()
 
@@ -508,30 +285,6 @@ class TestRamsesMessageStream:
         # The code checks if seqn != "---" and len(seqn) != 3
         # "XXX" has length 3, so it passes the check
         assert result is not None
-
-    def test_handle_ramses_cc_message_adds_frame(self) -> None:
-        """Test _handle_ramses_cc_message adds frame to data."""
-        hass = MagicMock()
-        stream = RamsesMessageStream(hass)
-        callback = MagicMock()
-        stream.subscribe(callback)
-
-        event = SimpleNamespace(
-            data={
-                "src": "32:150000",
-                "dst": "37:170000",
-                "verb": "RQ",
-                "code": "2411",
-                "payload": "0000",
-            },
-            time_fired=datetime(2026, 4, 18, 9, 35, 1, 327000),
-        )
-
-        stream._handle_ramses_cc_message(event)
-
-        callback.assert_called_once()
-        data = callback.call_args.args[0]
-        assert "frame" in data
 
     def test_handle_msg_without_packet(self) -> None:
         """Test _handle_msg handles message without packet."""

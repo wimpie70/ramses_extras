@@ -1,6 +1,6 @@
 # Device Simulator
 
-Simulates RAMSES devices for testing without hardware. Provides a virtual gateway that injects events into the `ramses_cc_message` bus and supports scenario-based testing.
+Simulates RAMSES devices for testing without hardware. Provides a virtual gateway that injects messages into the shared message stream and supports scenario-based testing.
 
 ## Prerequisites
 
@@ -82,7 +82,7 @@ Simulator MQTT endpoint connected. sub=RAMSES/GATEWAY_SIM/18:001234/tx pub=RAMSE
 ## Architecture
 
 - **Device Database**: Parses `ramses_rf/tests/fixtures/regression_packets_sorted.txt` for message patterns
-- **Virtual Gateway**: Injects events into `ramses_cc_message` bus
+- **Virtual Gateway**: Injects messages into the shared message stream
 - **Scenario Engine**: Device playback, flooding, timeout, conversation tests
 - **WebSocket API**: Device simulator and scenario builder UI cards
 

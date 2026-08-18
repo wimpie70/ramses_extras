@@ -5,12 +5,13 @@ that are not directly accessible:
 - _observed_command_from_packet (packet parsing)
 - _async_apply_observed_remote_command (REM command application)
 - _async_handle_observed_remote_packet (event handler chain)
-- _handle_remote_event / _handle_remote_msg (event/message callbacks)
+- _handle_remote_msg (message callback from add_msg_handler)
 - _async_force_zone_ventilation (direct valve control service)
 """
 
 import asyncio
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -77,32 +78,63 @@ def _get_service_func(hass, service_name):
 
 
 def _get_event_listener(hass):
-    """Get the ramses_cc_message event listener callback."""
-    hass.bus.async_listen.assert_called_once()
-    return hass.bus.async_listen.call_args[0][1]
+    """Get the remote message handler callback registered via add_msg_handler."""
+    # Find the add_msg_handler call on the mock client
+    for call in hass._add_msg_handler_calls:
+        return call[0]
+    raise AssertionError("No add_msg_handler callback was registered")
+
+
+async def _setup_services_with_handler(hass):
+    """Set up services with a mock coordinator and return the msg handler callback."""
+    mock_coordinator = MagicMock()
+    mock_client = MagicMock()
+    mock_client.add_msg_handler = MagicMock(return_value=MagicMock())
+    mock_coordinator.client = mock_client
+
+    hass._add_msg_handler_calls = []
+
+    def _track_add_msg_handler(*args, **kwargs):
+        hass._add_msg_handler_calls.append(args)
+        return MagicMock()
+
+    mock_client.add_msg_handler = _track_add_msg_handler
+
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_cmds:
+        mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
+            return_value=mock_coordinator
+        )
+        await async_setup_services(hass)
+
+    return _get_event_listener(hass)
+
+
+def _make_msg(data):
+    """Create a msg-like object (PacketDTO shape) from event data dict."""
+    return SimpleNamespace(
+        addr1=data.get("src"),
+        addr2=data.get("dst"),
+        code=data.get("code"),
+        payload=data.get("payload"),
+        verb=data.get("verb"),
+    )
 
 
 class TestObservedCommandFromPacket:
-    """Test _observed_command_from_packet via the event handling chain.
+    """Test _observed_command_from_packet via the message handler chain.
 
     The function is a closure inside async_setup_services. We trigger it
-    by firing the ramses_cc_message event listener with various payloads.
+    by calling the _handle_remote_msg callback (registered via
+    add_msg_handler) with various msg payloads.
     """
 
     @pytest.mark.asyncio
     async def test_string_payload_22f1_fan_low(self, hass):
         """Test 22F1 hex payload -> fan_low."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -118,15 +150,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000107",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000107",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             # record_remote_activity should have been called with command="fan_low"
@@ -138,16 +171,7 @@ class TestObservedCommandFromPacket:
     async def test_string_payload_22f1_fan_medium(self, hass):
         """Test 22F1 hex payload -> fan_medium."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -163,15 +187,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000207",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000207",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -183,16 +208,7 @@ class TestObservedCommandFromPacket:
     async def test_string_payload_22f1_fan_high(self, hass):
         """Test 22F1 hex payload -> fan_high."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -208,15 +224,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000307",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000307",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -228,16 +245,7 @@ class TestObservedCommandFromPacket:
     async def test_string_payload_22f1_fan_auto(self, hass):
         """Test 22F1 hex payload -> fan_auto."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -253,15 +261,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000407",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000407",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -273,16 +282,7 @@ class TestObservedCommandFromPacket:
     async def test_string_payload_22f1_fan_away(self, hass):
         """Test 22F1 hex payload -> fan_away."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -298,15 +298,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000007",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000007",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -318,16 +319,7 @@ class TestObservedCommandFromPacket:
     async def test_string_payload_22f1_speed_byte_extraction(self, hass):
         """Test 22F1 with 6+ char payload extracts speed byte at [3:5]."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -344,15 +336,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.record_remote_activity = MagicMock()
 
             # Payload "000104" -> speed_byte = "01" -> fan_low
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000104",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000104",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -364,16 +357,7 @@ class TestObservedCommandFromPacket:
     async def test_string_payload_22f3_timer_15min(self, hass):
         """Test 22F3 hex payload -> fan_timer_15min."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -389,15 +373,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F3",
-                "payload": "00120F03040404",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": "00120F03040404",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -409,16 +394,7 @@ class TestObservedCommandFromPacket:
     async def test_string_payload_22f3_timer_30min(self, hass):
         """Test 22F3 hex payload -> fan_timer_30min."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -434,15 +410,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F3",
-                "payload": "00121E03040404",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": "00121E03040404",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -454,16 +431,7 @@ class TestObservedCommandFromPacket:
     async def test_string_payload_22f3_timer_60min(self, hass):
         """Test 22F3 hex payload -> fan_timer_60min."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -479,15 +447,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F3",
-                "payload": "00123C03040404",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": "00123C03040404",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -499,16 +468,7 @@ class TestObservedCommandFromPacket:
     async def test_dict_payload_fan_mode_by_name(self, hass):
         """Test dict payload with fan_mode name."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -524,15 +484,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": {"fan_mode": "medium"},
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": {"fan_mode": "medium"},
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -544,16 +505,7 @@ class TestObservedCommandFromPacket:
     async def test_dict_payload_fan_mode_mid_alias(self, hass):
         """Test dict payload with 'mid' alias for medium."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -569,15 +521,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": {"fan_mode": "mid"},
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": {"fan_mode": "mid"},
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -589,16 +542,7 @@ class TestObservedCommandFromPacket:
     async def test_dict_payload_fan_mode_by_idx(self, hass):
         """Test dict payload with fan_mode as numeric index."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -614,15 +558,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": {"fan_mode": "03"},
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": {"fan_mode": "03"},
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -634,16 +579,7 @@ class TestObservedCommandFromPacket:
     async def test_dict_payload_mode_idx(self, hass):
         """Test dict payload with _mode_idx key."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -659,15 +595,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": {"_mode_idx": "04"},
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": {"_mode_idx": "04"},
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -679,16 +616,7 @@ class TestObservedCommandFromPacket:
     async def test_dict_payload_speed_key(self, hass):
         """Test dict payload with speed key."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -704,15 +632,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": {"speed": "high"},
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": {"speed": "high"},
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -724,16 +653,7 @@ class TestObservedCommandFromPacket:
     async def test_dict_payload_fan_speed_key(self, hass):
         """Test dict payload with fan_speed key."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -749,15 +669,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": {"fan_speed": "low"},
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": {"fan_speed": "low"},
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -769,16 +690,7 @@ class TestObservedCommandFromPacket:
     async def test_list_payload_with_dict(self, hass):
         """Test list payload containing a dict."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -794,15 +706,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": [{"fan_mode": "away"}],
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": [{"fan_mode": "away"}],
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -814,16 +727,7 @@ class TestObservedCommandFromPacket:
     async def test_string_dict_payload_literal_eval(self, hass):
         """Test string payload that looks like a dict (ast.literal_eval)."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -839,15 +743,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "{'fan_mode': 'low'}",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "{'fan_mode': 'low'}",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -859,16 +764,7 @@ class TestObservedCommandFromPacket:
     async def test_unknown_code_returns_none(self, hass):
         """Test that unknown code returns None command."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -884,15 +780,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "9999",
-                "payload": "some_payload",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "9999",
+                    "payload": "some_payload",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -904,16 +801,7 @@ class TestObservedCommandFromPacket:
     async def test_non_string_code_returns_none(self, hass):
         """Test that non-string code returns None."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -929,15 +817,16 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": None,
-                "payload": "000107",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": None,
+                    "payload": "000107",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -948,31 +837,23 @@ class TestObservedCommandFromPacket:
     async def test_verb_rq_returns_early(self, hass):
         """Test that RQ verb is ignored."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with patch(
             "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
         ) as mock_bind:
             mock_bind.return_value.record_remote_activity = MagicMock()
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000107",
-                "verb": "RQ",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000107",
+                    "verb": "RQ",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -982,24 +863,17 @@ class TestObservedCommandFromPacket:
 
     @pytest.mark.asyncio
     async def test_non_dict_data_ignored(self, hass):
-        """Test that non-dict event data is ignored."""
+        """Test that a msg with no valid attributes is ignored."""
         hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
 
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
-
-        event = MagicMock()
-        event.data = "not a dict"
+        # A msg with None attributes should not crash
+        msg = SimpleNamespace(
+            addr1=None, addr2=None, code=None, payload=None, verb=None
+        )
 
         # Should not raise
-        listener(event)
+        handler(msg)
         await _drain_pending(hass)
 
         await _drain_pending(hass)
@@ -1008,16 +882,7 @@ class TestObservedCommandFromPacket:
     async def test_matched_rem_applies_command(self, hass):
         """Test that a matched REM triggers command application."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -1052,15 +917,16 @@ class TestObservedCommandFromPacket:
             mock_coord_inst.async_run_zone_actuation_cycle = AsyncMock()
             mock_coord.return_value = mock_coord_inst
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000207",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000207",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -1072,16 +938,7 @@ class TestObservedCommandFromPacket:
     async def test_matched_rem_fan_auto_command(self, hass):
         """Test matched REM with fan_auto command."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -1115,15 +972,16 @@ class TestObservedCommandFromPacket:
             mock_coord_inst.async_run_zone_actuation_cycle = AsyncMock()
             mock_coord.return_value = mock_coord_inst
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000407",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000407",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -1138,16 +996,7 @@ class TestObservedCommandFromPacket:
     async def test_matched_rem_fan_away_command(self, hass):
         """Test matched REM with fan_away command."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -1181,15 +1030,16 @@ class TestObservedCommandFromPacket:
             mock_coord_inst.async_run_zone_actuation_cycle = AsyncMock()
             mock_coord.return_value = mock_coord_inst
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000007",
-                "verb": "I",
-            }
-            listener(event)
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000007",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
             await _drain_pending(hass)
 
             await _drain_pending(hass)
@@ -1203,16 +1053,7 @@ class TestObservedCommandFromPacket:
     async def test_dedup_within_15_seconds(self, hass):
         """Test that duplicate packets within 1.5s are deduplicated."""
         hass.services.has_service.return_value = False
-
-        with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
-        ) as mock_cmds:
-            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
-                return_value=None
-            )
-            await async_setup_services(hass)
-
-        listener = _get_event_listener(hass)
+        handler = await _setup_services_with_handler(hass)
 
         with (
             patch(
@@ -1247,23 +1088,24 @@ class TestObservedCommandFromPacket:
             mock_coord_inst.async_run_zone_actuation_cycle = AsyncMock()
             mock_coord.return_value = mock_coord_inst
 
-            event = MagicMock()
-            event.data = {
-                "src": "18_123456",
-                "dst": "32_123456",
-                "code": "22F1",
-                "payload": "000207",
-                "verb": "I",
-            }
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000207",
+                    "verb": "I",
+                }
+            )
 
             # First call should process
-            listener(event)
+            handler(msg)
             await _drain_pending(hass)
             # set_manual_override_state should be called once
             assert mock_arb_inst.set_manual_override_state.call_count == 1
 
             # Second call within 1.5s should be deduplicated
-            listener(event)
+            handler(msg)
             await _drain_pending(hass)
             # set_manual_override_state should still only be called once
             assert mock_arb_inst.set_manual_override_state.call_count == 1

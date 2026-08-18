@@ -32,8 +32,9 @@ ramses_extras receives messages through two channels, both in
    passes the device ID filter — **including the HGI80 echo of our own
    transmitted commands**.
 
-2. **`ramses_cc_message` HA bus event** (line 67) — legacy fallback for
-   older ramses_cc versions (< 0.55.6).
+2. ~~**`ramses_cc_message` HA bus event**~~ — removed in ramses_cc 0.55.6,
+   replaced by HA Event Entities.  ramses_extras now relies solely on the
+   `add_msg_handler` callback path.
 
 ### How the packet log gets written
 

@@ -1,12 +1,8 @@
 // Ramses Message Broker - Global singleton for handling ramses_cc messages
 // Provides real-time message routing for cards and features
 //
-// Dual delivery path (with automatic fallback):
-// 1. Modern: subscribes to state_changed on event.ramses_cc_regex_event
-//    (HA Event Entity, available to all users — in SUBSCRIBE_ALLOWLIST)
-// 2. Legacy: subscribes to ramses_cc_message bus events
-//    (requires admin — not in SUBSCRIBE_ALLOWLIST)
-// Deduplication ensures messages from both paths are only processed once.
+// Subscribes to state_changed on event.ramses_cc_regex_event
+// (HA Event Entity, available to all users — in SUBSCRIBE_ALLOWLIST).
 
 import * as logger from './logger.js';
 
@@ -19,7 +15,6 @@ class RamsesMessageBroker {
         this._recentMessages = new Map(); // dedup: key -> timestamp
         this._dedupInterval = null;
         this._eventEntityActive = false;
-        this._busEventActive = false;
         this.setupHAConnection();
     }
 
@@ -47,20 +42,11 @@ class RamsesMessageBroker {
 
             if (!conn || typeof conn.subscribeEvents !== 'function') {
                 logger.warn('RamsesMessageBroker: No subscribeEvents method available');
-                // Try fallback subscribe method
-                if (conn && typeof conn.subscribe === 'function') {
-                    conn.subscribe('ramses_cc_message', (event) => {
-                        this._handleBusEvent(event);
-                    });
-                }
                 return;
             }
 
-            // Path 1 (modern): subscribe to state_changed, filter for event entity
+            // Subscribe to state_changed, filter for event entity
             this._subscribeToEventEntity(conn);
-
-            // Path 2 (legacy): subscribe to ramses_cc_message bus events
-            this._subscribeToBusEvents(conn);
 
             // Start dedup cleanup
             this._startDedupCleanup();
@@ -99,15 +85,14 @@ class RamsesMessageBroker {
         const messageCode = data.code;
         if (!deviceId || !messageCode) return;
 
-        // Dedup — skip if already seen via bus events
+        // Dedup — skip if already seen
         const dedupKey = this._makeDedupKey(deviceId, messageCode, data.dtm);
         if (this._isDuplicate(dedupKey)) {
             logger.debug(`RamsesMessageBroker: Dedup (event entity) ${messageCode} from ${deviceId}`);
             return;
         }
 
-        // Normalize to the same format as bus events so card handlers
-        // can access messageData.data.payload uniformly
+        // Normalize so card handlers can access messageData.data.payload uniformly
         const normalizedEvent = {
             event_type: 'ramses_cc_message',
             data: data,
@@ -115,48 +100,6 @@ class RamsesMessageBroker {
 
         logger.debug(`RamsesMessageBroker: (event entity) ${messageCode} from ${deviceId}`);
         this.routeMessage(deviceId, messageCode, normalizedEvent);
-    }
-
-    // --- Legacy path: ramses_cc_message bus events ---
-
-    _subscribeToBusEvents(conn) {
-        conn.subscribeEvents(
-            (event) => {
-                if (event.event_type === 'ramses_cc_message') {
-                    this._handleBusEvent(event);
-                }
-            },
-            'ramses_cc_message'
-        ).then(() => {
-            this._busEventActive = true;
-            logger.debug('RamsesMessageBroker: Subscribed to ramses_cc_message bus events (legacy path)');
-        }).catch((error) => {
-            // Expected for non-admin users when the event entity path is active
-            if (this._eventEntityActive) {
-                logger.debug('RamsesMessageBroker: Bus event subscription failed (non-admin, event entity active)');
-            } else {
-                logger.warn('RamsesMessageBroker: Failed to subscribe to bus events:', error);
-            }
-        });
-    }
-
-    _handleBusEvent(event) {
-        const data = event.data;
-        if (!data) return;
-
-        const deviceId = data.src || data.device_id;
-        const messageCode = data.code;
-        if (!deviceId || !messageCode) return;
-
-        // Dedup — skip if already seen via event entity
-        const dedupKey = this._makeDedupKey(deviceId, messageCode, data.dtm);
-        if (this._isDuplicate(dedupKey)) {
-            logger.debug(`RamsesMessageBroker: Dedup (bus event) ${messageCode} from ${deviceId}`);
-            return;
-        }
-
-        logger.debug(`RamsesMessageBroker: (bus event) ${messageCode} from ${deviceId}`);
-        this.routeMessage(deviceId, messageCode, event);
     }
 
     // --- Deduplication ---
@@ -280,7 +223,6 @@ class RamsesMessageBroker {
     getDeliveryInfo() {
         return {
             event_entity: this._eventEntityActive,
-            bus_events: this._busEventActive,
         };
     }
 }
