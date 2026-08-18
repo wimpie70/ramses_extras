@@ -74,6 +74,14 @@ def _migrate_legacy_transport_entity_id(hass: HomeAssistant, device_id: str) -> 
 
 async def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
     try:
+        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
+        for entry in ramses_cc_entries:
+            coordinator = getattr(entry, "runtime_data", None)
+            if coordinator is not None and hasattr(coordinator, "client"):
+                return coordinator
+
+        # Legacy fallback: hass.data["ramses_cc"]
         ramses_cc_data = hass.data.get("ramses_cc", {})
         for coordinator_instance in ramses_cc_data.values():
             if hasattr(coordinator_instance, "client"):

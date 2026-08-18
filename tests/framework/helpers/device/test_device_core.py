@@ -101,8 +101,10 @@ class TestFindRamsesDevice:
 
     def test_find_ramses_device_no_broker(self):
         """Test finding device when no broker is available."""
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = None
         self.hass.data = {"ramses_cc": {"entry1": None}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
 
         result = find_ramses_device(self.hass, self.device_id)
         assert result is None
@@ -111,8 +113,10 @@ class TestFindRamsesDevice:
         """Test finding device when device is not in broker."""
         mock_broker = MagicMock()
         mock_broker._get_device = MagicMock(return_value=None)
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = mock_broker
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
 
         result = find_ramses_device(self.hass, self.device_id)
         assert result is None
@@ -123,8 +127,24 @@ class TestFindRamsesDevice:
         mock_device.__class__.__name__ = "HvacVentilator"
         mock_broker = MagicMock()
         mock_broker._get_device = MagicMock(return_value=mock_device)
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = mock_broker
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+
+        result = find_ramses_device(self.hass, self.device_id)
+        assert result == mock_device
+
+    def test_find_ramses_device_legacy_fallback(self):
+        """Test finding device via legacy hass.data fallback."""
+        mock_device = MagicMock()
+        mock_broker = MagicMock()
+        mock_broker._get_device = MagicMock(return_value=mock_device)
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "entry1"
+        mock_entry.runtime_data = None  # Force legacy fallback
+        self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
 
         result = find_ramses_device(self.hass, self.device_id)
         assert result == mock_device
@@ -221,8 +241,10 @@ class TestGetAllDeviceIds:
 
     def test_get_all_device_ids_no_broker(self):
         """Test getting device IDs when no broker is available."""
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = None
         self.hass.data = {"ramses_cc": {"entry1": None}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
 
         result = get_all_device_ids(self.hass)
         assert result == []
@@ -237,8 +259,10 @@ class TestGetAllDeviceIds:
         mock_broker = MagicMock()
         mock_broker._devices = [mock_device1, mock_device2]
 
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = mock_broker
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
 
         result = get_all_device_ids(self.hass)
         assert result == ["32:153289", "32:153290"]
@@ -248,8 +272,10 @@ class TestGetAllDeviceIds:
         mock_broker = MagicMock()
         mock_broker._devices = {"32:153289": MagicMock(), "32:153290": MagicMock()}
 
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = mock_broker
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
 
         result = get_all_device_ids(self.hass)
         assert set(result) == {"32:153289", "32:153290"}
@@ -259,8 +285,10 @@ class TestGetAllDeviceIds:
         mock_broker = MagicMock()
         mock_broker._devices = "unexpected_type"
 
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = mock_broker
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
 
         result = get_all_device_ids(self.hass)
         assert result == []
@@ -274,8 +302,10 @@ class TestGetAllDeviceIds:
         mock_broker = MagicMock()
         mock_broker._devices = [mock_device]
 
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = mock_broker
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
 
         result = get_all_device_ids(self.hass)
         # Should skip the device without id
@@ -356,11 +386,12 @@ class TestGetBrokerForEntry:
 
     @pytest.mark.asyncio
     async def test_get_broker_for_entry_broker_in_data_direct(self):
-        """Test getting broker when stored directly in hass.data."""
+        """Test getting broker when stored directly in entry.runtime_data."""
         mock_broker = MagicMock()
         mock_broker.__class__.__name__ = "Broker"
         mock_entry = MagicMock()
         mock_entry.entry_id = "entry1"
+        mock_entry.runtime_data = mock_broker
 
         self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
@@ -370,10 +401,11 @@ class TestGetBrokerForEntry:
 
     @pytest.mark.asyncio
     async def test_get_broker_for_entry_broker_in_data_nested(self):
-        """Test getting broker when nested in hass.data."""
+        """Test getting broker when nested in entry.runtime_data."""
         mock_broker = MagicMock()
         mock_entry = MagicMock()
         mock_entry.entry_id = "entry1"
+        mock_entry.runtime_data = {"broker": mock_broker}
 
         self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
         self.hass.data = {"ramses_cc": {"entry1": {"broker": mock_broker}}}
@@ -387,6 +419,7 @@ class TestGetBrokerForEntry:
         mock_broker = MagicMock()
         mock_entry = MagicMock()
         mock_entry.entry_id = "entry1"
+        mock_entry.runtime_data = None  # Force fallback
         mock_entry.broker = mock_broker
 
         self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
@@ -403,6 +436,7 @@ class TestGetBrokerForEntry:
         mock_integration.broker = mock_broker
         mock_entry = MagicMock()
         mock_entry.entry_id = "entry1"
+        mock_entry.runtime_data = None  # Force fallback
         mock_entry.broker = None  # Ensure not found from entry
 
         self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
@@ -419,6 +453,7 @@ class TestGetBrokerForEntry:
         """Test getting broker when not found by any method."""
         mock_entry = MagicMock()
         mock_entry.entry_id = "entry1"
+        mock_entry.runtime_data = None  # Force fallback
         mock_entry.broker = None  # Ensure not found from entry
 
         # Mock the async_entries call to return our mock entry
@@ -435,6 +470,7 @@ class TestGetBrokerForEntry:
         mock_broker = MagicMock()
         mock_entry = MagicMock()
         mock_entry.entry_id = "entry1"
+        mock_entry.runtime_data = MagicMock(broker=mock_broker)
 
         self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
         self.hass.data = {"ramses_cc": {"entry1": MagicMock(broker=mock_broker)}}
@@ -447,10 +483,13 @@ class TestGetBrokerForEntry:
         """Test getting broker with exception (covers lines 293-295)."""
         mock_entry = MagicMock()
         mock_entry.entry_id = "entry1"
+        mock_entry.runtime_data = None  # Force fallback paths
 
         self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
         # Make the entry.broker attribute access raise an exception
         mock_entry.broker = None
+        # Ensure hass.data doesn't have a broker for this entry
+        self.hass.data = {"ramses_cc": {}}
 
         with patch(
             "custom_components.ramses_extras.framework.helpers.device.core.find_ramses_device",
