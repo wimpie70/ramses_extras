@@ -45,24 +45,24 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     :param device_id: The Ramses device ID (e.g., "32:153289")
     :return: The Ramses device object or None if not found
     """
-    # Get the broker directly from hass.data
-    if "ramses_cc" not in hass.data or not hass.data["ramses_cc"]:
-        return None
-
     ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
     if not ramses_cc_entries:
         return None
 
-    # Get the broker directly
-    ramses_entry_id = next(iter(hass.data["ramses_cc"]))
-    broker = hass.data["ramses_cc"][ramses_entry_id]
-    if not broker:
-        return None
+    for entry in ramses_cc_entries:
+        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        coordinator = getattr(entry, "runtime_data", None)
+        if coordinator is None:
+            # Legacy fallback: hass.data["ramses_cc"][entry.entry_id]
+            ramses_cc_data = hass.data.get("ramses_cc", {})
+            coordinator = ramses_cc_data.get(entry.entry_id)
+        if coordinator is None:
+            continue
 
-    # Use broker's _get_device method for efficient lookup
-    device = broker._get_device(device_id)
-    if device:
-        return device
+        # Use coordinator's _get_device method for efficient lookup
+        device = coordinator._get_device(device_id)
+        if device:
+            return device
 
     return None
 
@@ -120,42 +120,38 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
     :param hass: HomeAssistant instance
     :return: List of all device IDs found in Ramses CC
     """
-    # Get the broker directly from hass.data
-    if "ramses_cc" not in hass.data:
-        _LOGGER.warning("Ramses CC not loaded")
-        return []
-
     ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
     if not ramses_cc_entries:
         _LOGGER.warning("No Ramses CC entries found")
         return []
 
-    # Get the broker directly
-    ramses_entry_id = next(iter(hass.data["ramses_cc"]))
-    broker = hass.data["ramses_cc"][ramses_entry_id]
-    if not broker:
-        _LOGGER.warning("No Ramses broker available to get device IDs")
-        return []
+    device_ids: list[str] = []
+    for entry in ramses_cc_entries:
+        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        broker = getattr(entry, "runtime_data", None)
+        if broker is None:
+            # Legacy fallback: hass.data["ramses_cc"][entry.entry_id]
+            ramses_cc_data = hass.data.get("ramses_cc", {})
+            broker = ramses_cc_data.get(entry.entry_id)
+        if not broker:
+            continue
 
-    # Since we know broker._devices is valid, use it directly
-    devices = getattr(broker, "_devices", {})
+        # Since we know broker._devices is valid, use it directly
+        devices = getattr(broker, "_devices", {})
 
-    device_ids = []
-
-    if isinstance(devices, list):
-        for d in devices:
-            try:
-                # All devices should have an 'id' attribute
-                if hasattr(d, "id"):
-                    device_ids.append(str(d.id))
-                else:
-                    _LOGGER.debug("Device missing 'id' attribute: %s", d)
-            except Exception as ex:
-                _LOGGER.debug("Error getting device ID: %s", str(ex))
-    elif isinstance(devices, dict):
-        device_ids = [str(k) for k in devices.keys()]
-    else:
-        _LOGGER.warning("Unexpected devices type: %s", type(devices).__name__)
+        if isinstance(devices, list):
+            for d in devices:
+                try:
+                    if hasattr(d, "id"):
+                        device_ids.append(str(d.id))
+                    else:
+                        _LOGGER.debug("Device missing 'id' attribute: %s", d)
+                except Exception as ex:
+                    _LOGGER.debug("Error getting device ID: %s", str(ex))
+        elif isinstance(devices, dict):
+            device_ids.extend(str(k) for k in devices.keys())
+        else:
+            _LOGGER.warning("Unexpected devices type: %s", type(devices).__name__)
 
     _LOGGER.info("Found %d Ramses devices", len(device_ids))
 
@@ -235,11 +231,15 @@ async def _get_broker_for_entry(hass: HomeAssistant) -> Any | None:
     entry = ramses_cc_entries[0]
 
     try:
-        # Method 1: Try to get broker from hass.data (most reliable)
+        # Method 1: Modern ramses_cc stores the coordinator in entry.runtime_data
         broker = None
-        if "ramses_cc" in hass.data and entry.entry_id in hass.data["ramses_cc"]:
-            broker_data = hass.data["ramses_cc"][entry.entry_id]
-            # The broker is stored directly, not nested under a "broker" key
+        broker_data = getattr(entry, "runtime_data", None)
+        if broker_data is None:
+            # Legacy fallback: hass.data["ramses_cc"][entry.entry_id]
+            ramses_cc_data = hass.data.get("ramses_cc", {})
+            broker_data = ramses_cc_data.get(entry.entry_id)
+
+        if broker_data is not None:
             if (
                 hasattr(broker_data, "__class__")
                 and "Broker" in broker_data.__class__.__name__
@@ -250,7 +250,6 @@ async def _get_broker_for_entry(hass: HomeAssistant) -> Any | None:
             elif hasattr(broker_data, "broker"):
                 broker = broker_data.broker
             else:
-                # Direct assignment if broker is stored directly
                 broker = broker_data
 
         # Method 2: If not found, try getting broker from the entry

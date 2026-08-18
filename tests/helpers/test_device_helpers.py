@@ -50,8 +50,10 @@ def test_find_ramses_device(hass):
     mock_broker = MagicMock()
     mock_device = MagicMock()
     mock_broker._get_device.return_value = mock_device
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = mock_broker
     hass.data = {"ramses_cc": {"entry_id": mock_broker}}
-    hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+    hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
     assert find_ramses_device(hass, device_id) == mock_device
     mock_broker._get_device.assert_called_with(device_id)
     mock_broker._get_device.return_value = None
@@ -76,8 +78,10 @@ def test_validate_device_for_service(hass):
     mock_broker = MagicMock()
     mock_device = MagicMock()
     mock_broker._get_device.return_value = mock_device
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = mock_broker
     hass.data = {"ramses_cc": {"entry_id": mock_broker}}
-    hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+    hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
     assert validate_device_for_service(hass, device_id, "test_service") is True
 
 
@@ -91,8 +95,10 @@ def test_get_all_device_ids(hass):
     dev2 = MagicMock()
     dev2.id = "32:2"
     mock_broker._devices = [dev1, dev2]
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = mock_broker
     hass.data = {"ramses_cc": {"entry_id": mock_broker}}
-    hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+    hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
     assert get_all_device_ids(hass) == ["32:1", "32:2"]
     mock_broker._devices = {"32:3": {}, "32:4": {}}
     assert set(get_all_device_ids(hass)) == {"32:3", "32:4"}
