@@ -585,7 +585,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             """Like _as_float but returns None for unavailable/missing entities."""
             try:
                 return _as_float(entity_id)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 return None
 
         resolved: dict[str, float | bool | None] = {}
@@ -1233,7 +1233,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         ):
             try:
                 global_comfort = float(global_comfort_state.state)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 global_comfort = None
 
         results: list[dict[str, Any]] = []
@@ -1254,7 +1254,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
             try:
                 area_temp = float(temp_state.state)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 continue
 
             # Resolve comfort temp: area's comfort_temperature_entity → global
@@ -1269,7 +1269,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 ):
                     try:
                         area_comfort = float(comfort_state.state)
-                    except ValueError, TypeError:
+                    except (ValueError, TypeError):
                         pass
 
             if area_comfort is None:

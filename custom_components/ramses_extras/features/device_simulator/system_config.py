@@ -67,7 +67,7 @@ def _normalize_device_id(device_id: str) -> str:
     try:
         base_value = int(match.group("body"))
         increment = int(delta)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return device_id
     normalized = base_value + increment
     return f"{match.group('prefix')}:{normalized:06d}"
@@ -453,7 +453,7 @@ class ConfigProfileStore:
             speed_value = data.get("autonomous_speed", 1.0)
             try:
                 self._autonomous_speed = float(speed_value)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 self._autonomous_speed = 1.0
             LOGGER.debug(
                 "ConfigProfileStore: state loaded profile=%s auto_answer=%s "
@@ -563,7 +563,7 @@ class ConfigProfileStore:
 
         try:
             value = float(speed)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             value = 1.0
         self._autonomous_speed = max(0.005, min(value, 200.0))
 
@@ -699,7 +699,7 @@ class ConfigProfileStore:
             if name:
                 profile.name = name
             return self.save_profile(profile)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             LOGGER.warning("ConfigProfileStore: failed to import profile")
             return False
 

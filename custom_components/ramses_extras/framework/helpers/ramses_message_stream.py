@@ -215,7 +215,7 @@ class RamsesMessageStream:
                 parsed_msg = Message(dto)
                 data["decoded_payload"] = parsed_msg.payload
                 return
-            except PacketInvalid, Exception:
+            except (PacketInvalid, Exception):
                 pass
 
         # Keep payload as string if we couldn't parse
@@ -256,7 +256,7 @@ class RamsesMessageStream:
             try:
                 parsed_msg = Message(msg)
                 data["decoded_payload"] = parsed_msg.payload
-            except PacketInvalid, Exception:
+            except (PacketInvalid, Exception):
                 self._parse_payload(data)
         else:
             self._parse_payload(data)
