@@ -122,6 +122,11 @@ class DeviceCache {
    * Returns a Set containing all known device IDs. Useful for filtering
    * messages or flows to show only known devices.
    *
+   * If the backend provides ``is_owned`` flags (based on ramses_cc's
+   * ``_owner`` trait), only devices owned by this installation are
+   * returned (foreign/neighbour devices are excluded).  If no
+   * ``is_owned`` info is available, all device IDs are returned.
+   *
    * @param {Object} hass - Home Assistant instance
    * @param {Object} [options={}] - Options (passed to getDevices)
    * @returns {Promise<Set<string>>} Set of known device IDs
@@ -135,6 +140,17 @@ class DeviceCache {
    */
   async getKnownDeviceIds(hass, options = {}) {
     const devices = await this.getDevices(hass, options);
+    // If is_owned info is available, filter to owned devices only
+    const hasOwnerInfo = devices.some((d) => typeof d?.is_owned === 'boolean');
+    if (hasOwnerInfo) {
+      return new Set(
+        devices
+          .filter((d) => d?.is_owned === true)
+          .map((d) => String(d?.device_id ?? d?.id ?? ''))
+          .filter(Boolean)
+      );
+    }
+    // Fallback: no _owner info, return all device IDs
     return new Set(
       devices
         .map((d) => String(d?.device_id ?? d?.id ?? ''))

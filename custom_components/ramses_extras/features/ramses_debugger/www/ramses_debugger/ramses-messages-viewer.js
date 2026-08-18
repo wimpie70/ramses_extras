@@ -8,7 +8,7 @@
  * Features:
  * - Sortable columns (timestamp, source, destination, verb, code, payload)
  * - Multi-select filtering by device pairs, verbs, and codes
- * - Known devices filter (show only registered devices)
+ * - Known devices filter (show only owned devices, based on _owner trait)
  * - Decode toggle for payload interpretation
  * - Configurable message limit
  * - Delegated data loading via fetchMessages callback
@@ -219,7 +219,7 @@ class RamsesMessagesViewer extends HTMLElement {
       <div id="errorMsg" class="r-xtrs-msg-viewer-error" style="display: none;"></div>
       <div class="r-xtrs-msg-viewer-messages-controls">
         <label><input type="checkbox" id="messagesDecode"> Decode</label>
-        <label><input type="checkbox" id="knownDevicesToggle"> Known devices only</label>
+        <label><input type="checkbox" id="knownDevicesToggle"> Owned devices only</label>
       </div>
       <div id="pairFilters" style="margin-top: 8px;"></div>
       <div id="codeFilters" style="margin-top: 8px;"></div>

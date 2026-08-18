@@ -391,6 +391,9 @@ async def ws_get_available_devices(
     """Return available Ramses devices for card editors.
 
     This uses the device objects discovered and stored during integration setup.
+    Each device includes an ``is_owned`` flag indicating whether its ``_owner``
+    in the ramses_cc schema matches the root ``_owner`` (i.e., it belongs to
+    this installation, not a neighbour).
     """
 
     def _extract_device_id(device: Any) -> str | None:
@@ -422,6 +425,41 @@ async def ws_get_available_devices(
         except Exception:  # pragma: no cover - defensive
             return []
 
+    def _get_owned_device_ids() -> set[str]:
+        """Return device IDs whose _owner matches the root _owner."""
+        try:
+            entries = hass.config_entries.async_entries("ramses_cc")
+            if not entries:
+                return set()
+            cc_entry = entries[0]
+            domain_data = hass.data.get("ramses_cc", {})
+            coordinator = domain_data.get(cc_entry.entry_id)
+            if coordinator is None:
+                coordinator = domain_data.get("coordinators", {}).get(cc_entry.entry_id)
+            if coordinator is None:
+                return set()
+            schema = coordinator.options.get("config_schema", {}) or {}
+            root_owner = schema.get("_owner")
+            if not root_owner:
+                # No root _owner set — treat all devices as owned
+                return set()
+            owned: set[str] = set()
+            for dev_id, entry in schema.items():
+                if dev_id.startswith("_") or not isinstance(entry, dict):
+                    continue
+                dev_owner = entry.get("_owner")
+                if dev_owner == root_owner:
+                    owned.add(dev_id)
+            return owned
+        except Exception:  # pragma: no cover - defensive
+            return set()
+
+    owned_ids = _get_owned_device_ids()
+    # If no _owner info is available (no ramses_cc, no schema, no root
+    # _owner), fall back to treating all devices as owned so the filter
+    # doesn't hide everything.
+    owner_info_available = len(owned_ids) > 0
+
     devices = hass.data.get(DOMAIN, {}).get("devices", [])
     results: list[dict[str, Any]] = []
     if isinstance(devices, list):
@@ -431,12 +469,14 @@ async def ws_get_available_devices(
                 continue
             slugs = _extract_device_slugs(device)
             slug_label = ", ".join(dict.fromkeys(slugs)) if slugs else None
+            is_owned = device_id in owned_ids if owner_info_available else True
             results.append(
                 {
                     "device_id": device_id,
                     "device_type": _extract_device_type(device) or "Unknown",
                     "slugs": slugs,
                     "slug_label": slug_label,
+                    "is_owned": is_owned,
                 }
             )
 
