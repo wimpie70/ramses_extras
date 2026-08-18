@@ -272,36 +272,36 @@ class R68HvacActiveProbing(Recipe):
         #    inject_message to trigger the probe response ourselves.
         print("\n  Testing 2411 parameter entities (issue 851)...")
 
-        # If the service timed out, inject a 2411 RP FROM the FAN to nudge
-        # supports_2411=True.  The FAN's _handle_2411 only fires when the
-        # FAN receives a 2411 packet (RP where FAN is addr1), so we inject
-        # an RP from FAN→REM.  The payload is a real 2411 RP payload for
-        # param 3E (Away mode Exhaust fan rate) captured from the sim.
-        if service_timed_out:
-            print("  Injecting 2411 RP from FAN (service timed out)...")
-            try:
-                call_service(
-                    ctx.token,
-                    "ramses_extras",
-                    "device_simulator_inject_message",
-                    {
-                        "source_id": FAN,
-                        "code": "2411",
-                        "payload": "00003E450F00000000000000000000005000000001CB32",
-                        "verb": "RP",
-                        "dst": REM,
-                    },
-                )
-                print("    2411 RP injected (FAN→REM)")
-            except RuntimeError as e:
-                print(f"    2411 RP inject failed: {str(e)[:80]}")
-            ctx.wait(5, "for 2411 RP to be processed", floor=3.0)
-            # Also trigger force_update to re-evaluate entity creation
-            try:
-                call_service(ctx.token, "ramses_cc", "force_update")
-            except RuntimeError:
-                pass
-            ctx.wait(3, "for entity state write", floor=2.0)
+        # Always inject a 2411 RP FROM the FAN to ensure supports_2411=True.
+        # The FAN device can be recreated during reload (losing supports_2411),
+        # and the probe_hvac_binding service may not send a 2411 RQ itself.
+        # The FAN's _handle_2411 only fires when the FAN receives a 2411
+        # packet (RP where FAN is addr1), so we inject an RP from FAN→REM.
+        # The payload is a real 2411 RP payload for param 3E captured from sim.
+        print("  Injecting 2411 RP from FAN (ensures supports_2411=True)...")
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": FAN,
+                    "code": "2411",
+                    "payload": "00003E450F00000000000000000000005000000001CB32",
+                    "verb": "RP",
+                    "dst": REM,
+                },
+            )
+            print("    2411 RP injected (FAN→REM)")
+        except RuntimeError as e:
+            print(f"    2411 RP inject failed: {str(e)[:80]}")
+        ctx.wait(5, "for 2411 RP to be processed", floor=3.0)
+        # Also trigger force_update to re-evaluate entity creation
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(3, "for entity state write", floor=2.0)
 
         fan_id_normalized = FAN  # keep the colon for unique_id match
 
