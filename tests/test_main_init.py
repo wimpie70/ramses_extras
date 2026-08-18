@@ -638,7 +638,7 @@ class TestDiscoverDevices:
 
     @pytest.mark.asyncio
     async def test_discover_ramses_devices_broker_found(self, hass):
-        """Test discover_ramses_devices when broker is found in hass.data."""
+        """Test discover_ramses_devices when broker is found in entry.runtime_data."""
         from custom_components.ramses_extras.framework.setup.devices import (
             discover_ramses_devices,
         )
@@ -649,6 +649,7 @@ class TestDiscoverDevices:
         mock_device = MagicMock()
         mock_device.id = "32:111111"
         mock_broker._devices = [mock_device]  # Set _devices directly on broker
+        mock_entry.runtime_data = mock_broker
 
         hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
         hass.data["ramses_cc"] = {"test_entry": mock_broker}

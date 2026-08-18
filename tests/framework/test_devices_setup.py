@@ -225,9 +225,11 @@ async def test_discover_ramses_devices_broker_dict(hass) -> None:
         def __init__(self) -> None:
             self._devices = {"a": MagicMock(id="a")}
 
+    broker = Broker()
     entry = MagicMock(entry_id="1")
+    entry.runtime_data = broker
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
-    hass.data.setdefault("ramses_cc", {})["1"] = Broker()
+    hass.data.setdefault("ramses_cc", {})["1"] = broker
 
     result = await devices.discover_ramses_devices(hass)
 
@@ -242,9 +244,11 @@ async def test_discover_ramses_devices_broker_list(hass) -> None:
         def __init__(self) -> None:
             self._devices = [MagicMock(id="b")]
 
+    broker = Broker()
     entry = MagicMock(entry_id="1")
+    entry.runtime_data = broker
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
-    hass.data.setdefault("ramses_cc", {})["1"] = Broker()
+    hass.data.setdefault("ramses_cc", {})["1"] = broker
 
     result = await devices.discover_ramses_devices(hass)
 
@@ -319,9 +323,11 @@ async def test_discover_ramses_devices_broker_via_dict(hass) -> None:
             mock_device.id = "dict_broker"
             self._devices = [mock_device]
 
+    broker_dict = {"broker": Broker()}
     entry = MagicMock(entry_id="1")
+    entry.runtime_data = broker_dict
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
-    hass.data.setdefault("ramses_cc", {})["1"] = {"broker": Broker()}
+    hass.data.setdefault("ramses_cc", {})["1"] = broker_dict
 
     result = await devices.discover_ramses_devices(hass)
 
@@ -330,13 +336,14 @@ async def test_discover_ramses_devices_broker_via_dict(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_discover_ramses_devices_broker_via_entry(hass) -> None:
-    """Test broker access via entry.broker."""
+    """Test broker access via entry.broker (legacy fallback)."""
 
     class Broker:
         def __init__(self) -> None:
             self._devices = [MagicMock(id="entry_broker")]
 
     entry = MagicMock(entry_id="1")
+    entry.runtime_data = None  # Force fallback to entry.broker
     entry.broker = Broker()
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
     # Don't set hass.data so it falls back to entry
@@ -354,9 +361,11 @@ async def test_discover_ramses_devices_broker_devices_attr(hass) -> None:
         def __init__(self) -> None:
             self.devices = [MagicMock(id="devices_attr")]
 
+    broker = Broker()
     entry = MagicMock(entry_id="1")
+    entry.runtime_data = broker
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
-    hass.data.setdefault("ramses_cc", {})["1"] = Broker()
+    hass.data.setdefault("ramses_cc", {})["1"] = broker
 
     result = await devices.discover_ramses_devices(hass)
 
@@ -375,9 +384,11 @@ async def test_discover_ramses_devices_from_coordinator_client(hass) -> None:
         def __init__(self) -> None:
             self.client = Client()
 
+    coordinator = Coordinator()
     entry = MagicMock(entry_id="1")
+    entry.runtime_data = coordinator
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
-    hass.data.setdefault("ramses_cc", {})["1"] = Coordinator()
+    hass.data.setdefault("ramses_cc", {})["1"] = coordinator
 
     result = await devices.discover_ramses_devices(hass)
 
@@ -392,9 +403,11 @@ async def test_discover_ramses_devices_no_devices_fallback(hass) -> None:
         def __init__(self) -> None:
             self._devices = None
 
+    broker = Broker()
     entry = MagicMock(entry_id="1")
+    entry.runtime_data = broker
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
-    hass.data.setdefault("ramses_cc", {})["1"] = Broker()
+    hass.data.setdefault("ramses_cc", {})["1"] = broker
 
     with patch(
         "custom_components.ramses_extras.framework.setup.devices._discover_devices_from_entity_registry",
@@ -416,9 +429,11 @@ async def test_discover_ramses_devices_single_device_object(hass) -> None:
             mock_device.id = "single_device"
             self._devices = mock_device
 
+    broker = Broker()
     entry = MagicMock(entry_id="1")
+    entry.runtime_data = broker
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
-    hass.data.setdefault("ramses_cc", {})["1"] = Broker()
+    hass.data.setdefault("ramses_cc", {})["1"] = broker
 
     result = await devices.discover_ramses_devices(hass)
 
