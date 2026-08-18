@@ -114,6 +114,18 @@ class TransportMonitor:
         if not self._hass:
             return
 
+        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        ramses_cc_entries = self._hass.config_entries.async_entries("ramses_cc")
+        for entry in ramses_cc_entries:
+            coordinator = getattr(entry, "runtime_data", None)
+            if coordinator is not None and hasattr(coordinator, "client"):
+                client = getattr(coordinator, "client", None)
+                if client is not None:
+                    self._coordinator = coordinator
+                    self._ensure_msg_handler(client)
+                    return
+
+        # Legacy fallback: hass.data["ramses_cc"]
         ramses_cc_data = self._hass.data.get("ramses_cc", {})
         for coordinator_instance in ramses_cc_data.values():
             if not hasattr(coordinator_instance, "client"):

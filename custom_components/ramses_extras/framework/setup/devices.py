@@ -305,8 +305,15 @@ async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
     try:
         broker: Any | None = None
         devices_list: list[Any] = []
-        if "ramses_cc" in hass.data and entry.entry_id in hass.data["ramses_cc"]:
-            broker_data = hass.data["ramses_cc"][entry.entry_id]
+
+        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        broker_data: Any | None = getattr(entry, "runtime_data", None)
+        if broker_data is None:
+            # Legacy fallback: hass.data["ramses_cc"][entry.entry_id]
+            ramses_cc_data = hass.data.get("ramses_cc", {})
+            broker_data = ramses_cc_data.get(entry.entry_id)
+
+        if broker_data is not None:
             if (
                 hasattr(broker_data, "__class__")
                 and "Broker" in broker_data.__class__.__name__
@@ -318,7 +325,7 @@ async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
                 broker = broker_data.broker
             else:
                 broker = broker_data
-            _LOGGER.debug("Found broker via hass.data method: %s", broker)
+            _LOGGER.debug("Found broker via entry.runtime_data: %s", broker)
 
             devices_list = _extract_devices_from_candidate(broker_data)
             if devices_list:
@@ -326,7 +333,7 @@ async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
                     getattr(device, "id", str(device)) for device in devices_list
                 ]
                 _LOGGER.info(
-                    "Found %d devices from hass.data for config flows: %s",
+                    "Found %d devices from broker for config flows: %s",
                     len(devices_list),
                     device_ids,
                 )
