@@ -13,6 +13,9 @@ from custom_components.ramses_extras.features.ramses_debugger import websocket_c
 from custom_components.ramses_extras.features.ramses_debugger.traffic_collector import (
     TrafficCollector,
 )
+from custom_components.ramses_extras.framework.helpers.ramses_message_stream import (
+    get_ramses_message_stream,
+)
 
 ws_traffic_get_stats = websocket_commands.ws_traffic_get_stats.__wrapped__
 ws_traffic_reset_stats = websocket_commands.ws_traffic_reset_stats.__wrapped__
@@ -41,26 +44,25 @@ async def test_collector_aggregates_events(hass) -> None:
     collector = TrafficCollector(hass)
     collector.start()
 
-    hass.bus.async_fire(
-        "ramses_cc_message",
+    # Inject directly into the stream (bus events removed in issue 166)
+    stream = get_ramses_message_stream(hass)
+    stream.inject(
         {
             "dtm": "2026-01-18T12:00:00",
             "src": "01:111111",
             "dst": "02:222222",
             "verb": "RQ",
             "code": "000A",
-        },
+        }
     )
-
-    hass.bus.async_fire(
-        "ramses_cc_message",
+    stream.inject(
         {
             "dtm": "2026-01-18T12:00:01",
             "src": "01:111111",
             "dst": "02:222222",
             "verb": "I",
             "code": "000A",
-        },
+        }
     )
     await hass.async_block_till_done()
 
@@ -86,15 +88,16 @@ async def test_ws_get_stats_and_reset(hass) -> None:
         "traffic_collector": collector,
     }
 
-    hass.bus.async_fire(
-        "ramses_cc_message",
+    # Inject directly into the stream (bus events removed in issue 166)
+    stream = get_ramses_message_stream(hass)
+    stream.inject(
         {
             "dtm": "2026-01-18T12:00:00",
             "src": "01:111111",
             "dst": "02:222222",
             "verb": "RQ",
             "code": "000A",
-        },
+        }
     )
     await hass.async_block_till_done()
 
@@ -197,15 +200,16 @@ async def test_ws_subscribe_stats_sends_initial_and_updates(hass) -> None:
     assert conn.results[0][1]["success"] is True
     assert conn.messages
 
-    hass.bus.async_fire(
-        "ramses_cc_message",
+    # Inject directly into the stream (bus events removed in issue 166)
+    stream = get_ramses_message_stream(hass)
+    stream.inject(
         {
             "dtm": "2026-01-18T12:00:00",
             "src": "01:111111",
             "dst": "02:222222",
             "verb": "RQ",
             "code": "000A",
-        },
+        }
     )
     await hass.async_block_till_done()
 
@@ -251,15 +255,16 @@ async def test_collector_ignores_invalid_event(hass) -> None:
     collector = TrafficCollector(hass)
     collector.start()
 
-    hass.bus.async_fire(
-        "ramses_cc_message",
+    # Inject directly into the stream (bus events removed in issue 166)
+    stream = get_ramses_message_stream(hass)
+    stream.inject(
         {
             "dtm": "2026-01-18T12:00:00",
             "src": 123,  # invalid
             "dst": "02:222222",
             "verb": "RQ",
             "code": "000A",
-        },
+        }
     )
     await hass.async_block_till_done()
 

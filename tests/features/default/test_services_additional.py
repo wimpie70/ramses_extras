@@ -591,10 +591,8 @@ class TestRemoteEventHandling:
 
             await async_setup_services(hass)
 
-            # Should have set up event listener
-            hass.bus.async_listen.assert_called_once()
-
-            # Should have set up message handler
+            # Should have set up message handler (add_msg_handler is the
+            # primary path — bus listener removed in issue 166)
             mock_client.add_msg_handler.assert_called_once()
 
     @pytest.mark.asyncio
@@ -616,9 +614,6 @@ class TestRemoteEventHandling:
             mock_commands_class.return_value = mock_commands
 
             await async_setup_services(hass)
-
-            # Should still set up event listener
-            hass.bus.async_listen.assert_called_once()
 
             # Should not attempt to set up message handler
             assert (
