@@ -217,12 +217,22 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
 
         def _find_climate_entity() -> dict | None:
             entities = get_entities(ctx.token)
-            # 1. Match by zone_idx attribute (most reliable)
+            # 1. Match by zone_index attribute (most reliable)
+            #    Note: ramses_cc uses "zone_index" not "zone_idx"
             for e in entities:
                 if not e["entity_id"].startswith("climate."):
                     continue
                 attrs = e.get("attributes", {})
-                if attrs.get("zone_idx") == zone_idx:
+                if attrs.get("zone_index") == zone_idx:
+                    return e
+            # 1b. Match by "id" attribute (e.g. "01:150000_03")
+            #     ramses_cc sets this to "<ctl>_<zone_idx>"
+            id_pattern = f"{CTL}_{zone_idx}"
+            for e in entities:
+                if not e["entity_id"].startswith("climate."):
+                    continue
+                attrs = e.get("attributes", {})
+                if attrs.get("id") == id_pattern:
                     return e
             # 2. Match by friendly_name: ramses_cc sets friendly_name to
             #    "<ctl>_<zone_idx>" e.g. "01:150000_03".  The entity_id

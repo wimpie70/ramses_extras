@@ -345,23 +345,28 @@ except Exception as e:
             print("  SKIP: could not manipulate last_seen")
             return
 
-        # 7. Restart the HA container to pick up the modified .storage.
+        # 7. Kill the HA container to pick up the modified .storage.
         #    We can't use reload_config_entry because the coordinator saves
-        #    state on unload, overwriting our modifications.  A container
-        #    restart kills the process (no save-on-unload) and HA restores
-        #    from .storage on startup.
-        #    We also don't stop profile emissions — the scan engine restores
-        #    from .storage first, and check_orphaned_devices runs in the
-        #    config flow step before any new packets can update last_seen.
-        print("  Restarting HA container to pick up modified scan state...")
+        #    state on unload, overwriting our modifications.
+        #    We also can't use `docker restart` because it sends SIGTERM,
+        #    which HA handles by saving state (overwriting our .storage mods).
+        #    `docker kill` sends SIGKILL — no save-on-unload — then we
+        #    `docker start` to boot fresh from .storage.
+        print("  Killing HA container to pick up modified scan state...")
 
         import subprocess as sp
 
         sp.run(
-            ["docker", "restart", get_current_instance().name],
+            ["docker", "kill", get_current_instance().name],
             check=True,
             capture_output=True,
-            timeout=60,
+            timeout=30,
+        )
+        sp.run(
+            ["docker", "start", get_current_instance().name],
+            check=True,
+            capture_output=True,
+            timeout=30,
         )
 
         # Wait for HA to be ready (polls instead of fixed 30s sleep)
