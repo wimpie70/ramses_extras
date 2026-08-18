@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
+from homeassistant.core import callback
 
 from ...const import AVAILABLE_FEATURES, DOMAIN
 from ...extras_registry import extras_registry
@@ -1141,6 +1142,55 @@ async def ws_clear_zone_demand(
     except Exception as err:
         _LOGGER.error("Failed to clear zone demand: %s", err)
         connection.send_error(msg["id"], "clear_zone_demand_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/subscribe_messages",
+        vol.Optional("codes", default=[]): [str],
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_subscribe_messages(
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
+) -> None:
+    """Subscribe to real-time RAMSES RF messages.
+
+    Bridges the in-process ``RamsesMessageStream`` (which receives every
+    packet via ``coordinator.client.add_msg_handler``) directly to the
+    browser via a WebSocket subscription.  No HA bus events or EventEntity
+    configuration required.
+
+    Optional ``codes`` parameter filters by message code (e.g. ``["31DA",
+    "10D0"]``).  When omitted, all messages are pushed.
+    """
+
+    from ...framework.helpers.ramses_message_stream import get_ramses_message_stream
+
+    target_codes: set[str] = {code.upper() for code in (msg.get("codes") or []) if code}
+
+    stream = get_ramses_message_stream(hass)
+    stream.start()
+
+    @callback  # type: ignore[untyped-decorator]
+    def _on_message(data: dict[str, Any]) -> None:
+        if target_codes:
+            code = str(data.get("code", "")).upper()
+            if code not in target_codes:
+                return
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "event_type": "ramses_message",
+                    "data": data,
+                },
+            )
+        )
+
+    unsubscribe = stream.subscribe(_on_message)
+    connection.subscriptions[msg["id"]] = unsubscribe
+    connection.send_result(msg["id"], {"success": True})
 
 
 def register_default_websocket_commands() -> dict[str, str]:

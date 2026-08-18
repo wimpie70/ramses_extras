@@ -10,7 +10,6 @@ from custom_components.ramses_extras.framework.helpers.rf_config_validation impo
     BOUND_REM_WARNED_KEY,
     BOUND_REM_WARNED_MSG,
     _check_bound_rem,
-    _check_message_events,
     _check_recorder,
     _check_send_packet,
     log_validation_results,
@@ -45,60 +44,6 @@ class TestCheckBoundRem:
 
     def test_known_list_not_dict(self) -> None:
         assert _check_bound_rem({"known_list": "not_a_dict"}) is False
-
-
-class TestCheckMessageEvents:
-    """Tests for _check_message_events."""
-
-    def test_no_advanced_features(self) -> None:
-        enabled, matches = _check_message_events({})
-        assert enabled is False
-        assert matches is False
-
-    def test_no_message_events_key(self) -> None:
-        enabled, matches = _check_message_events({"advanced_features": {}})
-        assert enabled is False
-        assert matches is False
-
-    def test_message_events_none(self) -> None:
-        enabled, matches = _check_message_events(
-            {"advanced_features": {"message_events": None}}
-        )
-        assert enabled is False
-        assert matches is False
-
-    def test_message_events_with_31da(self) -> None:
-        enabled, matches = _check_message_events(
-            {"advanced_features": {"message_events": "31DA|10D0"}}
-        )
-        assert enabled is True
-        assert matches is True
-
-    def test_message_events_with_only_31da(self) -> None:
-        enabled, matches = _check_message_events(
-            {"advanced_features": {"message_events": "31DA"}}
-        )
-        assert enabled is True
-        assert matches is True
-
-    def test_message_events_with_only_10d0(self) -> None:
-        enabled, matches = _check_message_events(
-            {"advanced_features": {"message_events": "10D0"}}
-        )
-        assert enabled is True
-        assert matches is True
-
-    def test_message_events_without_required_codes(self) -> None:
-        enabled, matches = _check_message_events(
-            {"advanced_features": {"message_events": "30C9|1F09"}}
-        )
-        assert enabled is True
-        assert matches is False
-
-    def test_advanced_features_not_dict(self) -> None:
-        enabled, matches = _check_message_events({"advanced_features": "not_a_dict"})
-        assert enabled is False
-        assert matches is False
 
 
 class TestCheckSendPacket:
@@ -157,7 +102,6 @@ class TestValidateRamsesCcConfig:
         entry.options = {
             "known_list": {"32:153289": {"bound_to": "29:176861"}},
             "advanced_features": {
-                "message_events": "31DA|10D0",
                 "send_packet": True,
             },
         }
@@ -169,8 +113,6 @@ class TestValidateRamsesCcConfig:
 
         assert result["ramses_cc_loaded"] is True
         assert result["has_bound_rem"] is True
-        assert result["message_events_enabled"] is True
-        assert result["message_events_matches"] is True
         assert result["send_packet_enabled"] is True
         assert result["recorder_loaded"] is True
 
@@ -184,7 +126,6 @@ class TestValidateRamsesCcConfig:
         coordinator.options = {
             "known_list": {"32:153289": {"bound_to": "29:176861"}},
             "advanced_features": {
-                "message_events": "31DA|10D0",
                 "send_packet": True,
             },
         }
@@ -203,8 +144,7 @@ class TestLogValidationResults:
 
     Note: the bound-REM warning is NOT logged by log_validation_results
     anymore — it is handled by the caller via the LogOnce helper.
-    These tests verify the remaining warnings (send_packet,
-    message_events, recorder).
+    These tests verify the remaining warnings (send_packet, recorder).
     """
 
     def test_ramses_cc_not_loaded_skips_warnings(self) -> None:
@@ -217,8 +157,6 @@ class TestLogValidationResults:
             {
                 "ramses_cc_loaded": True,
                 "has_bound_rem": True,
-                "message_events_enabled": True,
-                "message_events_matches": True,
                 "send_packet_enabled": True,
                 "recorder_loaded": True,
             }
@@ -232,45 +170,11 @@ class TestLogValidationResults:
             {
                 "ramses_cc_loaded": True,
                 "has_bound_rem": True,
-                "message_events_enabled": True,
-                "message_events_matches": True,
                 "send_packet_enabled": False,
                 "recorder_loaded": True,
             }
         )
         assert "Send Packet" in caplog.text
-
-    def test_message_events_not_enabled_warning(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        caplog.set_level("WARNING")
-        log_validation_results(
-            {
-                "ramses_cc_loaded": True,
-                "has_bound_rem": True,
-                "message_events_enabled": False,
-                "message_events_matches": False,
-                "send_packet_enabled": True,
-                "recorder_loaded": True,
-            }
-        )
-        assert "Message Events" in caplog.text
-
-    def test_message_events_no_match_warning(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        caplog.set_level("WARNING")
-        log_validation_results(
-            {
-                "ramses_cc_loaded": True,
-                "has_bound_rem": True,
-                "message_events_enabled": True,
-                "message_events_matches": False,
-                "send_packet_enabled": True,
-                "recorder_loaded": True,
-            }
-        )
-        assert "31DA|10D0" in caplog.text
 
     def test_no_bound_rem_does_not_warn_here(
         self, caplog: pytest.LogCaptureFixture
@@ -281,8 +185,6 @@ class TestLogValidationResults:
             {
                 "ramses_cc_loaded": True,
                 "has_bound_rem": False,
-                "message_events_enabled": True,
-                "message_events_matches": True,
                 "send_packet_enabled": True,
                 "recorder_loaded": True,
             }
@@ -298,8 +200,6 @@ class TestLogValidationResults:
             {
                 "ramses_cc_loaded": True,
                 "has_bound_rem": True,
-                "message_events_enabled": True,
-                "message_events_matches": True,
                 "send_packet_enabled": True,
                 "recorder_loaded": False,
             }
