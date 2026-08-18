@@ -252,11 +252,14 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
     if not payload_parts:
         return None
 
+    # Payload may be in "003 0000DA" format (length + hex) or just "0000DA"
     payload_len = payload_parts[0]
-    if not re.match(r"^\d{3}$", payload_len):
-        return None
-
-    payload_hex = "".join(payload_parts[1:]).replace("-", "")
+    if re.match(r"^\d{3}$", payload_len):
+        payload_hex = "".join(payload_parts[1:]).replace("-", "")
+    else:
+        # No length prefix — treat the whole payload as hex
+        payload_hex = "".join(payload_parts).replace("-", "")
+        payload_len = f"{len(payload_hex) // 2:03d}"
 
     via = src if dst == "--:------" else "--:------"
     packet_raw = msg.get("packet")
@@ -304,6 +307,20 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _stringify_payload(payload: Any) -> str | None:
+    """Convert a payload value to a string for NormalizedMessage.
+
+    ramses_rf's parser may return a dict as ``payload``.  NormalizedMessage
+    expects ``str | None``, so we stringify dicts (using ``str()`` for
+    simple cases, or ``json.dumps`` for structured data).
+    """
+    if payload is None:
+        return None
+    if isinstance(payload, str):
+        return payload
+    return str(payload)
+
+
 @dataclass
 class NormalizedMessage:
     """A normalized representation of a Ramses message.
@@ -333,6 +350,7 @@ class NormalizedMessage:
     source: str  # "traffic_buffer" | "packet_log" | "ha_log"
     raw_line: str | None = None
     parse_warnings: list[str] = field(default_factory=list)
+    decoded_payload: Any = None  # parsed dict from ramses_rf, if available
 
 
 class MessagesProvider:
@@ -454,9 +472,10 @@ class TrafficBufferProvider(MessagesProvider):
                 dst=raw.get("dst", ""),
                 verb=raw.get("verb"),
                 code=raw.get("code"),
-                payload=raw.get("payload"),
+                payload=_stringify_payload(raw.get("payload")),
                 packet=raw.get("packet"),
                 source="traffic_buffer",
+                decoded_payload=raw.get("decoded_payload"),
             )
             messages.append(msg)
             if len(messages) >= limit:
@@ -786,17 +805,21 @@ async def get_messages_from_sources(
             _LOGGER.warning("Error fetching messages from %s: %s", source, exc)
 
     if dedupe:
-        seen = set()
+        seen: set[tuple] = set()
         deduped: list[NormalizedMessage] = []
         for msg in all_messages:
             # Dedupe key: dtm+src+dst+verb+code+packet/payload
+            # Stringify payload in case it's a dict (from ramses_rf parser)
+            payload_str = msg.packet or (
+                str(msg.payload) if msg.payload is not None else ""
+            )
             key = (
                 msg.dtm,
                 msg.src,
                 msg.dst,
                 msg.verb or "",
                 msg.code or "",
-                msg.packet or msg.payload or "",
+                payload_str,
             )
             if key in seen:
                 continue
@@ -820,6 +843,7 @@ async def get_messages_from_sources(
             "source": msg.source,
             "raw_line": msg.raw_line,
             "parse_warnings": msg.parse_warnings,
+            "decoded_payload": msg.decoded_payload,
         }
         for msg in all_messages[:limit]
     ]
