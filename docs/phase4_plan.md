@@ -1,8 +1,8 @@
 # Phase 4 Plan: known_list Removal + Event-Driven Topology
 
 **Created:** Jul 23 2026
-**Updated:** Aug 17 2026
-**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional/not done. **Step 5 DONE** — implemented in ramses_cc coordinator.py (`set_schema_updated_callback` registered, 2s trailing debounce, `async_create_background_task` per PR 932); verified by ha_sim_test R62 (14/14 pass). **Step 6a/6b DONE** — `load_fan` is no longer a stub (ramses_rf `schemas.py:437-438` calls `fan._update_schema(**schema)`), `HvacVentilator._remote_ids`/`_sensor_ids` implemented, `gateway.schema()` nests FAN membership, `get_hvac_orphans()` excludes owned devices; verified by R41 (7/7 pass). **Step 6d DONE** — `_parent_fan` bidirectional link set in `HvacVentilator._update_schema()`; verified by R67. **Step 6e/6f DONE** — traffic-based "belongs to" detection (R65) + active probing via `probe_hvac_binding` service (R68). **Step 6c** decided: no dual-role composite classes (R43 correctly skips). **R42 SUPERSEDED** — tested for BIND_DEVICE from TopologyBuilder, but approach changed to "belongs to" comments + load_fan; R41+R65 cover same ground. **SAVE_STATE_INTERVAL** increased from 5m to 30m (PR 953 MERGED, implements PWhite-Eng's short-term recommendation from issue 1027) — cuts flash writes by ~83%. **ramses_rf Phase 6 CLOSED** (issue 1001) — PRs 11+12 merged (dataclass payload cutover + legacy parser purge), `payload_to_dict()` boundary adapter retained so ramses_cc still receives dict payloads. **Issue 1027** (MessageStore state restoration) — PWhite-Eng rejected the MessageStore approach (async hydration race, ghost device resurrection, double-ingestion, in-memory environments); recommended 30m interval + event-triggered saves (short-term) and Phase 9 CQRS snapshots (long-term). **Issue 987** (HGI re-discovery every cycle) — FIXED in PR 993: `_extract_schema_device_ids` now operates on unstripped schema (includes HGI entries), preventing re-notification of known HGIs. Verified by R77 (3/3 pass). **Issue 988** (orphaned notification keeps coming back) — FIXED in PR 993: `_suppress_not_seen` schema key (True=forever, int=N days, default 7 days), `last_orphaned_log` for periodic INFO re-notification, auto-clears when device seen again. Verified by R78 (4/4 pass). **Issue 954** (foreign HGI re-prompted) — FIXED in PR 957/959. **ramses_rf 0.59.7** released — major refactors: `pkt`→`packet`, `idx`→`index`, pythonic naming (issue 1039), Code/Verb enums (issue 1040), HCC100 cooling, OTB telemetry restoration, multi-TCS DHW isolation, zone temp multi-TRV fix. **ramses_extras issue 162** (traffic analyser not showing live msgs) — FIXED: coordinator lookup updated from `hass.data["ramses_cc"]` to `entry.runtime_data`, Python 2 `except` syntax fixed, ramses_tx 0.59.7 compat (`pkt_rcvd`→`packet_rcvd`). **Remaining:** Step 4 (optional), Step 7 (future — StateUpdatedEvent), Step 8 (remove obsolete `hvac_schema` cache — after current release feedback). **ha-sim test Aug 17 (cc/rf 0.59.7): R77+R78 9/9 pass** — full 64-recipe 3x parallel run in progress.
+**Updated:** Aug 19 2026
+**Status:** Steps 1-3 SHIPPED (PR 863 + PR 882, in ramses_cc 0.59.1/0.59.2). Step 4 optional — wiki documentation needs updating (missing `_polling_interval`, `_is_battery`, `_locked`, `_skipped` traits; native CQRS builders for 22F1/22F7/22B0/2411/31DA not mentioned). **Step 5 DONE** — implemented in ramses_cc coordinator.py (`set_schema_updated_callback` registered, 2s trailing debounce, `async_create_background_task` per PR 932); verified by ha_sim_test R62 (14/14 pass). **Step 6a/6b DONE** — `load_fan` is no longer a stub (ramses_rf `schemas.py:437-438` calls `fan._update_schema(**schema)`), `HvacVentilator._remote_ids`/`_sensor_ids` implemented, `gateway.schema()` nests FAN membership, `get_hvac_orphans()` excludes owned devices; verified by R41 (7/7 pass). **Step 6d DONE** — `_parent_fan` bidirectional link set in `HvacVentilator._update_schema()`; verified by R67. **Step 6e/6f DONE** — traffic-based "belongs to" detection (R65) + active probing via `probe_hvac_binding` service (R68). **Step 6e REM→FAN DONE** — PR 1091 (draft, **verified on hass**): REM/CO2 sending directed W/RQ/I to FAN (32:) now sets `bound_to` (more authoritative than FAN→REM — REM only sends to its 1FC9-paired FAN; directed I is proof, broadcast I is not). **Verified on hass**: CO2 `37:126776` detected as `bound_to=32:153289` from directed `I 31E0` packets, placed in FAN's `sensors[]` list, removed from `orphans_hvac`. **Step 6c** decided: no dual-role composite classes (R43 correctly skips). **R42 SUPERSEDED** — tested for BIND_DEVICE from TopologyBuilder, but approach changed to "belongs to" comments + load_fan; R41+R65 cover same ground. **SAVE_STATE_INTERVAL** increased from 5m to 30m (PR 953 MERGED, implements PWhite-Eng's short-term recommendation from issue 1027) — cuts flash writes by ~83%. **ramses_rf Phase 6 CLOSED** (issue 1001) — PRs 11+12 merged (dataclass payload cutover + legacy parser purge), `payload_to_dict()` boundary adapter retained so ramses_cc still receives dict payloads. **Issue 1027** (MessageStore state restoration) — PWhite-Eng rejected the MessageStore approach (async hydration race, ghost device resurrection, double-ingestion, in-memory environments); recommended 30m interval + event-triggered saves (short-term) and Phase 9 CQRS snapshots (long-term). **Issue 987** (HGI re-discovery every cycle) — FIXED in PR 993: `_extract_schema_device_ids` now operates on unstripped schema (includes HGI entries), preventing re-notification of known HGIs. Verified by R77 (3/3 pass). **Issue 988** (orphaned notification keeps coming back) — FIXED in PR 993: `_suppress_not_seen` schema key (True=forever, int=N days, default 7 days), `last_orphaned_log` for periodic INFO re-notification, auto-clears when device seen again. Verified by R78 (4/4 pass). **Issue 954** (foreign HGI re-prompted) — FIXED in PR 957/959. **ramses_rf 0.59.7** released — major refactors: `pkt`→`packet`, `idx`→`index`, pythonic naming (issue 1039), Code/Verb enums (issue 1040), HCC100 cooling, OTB telemetry restoration, multi-TCS DHW isolation, zone temp multi-TRV fix. **ramses_extras issue 162** (traffic analyser not showing live msgs) — FIXED: coordinator lookup updated from `hass.data["ramses_cc"]` to `entry.runtime_data`, Python 2 `except` syntax fixed, ramses_tx 0.59.7 compat (`pkt_rcvd`→`packet_rcvd`). **Remaining:** Step 4 (optional), Step 7 (future — StateUpdatedEvent), Step 8 (remove obsolete `hvac_schema` cache — after current release feedback). **ha-sim test Aug 17 (cc/rf 0.59.7): R77+R78 9/9 pass** — full 64-recipe 3x parallel run in progress.
 **Depends on:** Phase 2 (DONE), Phase 2.5 (DONE), Phase 3a-3e (ALL DONE), PR 914 (MERGED, shipped in ramses_rf 0.59.1)
 **Blocks:** nothing (this is the final phase for schema-as-SSOT)
 
@@ -168,7 +168,7 @@ released (pkt→packet, idx→index, pythonic naming, Code/Verb enums).
 
 **Immediate TODO:**
 1. ~~Implement Step 5~~ — **DONE**.  ~~Step 6~~ — **DONE**.
-   ~~Step 6e/6f~~ — **DONE**.
+   ~~Step 6e/6f~~ — **DONE**.  ~~Step 6e REM→FAN~~ — **DONE** (PR 1091, draft).
 2. ~~Packet persistence redundancy~~ — **RESOLVED** (issue 1027).
    MessageStore approach rejected by PWhite-Eng.  Short-term: PR 953
    (30m interval) MERGED.  Long-term: Phase 9 CQRS snapshots.
@@ -176,11 +176,38 @@ released (pkt→packet, idx→index, pythonic naming, Code/Verb enums).
    `payload_to_dict()` boundary retained — ramses_cc still receives
    dict payloads.  Re-run ha_sim_test against post-Phase-6 masters
    to confirm no regressions.
-4. **Step 7** (StateUpdatedEvent) — future upgrade, no ramses_rf API
-   yet.  Would replace `asyncio.sleep(0)` in `_on_packet` with a
-   deterministic ingestion-complete hook (see ramses_rf issue 809).
+4. **Step 7** (StateUpdatedEvent) — **DEFERRED INDEFINITELY**.  No
+   ramses_rf external subscription API exists or is planned.  The
+   `asyncio.sleep(0)` interim in `coordinator.py:654` works (all
+   tests pass).  Would need a new ramses_rf issue/phase to build
+   `set_state_updated_callback()` on Gateway (see ramses_rf issue 809,
+   which has no activity).
 5. ~~**Step 8**~~ (remove obsolete `hvac_schema` cache) — **DONE** (PR 994).
    8 files changed, 3 insertions, 440 deletions. Verified by R07/R15 (7/7 pass).
+6. **Step 4** (shrink `_commands`) — optional, documentation only.
+   Wiki page `2.1-Configuration-step-3:-Schemas.md` needs updating:
+   missing `_polling_interval`, `_is_battery`, `_locked`, `_skipped`
+   traits; native CQRS builders for 22F1/22F7/22B0/2411/31DA not
+   mentioned (users can drop `_commands` for these codes).
+7. **Foreign-owner discovery fix** — PR 1006 (draft): excludes
+   foreign-owner devices (`_owner != root _owner`) from discovery
+   metadata.  PR 1005 (merged) made `_extract_schema_device_ids`
+   include foreign devices so they're not flagged as NEW; PR 1006
+   additionally marks them as REMOVED so they don't appear in the
+   discovery UI at all.  **Verified on hass**: neighbour's FAN
+   `37:154519` (`_owner: not-me`) now `status=removed` in discovery.
+8. **Issue 1000** (FAN→DIS contradiction detection) — PR 1004 MERGED:
+   scan engine re-classifies known devices after 3+ evidence-based
+   contradictions (VC pair matches, not prefix fallbacks).  Prevents
+   false positives (e.g. CO2 sending generic 10E0 not re-classified
+   as REM just because 37: falls to REM by prefix).  ramses_cc
+   `check_class_mismatches` skips HVAC devices with low/medium
+   confidence; `_check_rf_contradictions` reads from ramses_rf's
+   known_list instead.
+9. **Issue 1002** (MQTT gateway HGI warning) — PR 1090 MERGED:
+   `_set_active_hgi(None)` defers the known_list check for MQTT
+   bridges (ramses_esp) until the transport learns the real HGI ID
+   from the "online" LWT message.
 
 ---
 
@@ -611,20 +638,32 @@ traffic in two directions:
    to a REM's RQ — the FAN is the controller and directed communication
    with a specific remote proves binding.
 
-2. **REM→FAN (remote→controller, future enhancement):** When a REM
-   (37:) sends a directed W or RQ packet to a FAN (32:) — e.g. the user
-   presses "low speed" and the REM sends `W 22F1` to its bound FAN —
-   the dst FAN is the parent.  This is **more authoritative** than
-   FAN→REM because the REM only sends to the FAN it was 1FC9-paired
+2. **REM→FAN (remote→controller, DONE — PR 1091):** When a REM
+   (37:) sends a directed packet (W, RQ, or I) to a FAN (32:) — e.g.
+   the user presses "low speed" and the REM sends `W 22F1` to its
+   bound FAN — the dst FAN is the parent.  This is **more authoritative**
+   than FAN→REM because the REM only sends to the FAN it was 1FC9-paired
    with (not any FAN in range).  The REM knows its FAN from the hardware
-   handshake; we just watch where it sends commands.  The REM's W dst
-   is sufficient proof — no need to correlate the FAN's response.  An
-   old/unbound REM wouldn't know which FAN to address (1FC9 pairing is
-   burned into the REM's state); a re-paired REM sends to the new FAN.
-   This direction is not yet implemented in the scan engine — would
-   need a new check: `is_src and src.startswith("37:") and
-   dst.startswith("32:") and verb in ("W", "RQ") and code in
-   _HVAC_PARENT_INFERENCE_CODES`.
+   handshake; we just watch where it sends commands.  The REM's directed
+   dst is sufficient proof — no need to correlate the FAN's response.
+   An old/unbound REM wouldn't know which FAN to address (1FC9 pairing
+   is burned into the REM's state); a re-paired REM sends to the new
+   FAN.  A **directed** I is also proof (the REM addresses its paired
+   FAN specifically); a **broadcast** I (dst = `--:------`) is filtered
+   out by `_is_valid_address` and does not trigger inference.
+   Implemented in `discovery_scan.py` at 3 locations (known device,
+   new device, existing device), mirroring the FAN→REM detection.
+   Sets `confidence = "high"` (same as DHW inference).
+
+   **Verified on hass (Aug 19 2026):** CO2 `37:126776` sending
+   directed `I 31E0` to FAN `32:153289` every ~5 min was detected
+   after restart with the new code.  Scan engine log:
+   `DiscoveryScan: HVAC bound_to 37:126776 -> 32:153289 (known device,
+   REM→FAN, code=31E0, verb=I)`.  The CO2 was placed in the FAN's
+   `sensors[]` list in the learned schema and removed from
+   `orphans_hvac`.  Initial deployment had stale code (scan engine
+   started before the commit landed — Python doesn't hot-reload);
+   fixed by `sudo make all` (restarts hass container).
 
 The scan engine now does the FAN→REM inference for both known and
 unknown devices (previously only unknown — the known-device path
@@ -863,8 +902,9 @@ listener would provide deterministic ingestion-complete signalling.
 (0.59.0) and is used internally by `dispatcher.py`, but no external
 subscription API exists yet.
 
-**Status:** Not a blocker. The interim solution works (347/347 tests
-pass). This is a quality-of-life upgrade.
+**Status:** **Deferred indefinitely.** Not a blocker. The interim solution works (all tests pass). This is a quality-of-life upgrade.
+
+**Assessment (Aug 19 2026):** `StateUpdatedEvent` exists (`models/state_base.py:147`) and is emitted internally by `state_projector.py` and `ingestion.py`, consumed by `faultlog.py:192` and `schedule.py:563`. However, there is **no external subscription API** — no `set_state_updated_callback()` on Gateway (only `set_schema_updated_callback()` for topology events). Issue 809 is open with no comments. The Phase 639 blueprint does not mention `StateUpdatedEvent` anywhere. Nobody is planning to build this API. It would need to be explicitly requested as a new ramses_rf issue/phase if we want it.
 
 ---
 
@@ -1077,6 +1117,7 @@ Key milestones:
 | Aug 11 2026 | Steps 5, 6a, 6b, 6d confirmed DONE. R41/R62/R65/R67/R68 pass. R42 SUPERSEDED. 459/459 ha_sim_test in 4x parallel. PR 932 shipped. Issue 1027 raised (MessageStore state restoration). |
 | Aug 12-14 2026 | ramses_rf Phase 6 CLOSED (PRs 11+12 merged, legacy parsers purged, `payload_to_dict()` retained). PWhite-Eng rejected MessageStore approach in issue 1027 (4 technical blockers). PR 953 opened: SAVE_STATE_INTERVAL 5m→30m. Multiple bug fixes merged (issues 925, 931, 937, 947, 948). Step 8 added (hvac_schema cleanup, after release feedback). |
 | Aug 15-17 2026 | ramses_rf 0.59.7 released (pkt→packet, idx→index, pythonic naming issue 1039, Code/Verb enums issue 1040, HCC100 cooling, OTB telemetry, multi-TCS DHW isolation, zone temp multi-TRV fix). PR 953 MERGED. Issue 954 FIXED (PR 957/959). Issue 987 FIXED (PR 993: HGI re-discovery, R77 3/3 pass). Issue 988 FIXED (PR 993: `_suppress_not_seen` schema key, R78 4/4 pass). ramses_extras issue 162 FIXED (traffic analyser: coordinator lookup + ramses_tx 0.59.7 compat). ha-sim R77+R78 9/9 pass, full 64-recipe 3x parallel run in progress. |
+| Aug 19 2026 | **Step 6e REM→FAN verified on hass**: CO2 `37:126776` detected as `bound_to=32:153289` from directed `I 31E0`, placed in FAN's `sensors[]`, removed from `orphans_hvac`. PR 1091 rebased on latest master (includes PR 1089 FAN→DIS reclassification + PR 1090 MQTT HGI warning fix). **Issue 1000** (FAN→DIS contradiction detection) PR 1004 MERGED — scan engine re-classifies after 3+ evidence-based contradictions, prevents prefix-fallback false positives. **Issue 1002** (MQTT HGI warning) PR 1090 MERGED. **Issue 1003** (foreign-owner NEW flag) PR 1005 MERGED — `_extract_schema_device_ids` includes foreign devices. **PR 1006** (draft) — complementary fix: marks foreign-owner devices as REMOVED in discovery metadata so they don't appear in the UI at all. **Verified on hass**: neighbour's FAN `37:154519` (`_owner: not-me`) now `status=removed`. |
 
 ---
 
