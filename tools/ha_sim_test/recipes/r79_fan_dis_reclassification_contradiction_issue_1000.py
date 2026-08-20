@@ -181,10 +181,9 @@ class R79FanDisReclassification(Recipe):
         # metadata.  Grep for the reclassification DEBUG log or the
         # mismatch WARNING — NOT for any line containing both
         # DIS_DEVICE and FAN/REM (that matches unrelated sync_learned
-        #_topology DEBUG lines and causes false positives).
+        # _topology DEBUG lines and causes false positives).
         mismatch_lines = grep_ha_log(
-            f"re-classified known device {DIS_DEVICE}"
-            f"|class mismatch for {DIS_DEVICE}"
+            f"re-classified known device {DIS_DEVICE}|class mismatch for {DIS_DEVICE}"
         )
         ctx.check(
             "Scan engine detects class mismatch for DIS_DEVICE",
