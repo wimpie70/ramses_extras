@@ -81,6 +81,14 @@ EXPECTED_WARNINGS: list[str] = [
     "bound mismatches between discovery and schema",
     "have no _class but discovery has a suggestion",
     "appear orphaned",
+    # ramses_cc: per-device class mismatch WARNING (expected in R79 —
+    # the test deliberately creates a FAN/DIS mismatch to verify the
+    # notification path; the WARNING is the intended behaviour)
+    "class mismatch for",
+    # ramses_rf: HvacTopologyHandler FAN→DIS contradiction WARNING
+    # (expected in R79 — the test injects non-FAN packets to trigger
+    # reclassification; the WARNING is the intended behaviour)
+    "is typed as FAN but has only sent",
     # ramses_cc: zone name mismatch (expected in R76 — issue 947)
     "name mismatches between schema and controller",
     # ramses_cc: bound device not found during early init (FAN not yet active)

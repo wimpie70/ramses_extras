@@ -48,7 +48,11 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         # 2. An entity attribute (class_mismatch)
         #
         # We load a profile where the FAN (32:150000) has _class="DIS"
-        # instead of "FAN", then check that the mismatch is flagged.
+        # instead of "FAN", then inject FAN-evidence packets (I 31D9) to
+        # trigger the scan engine's DIS→FAN reclassification (PR 1089
+        # contradiction detection).  After reclassification, the scan says
+        # FAN but the schema says DIS — check_class_mismatches detects this
+        # and flags it.
 
         mismatch_schema = dict(MIXED_SCHEMA)
         mismatch_schema[FAN] = {
@@ -112,11 +116,11 @@ class R24Phase3cClassMismatchFlagging(Recipe):
                     return
 
         # Inject a 1FC9 heartbeat from the FAN so the scan engine tracks
-        # 32:150000 and can detect the _class=DIS mismatch.  The profile
-        # reload stops all simulator devices, so without this injection the
-        # scan engine has no data for 32:150000 and check_class_mismatches
-        # skips it.  Retry up to 3 times — the MQTT endpoint may not be
-        # fully connected immediately after the reload.
+        # 32:150000.  The profile reload stops all simulator devices, so
+        # without this injection the scan engine has no data for 32:150000
+        # and check_class_mismatches skips it.  Retry up to 3 times — the
+        # MQTT endpoint may not be fully connected immediately after the
+        # reload.
         for attempt in range(3):
             try:
                 call_service(
@@ -137,7 +141,42 @@ class R24Phase3cClassMismatchFlagging(Recipe):
                     f" {str(e)[:80]}"
                 )
                 ctx.wait(3, "before retry")
-        ctx.wait(5, "for FAN heartbeat to reach scan engine", floor=4.0)
+        ctx.wait(3, "for FAN heartbeat to reach scan engine", floor=2.0)
+
+        # Inject FAN-evidence packets (I 31D9) to trigger the DIS→FAN
+        # reclassification in the scan engine.  The schema has _class=DIS
+        # and the scan engine starts with likely_type=DIS (declared class,
+        # per PR 1089).  After 3 evidence-based contradictions (I 31D9 is
+        # a VC pair match for FAN), the scan engine re-classifies to FAN,
+        # creating the mismatch (schema=DIS, discovery=FAN) that
+        # check_class_mismatches detects.
+        fan_evidence_packets = [
+            ("I", "31D9", "000A040020202020202020202020202008"),
+            ("I", "31D9", "000A040020202020202020202020202008"),
+            ("I", "31D9", "000A040020202020202020202020202008"),
+            ("I", "31D9", "000A040020202020202020202020202008"),
+        ]
+        for i, (verb, code, payload) in enumerate(fan_evidence_packets):
+            print(
+                f"  Injecting FAN-evidence packet {i + 1}/"
+                f"{len(fan_evidence_packets)}: {verb} {code}"
+            )
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": FAN,
+                        "code": code,
+                        "payload": payload,
+                        "verb": verb,
+                    },
+                )
+            except RuntimeError as e:
+                print(f"    Inject failed: {str(e)[:80]}")
+            ctx.wait(2, "between FAN-evidence injections", floor=1.0)
+        ctx.wait(5, "for reclassification + scan engine update", floor=3.0)
 
         # Force a sync cycle to trigger mismatch detection
         try:

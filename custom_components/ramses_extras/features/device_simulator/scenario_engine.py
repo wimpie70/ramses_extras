@@ -1499,9 +1499,12 @@ class ScenarioEngine:
         rssi = "082" if verb == "I" else "000"
         # Sequence number is not used in modern systems
         seq = "---"
-        # Determine BROADCAST field: for I frames, BROADCAST = SRC;
-        # for others, --:------
-        broadcast = src if verb == "I" else "--:------"
+        # Determine BROADCAST field: for broadcast I frames (dst is
+        # --:------), BROADCAST = SRC; for directed I frames (dst is a
+        # real device) and all non-I frames, --:------.  Setting
+        # BROADCAST=SRC on a directed I frame creates addr1==addr3,
+        # which ramses_tx rejects as "Invalid address set".
+        broadcast = src if verb == "I" and dst == "--:------" else "--:------"
         # Spacing: 1-char verbs (I, W) have leading space to make them 2 chars
         verb_formatted = f" {verb}" if len(verb) == 1 else verb
         return (

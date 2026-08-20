@@ -19,3 +19,41 @@ these files before working on ramses_extras:**
   feature and runs against this instance.
 - **Production HA**: runs on a separate server. Do not point dev tools or
   tests at it.
+
+### MQTT connectivity (recurring gotcha)
+
+`ha-sim` and `ha-sim-mqtt` both run on Docker's **host network**. This means
+`ha-sim` must use `localhost:1884` for its MQTT broker address — **not**
+`host.docker.internal:1884` (which only works for bridge-network containers
+like the parallel clones `ha-sim-2`, `ha-sim-3`).
+
+If you see `MQTT connection failed` or `Transport did not bind to Prot`
+errors in the ha-sim log, check the config entry:
+
+```
+docker exec ha-sim python3 -c "
+import json; d=json.load(open('/config/.storage/core.config_entries'))
+for e in d['data']['entries']:
+    if e['domain']=='ramses_cc': print(e['options']['serial_port']['port_name'])
+    if e['domain']=='mqtt': print(e['data']['broker'])
+"
+```
+
+If it says `host.docker.internal`, fix it:
+
+```
+docker exec ha-sim python3 -c "
+import json; p='/config/.storage/core.config_entries'; d=json.load(open(p))
+for e in d['data']['entries']:
+    if e['domain']=='ramses_cc':
+        e['options']['serial_port']['port_name']='mqtt://localhost:1884/RAMSES/GATEWAY_SIM/18:001234'
+    if e['domain']=='mqtt': e['data']['broker']='localhost'
+json.dump(d, open(p,'w'), indent=2)
+" && docker restart ha-sim
+```
+
+The parallel runner (`tools/ha_sim_test/parallel.py`) has a defensive
+`_ensure_localhost_mqtt()` check that runs after every config switch, but
+a crashed parallel run can still leave a stale config. The canonical config
+files (`core.config_entries.minimal.json` and `core.config_entries.full.json`
+in `tools/ha_sim_test/ha_configs/`) both use `localhost` for ha-sim.

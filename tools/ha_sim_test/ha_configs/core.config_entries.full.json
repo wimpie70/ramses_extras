@@ -78,10 +78,7 @@
       },
       {
         "created_at": "1970-01-01T00:00:00+00:00",
-        "data": {
-          "language": "en",
-          "tld": "com"
-        },
+        "data": { "language": "en", "tld": "com" },
         "disabled_by": null,
         "discovery_keys": {},
         "domain": "google_translate",
@@ -117,18 +114,14 @@
       },
       {
         "created_at": "1970-01-01T00:00:00+00:00",
-        "data": {
-          "token": "REDACTED"
-        },
+        "data": { "token": "REDACTED" },
         "disabled_by": null,
         "discovery_keys": {},
         "domain": "hacs",
         "entry_id": "01JYRB075X5HZ5CPHJR6N4JQ4B",
         "minor_version": 1,
         "modified_at": "1970-01-01T00:00:00+00:00",
-        "options": {
-          "experimental": true
-        },
+        "options": { "experimental": true },
         "pref_disable_new_entities": false,
         "pref_disable_polling": false,
         "source": "user",
@@ -159,17 +152,12 @@
             "packet_log_retention_days": 5,
             "rotate_bytes": 10000
           },
-          "ramses_rf": {
-            "enable_eavesdrop": false,
-            "log_all_mqtt": true
-          },
+          "ramses_rf": { "enable_eavesdrop": false, "log_all_mqtt": true },
           "scan_interval": 60,
           "schema": {
             "01:150000": {
               "_class": "CTL",
-              "stored_hotwater": {
-                "sensor": "07:150000"
-              },
+              "stored_hotwater": { "sensor": "07:150000" },
               "zones": {
                 "03": {
                   "_name": "Living Room",
@@ -178,18 +166,10 @@
                 }
               }
             },
-            "01:150003": {
-              "_class": "CTL"
-            },
-            "04:150000": {
-              "_class": "TRV"
-            },
-            "04:150003": {
-              "_class": "TRV"
-            },
-            "07:150000": {
-              "_class": "DHW"
-            },
+            "01:150003": { "_class": "CTL" },
+            "04:150000": { "_class": "TRV" },
+            "04:150003": { "_class": "TRV" },
+            "07:150000": { "_class": "DHW" },
             "32:150000": {
               "_class": "FAN",
               "_commands": {
@@ -198,9 +178,7 @@
               "remotes": ["37:170000"],
               "sensors": ["37:120000"]
             },
-            "37:120000": {
-              "_class": "CO2"
-            },
+            "37:120000": { "_class": "CO2" },
             "37:170000": {
               "_class": "REM",
               "_commands": {
@@ -214,7 +192,7 @@
             }
           },
           "serial_port": {
-            "port_name": "mqtt://host.docker.internal:1884/RAMSES/GATEWAY_SIM/18:002234"
+            "port_name": "mqtt://localhost:1884/RAMSES/GATEWAY_SIM/18:001234"
           }
         },
         "pref_disable_new_entities": false,
@@ -228,11 +206,7 @@
       {
         "created_at": "1970-01-01T00:00:00+00:00",
         "data": {
-          "device_feature_matrix": {
-            "32:150000": {
-              "default": true
-            }
-          },
+          "device_feature_matrix": { "32:150000": { "default": true } },
           "enabled_features": {
             "co2_control": false,
             "default": true,
@@ -254,11 +228,7 @@
         "modified_at": "1970-01-01T00:00:00+00:00",
         "options": {
           "debug_mode": true,
-          "device_feature_matrix": {
-            "32:150000": {
-              "default": true
-            }
-          },
+          "device_feature_matrix": { "32:150000": { "default": true } },
           "frontend_log_level": "debug",
           "log_level": "debug",
           "ramses_extras": {
@@ -304,7 +274,7 @@
       {
         "created_at": "1970-01-01T00:00:00+00:00",
         "data": {
-          "broker": "host.docker.internal",
+          "broker": "localhost",
           "keepalive": 60,
           "password": "",
           "port": 1884,

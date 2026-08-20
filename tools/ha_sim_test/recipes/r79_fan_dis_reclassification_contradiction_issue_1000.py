@@ -175,13 +175,15 @@ class R79FanDisReclassification(Recipe):
 
         # --- Check 1: class_mismatch detected by scan engine ---
         # The scan engine sees the RQ 31DA / I 22F1 / RQ 2411 packets
-        # and classifies 37:169161 as REM (not FAN).  This triggers
-        # check_class_mismatches which logs a WARNING and sets
-        # class_mismatch on the discovery metadata.
+        # and re-classifies 37:169161 from FAN to REM after 3
+        # contradictions.  This triggers check_class_mismatches which
+        # logs a WARNING and sets class_mismatch on the discovery
+        # metadata.  Grep for the reclassification DEBUG log or the
+        # mismatch WARNING — NOT for any line containing both
+        # DIS_DEVICE and FAN/REM (that matches unrelated sync_learned
+        # _topology DEBUG lines and causes false positives).
         mismatch_lines = grep_ha_log(
-            f"class mismatch for {DIS_DEVICE}"
-            f"|{DIS_DEVICE}.*FAN.*REM"
-            f"|{DIS_DEVICE}.*FAN→REM"
+            f"re-classified known device {DIS_DEVICE}|class mismatch for {DIS_DEVICE}"
         )
         ctx.check(
             "Scan engine detects class mismatch for DIS_DEVICE",
