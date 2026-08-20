@@ -147,31 +147,34 @@ class R68HvacActiveProbing(Recipe):
                 "SKIPPED — service not registered (PR 926 feature)",
             )
         elif service_timed_out:
-            # Under parallel load, the service may time out.  Don't fail
-            # the test — send the 22F1 RQ directly via inject_message
-            # to trigger the same probe response the service would have.
-            print("  Sending 22F1 RQ directly (service timed out)...")
+            # Under parallel load, the service may time out.  Send the
+            # 22F1 RQ via ramses_cc.send_packet (not inject_message) so
+            # it goes through ramses_rf's transport → /tx topic → the
+            # scenario engine's auto-answer picks it up and the FAN
+            # responds with RP 22F1.  inject_message publishes to /rx
+            # which bypasses the scenario engine entirely.
+            print("  Sending 22F1 RQ via ramses_cc.send_packet (service timed out)...")
             try:
                 call_service(
                     ctx.token,
-                    "ramses_extras",
-                    "device_simulator_inject_message",
+                    "ramses_cc",
+                    "send_packet",
                     {
-                        "source_id": REM,
+                        "device_id": FAN,
+                        "from_id": REM,
                         "code": "22F1",
                         "payload": "00",
                         "verb": "RQ",
-                        "dst": FAN,
                     },
                 )
-                print("    22F1 RQ injected (REM→FAN)")
+                print("    22F1 RQ sent (REM→FAN via transport)")
             except RuntimeError as e:
-                print(f"    22F1 RQ inject failed: {str(e)[:80]}")
-            ctx.wait(3, "for 22F1 RQ to arrive", floor=2.0)
+                print(f"    22F1 RQ send failed: {str(e)[:80]}")
+            ctx.wait(5, "for 22F1 RP response from FAN", floor=3.0)
             ctx.check(
                 "probe_hvac_binding service executed without error",
                 True,
-                "TIMEOUT under parallel load — 22F1 RQ sent directly",
+                "TIMEOUT under parallel load — 22F1 RQ sent via transport",
             )
         else:
             ctx.check(
@@ -278,7 +281,30 @@ class R68HvacActiveProbing(Recipe):
         # The FAN's _handle_2411 only fires when the FAN receives a 2411
         # packet (RP where FAN is addr1), so we inject an RP from FAN→REM.
         # The payload is a real 2411 RP payload for param 3E captured from sim.
-        print("  Injecting 2411 RP from FAN (ensures supports_2411=True)...")
+        # We also send a 2411 RQ via ramses_cc.send_packet (through the
+        # transport → /tx → scenario engine auto-answer) which is more
+        # reliable under parallel load than inject_message alone.
+        print("  Sending 2411 RQ via transport + injecting RP from FAN...")
+        try:
+            # Send RQ 2411 via transport — scenario engine will auto-answer
+            # with RP 2411 from FAN, setting supports_2411=True.
+            call_service(
+                ctx.token,
+                "ramses_cc",
+                "send_packet",
+                {
+                    "device_id": FAN,
+                    "from_id": REM,
+                    "code": "2411",
+                    "payload": "00003E",
+                    "verb": "RQ",
+                },
+            )
+            print("    2411 RQ sent (REM→FAN via transport)")
+        except RuntimeError as e:
+            print(f"    2411 RQ send failed: {str(e)[:80]}")
+        # Also inject a 2411 RP directly as a fallback (inject_message
+        # publishes to /rx which ramses_rf processes immediately).
         try:
             call_service(
                 ctx.token,
