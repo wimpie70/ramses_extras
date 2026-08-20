@@ -308,11 +308,57 @@ def _switch_ha_config(profile: str, container: str = "ha-sim") -> None:
     )
     if result.returncode != 0:
         print(f"  WARNING: config switch to '{profile}' failed: {result.stderr[:200]}")
-    else:
-        for line in result.stdout.strip().splitlines():
-            if line.startswith("  "):
-                print(f"  {line.strip()}")
-        print(f"  {container} is now in '{profile}' mode")
+
+    # Safety net: ensure ha-sim (host network) always uses localhost for MQTT,
+    # never host.docker.internal (which only works on bridge-network clones).
+    # This guards against stale configs left by a crashed parallel run.
+    _ensure_localhost_mqtt(container)
+
+
+def _ensure_localhost_mqtt(container: str) -> None:
+    """Ensure ha-sim's config entries use localhost for MQTT, not host.docker.internal.
+
+    ha-sim runs on the host network, so ``host.docker.internal`` does not
+    resolve.  Parallel clones (ha-sim-2, etc.) use bridge networking and
+    need ``host.docker.internal``, but ha-sim itself must always use
+    ``localhost``.  This is a defensive check — the config files should
+    already be correct, but a crashed parallel run may have left a stale
+    config in place.
+    """
+    result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            container,
+            "python3",
+            "-c",
+            "import json; p='/config/.storage/core.config_entries'; "
+            "d=json.load(open(p)); changed=False; "
+            "for e in d.get('data',{}).get('entries',[]): "
+            "  if e.get('domain')=='ramses_cc': "
+            "    sp=e.get('options',{}).get('serial_port',{}); "
+            "    pn=sp.get('port_name',''); "
+            "    if 'host.docker.internal' in pn: "
+            "      sp['port_name']=pn.replace('host.docker.internal','localhost'); "
+            "      changed=True; print('Fixed ramses_cc port_name -> localhost'); "
+            "  if e.get('domain')=='mqtt': "
+            "    data=e.get('data',{}); "
+            "    if data.get('broker')=='host.docker.internal': "
+            "      data['broker']='localhost'; changed=True; "
+            "      print('Fixed mqtt broker -> localhost'); "
+            "if changed: json.dump(d, open(p,'w'), indent=2); "
+            "print('done' if changed else 'ok')",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if result.returncode == 0 and "Fixed" in result.stdout:
+        print(f"  [{container}] {result.stdout.strip()}")
+        # Restart to apply the fix
+        subprocess.run(
+            ["docker", "restart", container], capture_output=True, timeout=30
+        )
 
 
 async def ensure_containers(instances: list[InstanceConfig]) -> None:
