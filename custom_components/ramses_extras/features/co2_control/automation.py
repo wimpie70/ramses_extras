@@ -37,7 +37,7 @@ from custom_components.ramses_extras.framework.helpers.zone_demand import (
 )
 
 from .config import CO2Config
-from .const import FEATURE_DEFINITION
+from .const import FEATURE_DEFINITION, FEATURE_ID
 from .zone_manager import CO2ZoneManager
 
 # Feature ID used by this module
@@ -207,14 +207,17 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         """Return candidate device IDs for startup CO2 evaluation."""
         ids: set[str] = set(self._zone_managers.keys())
 
-        devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
-        for device in devices:
-            if isinstance(device, dict):
-                device_id = str(device.get("device_id") or "").strip()
-            else:
-                device_id = str(device)
-            if device_id:
-                ids.add(device_id)
+        # Only add devices that are enabled for co2_control in the
+        # device_feature_matrix.  Without this filter, ALL ramses_cc
+        # devices (HGI, REM, TRV, etc.) are added as candidates, causing
+        # warnings for devices that don't have CO2 sensors.
+        matrix = self.config_entry.options.get(
+            "device_feature_matrix", {}
+        ) or self.config_entry.data.get("device_feature_matrix", {})
+        if isinstance(matrix, dict) and matrix:
+            for dev_id_raw, features in matrix.items():
+                if isinstance(features, dict) and features.get(FEATURE_ID) is True:
+                    ids.add(str(dev_id_raw).replace("_", ":"))
 
         return sorted(ids)
 
@@ -932,7 +935,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             }:
                 try:
                     internal_val = float(internal_state.state)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
             _LOGGER.debug(
                 "CO2 no trigger %s: threshold=%d act_hyst=%d "
@@ -959,12 +962,12 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
                 try:
                     return int(float(state.state))
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
 
         try:
             return int(area_sensor.get("co2_threshold") or threshold_default)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return threshold_default
 
     def _evaluate_source_trigger(
@@ -986,7 +989,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         try:
             co2_value = float(state.state)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             source_states[source_id] = False
             return None
 
@@ -1072,7 +1075,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
             try:
                 return int(float(state.state))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 pass
         return int(self.config.default_threshold)
 
@@ -1085,7 +1088,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
             try:
                 return int(float(state.state))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 pass
         return int(self.config.activation_hysteresis)
 
@@ -1098,7 +1101,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
             try:
                 return int(float(state.state))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 pass
         return int(self.config.deactivation_hysteresis)
 

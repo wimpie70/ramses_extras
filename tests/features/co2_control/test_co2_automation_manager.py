@@ -51,6 +51,9 @@ class TestCO2AutomationManager:
         self.config_entry.options = {
             "enabled_features": {"co2_control": True, "sensor_control": True},
             "co2_control": {"automation_enabled": True},
+            "device_feature_matrix": {
+                "32:123456": {"co2_control": True},
+            },
         }
         self.config_entry.data = {
             "enabled_features": {"co2_control": True, "sensor_control": True}
