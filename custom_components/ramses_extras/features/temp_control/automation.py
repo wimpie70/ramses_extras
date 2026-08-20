@@ -503,20 +503,26 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
     def _iter_candidate_device_ids(self) -> list[str]:
         ids: set[str] = set()
 
+        # Always include devices that have a temp_control switch entity
+        # (the user has explicitly enabled temp_control for these).
         for state in self.hass.states.async_all("switch"):
             if state.entity_id.startswith("switch.temp_control_"):
                 dev_id = self._extract_device_id(state.entity_id)
                 if dev_id:
                     ids.add(dev_id.replace("_", ":"))
 
-        devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
-        for device in devices:
-            if isinstance(device, dict):
-                raw = device.get("device_id")
-            else:
-                raw = getattr(device, "device_id", None) or getattr(device, "id", None)
-            if raw:
-                ids.add(str(raw).replace("_", ":"))
+        # Only add devices from the global device list if they are enabled
+        # for temp_control in the device_feature_matrix.  Without this
+        # filter, ALL ramses_cc devices (HGI, REM, CO2, TRV, etc.) are
+        # added as candidates, causing "required sensor unavailable"
+        # warnings for devices that don't have indoor_temperature sensors.
+        matrix = self.config_entry.options.get(
+            "device_feature_matrix", {}
+        ) or self.config_entry.data.get("device_feature_matrix", {})
+        if isinstance(matrix, dict) and matrix:
+            for dev_id_raw, features in matrix.items():
+                if isinstance(features, dict) and features.get(FEATURE_ID) is True:
+                    ids.add(str(dev_id_raw).replace("_", ":"))
 
         return sorted({i for i in ids if i})
 
@@ -585,7 +591,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             """Like _as_float but returns None for unavailable/missing entities."""
             try:
                 return _as_float(entity_id)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 return None
 
         resolved: dict[str, float | bool | None] = {}
@@ -1233,7 +1239,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         ):
             try:
                 global_comfort = float(global_comfort_state.state)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 global_comfort = None
 
         results: list[dict[str, Any]] = []
@@ -1254,7 +1260,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
             try:
                 area_temp = float(temp_state.state)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
 
             # Resolve comfort temp: area's comfort_temperature_entity → global
@@ -1269,7 +1275,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 ):
                     try:
                         area_comfort = float(comfort_state.state)
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         pass
 
             if area_comfort is None:

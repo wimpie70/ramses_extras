@@ -525,38 +525,24 @@ class TestIterCandidateDeviceIds:
 
     def test_from_devices_list_dict(self, automation_manager):
         automation_manager.hass.states.async_all = MagicMock(return_value=[])
-        automation_manager.hass.data = {
-            "ramses_extras": {
-                "enabled_features": {"temp_control": True},
-                "devices": [{"device_id": "32:153289", "type": "FAN"}],
-            }
+        automation_manager.config_entry.options = {
+            "device_feature_matrix": {"32:153289": {"temp_control": True}},
         }
         result = automation_manager._iter_candidate_device_ids()
         assert "32:153289" in result
 
     def test_from_devices_list_objects(self, automation_manager):
-        device = MagicMock()
-        device.device_id = "32:153290"
         automation_manager.hass.states.async_all = MagicMock(return_value=[])
-        automation_manager.hass.data = {
-            "ramses_extras": {
-                "enabled_features": {"temp_control": True},
-                "devices": [device],
-            }
+        automation_manager.config_entry.options = {
+            "device_feature_matrix": {"32:153290": {"temp_control": True}},
         }
         result = automation_manager._iter_candidate_device_ids()
         assert "32:153290" in result
 
     def test_from_devices_list_object_with_id_attr(self, automation_manager):
-        device = MagicMock()
-        del device.device_id
-        device.id = "32:153291"
         automation_manager.hass.states.async_all = MagicMock(return_value=[])
-        automation_manager.hass.data = {
-            "ramses_extras": {
-                "enabled_features": {"temp_control": True},
-                "devices": [device],
-            }
+        automation_manager.config_entry.options = {
+            "device_feature_matrix": {"32:153291": {"temp_control": True}},
         }
         result = automation_manager._iter_candidate_device_ids()
         assert "32:153291" in result

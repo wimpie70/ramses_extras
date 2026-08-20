@@ -46,6 +46,11 @@ def manager() -> CO2AutomationManager:
             "32:123456": {"enabled": True},
             "32_654321": {"enabled": False},
         },
+        "device_feature_matrix": {
+            "32:123456": {"co2_control": True},
+            "32:123456 (FAN)": {"co2_control": True},
+            "32_654321": {"co2_control": True},
+        },
     }
     config_entry.data = {
         "enabled_features": {"co2_control": True, "sensor_control": True}
@@ -145,7 +150,7 @@ def test_iter_candidate_ids_and_device_switch_logic(
     """Candidate IDs and device automation enablement should use merged inputs."""
     manager._zone_managers = {"32:777777": MagicMock()}
     ids = manager._iter_candidate_device_ids()
-    assert ids == ["32:123456", "32:123456 (FAN)", "32:777777", "32_654321"]
+    assert ids == ["32:123456", "32:123456 (FAN)", "32:654321", "32:777777"]
 
     assert manager._is_automation_enabled_for_device("32:123456") is True
     manager.config.update_config({"automation_enabled": False})
