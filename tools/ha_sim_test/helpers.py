@@ -319,6 +319,7 @@ async def load_profile_yaml(
     speed: float = 0.01,
     preload_schema: bool = True,
     reload_ramses: bool = True,
+    enable_eavesdrop: bool = False,
 ) -> dict:
     """Load a custom YAML profile via the device_simulator scenario.
 
@@ -349,6 +350,7 @@ async def load_profile_yaml(
                         "speed": speed,
                         "preload_schema": preload_schema,
                         "reload_ramses": reload_ramses,
+                        "enable_eavesdrop": enable_eavesdrop,
                     },
                 },
             )

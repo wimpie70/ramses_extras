@@ -12,6 +12,7 @@ EXPECTED_WARNINGS: list[str] = [
     "Sanitising invalid main_tcs",
     # ramses_rf: PacketInvalid is expected for some inject patterns
     "PacketInvalid",
+    "enable_eavesdrop=True: this is strongly discouraged",
     # ramses_rf: QoS warnings during rapid inject cycles
     "QoS",
     # Profile reload: stale device removal is expected
