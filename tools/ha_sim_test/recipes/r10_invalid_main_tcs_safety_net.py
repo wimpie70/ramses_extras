@@ -82,7 +82,7 @@ class R10InvalidMainTcsSafetyNet(Recipe):
                         {"entry_id": entry_id},
                     )
                     print("  Forced reload triggered")
-                except RuntimeError as e:
+                except Exception as e:
                     print(f"  Forced reload failed: {str(e)[:80]}")
                 ctx.wait_for_ramses_cc_reload(timeout=30)
                 ctx.refresh_token()
