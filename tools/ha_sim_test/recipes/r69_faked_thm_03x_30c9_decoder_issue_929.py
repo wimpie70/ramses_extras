@@ -229,22 +229,20 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
         for line in tx_lines:
             print(f"    {line}")
 
-        # 5. Verify the payload starts with the correct zone_idx (03)
+        # 5. Verify the payload format.
         #    30C9 payload format: {zone_idx}{temperature_hex}
+        #    For standard evohome CTL zones (RAD/ELE/MIX/VAL), the zone_idx
+        #    must be "00" — only UFH zones use the parent's zone index.
+        #    The old bug (commit 5b9abbe4) stamped the parent zone index for
+        #    ALL zones, causing "Packet idx is 0X, but expecting no idx (00)"
+        #    errors (issue 929).  The fix restricts the parent index to UFH
+        #    zones only.
         last_tx = tx_lines[-1]
         parts = last_tx.split()
         payload = parts[-1] if parts else ""
 
         ctx.check(
-            f"30C9 payload starts with zone_idx '{zone_idx}'",
-            len(payload) >= 2 and payload[:2] == zone_idx,
-            f"payload was '{payload[:8]}' (expected idx '{zone_idx}')",
-        )
-
-        # Also verify it does NOT start with "00" (the old buggy behaviour
-        # from issue 639, where build_put_sensor_temp hard-coded "00")
-        ctx.check(
-            "30C9 payload does NOT start with '00' (old bug from issue 639)",
-            len(payload) >= 2 and payload[:2] != "00",
-            "payload starts with '00' — bug regression!",
+            "30C9 payload starts with '00' (correct for CTL zone, issue 929 fix)",
+            len(payload) >= 2 and payload[:2] == "00",
+            f"payload was '{payload[:8]}' (expected '00' for CTL zone)",
         )
