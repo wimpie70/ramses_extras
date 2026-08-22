@@ -196,7 +196,7 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
             call_service(ctx.token, "ramses_cc", "force_update")
         except RuntimeError:
             pass
-        ctx.wait(3, "for force_update to refresh entity state", floor=2.0)
+        ctx.wait(10, "for force_update to refresh entity state", floor=5.0)
 
         def _poll_for_attrs(timeout_s: int = 60) -> dict:
             deadline = time.monotonic() + timeout_s
