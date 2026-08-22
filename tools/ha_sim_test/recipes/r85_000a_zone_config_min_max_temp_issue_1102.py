@@ -112,6 +112,10 @@ class R85ZoneConfigMinMaxTempIssue1102(Recipe):
         #
         #    We use non-default bounds (not 5.0/35.0) to distinguish
         #    a successful 000A ingestion from the hardcoded fallback.
+        #    Ensure transport is ready before injecting (may have dropped
+        #    during profile reload under parallel load).
+        wait_for_transport_ready(timeout=15)
+        ctx.wait(2, "for MQTT to stabilise before 000A inject", floor=1.0)
         payload = "030005DC09C4"
         print(f"  Injecting 000A from CTL {ctl} with zone {zone_idx} config...")
         print(f"    payload: {payload} (min=15.0, max=25.0)")
@@ -132,6 +136,13 @@ class R85ZoneConfigMinMaxTempIssue1102(Recipe):
             print(f"    Inject failed: {str(e)[:80]}")
             ctx.check("000A injection", False, str(e)[:80])
             return
+
+        # Trigger entity state refresh after injection
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(5, "for force_update to refresh entity state", floor=3.0)
 
         # 3. Poll for the climate entity to show the injected values.
         #    HA refreshes entity state asynchronously after SIGNAL_UPDATE
