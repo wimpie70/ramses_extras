@@ -170,15 +170,15 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
             msg="for CTL climate entity",
         )
 
-        # 7. Poll for attributes to become non-None (HA state refresh
-        #    happens asynchronously after SIGNAL_UPDATE is dispatched)
-        #    We also force a state refresh via homeassistant.update_entity
-        #    to work around a race condition where SIGNAL_UPDATE fires
-        #    before the CQRS state projector has finished populating the
-        #    per-domain dicts, causing HA to cache None.
+        # 7. Poll for attributes to become non-None.
+        #    The relay_demands/heat_demands/tpi_params properties are async
+        #    and go through resolve_async_attr which has a 30s cooldown.
+        #    The race condition where SIGNAL_UPDATE fired before the CQRS
+        #    state projector finished populating the dicts is now fixed
+        #    in gateway.py (process_message_state is called BEFORE
+        #    process_msg), so the attributes should be populated quickly.
         def _poll_for_attrs(timeout_s: int = 60) -> dict:
             deadline = time.monotonic() + timeout_s
-            refresh_attempted = False
             while time.monotonic() < deadline:
                 entity = _find_ctl_climate()
                 if entity is not None:
@@ -189,23 +189,6 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
                         and attrs.get("tpi_params") is not None
                     ):
                         return attrs
-                    # After 10s, force a state refresh to work around
-                    # the SIGNAL_UPDATE race condition
-                    if (
-                        not refresh_attempted
-                        and time.monotonic() > deadline - timeout_s + 10
-                    ):
-                        try:
-                            call_service(
-                                ctx.token,
-                                "homeassistant",
-                                "update_entity",
-                                {"entity_id": entity["entity_id"]},
-                            )
-                            print(f"    Forced state refresh for {entity['entity_id']}")
-                        except Exception:
-                            pass
-                        refresh_attempted = True
                 time.sleep(2)
             # Return whatever we have
             entity = _find_ctl_climate()
