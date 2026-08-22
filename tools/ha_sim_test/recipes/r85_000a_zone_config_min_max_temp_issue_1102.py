@@ -58,6 +58,10 @@ class R85ZoneConfigMinMaxTempIssue1102(Recipe):
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         wait_for_transport_ready(timeout=30)
+        # Extra stabilization: MQTT may reconnect then disconnect again
+        # during the first few seconds after reload (PollingManager stop
+        # triggers a disconnect).  Wait a few seconds for it to settle.
+        ctx.wait(5, "for MQTT transport to stabilise after reconnect")
 
         zone_idx = "03"
         ctl = CTL  # 01:150000

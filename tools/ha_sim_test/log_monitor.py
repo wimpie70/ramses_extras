@@ -97,6 +97,10 @@ EXPECTED_WARNINGS: list[str] = [
     "not found for FAN",
     # ramses_tx: FSM timeout during profile reload (transient)
     "send_timeout",
+    # ramses_cc: probe_hvac_binding may fail if MQTT disconnects during
+    # the probe (transient — the recipe handles this by injecting 22F1
+    # directly)
+    "probe_hvac_binding: failed to send",
     "Send timed out",
     # ramses_tx: protocol FSM state warnings (transient during reload)
     "ProtocolContext state",

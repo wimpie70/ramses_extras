@@ -153,13 +153,31 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
             print(f"    Inject failed: {str(e)[:80]}")
 
         # 6. Find the controller climate entity
+        #    Prefer the exact match (climate.ctl_01_150000) over duplicates
+        #    (climate.ctl_01_150000_2) which can appear after profile reloads.
         def _find_ctl_climate() -> dict | None:
             entities = get_entities(ctx.token)
             ctl_suffix = ctl.replace(":", "_")
+            # First pass: look for exact match (no _N suffix)
             for e in entities:
-                if not e["entity_id"].startswith("climate."):
+                eid = e["entity_id"]
+                if not eid.startswith("climate."):
                     continue
-                if ctl_suffix in e["entity_id"]:
+                if eid == f"climate.ctl_{ctl_suffix}":
+                    return e
+            # Second pass: fallback to any match without _N suffix
+            for e in entities:
+                eid = e["entity_id"]
+                if not eid.startswith("climate."):
+                    continue
+                if ctl_suffix in eid and not eid.rsplit("_", 1)[-1].isdigit():
+                    return e
+            # Third pass: any match (last resort)
+            for e in entities:
+                eid = e["entity_id"]
+                if not eid.startswith("climate."):
+                    continue
+                if ctl_suffix in eid:
                     return e
             return None
 
