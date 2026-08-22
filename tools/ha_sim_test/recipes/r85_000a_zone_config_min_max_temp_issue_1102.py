@@ -19,6 +19,7 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL
 from ..helpers import (
     call_service,
+    clear_cached_state,
     get_entities,
     get_schema_retry,
     wait_for,
@@ -37,6 +38,14 @@ class R85ZoneConfigMinMaxTempIssue1102(Recipe):
         ctx.log_section(
             "Recipe 85: 000A zone config min/max temp hydration (issue 1102)"
         )
+
+        # 0. Restart ha-sim to clear stale state and duplicate entities.
+        print("  Stopping ha-sim and clearing cached state...")
+        clear_cached_state(ctx.log_monitor, label="R85 pre-restart")
+        ctx.wait_for_ha_ready(timeout=30)
+        ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # 1. Load mixed profile (CTL 01:150000 with zones 03-08)
         print("  Loading mixed profile (CTL + zones 03-08)...")

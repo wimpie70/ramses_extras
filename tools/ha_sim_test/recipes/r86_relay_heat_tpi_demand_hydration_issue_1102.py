@@ -19,6 +19,7 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL
 from ..helpers import (
     call_service,
+    clear_cached_state,
     get_entities,
     get_schema_retry,
     wait_for,
@@ -35,6 +36,17 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 86: relay/heat/TPI demand hydration (issue 1102)")
+
+        # 0. Restart ha-sim to clear duplicate entities from prior recipes.
+        #    Under parallel load, profile reloads create _2/_3 suffix
+        #    duplicate climate entities that don't receive CQRS state
+        #    updates.  A clean restart eliminates them.
+        print("  Stopping ha-sim and clearing cached state...")
+        clear_cached_state(ctx.log_monitor, label="R86 pre-restart")
+        ctx.wait_for_ha_ready(timeout=30)
+        ctx.log_monitor.reset_baseline()
+        ctx.refresh_token()
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
 
         # 1. Load mixed profile (CTL 01:150000 with zones 03-08)
         print("  Loading mixed profile (CTL + zones 03-08)...")
