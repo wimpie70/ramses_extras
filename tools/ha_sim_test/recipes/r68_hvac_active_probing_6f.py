@@ -321,6 +321,10 @@ class R68HvacActiveProbing(Recipe):
         # The FAN's _handle_2411 only fires when the FAN receives a 2411
         # packet (RP where FAN is addr1), so we inject an RP from FAN→REM.
         # The payload is a real 2411 RP payload for param 3E captured from sim.
+        # Ensure MQTT transport is ready before injecting (may have dropped
+        # during the probe_hvac_binding service call above).
+        wait_for_transport_ready(timeout=15)
+        ctx.wait(2, "for MQTT to stabilise before 2411 inject", floor=1.0)
         print("  Injecting 2411 RP from FAN (ensures supports_2411=True)...")
         try:
             call_service(

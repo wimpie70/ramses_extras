@@ -195,6 +195,15 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
         #    state projector finished populating the dicts is now fixed
         #    in gateway.py (process_message_state is called BEFORE
         #    process_msg), so the attributes should be populated quickly.
+        #    Call force_update to trigger entity state refresh after the
+        #    injections — this is especially important when running after
+        #    other recipes that may have created duplicate entities.
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(3, "for force_update to refresh entity state", floor=2.0)
+
         def _poll_for_attrs(timeout_s: int = 60) -> dict:
             deadline = time.monotonic() + timeout_s
             while time.monotonic() < deadline:
