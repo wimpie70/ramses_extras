@@ -158,26 +158,20 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
         def _find_ctl_climate() -> dict | None:
             entities = get_entities(ctx.token)
             ctl_suffix = ctl.replace(":", "_")
+            ctl_prefix = f"climate.ctl_{ctl_suffix}"
             # First pass: look for exact match (no _N suffix)
             for e in entities:
-                eid = e["entity_id"]
-                if not eid.startswith("climate."):
-                    continue
-                if eid == f"climate.ctl_{ctl_suffix}":
+                if e["entity_id"] == ctl_prefix:
                     return e
-            # Second pass: fallback to any match without _N suffix
+            # Second pass: match ctl_ prefix with _N suffix (duplicate entity)
             for e in entities:
                 eid = e["entity_id"]
-                if not eid.startswith("climate."):
-                    continue
-                if ctl_suffix in eid and not eid.rsplit("_", 1)[-1].isdigit():
+                if eid.startswith(ctl_prefix + "_"):
                     return e
-            # Third pass: any match (last resort)
+            # Third pass: any ctl_ entity for this device (last resort)
             for e in entities:
                 eid = e["entity_id"]
-                if not eid.startswith("climate."):
-                    continue
-                if ctl_suffix in eid:
+                if eid.startswith("climate.ctl_") and ctl_suffix in eid:
                     return e
             return None
 
