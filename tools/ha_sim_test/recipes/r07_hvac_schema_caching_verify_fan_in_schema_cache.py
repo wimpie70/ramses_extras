@@ -44,6 +44,28 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 7: HVAC schema — FAN + REM (Step 8)")
 
+        # Ensure the mixed profile is loaded — earlier recipes on the
+        # same container (R04 remove CTL, R02 remove TRV) may have
+        # stripped the schema down, leaving no FAN entry.
+        schema = get_schema_retry()
+        if FAN not in schema:
+            print("  FAN not in schema — reloading mixed profile...")
+            try:
+                await load_profile_yaml(
+                    ctx.token,
+                    mixed_yaml(),
+                    speed=0.01,
+                    preload_schema=True,
+                    reload_ramses=True,
+                )
+            except RuntimeError as e:
+                print(f"  Profile reload failed: {e}")
+            ctx.wait_for_ramses_cc_reload(timeout=20)
+            ctx.refresh_token()
+            from ..helpers import wait_for_schema_populated
+
+            wait_for_schema_populated(min_keys=5, timeout=15)
+
         schema = get_schema_retry()
         fan_in_schema = FAN in schema
         print(f"  FAN in schema: {fan_in_schema}")
