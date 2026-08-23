@@ -632,3 +632,71 @@ class TestSensorControlResolver:
         result = self.resolver.get_supported_device_types()
         assert isinstance(result, list)
         assert set(result) == set(INTERNAL_SENSOR_MAPPINGS.keys())
+
+    @pytest.mark.asyncio
+    async def test_resolve_spike_ignore_outdoor_passthrough(self):
+        """spike_ignore_outdoor should be passed through to sources."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            self.device_id: {
+                                "sources": {
+                                    "indoor_humidity": {
+                                        "kind": "internal",
+                                        "spike_enabled": True,
+                                        "spike_rise_percent": 15.0,
+                                        "spike_window_minutes": 5,
+                                        "spike_ignore_outdoor": True,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+        self.resolver._entity_exists = MagicMock(return_value=True)
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert result["sources"]["indoor_humidity"]["spike_enabled"] is True
+        assert result["sources"]["indoor_humidity"]["spike_ignore_outdoor"] is True
+
+    @pytest.mark.asyncio
+    async def test_resolve_spike_ignore_outdoor_default_false(self):
+        """spike_ignore_outdoor should default to False when not set."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            self.device_id: {
+                                "sources": {
+                                    "indoor_humidity": {
+                                        "kind": "internal",
+                                        "spike_enabled": True,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+        self.resolver._entity_exists = MagicMock(return_value=True)
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert result["sources"]["indoor_humidity"]["spike_ignore_outdoor"] is False

@@ -588,6 +588,9 @@ async def handle_internal_fan_sensors(
         updated_sources["indoor_humidity"]["spike_window_minutes"] = int(
             user_input.get("indoor_humidity_spike_window_minutes") or 5
         )
+        updated_sources["indoor_humidity"]["spike_ignore_outdoor"] = bool(
+            user_input.get("indoor_humidity_spike_ignore_outdoor", False)
+        )
 
         # Outdoor temperature
         updated_sources["outdoor_temperature"] = _source_from_input(
@@ -718,6 +721,9 @@ async def handle_internal_fan_sensors(
     indoor_hum_spike_enabled = bool(indoor_hum_cfg.get("spike_enabled", False))
     indoor_hum_spike_rise = float(indoor_hum_cfg.get("spike_rise_percent", 10.0))
     indoor_hum_spike_window = int(indoor_hum_cfg.get("spike_window_minutes", 5))
+    indoor_hum_spike_ignore_outdoor = bool(
+        indoor_hum_cfg.get("spike_ignore_outdoor", False)
+    )
     outdoor_temp_cfg = device_sources.get("outdoor_temperature", {})
     outdoor_hum_cfg = device_sources.get("outdoor_humidity", {})
     co2_cfg = device_sources.get("co2", {})
@@ -804,6 +810,10 @@ async def handle_internal_fan_sensors(
                 "indoor_humidity_spike_window_minutes",
                 default=indoor_hum_spike_window,
             ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+            vol.Required(
+                "indoor_humidity_spike_ignore_outdoor",
+                default=indoor_hum_spike_ignore_outdoor,
+            ): selector.BooleanSelector(),
             # Outdoor sensors
             vol.Required(
                 "outdoor_temperature_kind",

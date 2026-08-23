@@ -1108,6 +1108,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "spike_window_minutes": int(
                 indoor_humidity_source.get("spike_window_minutes", 5)
             ),
+            "spike_ignore_outdoor": bool(
+                indoor_humidity_source.get("spike_ignore_outdoor", False)
+            ),
         }
 
         # Evaluate area spikes
@@ -1136,6 +1139,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             outdoor_abs=outdoor_abs,
             offset=offset,
             max_humidity=max_humidity,
+            spike_ignore_outdoor=bool(spike_config.get("spike_ignore_outdoor", False)),
         )
         detected_indoor_spike = self._detect_indoor_spike(
             device_id=device_id,
@@ -2028,9 +2032,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if rise_percent < threshold_percent:
             return None
 
-        if float(indoor_abs) <= max(indoor_abs, outdoor_abs + offset):
-            # Not above baseline comparison (indoor should exceed outdoor + offset)
-            pass
+        # When spike_ignore_outdoor is set, skip the outdoor comparison so
+        # the fan extracts unconditionally on a humidity spike (e.g. bathroom
+        # extraction regardless of outdoor absolute humidity).
+        if not bool(spike_config.get("spike_ignore_outdoor", False)):
+            if float(indoor_abs) <= outdoor_abs + offset:
+                _LOGGER.debug(
+                    "Ignoring indoor spike for %s: "
+                    "indoor abs %.2f <= outdoor %.2f + offset %.2f",
+                    device_id,
+                    float(indoor_abs),
+                    outdoor_abs,
+                    offset,
+                )
+                return None
 
         if indoor_rh <= max_humidity:
             _LOGGER.debug(
@@ -2061,6 +2076,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         outdoor_abs: float,
         offset: float,
         max_humidity: float,
+        spike_ignore_outdoor: bool = False,
     ) -> dict[str, Any] | None:
         """Evaluate if an active indoor spike should be retained.
 
@@ -2070,6 +2086,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         :param outdoor_abs: Outdoor absolute humidity
         :param offset: Humidity offset adjustment
         :param max_humidity: Maximum relative humidity threshold
+        :param spike_ignore_outdoor: Skip outdoor comparison when True
         :return: Updated spike info if retained, None if cleared
         """
         active_spike = self._active_indoor_spikes.get(device_id)
@@ -2077,7 +2094,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return None
 
         # Check if conditions still warrant spike mode
-        if indoor_abs <= outdoor_abs + offset:
+        if not spike_ignore_outdoor and indoor_abs <= outdoor_abs + offset:
             _LOGGER.debug(
                 "Clearing indoor spike for %s: "
                 "indoor abs %.2f <= outdoor %.2f + offset",

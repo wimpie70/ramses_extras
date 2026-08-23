@@ -56,6 +56,9 @@ SENSOR_CONTROL_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {}
 SENSOR_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {
     "get_device_config": "ramses_extras/sensor_control/get_device_config",
     "set_comfort_temp_entity": ("ramses_extras/sensor_control/set_comfort_temp_entity"),
+    "set_spike_ignore_outdoor": (
+        "ramses_extras/sensor_control/set_spike_ignore_outdoor"
+    ),
 }
 
 SENSOR_CONTROL_CARD_CONFIGS: list[dict[str, Any]] = [

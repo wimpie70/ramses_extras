@@ -191,7 +191,99 @@ async def ws_set_comfort_temp_entity(
         connection.send_error(msg["id"], "set_comfort_temp_entity_failed", str(err))
 
 
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): ("ramses_extras/sensor_control/set_spike_ignore_outdoor"),
+        vol.Required("device_id"): str,
+        vol.Required("spike_ignore_outdoor"): bool,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_set_spike_ignore_outdoor(
+    hass: Any,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Set the spike_ignore_outdoor flag for a device's indoor humidity source."""
+    device_id = str(msg.get("device_id") or "").strip()
+    if not device_id:
+        connection.send_error(msg["id"], "missing_device_id", "device_id is required")
+        return
+
+    spike_ignore_outdoor = bool(msg.get("spike_ignore_outdoor", False))
+
+    try:
+        from ...framework.helpers.config.migration import (
+            get_migrated_feature_section,
+        )
+        from ...framework.helpers.config.model import normalize_device_id
+
+        config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        if config_entry is None:
+            connection.send_error(
+                msg["id"], "no_config_entry", "Config entry not found"
+            )
+            return
+
+        options = dict(config_entry.options)
+        sc_section = get_migrated_feature_section(options, "sensor_control")
+        devices = sc_section.get("devices", {})
+        if not isinstance(devices, dict):
+            devices = {}
+        norm_id = normalize_device_id(device_id)
+        dev_cfg = devices.get(norm_id, {})
+        if not isinstance(dev_cfg, dict):
+            dev_cfg = {}
+        sources = dev_cfg.get("sources", {})
+        if not isinstance(sources, dict):
+            sources = {}
+        indoor_hum = sources.get("indoor_humidity", {})
+        if not isinstance(indoor_hum, dict):
+            indoor_hum = {}
+        indoor_hum["spike_ignore_outdoor"] = spike_ignore_outdoor
+        sources["indoor_humidity"] = indoor_hum
+        dev_cfg["sources"] = sources
+        devices[norm_id] = dev_cfg
+        sc_section["devices"] = devices
+
+        from .config_flow import _persist_sensor_control_section
+
+        # Build a minimal flow-like object with the required attributes
+        class _FlowShim:
+            def __init__(self, hass: Any, entry: Any) -> None:
+                self.hass = hass
+                self._config_entry = entry
+
+        flow = _FlowShim(hass, config_entry)
+        _persist_sensor_control_section(flow, options, sc_section)
+
+        _LOGGER.info(
+            "Set spike_ignore_outdoor=%s for device %s",
+            spike_ignore_outdoor,
+            device_id,
+        )
+
+        connection.send_result(
+            msg["id"],
+            {
+                "device_id": device_id,
+                "spike_ignore_outdoor": spike_ignore_outdoor,
+                "success": True,
+            },
+        )
+
+    except Exception as err:
+        _LOGGER.error(
+            "Failed to set spike_ignore_outdoor for %s: %s",
+            device_id,
+            err,
+            exc_info=True,
+        )
+        connection.send_error(msg["id"], "set_spike_ignore_outdoor_failed", str(err))
+
+
 __all__ = [
     "ws_get_sensor_control_device_config",
     "ws_set_comfort_temp_entity",
+    "ws_set_spike_ignore_outdoor",
 ]

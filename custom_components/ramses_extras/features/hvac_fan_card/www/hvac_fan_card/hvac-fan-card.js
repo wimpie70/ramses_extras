@@ -189,6 +189,7 @@ class HvacFanCard extends RamsesBaseCard {
     this.availableParams = this.getAvailableParameters();
 
     const humidityControlEntities = this._getHumidityControlEntities();
+    const humiditySpikeSettings = this._getHumiditySpikeSettings();
     const tempControlEntities = this._getTempControlEntities();
     const tempControlSettings = await this._fetchTempControlSettings();
     const comfortTempValue = this._getComfortTempValue();
@@ -197,6 +198,7 @@ class HvacFanCard extends RamsesBaseCard {
     const templateData = {
       device_id: this.config.device_id,
       humidityControlEntities,
+      humiditySpikeSettings,
       tempControlEntities,
       tempControlSettings,
       comfortTempValue,
@@ -1733,6 +1735,35 @@ class HvacFanCard extends RamsesBaseCard {
     return humidityControlEntities;
   }
 
+  /**
+   * Build view-model items for humidity control spike settings that are
+   * stored in sensor_control config (not as HA entities).
+   * @returns {Array<Object>} Items for the settings template.
+   */
+  _getHumiditySpikeSettings() {
+    const deviceId = this.config?.device_id;
+    if (!deviceId) return [];
+
+    const indoorHumSource = this._sensorSources?.indoor_humidity;
+    if (!indoorHumSource) return [];
+
+    const items = [];
+
+    // spike_ignore_outdoor toggle
+    if (indoorHumSource.spike_enabled !== undefined
+        || indoorHumSource.spike_ignore_outdoor !== undefined) {
+      items.push({
+        type: 'toggle',
+        config_key: 'spike_ignore_outdoor',
+        state: indoorHumSource.spike_ignore_outdoor ? 'on' : 'off',
+        name_key: 'parameters.humidity_spike_ignore_outdoor',
+        name_fallback: 'Spike: Ignore Outdoor',
+      });
+    }
+
+    return items;
+  }
+
   _getTempControlEntities() {
     const deviceId = this.config?.device_id;
     if (!deviceId) return [];
@@ -2540,6 +2571,40 @@ class HvacFanCard extends RamsesBaseCard {
           } else if (action === 'save-temp-setting') {
             const settingKey = button.getAttribute('data-setting-key');
             await this._saveTempSetting(button, settingKey);
+          } else if (action === 'update-spike-config') {
+            const paramItem = button.closest('.r-xtrs-hvac-fan-param-item');
+            if (paramItem) paramItem.classList.add('loading');
+            try {
+              await this._sendWebSocketCommand({
+                type: 'ramses_extras/sensor_control/set_spike_ignore_outdoor',
+                device_id: this.config.device_id,
+                spike_ignore_outdoor: newValue === 'on',
+              }, `spike_ignore_outdoor_${this.config.device_id}`);
+              // Update cached sensor sources
+              if (this._sensorSources?.indoor_humidity) {
+                this._sensorSources.indoor_humidity.spike_ignore_outdoor =
+                  newValue === 'on';
+              }
+              if (paramItem) {
+                paramItem.classList.remove('loading');
+                paramItem.classList.add('success');
+                setTimeout(
+                  () => paramItem.classList.remove('success'), 2000
+                );
+              }
+            } catch (error) {
+              logger.error(
+                'Failed to update spike config:',
+                error
+              );
+              if (paramItem) {
+                paramItem.classList.remove('loading');
+                paramItem.classList.add('error');
+                setTimeout(
+                  () => paramItem.classList.remove('error'), 2000
+                );
+              }
+            }
           }
         });
       });

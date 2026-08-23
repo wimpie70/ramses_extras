@@ -189,6 +189,9 @@ class SensorControlResolver:
             result["sources"]["indoor_humidity"]["spike_window_minutes"] = int(
                 indoor_humidity_override.get("spike_window_minutes", 5)
             )
+            result["sources"]["indoor_humidity"]["spike_ignore_outdoor"] = bool(
+                indoor_humidity_override.get("spike_ignore_outdoor", False)
+            )
 
         return result
 

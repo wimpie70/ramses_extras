@@ -10,6 +10,7 @@
  * @param {Object} params Template parameters.
  * @param {string} params.device_id Device id (`32:123456` or `32_123456`).
  * @param {Array<Object>} [params.humidityControlEntities] Humidity control view-model.
+ * @param {Array<Object>} [params.humiditySpikeSettings] Humidity spike config toggles.
  * @param {Array<Object>} [params.parameterItems] 2411 parameter view-model.
  * @param {Function} [params.t] Optional translation function.
  * @returns {string} HTML string.
@@ -38,6 +39,7 @@ export function createParameterEditSection(params) {
   const settingsText = tr('card.settings', 'Settings');
 
   const humidityEntities = getHumidityControlEntities(humidityControlEntities);
+  const humiditySpikeSettings = params.humiditySpikeSettings || [];
   const deviceParameters = getDeviceParameters(parameterItems);
 
   return `
@@ -61,6 +63,15 @@ export function createParameterEditSection(params) {
       <div class="r-xtrs-hvac-fan-param-list" style="max-height: 200px; overflow-y: auto;">
         ${humidityEntities.map(entity =>
           createHumidityControlItem(entity, tr)
+        ).join('')}
+      </div>
+      ` : ''}
+
+      ${humiditySpikeSettings.length > 0 ? `
+      <!-- Humidity Spike Settings Section -->
+      <div class="r-xtrs-hvac-fan-param-list">
+        ${humiditySpikeSettings.map(item =>
+          createHumiditySpikeToggleItem(item, tr)
         ).join('')}
       </div>
       ` : ''}
@@ -150,6 +161,38 @@ function createHumidityControlItem(entity, tr) {
                 value="${currentValue}"
                 data-entity="${entityId}">
         <button class="r-xtrs-hvac-fan-param-update-btn" data-action="update-humidity" data-entity-id="${entityId}">${tr('parameters.update', 'Update')}</button>
+        <span class="r-xtrs-hvac-fan-param-status"></span>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render a humidity spike config toggle row (e.g. spike_ignore_outdoor).
+ * These settings are stored in sensor_control config, not as HA entities,
+ * and are toggled via WebSocket.
+ * @param {Object} item View-model item with type='toggle'.
+ * @param {Function} tr Translation helper.
+ * @returns {string}
+ */
+function createHumiditySpikeToggleItem(item, tr) {
+  const configKey = item.config_key;
+  const currentValue = item.state;
+  const displayName = item.name_key
+    ? tr(item.name_key, item.name_fallback || configKey)
+    : (item.name_fallback || configKey);
+
+  return `
+    <div class="r-xtrs-hvac-fan-param-item" data-spike-config="${configKey}">
+      <div class="r-xtrs-hvac-fan-param-info">
+        <label class="r-xtrs-hvac-fan-param-label">${displayName}</label>
+      </div>
+      <div class="r-xtrs-hvac-fan-param-input-container">
+        <select class="r-xtrs-hvac-fan-param-input" data-spike-config-key="${configKey}">
+          <option value="on" ${currentValue === 'on' ? 'selected' : ''}>On</option>
+          <option value="off" ${currentValue === 'off' ? 'selected' : ''}>Off</option>
+        </select>
+        <button class="r-xtrs-hvac-fan-param-update-btn" data-action="update-spike-config" data-spike-config-key="${configKey}">${tr('parameters.update', 'Update')}</button>
         <span class="r-xtrs-hvac-fan-param-status"></span>
       </div>
     </div>
