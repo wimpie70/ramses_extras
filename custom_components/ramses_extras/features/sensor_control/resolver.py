@@ -240,6 +240,7 @@ class SensorControlResolver:
                 "comfort_temperature_entity": comfort_temperature_entity or None,
                 "spike_rise_percent": item.get("spike_rise_percent"),
                 "spike_window_minutes": item.get("spike_window_minutes"),
+                "spike_ignore_outdoor": bool(item.get("spike_ignore_outdoor", False)),
                 "check_interval_minutes": item.get("check_interval_minutes"),
                 "trigger_on_high_humidity": bool(
                     item.get("trigger_on_high_humidity", False)

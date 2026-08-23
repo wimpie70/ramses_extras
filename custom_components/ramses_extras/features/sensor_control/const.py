@@ -59,6 +59,9 @@ SENSOR_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {
     "set_spike_ignore_outdoor": (
         "ramses_extras/sensor_control/set_spike_ignore_outdoor"
     ),
+    "set_area_spike_ignore_outdoor": (
+        "ramses_extras/sensor_control/set_area_spike_ignore_outdoor"
+    ),
 }
 
 SENSOR_CONTROL_CARD_CONFIGS: list[dict[str, Any]] = [

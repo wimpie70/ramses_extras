@@ -639,6 +639,144 @@ class TestHumidityAutomationManager:
         assert decision["action"] == "dehumidify"
         assert decision["control_mode"] == "spike_boost"
 
+    async def test_detect_area_spike_gated_by_outdoor(self):
+        """Area spike should be suppressed when outdoor_abs is higher."""
+        now = time.time()
+        self.manager._area_history["test"] = {
+            "bathroom": [
+                {"ts": now - 120, "abs": 9.0},
+                {"ts": now - 10, "abs": 9.2},
+            ]
+        }
+        area_sensor_states = [
+            {
+                "area_id": "bathroom",
+                "label": "Bathroom",
+                "enabled": True,
+                "current_abs": 12.0,
+                "current_rh": 75.0,
+                "spike_rise_percent": 10.0,
+                "spike_window_minutes": 5,
+                "spike_ignore_outdoor": False,
+            }
+        ]
+
+        # outdoor_abs=15.0, offset=0.5 → max(indoor=10, outdoor+off=15.5) = 15.5
+        # area_abs=12.0 <= 15.5 → spike suppressed
+        spikes = self.manager._detect_area_spikes(
+            device_id="test",
+            indoor_abs=10.0,
+            outdoor_abs=15.0,
+            offset=0.5,
+            max_humidity=60.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert spikes == []
+
+    async def test_detect_area_spike_ignore_outdoor(self):
+        """Area spike should trigger when spike_ignore_outdoor is True,
+        even if outdoor_abs is higher than the area's absolute humidity."""
+        now = time.time()
+        self.manager._area_history["test"] = {
+            "bathroom": [
+                {"ts": now - 120, "abs": 9.0},
+                {"ts": now - 10, "abs": 9.2},
+            ]
+        }
+        area_sensor_states = [
+            {
+                "area_id": "bathroom",
+                "label": "Bathroom",
+                "enabled": True,
+                "current_abs": 12.0,
+                "current_rh": 75.0,
+                "spike_rise_percent": 10.0,
+                "spike_window_minutes": 5,
+                "spike_ignore_outdoor": True,
+            }
+        ]
+
+        # outdoor_abs=15.0, offset=0.5 → normally max(10, 15.5) = 15.5
+        # area_abs=12.0 <= 15.5 → would be suppressed
+        # BUT spike_ignore_outdoor=True → only check indoor_abs=10.0
+        # area_abs=12.0 > 10.0 → spike detected
+        spikes = self.manager._detect_area_spikes(
+            device_id="test",
+            indoor_abs=10.0,
+            outdoor_abs=15.0,
+            offset=0.5,
+            max_humidity=60.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert len(spikes) == 1
+        assert spikes[0]["area_id"] == "bathroom"
+
+    async def test_evaluate_active_area_spike_clears_on_outdoor(self):
+        """Active area spike should be cleared when outdoor_abs is higher
+        and spike_ignore_outdoor is False."""
+        self.manager._active_area_spikes["test"] = [
+            {
+                "area_id": "bathroom",
+                "label": "Bathroom",
+                "baseline_abs": 10.0,
+                "check_interval_minutes": 1,
+            }
+        ]
+        area_sensor_states = [
+            {
+                "area_id": "bathroom",
+                "current_abs": 12.0,
+                "current_rh": 75.0,
+                "spike_ignore_outdoor": False,
+            }
+        ]
+
+        # outdoor_abs=15.0, offset=0.5 → 12.0 <= 15.5 → spike cleared
+        retained = self.manager._evaluate_active_area_spikes(
+            device_id="test",
+            outdoor_abs=15.0,
+            offset=0.5,
+            max_humidity=60.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert retained == []
+
+    async def test_evaluate_active_area_spike_ignore_outdoor(self):
+        """Active area spike should be retained when spike_ignore_outdoor
+        is True, even if outdoor_abs is higher."""
+        self.manager._active_area_spikes["test"] = [
+            {
+                "area_id": "bathroom",
+                "label": "Bathroom",
+                "baseline_abs": 10.0,
+                "check_interval_minutes": 1,
+            }
+        ]
+        area_sensor_states = [
+            {
+                "area_id": "bathroom",
+                "current_abs": 12.0,
+                "current_rh": 75.0,
+                "spike_ignore_outdoor": True,
+            }
+        ]
+
+        # outdoor_abs=15.0, offset=0.5 → normally 12.0 <= 15.5 → cleared
+        # BUT spike_ignore_outdoor=True → outdoor check skipped → retained
+        retained = self.manager._evaluate_active_area_spikes(
+            device_id="test",
+            outdoor_abs=15.0,
+            offset=0.5,
+            max_humidity=60.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert len(retained) == 1
+        assert retained[0]["area_id"] == "bathroom"
+
     def test_build_indicator_attributes_with_active_trigger(self):
         """Indicator attributes should include active trigger metadata."""
         decision = {

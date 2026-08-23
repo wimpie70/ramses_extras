@@ -178,21 +178,23 @@ function createHumidityControlItem(entity, tr) {
 function createHumiditySpikeToggleItem(item, tr) {
   const configKey = item.config_key;
   const currentValue = item.state;
+  const scope = item.scope || 'indoor';
+  const areaId = item.area_id || '';
   const displayName = item.name_key
     ? tr(item.name_key, item.name_fallback || configKey)
     : (item.name_fallback || configKey);
 
   return `
-    <div class="r-xtrs-hvac-fan-param-item" data-spike-config="${configKey}">
+    <div class="r-xtrs-hvac-fan-param-item" data-spike-config="${configKey}" data-scope="${scope}"${areaId ? ` data-area-id="${areaId}"` : ''}>
       <div class="r-xtrs-hvac-fan-param-info">
         <label class="r-xtrs-hvac-fan-param-label">${displayName}</label>
       </div>
       <div class="r-xtrs-hvac-fan-param-input-container">
-        <select class="r-xtrs-hvac-fan-param-input" data-spike-config-key="${configKey}">
+        <select class="r-xtrs-hvac-fan-param-input" data-spike-config-key="${configKey}" data-scope="${scope}"${areaId ? ` data-area-id="${areaId}"` : ''}>
           <option value="on" ${currentValue === 'on' ? 'selected' : ''}>On</option>
           <option value="off" ${currentValue === 'off' ? 'selected' : ''}>Off</option>
         </select>
-        <button class="r-xtrs-hvac-fan-param-update-btn" data-action="update-spike-config" data-spike-config-key="${configKey}">${tr('parameters.update', 'Update')}</button>
+        <button class="r-xtrs-hvac-fan-param-update-btn" data-action="update-spike-config" data-spike-config-key="${configKey}" data-scope="${scope}"${areaId ? ` data-area-id="${areaId}"` : ''}>${tr('parameters.update', 'Update')}</button>
         <span class="r-xtrs-hvac-fan-param-status"></span>
       </div>
     </div>
