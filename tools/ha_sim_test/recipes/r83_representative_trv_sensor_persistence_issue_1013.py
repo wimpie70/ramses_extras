@@ -171,19 +171,19 @@ class R83RepresentativeTrvSensorPersistenceIssue1013(Recipe):
                     return float(value) if isinstance(value, (int, float)) else None
             return None
 
-        def _representative_baseline_ready() -> bool:
-            if _climate_temperature() == 21.0:
-                return True
-            _inject(representative, "000834")
-            call_service(ctx.token, "ramses_cc", "force_update")
-            return False
-
+        # After reload, the climate entity may need time to initialise
+        # (it has a 20s polling timeout that blocks temperature processing).
+        # Inject once, then wait for the temperature to propagate without
+        # repeatedly injecting + force_updating (which prevents the entity
+        # from settling).
+        _inject(representative, "000834")
+        call_service(ctx.token, "ramses_cc", "force_update")
         wait_for(
-            _representative_baseline_ready,
-            timeout=30,
-            interval=2,
+            lambda: _climate_temperature() == 21.0,
+            timeout=45,
+            interval=3,
             msg="for representative temperature baseline",
-            floor=15.0,
+            floor=20.0,
         )
 
         _inject(other_trv, "000708")

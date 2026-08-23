@@ -1749,16 +1749,35 @@ class HvacFanCard extends RamsesBaseCard {
 
     const items = [];
 
-    // spike_ignore_outdoor toggle
+    // Indoor spike_ignore_outdoor toggle
     if (indoorHumSource.spike_enabled !== undefined
         || indoorHumSource.spike_ignore_outdoor !== undefined) {
       items.push({
         type: 'toggle',
         config_key: 'spike_ignore_outdoor',
+        scope: 'indoor',
         state: indoorHumSource.spike_ignore_outdoor ? 'on' : 'off',
         name_key: 'parameters.humidity_spike_ignore_outdoor',
         name_fallback: 'Spike: Ignore Outdoor',
       });
+    }
+
+    // Per-area spike_ignore_outdoor toggles
+    if (Array.isArray(this._areaSensors)) {
+      for (const area of this._areaSensors) {
+        if (!area || !area.area_id || area.enabled === false) continue;
+        if (area.spike_ignore_outdoor === undefined) continue;
+        const label = area.label || area.area_id;
+        items.push({
+          type: 'toggle',
+          config_key: 'spike_ignore_outdoor',
+          scope: 'area',
+          area_id: area.area_id,
+          state: area.spike_ignore_outdoor ? 'on' : 'off',
+          name_key: 'parameters.humidity_spike_ignore_outdoor_area',
+          name_fallback: `Spike: Ignore Outdoor (${label})`,
+        });
+      }
     }
 
     return items;
@@ -2573,17 +2592,35 @@ class HvacFanCard extends RamsesBaseCard {
             await this._saveTempSetting(button, settingKey);
           } else if (action === 'update-spike-config') {
             const paramItem = button.closest('.r-xtrs-hvac-fan-param-item');
+            const scope = button.getAttribute('data-scope') || 'indoor';
+            const areaId = button.getAttribute('data-area-id') || '';
             if (paramItem) paramItem.classList.add('loading');
             try {
-              await this._sendWebSocketCommand({
-                type: 'ramses_extras/sensor_control/set_spike_ignore_outdoor',
-                device_id: this.config.device_id,
-                spike_ignore_outdoor: newValue === 'on',
-              }, `spike_ignore_outdoor_${this.config.device_id}`);
-              // Update cached sensor sources
-              if (this._sensorSources?.indoor_humidity) {
-                this._sensorSources.indoor_humidity.spike_ignore_outdoor =
-                  newValue === 'on';
+              if (scope === 'area' && areaId) {
+                await this._sendWebSocketCommand({
+                  type: 'ramses_extras/sensor_control/set_area_spike_ignore_outdoor',
+                  device_id: this.config.device_id,
+                  area_id: areaId,
+                  spike_ignore_outdoor: newValue === 'on',
+                }, `area_spike_ignore_outdoor_${this.config.device_id}_${areaId}`);
+                // Update cached area sensors
+                if (Array.isArray(this._areaSensors)) {
+                  const area = this._areaSensors.find(
+                    (a) => a && a.area_id === areaId
+                  );
+                  if (area) area.spike_ignore_outdoor = newValue === 'on';
+                }
+              } else {
+                await this._sendWebSocketCommand({
+                  type: 'ramses_extras/sensor_control/set_spike_ignore_outdoor',
+                  device_id: this.config.device_id,
+                  spike_ignore_outdoor: newValue === 'on',
+                }, `spike_ignore_outdoor_${this.config.device_id}`);
+                // Update cached sensor sources
+                if (this._sensorSources?.indoor_humidity) {
+                  this._sensorSources.indoor_humidity.spike_ignore_outdoor =
+                    newValue === 'on';
+                }
               }
               if (paramItem) {
                 paramItem.classList.remove('loading');

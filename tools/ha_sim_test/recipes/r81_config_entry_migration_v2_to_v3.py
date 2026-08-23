@@ -239,7 +239,7 @@ class R81ConfigEntryMigrationV2ToV3(Recipe):
                 for e in d["data"]["entries"]:
                     if e["domain"] == "ramses_cc":
                         return e.get("version") == 3
-            except json.JSONDecodeError, KeyError, TypeError:
+            except Exception:  # noqa: BLE001
                 pass
             return False
 
@@ -375,6 +375,16 @@ class R81ConfigEntryMigrationV2ToV3(Recipe):
             isinstance(schema.get(hgi_id), dict)
             and schema[hgi_id].get("_class") == "HGI",
             f"HGI entry={schema.get(hgi_id)}",
+        )
+
+        # Check 4b: passive_scan should be enabled after migration.
+        # The v2→v3 migration enables passive_scan by default because
+        # enforce_known_list becomes always-on (PR 1033).
+        advanced = options.get("advanced_features", {})
+        ctx.check(
+            "passive_scan is True after v2→v3 migration",
+            advanced.get("passive_scan") is True,
+            f"advanced_features={advanced}",
         )
 
         # Check 5: v2 backup was saved

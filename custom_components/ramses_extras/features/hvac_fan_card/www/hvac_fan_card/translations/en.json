@@ -58,6 +58,7 @@
     "humidity_maximum_relative": "Maximum Relative Humidity",
     "humidity_absolute_offset": "Absolute Humidity Offset",
     "humidity_spike_ignore_outdoor": "Spike: Ignore Outdoor",
+    "humidity_spike_ignore_outdoor_area": "Spike: Ignore Outdoor (Area)",
     "temp_control_settings": "Temperature Control Settings",
     "temp_control_desired_speed": "Desired Speed (Cooling)",
     "temp_control_status": "Status",

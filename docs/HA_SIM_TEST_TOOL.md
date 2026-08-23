@@ -304,9 +304,38 @@ the global `--wait-floor-poll` (the effective floor is the max of both).
 
 ## Test reports
 
-After each run, two reports are written to the reports directory
-(default: user data dir, e.g. `~/.local/share/ramses_extras/ha_sim_reports/`
-on Linux; overridable via `--reports-dir`):
+After each run, reports are written to the reports directory. The default
+location is a **user-level data directory outside the repo** (so reports
+don't pollute the working tree and are reachable on all platforms):
+
+| Platform | Default path |
+|---|---|
+| **Linux** | `~/.local/share/ramses_extras/ha_sim_reports/` |
+| **macOS** | `~/Library/Application Support/ramses_extras/ha_sim_reports/` |
+| **Windows** | `%LOCALAPPDATA%/ramses_extras/ha_sim_reports/` |
+
+Override with `--reports-dir DIR`. The directory is created if it does not
+exist.
+
+**Example listing** (Linux):
+
+```
+~/.local/share/ramses_extras/ha_sim_reports/
+├── log_report_ha-sim_20260822_190013.txt      # per-container log report
+├── log_report_ha-sim-2_20260822_190024.txt
+├── log_report_ha-sim-3_20260822_190033.txt
+├── summary_ha-sim_20260822_190013.md          # per-container summary (single mode)
+├── summary_parallel_20260822_190013.md        # combined summary (parallel mode)
+└── recipe_timings.json                         # rolling-average timing store
+```
+
+To quickly find the latest reports:
+
+```bash
+ls -t ~/.local/share/ramses_extras/ha_sim_reports/summary_*.md | head -1
+```
+
+After each run, two report types are written:
 
 ### Log report
 
@@ -340,6 +369,18 @@ A Markdown report (readable by both humans and machines) containing:
 - **Container errors** — fatal errors per container (if any)
 - **Log report references** — paths to the corresponding log reports
 
+### Recipe timing store
+
+```
+recipe_timings.json
+```
+
+A rolling-average timing store used by the parallel runner for
+self-calibrating load balancing. Tracks the last *N* run durations per
+recipe and computes a rolling average. Updated automatically after each
+run. Falls back to seed estimates for recipes with no history. No manual
+updates needed when recipes are added, removed, or change duration.
+
 ### Log monitor design
 
 The `LogMonitor` class in the test script:
@@ -368,7 +409,7 @@ If a new bug introduces an unexpected ERROR or WARNING, it will appear in the re
 
 ## Test recipes
 
-64 recipes (R01–R72, with gaps where structural recipes were converted
+72 recipes (R01–R86, with gaps where structural recipes were converted
 to pytest). Each recipe is a self-contained module under
 `tools/ha_sim_test/recipes/`.
 
@@ -382,23 +423,23 @@ directly against the source code without needing the ha-sim container.
 | Recipe | Description | Checks |
 |---|---|---|
 | R01 | Heat profile activation + schema/entities | 5 |
-| R02 | remove_device — remove TRV | 3 |
-| R03 | remove_device — HGI rejection | 1 |
-| R04 | remove_device — CTL / main_tcs removal | 2 |
+| R02 | remove_device — remove TRV | 4 |
+| R03 | remove_device — HGI rejection | 2 |
+| R04 | remove_device — CTL / main_tcs removal | 3 |
 | R05 | No resurrection after restart | 2 |
-| R10 | Invalid main_tcs safety net | 3 |
-| R11 | Discover → accept → remove lifecycle | 5 |
+| R10 | Invalid main_tcs safety net | 4 |
+| R11 | Discover → accept → remove lifecycle | 6 |
 | R16 | Concurrency/stress test — rapid add/remove | 4 |
 
 ### Schema management
 
 | Recipe | Description | Checks |
 |---|---|---|
-| R07 | HVAC schema caching — FAN + REM | 2 |
+| R07 | HVAC schema caching — FAN + REM | 5 |
 | R07b | Restart, HVAC survives + device-loss scenario | 5 |
 | R08 | HVAC schema caching — merge union on reload | 3 |
 | R09 | User schema edits survive sync — _alias | 2 |
-| R15 | Verify hvac_schema key in .storage | 1 |
+| R15 | Verify hvac_schema key in .storage | 3 |
 | R20 | SSOT Phase 2 migration — known_list traits | 5 |
 
 ### Zone binding & packet injection
@@ -407,10 +448,10 @@ directly against the source code without needing the ha-sim container.
 |---|---|---|
 | R06 | Zone binding via inject_message (000C packet) | 2 |
 | R14 | Raw packet injection — zone rebinding | 1 |
-| R19 | Zone binding from broadcast traffic (passive) | 8 |
+| R19 | Zone binding from broadcast traffic (passive) | 1 |
 | R19b | Invalid zone indices are rejected | 1 |
 | R19c | 18: (HGI) devices tracked but no zone binding | 2 |
-| R21 | CTL (01:) does not get zone_idx from 000A | 8 |
+| R21 | CTL (01:) does not get zone_idx from 000A | 3 |
 | R22 | THM (22:) zone binding via 000A | 2 |
 | R23 | 0004 zone_name propagation (parser_0004) | 2 |
 | R28 | Foreign HGI — 0004 zone names not blocked | 4 |
@@ -419,9 +460,9 @@ directly against the source code without needing the ha-sim container.
 
 | Recipe | Description | Checks |
 |---|---|---|
-| R17 | Discovery service lifecycle [A] | 7 |
-| R18 | add_faked_rem service — creates faked REM | 5 |
-| R47 | Unknown device discovery + log tracking | 3 |
+| R17 | Discovery service lifecycle [A] | 14 |
+| R18 | add_faked_rem service — creates faked REM | 6 |
+| R47 | Unknown device discovery + log tracking | 4 |
 
 ### BDR / OTB classification (issue 834)
 
@@ -429,7 +470,7 @@ directly against the source code without needing the ha-sim container.
 |---|---|---|
 | R29 | BDR 3B00/3EF0 → appliance_control | 6 |
 | R34 | BDR re-parent hotwater_valve → appliance_control | 5 |
-| R37 | BDR hotwater_valve misclassified as appliance_control | 9 |
+| R37 | BDR hotwater_valve misclassified as appliance_control | 10 |
 
 ### Phase 3c — _class detection & mismatch
 
@@ -437,38 +478,40 @@ directly against the source code without needing the ha-sim container.
 |---|---|---|
 | R24 | Phase 3c — class mismatch flagging | 5 |
 | R25 | Phase 3c — fix mismatch, notification dismissed | 2 |
-| R26 | Phase 3c — missing _class detection | 1 |
-| R27 | Phase 3c — accept_discovered_device preserves root | 1 |
+| R26 | Phase 3c — missing _class detection | 3 |
+| R27 | Phase 3c — accept_discovered_device preserves root | 5 |
 
 ### Phase 3d — FAN _commands & multi-REM
 
 | Recipe | Description | Checks |
 |---|---|---|
 | R30 | Phase 3d.4 — multi-REM FAN with _bound as list | 5 |
-| R31 | Phase 3d.6 — _commands override precedence (E2E) | 5 |
-| R33 | Phase 3d.3b — consolidated stripper validation | 8 |
+| R31 | Phase 3d.6 — _commands override precedence (E2E) | 6 |
+| R33 | Phase 3d.3b — consolidated stripper validation | 11 |
 
 ### Phase 4 — known_list enforcement (PR 870)
 
 | Recipe | Description | Checks |
 |---|---|---|
 | R58 | Phase 4 — known_list removed, enforce always-on | 14 |
-| R59 | Phase 4 — _cleanup_stale_known_list strips stale keys | 9 |
+| R59 | (removed — functionality covered by R58) | — |
 
 ### HVAC topology (FAN/REM/CO2)
 
 | Recipe | Description | Checks |
 |---|---|---|
-| R62 | Topology event-driven schema sync (step 5) | 7 |
-| R65 | HVAC 'belongs to' FAN detected from traffic | 18 |
-| R66 | HVAC dual-role CO2+REM support | 5 |
-| R68 | Active HVAC topology probing (6f) | 4 |
+| R62 | Topology event-driven schema sync (step 5) | 5 |
+| R65 | HVAC 'belongs to' FAN detected from traffic | 19 |
+| R66 | HVAC dual-role CO2+REM support | 13 |
+| R67 | HVAC via_device grouping (step 6d) | 19 |
+| R68 | Active HVAC topology probing (6f) | 13 |
 
 ### CQRS / DHW hydration
 
 | Recipe | Description | Checks |
 |---|---|---|
 | R35 | Water heater DHW CQRS hydration (issue 843) | 4 |
+| R36 | Zone climate state hydration (issue 843) | 3 |
 
 ### Battery & cache restore
 
@@ -480,63 +523,116 @@ directly against the source code without needing the ha-sim container.
 
 | Recipe | Description | Checks |
 |---|---|---|
-| R50 | Device health tracking — orphaned/lost devices | 20+ |
+| R50 | Device health tracking — orphaned/lost devices | 17 |
+
+### HVAC topology learning (issue 767)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R42 | HVAC topology learned from traffic — binding rules | 4 |
+| R43 | CO2 dual-role device — 1298 + 22F1 from same 37: | 2 |
+| R44 | Schema migration v1→v2 — traits survive restart | 5 |
+| R45 | Crash recovery — force reload, topology survives | 6 |
+| R46 | _disabled trait — device excluded from known_list | 5 |
 
 ### Packet DTO & positional addressing (issue 639)
 
 | Recipe | Description | Checks |
 |---|---|---|
 | R38 | Faked THM 30C9 correct zone_idx (issue 639) | 3 |
-| R40 | PacketDTO rx_path integrity (issue 639) | 5 |
+| R40 | PacketDTO rx_path integrity (issue 639) | 9 |
 
 ### Payload decode regression guards
 
 | Recipe | Description | Checks |
 |---|---|---|
 | R63 | Zone name survives message_store prune (issue 919) | 5 |
-| R64 | No repeated discovery notifications (issue 917) | 4 |
-| R69 | Faked THM 03x 30C9 decoder (issue 929) | 3 |
-| R70 | 3EF0 9-byte OTB payload decode (PR 1031 regression guard) | 9 |
-| R71 | 1260 DHW temperature value accuracy | 5 |
-| R72 | 3150 heat_demand value accuracy | 8 |
+| R64 | No repeated discovery notifications (issue 917) | 3 |
+| R69 | Faked THM 03x 30C9 decoder (issue 929) | 4 |
+| R70 | 3EF0 9-byte OTB payload decode (PR 1031 regression guard) | 19 |
+| R71 | 1260 DHW temperature value accuracy | 3 |
+| R72 | 3150 heat_demand value accuracy | 6 |
+
+### Domain ID & placement (issue 931)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R73 | Authoritative domain_id from 000C — FA/F9/FC placement | 6 |
+| R74 | Manual placement preserved + comment staleness | 5 |
+
+### Zone class & BDR fallback (issue 947)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R75 | Zone class inference + BDR hotwater_valve fallback | 8 |
+| R76 | Zone name 0004 polling regression | 5 |
+
+### Discovery & re-notification (issues 987, 988, 1000, 1003)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R77 | HGI device not re-discovered every cycle (issue 987) | 4 |
+| R78 | Orphaned device suppress_not_seen, no re-notify (issue 988) | 4 |
+| R79 | FAN→DIS reclassification via contradiction detection (issue 1000) | 5 |
+| R80 | Foreign-owned device not flagged as "new" (issue 1003) | 3 |
+
+### Config entry migration
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R81 | Config entry migration v2→v3 (known_list to schema) | 25 |
+| R82 | Config entry migration v1→v3 (0.56-era to current) | 26 |
+
+### Zone sensor learning (issue 1013)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R83 | Representative TRV sensor persistence | 7 |
+| R84 | Multi-room zone sensor learning | 6 |
+
+### Zone config & demand hydration (issue 1102)
+
+| Recipe | Description | Checks |
+|---|---|---|
+| R85 | 000A zone config hydration (min/max temp) | 3 |
+| R86 | relay/heat/TPI demand hydration (ramses_cc#1026) | 3 |
 
 ### Other
 
 | Recipe | Description | Checks |
 |---|---|---|
 | R39 | (removed — converted to pytest in ramses_rf) | — |
-| R41–R46 | Structural / import-time checks | varies |
+| R41 | (removed — converted to pytest in ramses_rf) | — |
 | R48 | (removed — converted to pytest in ramses_rf) | — |
 | R49 | (removed — converted to pytest in ramses_rf) | — |
 | R51–R57 | (removed — converted to pytest in ramses_rf/ramses_cc) | — |
-| R60 | send_packet CommandDTO + device_id filter (issue 864) | 5 |
-| R61 | FAN 2411 parameter entities availability (issue 851) | 5 |
+| R60 | send_packet CommandDTO + device_id filter (issue 864) | 9 |
 | Log Report | ERROR/WARNING analysis | 2 |
 
-**Total:** ~350+ checks across 64 recipes (10 structural recipes converted
+**Total:** ~442 checks across 72 recipes (10 structural recipes converted
 to pytest — see ramses_rf/ramses_cc test suites).
 
 ## Services tested
 
 | Service | Tested by |
 |---|---|
-| `ramses_cc.sync_topology` | R06, R09, R14, R16, R29, R30, R31, R37 |
-| `ramses_cc.remove_device` | R02, R03, R04, R11, R16 |
-| `ramses_cc.accept_discovered_device` | R11, R17, R27, R29, R37 |
-| `ramses_cc.get_discovered_devices` | R17 |
+| `ramses_cc.sync_topology` | R06, R09, R14, R16, R29, R30, R31, R37, R75, R76 |
+| `ramses_cc.remove_device` | R02, R03, R04, R11, R16, R78 |
+| `ramses_cc.accept_discovered_device` | R11, R17, R27, R29, R37, R74 |
+| `ramses_cc.get_discovered_devices` | R17, R77 |
 | `ramses_cc.discard_discovered_device` | R17 |
 | `ramses_cc.enable_discovered_device` | R17 |
 | `ramses_cc.disable_discovered_device` | R17 |
 | `ramses_cc.remove_discovered_device` | R17 |
 | `ramses_cc.add_faked_rem` | R18 |
-| `ramses_cc.force_update` | R35, R50, R65 |
+| `ramses_cc.force_update` | R35, R50, R65, R85 |
 | `ramses_cc.probe_hvac_binding` | R68 |
 | `ramses_cc.send_packet` | R60 |
-| `ramses_extras.device_simulator/load_profile` | Setup, R11, R29, R35, R37, R50, R65 |
+| `ramses_extras.device_simulator/load_profile` | Setup, R11, R29, R35, R37, R50, R65, R83, R84 |
 | `ramses_extras.device_simulator/activate_profile_device` | R01, R29, R35, R37 |
 | `ramses_extras.device_simulator/silence_devices` | R35, R71 |
-| `ramses_extras.device_simulator/load_profile_yaml` | R01, R08, R09, R10, R14, R17, R26, R58 |
-| `ramses_extras.device_simulator/inject_message` | R06, R11, R14, R16, R19, R22, R26, R29, R35, R37, R40, R50, R65, R68, R70, R71, R72 |
+| `ramses_extras.device_simulator/load_profile_yaml` | R01, R08, R09, R10, R14, R17, R26, R58, R73, R75, R77, R81, R82 |
+| `ramses_extras.device_simulator/inject_message` | R06, R11, R14, R16, R19, R22, R26, R29, R35, R37, R40, R50, R65, R68, R70, R71, R72, R73, R76, R85 |
 | `ramses_extras.device_simulator/start_scenario` | R07b |
 
 ## Parallel contention findings

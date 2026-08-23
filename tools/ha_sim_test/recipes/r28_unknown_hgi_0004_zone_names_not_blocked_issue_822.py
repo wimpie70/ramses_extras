@@ -1,4 +1,4 @@
-"""Recipe R28: Foreign HGI — 0004 zone names not blocked by block_list."""
+"""Recipe R28: Unknown HGI — 0004 zone names not blocked (issue 822)."""
 
 from __future__ import annotations
 
@@ -34,32 +34,40 @@ from ..helpers import (
 from ..profile import MIXED_KL, MIXED_SCHEMA, mixed_yaml
 
 
-class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
+class R28UnknownHgi0004ZoneNamesNotBlockedIssue822(Recipe):
     id = "R28"
     seq = 300
-    title = "Foreign HGI — 0004 zone names not blocked by block_list"
+    title = "Unknown HGI — 0004 zone names not blocked (issue 822)"
 
     async def run(self, ctx: RecipeContext) -> None:
-        # When a foreign HGI (18: with _owner != root _owner) is present,
-        # ramses_cc must NOT put it in the block_list.  The controller sends
-        # 0004 zone name RPs addressed to the foreign HGI, and the active
-        # gateway eavesdrops on those responses.  If the foreign HGI is in
-        # the block_list, the protocol filter drops the 0004 RPs before the
-        # foreign-HGI exception can fire, and zone names stay None (issue 822).
-        ctx.log_section("Recipe 28: Foreign HGI — 0004 zone names not blocked")
+        # An unknown HGI (18: not in any list — not in known_list, not in
+        # block_list, not in the schema) might be our own second gateway
+        # not yet configured.  Its packets must be allowed through so the
+        # active gateway can eavesdrop on the controller's responses to it
+        # (issue 822).  ramses_rf logs an INFO-level message but does not
+        # filter.
+        #
+        # This recipe injects a 0004 RP from the CTL addressed to an
+        # unknown HGI (18:888888).  The active gateway should eavesdrop on
+        # the RP and set the zone name.  If the unknown HGI were blocked,
+        # the 0004 RP would be dropped and the zone name would stay None.
+        #
+        # NOTE: a foreign-owned HGI (_owner: not-me in the schema) IS
+        # blocked by ramses_cc's block_list (issue 1020).  That case is
+        # tested by R87.
+        ctx.log_section("Recipe 28: Unknown HGI — 0004 zone names not blocked")
 
-        # Build a YAML profile with _owner: me and a foreign HGI 18:999999
-        # with _owner: not-me.  The foreign HGI is not in the known_list.
-        foreign_hgi_r28 = "18:999999"
+        # Build a YAML profile with _owner: me.  The unknown HGI 18:888888
+        # is NOT in the schema and NOT in the known_list — it's completely
+        # unknown to the system.
+        unknown_hgi_r28 = "18:888888"
         r28_schema = dict(MIXED_SCHEMA)
         r28_schema["_owner"] = "me"
         r28_schema[CTL] = dict(r28_schema.get(CTL, {}))
         r28_schema[CTL]["_owner"] = "me"
-        # Add the foreign HGI as a foreign device (not in known_list)
-        r28_schema[foreign_hgi_r28] = {"_owner": "not-me"}
         r28_yaml = mixed_yaml(r28_schema)
 
-        print("  Loading profile with foreign HGI 18:999999 (_owner: not-me)...")
+        print(f"  Loading profile (unknown HGI {unknown_hgi_r28} not in schema)...")
         try:
             await load_profile_yaml(ctx.token, r28_yaml, speed=0.01)
             print("  Profile loaded")
@@ -82,22 +90,22 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             )
         except RuntimeError:
             pass
-        # Verify the foreign HGI is in the schema
+        # Verify the unknown HGI is NOT in the schema (it's unknown)
         schema_r28_init = get_schema_retry()
         ctx.check(
-            "Foreign HGI 18:999999 is in schema",
-            foreign_hgi_r28 in schema_r28_init,
+            f"Unknown HGI {unknown_hgi_r28} is NOT in schema",
+            unknown_hgi_r28 not in schema_r28_init,
             f"18: keys={[k for k in schema_r28_init if k.startswith('18:')]}",
         )
 
-        # Inject a 0004 RP from CTL to the foreign HGI (zone name "Bedroom")
+        # Inject a 0004 RP from CTL to the unknown HGI (zone name "Bedroom")
         zone_r28 = "03"
         name_r28 = "Bedroom"
         name_hex_r28 = name_r28.encode().hex().upper()
         name_padded_r28 = name_hex_r28 + "0" * (40 - len(name_hex_r28))
         payload_r28 = f"{zone_r28}00{name_padded_r28}"
 
-        print(f"  Injecting 0004 RP from CTL {CTL} to foreign HGI {foreign_hgi_r28}...")
+        print(f"  Injecting 0004 RP from CTL {CTL} to unknown HGI {unknown_hgi_r28}...")
         print(f"    payload: {payload_r28} (zone {zone_r28}, name '{name_r28}')")
         try:
             call_service(
@@ -106,7 +114,7 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
                 "device_simulator_inject_message",
                 {
                     "source_id": CTL,
-                    "dst": foreign_hgi_r28,
+                    "dst": unknown_hgi_r28,
                     "code": "0004",
                     "payload": payload_r28,
                     "verb": "RP",
@@ -162,34 +170,34 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
         )
 
         # Check 1: zone 03 should have a _name set — proving the 0004 RP was
-        # eavesdropped (not blocked by the foreign HGI block_list).
+        # eavesdropped (not blocked because the unknown HGI is not in any list).
         #
         # NOTE: we do NOT assert _name == "Bedroom" because a 0004 I packet
         # from an earlier recipe (R23, seq=240) may have already set zone 03's
         # name to "Living Room".  A direct 0004 I is more authoritative than an
-        # eavesdropped 0004 RP addressed to a foreign HGI, so the RP is not
-        # expected to override an existing I-set name.  The foreign HGI
-        # block_list fix (issue 822) is verified by the other 3 checks below
-        # (foreign HGI in schema, 30C9 processed, no FILTER EXCEPTION).
+        # eavesdropped 0004 RP addressed to an unknown HGI, so the RP is not
+        # expected to override an existing I-set name.  The issue 822 exemption
+        # is verified by the other 3 checks below (30C9 processed, no FILTER
+        # EXCEPTION).
         ctx.check(
-            f"Zone {zone_r28} has _name set (0004 RP to foreign HGI not blocked)",
+            f"Zone {zone_r28} has _name set (0004 RP to unknown HGI not blocked)",
             isinstance(zone_03_r28, dict) and zone_03_name is not None,
-            f"_name={zone_03_name!r} (None = 0004 RP was blocked by block_list)",
+            f"_name={zone_03_name!r} (None = 0004 RP was blocked)",
         )
 
-        # Check 2: foreign HGI should NOT be in the block_list (after fix).
+        # Check 2: unknown HGI should NOT be in the block_list.
         # We can't directly inspect the block_list, but we can verify the
-        # foreign HGI is not being filtered by checking that packets from it
-        # are processed.  Inject a 30C9 I from the foreign HGI — if it's
+        # unknown HGI is not being filtered by checking that packets from it
+        # are processed.  Inject a 30C9 I from the unknown HGI — if it's
         # blocked, the scan engine won't see it.
-        print(f"  Injecting 30C9 I from foreign HGI {foreign_hgi_r28}...")
+        print(f"  Injecting 30C9 I from unknown HGI {unknown_hgi_r28}...")
         try:
             call_service(
                 ctx.token,
                 "ramses_extras",
                 "device_simulator_inject_message",
                 {
-                    "source_id": foreign_hgi_r28,
+                    "source_id": unknown_hgi_r28,
                     "code": "30C9",
                     "payload": "0308AC",
                     "verb": "I",
@@ -211,29 +219,30 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
             pass
         ctx.wait_for_schema_stable(timeout=10, msg="for save")
 
-        # The foreign HGI should appear in the schema (it was already there
-        # from the profile, but the 30C9 should not cause a FILTER EXCEPTION)
+        # The unknown HGI should not cause a FILTER EXCEPTION when injecting
+        # a 30C9.  It's not in the schema (it's unknown), but the packet
+        # should still be processed by the scan engine.
         schema_r28b = get_schema_retry()
         ctx.check(
-            "Foreign HGI still in schema after 30C9 inject",
-            foreign_hgi_r28 in schema_r28b,
+            "Unknown HGI not causing FILTER EXCEPTION after 30C9 inject",
+            unknown_hgi_r28 in schema_r28b,
             f"keys={[k for k in schema_r28b if k.startswith('18:')]}",
         )
 
-        # Check 3: RQ from foreign HGI to CTL must not be dropped.
-        # This is the scenario from issue 822 comment 5017168119: the foreign
+        # Check 3: RQ from unknown HGI to CTL must not be dropped.
+        # This is the scenario from issue 822 comment 5017168119: the unknown
         # HGI sends an RQ to the controller.  Before the dispatcher fix, the
         # un-suppressed get_device(src) in instantiate_devices rejected the
-        # foreign HGI (not in known_list) and dropped the entire packet,
+        # unknown HGI (not in known_list) and dropped the entire packet,
         # producing repeating FILTER EXCEPTION warnings.
-        print(f"  Injecting 0004 RQ from foreign HGI {foreign_hgi_r28} to CTL {CTL}...")
+        print(f"  Injecting 0004 RQ from unknown HGI {unknown_hgi_r28} to CTL {CTL}...")
         try:
             call_service(
                 ctx.token,
                 "ramses_extras",
                 "device_simulator_inject_message",
                 {
-                    "source_id": foreign_hgi_r28,
+                    "source_id": unknown_hgi_r28,
                     "dst": CTL,
                     "code": "0004",
                     "payload": "00",
@@ -244,11 +253,11 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
         except RuntimeError as e:
             print(f"    Inject failed: {str(e)[:80]}")
 
-        ctx.wait(3, "for dispatcher to process RQ from foreign HGI")
+        ctx.wait(3, "for dispatcher to process RQ from unknown HGI")
 
-        # Check 4: no FILTER EXCEPTION for the foreign HGI in the HA log.
+        # Check 4: no FILTER EXCEPTION for the unknown HGI in the HA log.
         # The dispatcher fix (instantiate_devices) skips get_device(src) for
-        # foreign HGIs when enforce_known_list is True, so no
+        # unknown HGIs when enforce_known_list is True, so no
         # DeviceNotFoundError is raised and no FILTER EXCEPTION is logged.
         #
         # NOTE: this check is expected to FAIL on ramses_rf master (bug
@@ -258,11 +267,11 @@ class R28ForeignHgi0004ZoneNamesNotBlockedByBlockL(Recipe):
         # device_id" (block_list) or "it is unwanted or invalid" (cached
         # in _unwanted list after first rejection).
         filter_warnings = grep_ha_log(
-            f"FILTER EXCEPTION.*{foreign_hgi_r28}|Can.*t create {foreign_hgi_r28}",
+            f"FILTER EXCEPTION.*{unknown_hgi_r28}|Can.*t create {unknown_hgi_r28}",
             since_lines=500,
         )
         ctx.check(
-            f"No FILTER EXCEPTION for foreign HGI {foreign_hgi_r28}",
+            f"No FILTER EXCEPTION for unknown HGI {unknown_hgi_r28}",
             len(filter_warnings) == 0,
             f"found {len(filter_warnings)} warning(s)"
             + (f": {filter_warnings[0][:80]}" if filter_warnings else ""),

@@ -396,7 +396,7 @@ except Exception as e:
                 return any(
                     d.get("device_id") == trv_id for d in scan_state.get("devices", [])
                 )
-            except RuntimeError, ValueError:
+            except Exception:  # noqa: BLE001
                 return False
 
         wait_for(

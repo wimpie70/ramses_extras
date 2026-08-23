@@ -89,15 +89,20 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section("Recipe 78: Orphaned suppress_not_seen, no re-notify")
 
-        # ── 1. Load profile with _suppress_not_seen on CTL ────────────
-        # We add _suppress_not_seen: True to the CTL entry in the schema.
-        # The CTL is active (seen recently), so it won't actually be
-        # orphaned, but we can verify the schema key is preserved and
-        # the discovery metadata doesn't have an orphaned flag.
-        print("  Loading minimal profile (CTL + _suppress_not_seen)...")
+        # ── 1. Load profile with _suppress_not_seen on a non-active TRV ─
+        # We use a fake TRV (04:222222) that won't receive heartbeats,
+        # so the discovery manager won't strip _suppress_not_seen (the
+        # key is only cleared when a device is "seen recently").
+        # Using the CTL would fail because the CTL is active and the
+        # discovery checkpoint clears the key immediately.
+        suppress_device = "04:222222"
+        print(
+            f"  Loading minimal profile (CTL + {suppress_device}"
+            f" with _suppress_not_seen)..."
+        )
         yaml_profile = minimal_ctl_yaml(
             schema_override={
-                CTL: {"_suppress_not_seen": True},
+                suppress_device: {"_class": "TRV", "_suppress_not_seen": True},
             },
         )
         try:
@@ -127,7 +132,7 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
             pass
         wait_for_schema_populated(min_keys=2, timeout=15)
 
-        # ── 2. Verify schema has _suppress_not_seen on CTL ────────────
+        # ── 2. Verify schema has _suppress_not_seen on the device ──────
         # Under parallel load, the profile_loader's schema override may
         # not be applied to the coordinator's options yet when we read
         # the schema.  Poll for the key specifically.  If it still
@@ -136,8 +141,8 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
         # reload race).
         def _suppress_key_present() -> bool:
             schema = get_schema_retry(max_tries=2, delay=2)
-            ctl = schema.get(CTL, {})
-            return isinstance(ctl, dict) and ctl.get("_suppress_not_seen") is True
+            entry = schema.get(suppress_device, {})
+            return isinstance(entry, dict) and entry.get("_suppress_not_seen") is True
 
         if not wait_for(
             _suppress_key_present,
@@ -171,11 +176,11 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
             )
 
         schema = get_schema_retry()
-        ctl_entry = schema.get(CTL, {})
+        dev_entry = schema.get(suppress_device, {})
         ctx.check(
-            f"schema has _suppress_not_seen on {CTL}",
-            isinstance(ctl_entry, dict) and ctl_entry.get("_suppress_not_seen") is True,
-            f"CTL entry={ctl_entry!r}",
+            f"schema has _suppress_not_seen on {suppress_device}",
+            isinstance(dev_entry, dict) and dev_entry.get("_suppress_not_seen") is True,
+            f"entry={dev_entry!r}",
         )
 
         # ── 3. Wait for discovery checkpoint ───────────────────────────
@@ -183,36 +188,37 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
         ctx.wait(15, "for discovery checkpoint", floor=5.0)
         ctx.refresh_token()
 
-        # ── 4. Verify CTL is not flagged as orphaned ───────────────────
-        # CTL is active (seen recently via heartbeats), so it should
-        # not be orphaned regardless of _suppress_not_seen.  The key
-        # check is that the schema key is preserved and no mismatch
-        # notification mentions CTL as orphaned.
-        ctl_meta = await self._get_discovery_metadata(CTL)
-        if ctl_meta is not None:
-            orphaned = ctl_meta.get("orphaned")
-            print(f"  CTL orphaned={orphaned!r}")
+        # ── 4. Verify device is not flagged as orphaned ────────────────
+        # The device has _suppress_not_seen=True, so even if it's not
+        # been seen recently, the discovery manager should NOT add it
+        # to the orphaned list (no persistent notification).
+        dev_meta = await self._get_discovery_metadata(suppress_device)
+        if dev_meta is not None:
+            orphaned = dev_meta.get("orphaned")
+            print(f"  {suppress_device} orphaned={orphaned!r}")
             ctx.check(
-                f"CTL {CTL} not orphaned (active device)",
+                f"{suppress_device} not orphaned (_suppress_not_seen active)",
                 orphaned is None,
                 f"orphaned={orphaned!r}",
             )
         else:
-            print(f"  CTL {CTL} has no discovery metadata (ok)")
+            print(f"  {suppress_device} has no discovery metadata (ok)")
 
-        # ── 5. Verify no mismatch notification mentions CTL as orphaned
+        # ── 5. Verify no mismatch notification mentions device as orphaned
         notifs = await self._get_mismatch_notifications(ctx)
-        ctl_in_orphaned = False
+        dev_in_orphaned = False
         for n in notifs:
             msg = n.get("message", "")
-            if CTL in msg and "orphan" in msg.lower():
-                ctl_in_orphaned = True
-                print(f"  CTL found in orphaned notification: {msg[:120]}")
+            if suppress_device in msg and "orphan" in msg.lower():
+                dev_in_orphaned = True
+                print(
+                    f"  {suppress_device} found in orphaned notification: {msg[:120]}"
+                )
 
         ctx.check(
-            f"CTL {CTL} not in orphaned mismatch notification",
-            not ctl_in_orphaned,
-            f"ctl_in_orphaned={ctl_in_orphaned}",
+            f"{suppress_device} not in orphaned mismatch notification",
+            not dev_in_orphaned,
+            f"dev_in_orphaned={dev_in_orphaned}",
         )
 
         # ── 6. Verify _suppress_not_seen survives restart ─────────────
@@ -265,8 +271,8 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
         # longer to settle.
         def _suppress_key_present_after_restart() -> bool:
             schema = get_schema_retry(max_tries=2, delay=2)
-            ctl = schema.get(CTL, {})
-            return isinstance(ctl, dict) and ctl.get("_suppress_not_seen") is True
+            entry = schema.get(suppress_device, {})
+            return isinstance(entry, dict) and entry.get("_suppress_not_seen") is True
 
         wait_for(
             _suppress_key_present_after_restart,
@@ -277,10 +283,10 @@ class R78OrphanedDismissedNoReNotifyIssue988(Recipe):
         )
 
         schema_after = get_schema_retry()
-        ctl_entry_after = schema_after.get(CTL, {})
+        dev_entry_after = schema_after.get(suppress_device, {})
         ctx.check(
-            f"_suppress_not_seen survived restart on {CTL}",
-            isinstance(ctl_entry_after, dict)
-            and ctl_entry_after.get("_suppress_not_seen") is True,
-            f"CTL entry after restart={ctl_entry_after!r}",
+            f"_suppress_not_seen survived restart on {suppress_device}",
+            isinstance(dev_entry_after, dict)
+            and dev_entry_after.get("_suppress_not_seen") is True,
+            f"entry after restart={dev_entry_after!r}",
         )

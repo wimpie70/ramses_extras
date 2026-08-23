@@ -161,6 +161,7 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     co2_entity = str(area_sensor.get("co2_entity") or "")
     spike_rise = area_sensor.get("spike_rise_percent")
     spike_window = area_sensor.get("spike_window_minutes")
+    spike_ignore_outdoor = bool(area_sensor.get("spike_ignore_outdoor", False))
     trigger_on_high_humidity = bool(area_sensor.get("trigger_on_high_humidity", False))
     enabled = bool(area_sensor.get("enabled", True))
     area_co2_enabled = bool(area_sensor.get("area_co2_enabled", False))
@@ -172,7 +173,10 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
         f"humidity: {humidity_entity}",
     ]
     if spike_rise is not None and spike_window is not None:
-        details.append(f"spike: {spike_rise}%/{spike_window}m")
+        spike_desc = f"spike: {spike_rise}%/{spike_window}m"
+        if spike_ignore_outdoor:
+            spike_desc += " (ignore outdoor)"
+        details.append(spike_desc)
     if trigger_on_high_humidity:
         details.append("max RH trigger")
     if area_co2_enabled:
@@ -961,6 +965,9 @@ async def async_step_sensor_control_config(
                 "spike_window_minutes": int(
                     user_input.get("spike_window_minutes") or 1
                 ),
+                "spike_ignore_outdoor": bool(
+                    user_input.get("spike_ignore_outdoor", False)
+                ),
                 "area_co2_enabled": bool(user_input.get("area_co2_enabled", False)),
                 "co2_entity": str(user_input.get("co2_entity") or ""),
                 "co2_threshold_entity": str(
@@ -1161,6 +1168,14 @@ async def async_step_sensor_control_config(
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),
+                vol.Required(
+                    "spike_ignore_outdoor",
+                    default=bool(
+                        selected_area_sensor.get("spike_ignore_outdoor", False)
+                        if selected_area_sensor
+                        else False
+                    ),
+                ): bool,
                 vol.Required(
                     "area_co2_enabled",
                     default=bool(

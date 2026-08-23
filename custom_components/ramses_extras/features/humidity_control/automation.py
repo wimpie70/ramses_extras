@@ -1838,7 +1838,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             rise_percent = ((float(current_abs) - baseline_abs) / baseline_abs) * 100.0
             if rise_percent < threshold_percent:
                 continue
-            if float(current_abs) <= max(indoor_abs, outdoor_abs + offset):
+            # When spike_ignore_outdoor is enabled for this area, only
+            # require the area's absolute humidity to exceed the indoor
+            # absolute humidity (ventilation should still help vs. the
+            # rest of the house).  The outdoor comparison is skipped so
+            # that high outdoor humidity does not suppress extraction.
+            if bool(item.get("spike_ignore_outdoor", False)):
+                if float(current_abs) <= indoor_abs:
+                    continue
+            elif float(current_abs) <= max(indoor_abs, outdoor_abs + offset):
                 continue
             current_rh = item.get("current_rh")
             if current_rh is None:
@@ -2192,8 +2200,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             current_abs = float(matching_sensor["current_abs"])
             current_rh = matching_sensor.get("current_rh")
-            if current_abs <= outdoor_abs + offset:
-                continue
+            # When spike_ignore_outdoor is enabled for this area, skip
+            # the outdoor comparison so the active spike is not cleared
+            # by high outdoor humidity.
+            if not bool(matching_sensor.get("spike_ignore_outdoor", False)):
+                if current_abs <= outdoor_abs + offset:
+                    continue
             if current_rh is not None and float(current_rh) <= max_humidity:
                 _LOGGER.debug(
                     "Clearing active area spike for %s/%s: RH %.1f%% <= max %.1f%%",
