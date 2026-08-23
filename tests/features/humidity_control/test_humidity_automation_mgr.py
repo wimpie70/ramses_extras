@@ -2012,3 +2012,113 @@ class TestHumidityAutomationManager:
                 self.fan_speed_arbiter.async_set_demand.called
                 or self.fan_speed_arbiter.async_clear_demand.called
             )
+
+    def test_detect_indoor_spike_gated_by_outdoor(self):
+        """Spike should NOT be detected when indoor <= outdoor + offset."""
+        now = time.time()
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 240, "abs": 10.0},
+        ]
+
+        spike_config = {
+            "enabled": True,
+            "spike_rise_percent": 10.0,
+            "spike_window_minutes": 5,
+            "spike_ignore_outdoor": False,
+        }
+
+        # indoor_abs=11.5 (15% rise), but outdoor_abs=12.0 + offset=0.0
+        # means indoor is NOT above outdoor → should be gated
+        result = self.manager._detect_indoor_spike(
+            device_id="test",
+            indoor_abs=11.5,
+            indoor_rh=65.0,
+            outdoor_abs=12.0,
+            offset=0.0,
+            max_humidity=60.0,
+            spike_config=spike_config,
+        )
+
+        assert result is None
+
+    def test_detect_indoor_spike_ignore_outdoor(self):
+        """Spike should be detected even when indoor <= outdoor + offset
+        when spike_ignore_outdoor is True."""
+        now = time.time()
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 240, "abs": 10.0},
+        ]
+
+        spike_config = {
+            "enabled": True,
+            "spike_rise_percent": 10.0,
+            "spike_window_minutes": 5,
+            "spike_ignore_outdoor": True,
+        }
+
+        # indoor_abs=11.5 (15% rise), outdoor_abs=12.0 → normally gated
+        # but spike_ignore_outdoor=True should bypass the outdoor check
+        result = self.manager._detect_indoor_spike(
+            device_id="test",
+            indoor_abs=11.5,
+            indoor_rh=65.0,
+            outdoor_abs=12.0,
+            offset=0.0,
+            max_humidity=60.0,
+            spike_config=spike_config,
+        )
+
+        assert result is not None
+        assert result["area_id"] == "indoor_humidity"
+        assert result["rise_percent"] == 15.0
+
+    def test_evaluate_active_indoor_spike_clears_on_outdoor(self):
+        """Active spike should clear when indoor <= outdoor + offset
+        and spike_ignore_outdoor is False (default)."""
+        self.manager._active_indoor_spikes["test"] = {
+            "area_id": "indoor_humidity",
+            "label": "Indoor Humidity",
+            "baseline_abs": 10.0,
+            "current_abs": 11.5,
+            "current_rh": 65.0,
+            "rise_percent": 15.0,
+        }
+
+        result = self.manager._evaluate_active_indoor_spike(
+            device_id="test",
+            indoor_abs=11.5,  # Still high RH-wise
+            indoor_rh=65.0,  # Still above max
+            outdoor_abs=12.0,  # Outdoor now higher than indoor
+            offset=0.0,
+            max_humidity=60.0,
+            spike_ignore_outdoor=False,
+        )
+
+        assert result is None
+        assert "test" not in self.manager._active_indoor_spikes
+
+    def test_evaluate_active_indoor_spike_ignore_outdoor(self):
+        """Active spike should be retained even when indoor <= outdoor
+        + offset when spike_ignore_outdoor is True."""
+        self.manager._active_indoor_spikes["test"] = {
+            "area_id": "indoor_humidity",
+            "label": "Indoor Humidity",
+            "baseline_abs": 10.0,
+            "current_abs": 11.5,
+            "current_rh": 65.0,
+            "rise_percent": 15.0,
+        }
+
+        result = self.manager._evaluate_active_indoor_spike(
+            device_id="test",
+            indoor_abs=11.5,
+            indoor_rh=65.0,  # Still above max
+            outdoor_abs=12.0,  # Outdoor higher than indoor
+            offset=0.0,
+            max_humidity=60.0,
+            spike_ignore_outdoor=True,
+        )
+
+        assert result is not None
+        assert result["area_id"] == "indoor_humidity"
+        assert result["current_abs"] == 11.5

@@ -114,6 +114,9 @@ class TestSensorControlConst:
             "set_comfort_temp_entity": (
                 "ramses_extras/sensor_control/set_comfort_temp_entity"
             ),
+            "set_spike_ignore_outdoor": (
+                "ramses_extras/sensor_control/set_spike_ignore_outdoor"
+            ),
         }
 
     def test_feature_definition_structure(self):
