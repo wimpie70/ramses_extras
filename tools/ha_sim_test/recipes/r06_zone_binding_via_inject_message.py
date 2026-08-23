@@ -80,23 +80,33 @@ class R06ZoneBindingViaInjectMessage(Recipe):
         print(f"  Zones before inject: {list(zones_before.keys())}")
         print(f"  Inject payload: {inject_payload}")
 
-        # Inject as an RP from CTL to HGI (normal response pattern)
-        try:
-            result = call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": CTL,
-                    "dst": get_current_instance().hgi_id,
-                    "code": "000C",
-                    "payload": inject_payload,
-                    "verb": "RP",
-                },
-            )
-            print(f"  Injected 000C packet: {result}")
-        except RuntimeError as e:
-            print(f"  Inject failed: {e}")
+        # Inject the 000C packet and retry if the zone doesn't appear.
+        # Under parallel load, the MQTT transport may be down when the
+        # first injection is sent, so the scan engine never processes it.
+        def _inject_000c() -> None:
+            try:
+                result = call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": CTL,
+                        "dst": get_current_instance().hgi_id,
+                        "code": "000C",
+                        "payload": inject_payload,
+                        "verb": "RP",
+                    },
+                )
+                print(f"  Injected 000C packet: {result}")
+            except RuntimeError as e:
+                print(f"  Inject failed: {e}")
+
+        def _zone_created() -> bool:
+            schema = get_cached_schema()
+            ctl = schema.get(CTL, {})
+            return isinstance(ctl, dict) and target_zone in ctl.get("zones", {})
+
+        _inject_000c()
 
         # Brief wait for the 000C packet to arrive in the dispatcher
         # (sync_topology on the next line will process it from the queue)
@@ -122,21 +132,41 @@ class R06ZoneBindingViaInjectMessage(Recipe):
             pass
         ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
 
-        # Use cached schema (more reliable than config entry during sync).
-        # Poll until the 000C packet is processed by ramses_rf and zone
-        # appears in schema (event-driven wait, not fixed sleep + retry).
-        def _zone_created() -> bool:
-            schema = get_cached_schema()
-            ctl = schema.get(CTL, {})
-            return isinstance(ctl, dict) and target_zone in ctl.get("zones", {})
-
+        # Poll for zone creation.  Retry the 000C injection if the zone
+        # doesn't appear within 10s (the first injection may have been
+        # lost if the transport was not fully ready).
         wait_for(
             _zone_created,
-            timeout=15,
+            timeout=10,
             interval=2,
-            msg=f"for zone {target_zone} to appear in schema",
+            msg=f"for zone {target_zone} to appear in schema (attempt 1)",
             floor=5.0,
         )
+
+        if not _zone_created():
+            # Retry: re-inject and re-sync
+            print(f"  Zone {target_zone} not created — retrying 000C inject...")
+            wait_for_transport_ready(timeout=15)
+            ctx.wait(2, "for MQTT to stabilise before retry", floor=1.0)
+            _inject_000c()
+            ctx.wait(2, "for 000C packet to arrive in dispatcher")
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            ctx.wait_for_schema_stable(timeout=10, msg="for sync_learned_topology")
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
+            wait_for(
+                _zone_created,
+                timeout=15,
+                interval=2,
+                msg=f"for zone {target_zone} to appear in schema (retry)",
+                floor=5.0,
+            )
         schema_after_inject = get_cached_schema()
         ctl_schema_after = schema_after_inject.get(CTL, {})
         zones_after = (
