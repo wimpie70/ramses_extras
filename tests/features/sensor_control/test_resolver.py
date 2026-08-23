@@ -300,6 +300,7 @@ class TestSensorControlResolver:
                             "co2_threshold": 900,
                             "spike_rise_percent": 15.0,
                             "spike_window_minutes": 3,
+                            "spike_ignore_outdoor": True,
                             "check_interval_minutes": 1,
                             "enabled": True,
                             "zone_id": "zone_1",
@@ -345,8 +346,10 @@ class TestSensorControlResolver:
             == "input_number.bathroom_threshold"
         )
         assert result["area_sensors"][0]["co2_threshold"] == 900
+        assert result["area_sensors"][0]["spike_ignore_outdoor"] is True
         assert result["area_sensors"][1]["area_id"] == "broken"
         assert result["area_sensors"][1]["valid"] is False
+        assert result["area_sensors"][1]["spike_ignore_outdoor"] is False
 
     def test_resolve_area_sensors_ignores_invalid_input(self):
         """Non-list and non-dict area sensor config should be ignored."""
