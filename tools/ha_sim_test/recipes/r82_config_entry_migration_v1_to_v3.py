@@ -241,7 +241,7 @@ class R80ConfigEntryMigrationV1ToV3(Recipe):
                 for e in d["data"]["entries"]:
                     if e["domain"] == "ramses_cc":
                         return e.get("version") == 3
-            except json.JSONDecodeError, KeyError, TypeError:
+            except Exception:  # noqa: BLE001
                 pass
             return False
 
