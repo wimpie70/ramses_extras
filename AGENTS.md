@@ -57,3 +57,47 @@ The parallel runner (`tools/ha_sim_test/parallel.py`) has a defensive
 a crashed parallel run can still leave a stale config. The canonical config
 files (`core.config_entries.minimal.json` and `core.config_entries.full.json`
 in `tools/ha_sim_test/ha_configs/`) both use `localhost` for ha-sim.
+
+### Integration Tester (install PRs/branches/commits from GitHub)
+
+Both `hass` and `ha-sim` have the
+[Integration Tester](https://github.com/raman325/ha-integration-tester)
+custom integration installed. It lets you install custom integrations from
+GitHub URLs (PRs, branches, or specific commits) via the HA UI:
+
+- Go to **Settings > Devices & Services > Add Integration > "Integration Tester"**
+- Enter a URL like `github.com/ramses-rf/ramses_cc/pull/1029`
+- It downloads the PR's files to `custom_components/<domain>/` and prompts
+  you to restart
+
+Supported URL formats:
+
+- `github.com/owner/repo` — default branch
+- `github.com/owner/repo/tree/branch-name` — specific branch
+- `github.com/owner/repo/pull/123` — pull request
+- `github.com/owner/repo/commit/abc123` — specific commit
+
+**What works:**
+
+- `ramses_cc` and `ramses_extras` — installed as custom components on both
+  containers. No bind mounts for these on either container (removed from
+  ha-sim's `docker-compose.yml`).
+
+**What doesn't work yet:**
+
+- `ramses_rf` — it's a pip package, not a custom component, so
+  integration_tester can't install it. Both containers have a bind mount
+  at `/config/ramses_rf` (from `/home/willem/dev/ramses_rf`). To test a
+  specific ramses_rf PR/branch:
+  ```
+  docker exec hass bash -c "cd /config/ramses_rf && git fetch origin && git checkout <branch-or-commit>"
+  docker restart hass
+  ```
+  Feature request filed for pip package support:
+  https://github.com/raman325/ha-integration-tester/issues
+
+**HACS note:** `ramses_cc` is removed from HACS tracking on both containers
+(managed by integration_tester instead). `ramses_extras` remains in HACS.
+HACS may re-show `ramses_cc` as a dependency of `ramses_extras` — this is
+harmless as long as you don't click "update" on it in HACS while testing
+a PR via integration_tester.
