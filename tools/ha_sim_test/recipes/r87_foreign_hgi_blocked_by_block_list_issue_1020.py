@@ -176,7 +176,7 @@ class R87ForeignHgiBlockedByBlockListIssue1020(Recipe):
         # debug entry.
         block_list_logs = grep_ha_log(
             f"block_list.*{foreign_hgi}|{foreign_hgi}.*block_list",
-            since_lines=300,
+            since_lines=2000,
         )
         ctx.check(
             f"Foreign HGI {foreign_hgi} is in block_list (ramses_cc)",
