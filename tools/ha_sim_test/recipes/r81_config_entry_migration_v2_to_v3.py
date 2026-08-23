@@ -377,6 +377,16 @@ class R81ConfigEntryMigrationV2ToV3(Recipe):
             f"HGI entry={schema.get(hgi_id)}",
         )
 
+        # Check 4b: passive_scan should be enabled after migration.
+        # The v2→v3 migration enables passive_scan by default because
+        # enforce_known_list becomes always-on (PR 1033).
+        advanced = options.get("advanced_features", {})
+        ctx.check(
+            "passive_scan is True after v2→v3 migration",
+            advanced.get("passive_scan") is True,
+            f"advanced_features={advanced}",
+        )
+
         # Check 5: v2 backup was saved
         backup_result = subprocess.run(
             [

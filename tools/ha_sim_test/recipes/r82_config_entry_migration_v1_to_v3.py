@@ -58,7 +58,9 @@ def _build_v1_options(hgi_id: str) -> dict:
     return {
         "advanced_features": {
             "auto_notify": True,
-            "passive_scan": True,
+            # NOTE: passive_scan is intentionally absent — a real 0.56-era
+            # install would not have it.  The v2→v3 migration should enable
+            # it by default (PR 1033).
             "send_packet": True,
         },
         "packet_log": {
@@ -370,6 +372,17 @@ class R80ConfigEntryMigrationV1ToV3(Recipe):
             isinstance(schema.get(hgi_id), dict)
             and schema[hgi_id].get("_class") == "HGI",
             f"HGI entry={schema.get(hgi_id)}",
+        )
+
+        # Check 6b: passive_scan should be enabled after migration.
+        # The v1 options did NOT have passive_scan (intentionally absent,
+        # mimicking a real 0.56-era install).  The v2→v3 migration should
+        # enable it by default (PR 1033).
+        advanced = options.get("advanced_features", {})
+        ctx.check(
+            "passive_scan enabled by v1→v3 migration (was absent in v1)",
+            advanced.get("passive_scan") is True,
+            f"advanced_features={advanced}",
         )
 
         # Check 7: v2 backup was saved
