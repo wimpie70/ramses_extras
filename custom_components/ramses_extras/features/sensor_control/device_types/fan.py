@@ -738,7 +738,6 @@ async def handle_internal_fan_sensors(
     temp_kind_options = [
         selector.SelectOptionDict(value="internal", label="Internal (from FAN)"),
         selector.SelectOptionDict(value="external", label="External (from HA entity)"),
-        selector.SelectOptionDict(value="derived", label="Derived (calculated)"),
     ]
 
     # Humidity kind options
