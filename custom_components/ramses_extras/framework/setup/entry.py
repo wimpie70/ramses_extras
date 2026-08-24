@@ -651,7 +651,15 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     removed_devices = 0
     for device_entry in device_entries:
-        if entry_id and entry_id in device_entry.config_entries:
+        # HA 2026.9: config_entries (list) is deprecated, replaced by
+        # config_entry_id (single string).  Check the new field first,
+        # fall back to the old list for older HA versions.
+        dev_ce_id = getattr(device_entry, "config_entry_id", None)
+        if dev_ce_id is not None:
+            belongs = entry_id and dev_ce_id == entry_id
+        else:
+            belongs = entry_id and entry_id in device_entry.config_entries
+        if belongs:
             device_registry.async_remove_device(device_entry.id)
             removed_devices += 1
     if removed_devices:

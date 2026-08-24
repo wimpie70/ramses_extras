@@ -533,7 +533,15 @@ async def cleanup_orphaned_devices(
         entry_id = None
 
     for device_id, device_entry in orphaned_devices:
-        if entry_id and entry_id not in device_entry.config_entries:
+        # HA 2026.9: config_entries (list) is deprecated, replaced by
+        # config_entry_id (single string).  Check the new field first,
+        # fall back to the old list for older HA versions.
+        dev_ce_id = getattr(device_entry, "config_entry_id", None)
+        if dev_ce_id is not None:
+            belongs = bool(entry_id) and dev_ce_id == entry_id
+        else:
+            belongs = bool(entry_id) and entry_id in device_entry.config_entries
+        if entry_id and not belongs:
             continue
 
         try:

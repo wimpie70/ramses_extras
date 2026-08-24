@@ -123,9 +123,15 @@ for d in devices:
         if isinstance(ident, (list, tuple)) and len(ident) == 2:
             if ident[0] == "ramses_cc":
                 device_id = ident[1]
+                # HA 2026.9: via_device_id (regular devices) is joined by
+                # parent_device_id (child devices).  Either field links a
+                # child to its parent FAN; check both.
                 via = d.get("via_device_id")
+                parent = d.get("parent_device_id")
                 result[device_id] = {
                     "via_device_id": via,
+                    "parent_device_id": parent,
+                    "parent_id": via or parent,
                     "ha_id": d.get("id"),
                     "name": d.get("name") or d.get("name_by_user"),
                 }
@@ -179,93 +185,93 @@ print(json.dumps(result, indent=2))
         print(f"  CO2 {CO2} registry: {co2_entry}")
         print(f"  FAN {FAN} registry: {fan_entry_reg}")
 
-        # HA stores via_device_id as the internal HA device ID (a hash),
-        # not the ramses_cc device ID string.  We compare against the
-        # FAN's ha_id.
+        # HA stores via_device_id / parent_device_id as the internal HA
+        # device ID (a hash), not the ramses_cc device ID string.  We
+        # compare against the FAN's ha_id.  parent_id is either field.
         fan_ha_id = fan_entry_reg.get("ha_id") if fan_entry_reg else None
 
-        # Detect whether the via_device feature for HVAC devices (step 6d)
-        # is implemented in ramses_cc.  If neither REM nor CO2 has
-        # via_device set, the feature is not yet implemented — skip the
-        # via_device checks gracefully instead of failing.
+        # Detect whether the via_device / parent_device feature for HVAC
+        # devices (step 6d) is implemented in ramses_cc.  If neither REM
+        # nor CO2 has a parent link set, the feature is not yet
+        # implemented — skip the checks gracefully instead of failing.
         hvac_via_device_implemented = (
-            rem_entry is not None and rem_entry.get("via_device_id") is not None
-        ) or (co2_entry is not None and co2_entry.get("via_device_id") is not None)
+            rem_entry is not None and rem_entry.get("parent_id") is not None
+        ) or (co2_entry is not None and co2_entry.get("parent_id") is not None)
 
         if not hvac_via_device_implemented:
-            print("  NOTE: via_device not set for HVAC devices (step 6d)")
+            print("  NOTE: via_device/parent_device not set for HVAC devices (step 6d)")
             print("  (ramses_cc via_device check does not yet handle DeviceHvac)")
             ctx.check(
-                f"REM {REM} has via_device set in registry",
+                f"REM {REM} has via_device/parent_device set in registry",
                 True,
-                "SKIPPED — via_device for HVAC not yet implemented (step 6d)",
+                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
             )
             ctx.check(
-                f"CO2 {CO2} has via_device set in registry",
+                f"CO2 {CO2} has via_device/parent_device set in registry",
                 True,
-                "SKIPPED — via_device for HVAC not yet implemented (step 6d)",
+                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
             )
             ctx.check(
-                f"REM via_device points to FAN {FAN}",
+                f"REM via_device/parent_device points to FAN {FAN}",
                 True,
-                "SKIPPED — via_device for HVAC not yet implemented (step 6d)",
+                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
             )
             ctx.check(
-                f"CO2 via_device points to FAN {FAN}",
+                f"CO2 via_device/parent_device points to FAN {FAN}",
                 True,
-                "SKIPPED — via_device for HVAC not yet implemented (step 6d)",
+                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
             )
             ctx.check(
-                f"FAN {FAN} does NOT have via_device (it's the parent)",
-                fan_entry_reg is None or fan_entry_reg.get("via_device_id") is None,
+                f"FAN {FAN} does NOT have via_device/parent_device (it's the parent)",
+                fan_entry_reg is None or fan_entry_reg.get("parent_id") is None,
                 f"entry={fan_entry_reg}",
             )
             ctx.check(
-                f"REM {REM} via_device persists after reload",
+                f"REM {REM} via_device/parent_device persists after reload",
                 True,
-                "SKIPPED — via_device for HVAC not yet implemented (step 6d)",
+                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
             )
             ctx.check(
-                f"CO2 {CO2} via_device persists after reload",
+                f"CO2 {CO2} via_device/parent_device persists after reload",
                 True,
-                "SKIPPED — via_device for HVAC not yet implemented (step 6d)",
+                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
             )
             return
 
         ctx.check(
-            f"REM {REM} has via_device set in registry",
-            rem_entry is not None and rem_entry.get("via_device_id") is not None,
+            f"REM {REM} has via_device/parent_device set in registry",
+            rem_entry is not None and rem_entry.get("parent_id") is not None,
             f"entry={rem_entry}",
         )
 
         ctx.check(
-            f"CO2 {CO2} has via_device set in registry",
-            co2_entry is not None and co2_entry.get("via_device_id") is not None,
+            f"CO2 {CO2} has via_device/parent_device set in registry",
+            co2_entry is not None and co2_entry.get("parent_id") is not None,
             f"entry={co2_entry}",
         )
 
-        # 5. Check that via_device_id points to the FAN (by HA internal ID).
-        if rem_entry and rem_entry.get("via_device_id") and fan_ha_id:
-            rem_via = rem_entry["via_device_id"]
+        # 5. Check that parent_id points to the FAN (by HA internal ID).
+        if rem_entry and rem_entry.get("parent_id") and fan_ha_id:
+            rem_parent = rem_entry["parent_id"]
             ctx.check(
-                f"REM via_device points to FAN {FAN}",
-                rem_via == fan_ha_id,
-                f"via_device_id={rem_via}, fan_ha_id={fan_ha_id}",
+                f"REM via_device/parent_device points to FAN {FAN}",
+                rem_parent == fan_ha_id,
+                f"parent_id={rem_parent}, fan_ha_id={fan_ha_id}",
             )
 
-        if co2_entry and co2_entry.get("via_device_id") and fan_ha_id:
-            co2_via = co2_entry["via_device_id"]
+        if co2_entry and co2_entry.get("parent_id") and fan_ha_id:
+            co2_parent = co2_entry["parent_id"]
             ctx.check(
-                f"CO2 via_device points to FAN {FAN}",
-                co2_via == fan_ha_id,
-                f"via_device_id={co2_via}, fan_ha_id={fan_ha_id}",
+                f"CO2 via_device/parent_device points to FAN {FAN}",
+                co2_parent == fan_ha_id,
+                f"parent_id={co2_parent}, fan_ha_id={fan_ha_id}",
             )
 
-        # 6. Verify FAN itself does NOT have via_device (it's the parent).
+        # 6. Verify FAN itself does NOT have a parent link (it's the parent).
         if fan_entry_reg:
             ctx.check(
-                f"FAN {FAN} does NOT have via_device (it's the parent)",
-                fan_entry_reg.get("via_device_id") is None,
+                f"FAN {FAN} does NOT have via_device/parent_device (it's the parent)",
+                fan_entry_reg.get("parent_id") is None,
                 f"entry={fan_entry_reg}",
             )
 
@@ -309,15 +315,15 @@ print(json.dumps(result, indent=2))
                 print(f"  CO2 after reload: {co2_entry2}")
 
                 ctx.check(
-                    f"REM {REM} via_device persists after reload",
+                    f"REM {REM} via_device/parent_device persists after reload",
                     rem_entry2 is not None
-                    and rem_entry2.get("via_device_id") is not None,
+                    and rem_entry2.get("parent_id") is not None,
                     f"entry={rem_entry2}",
                 )
                 ctx.check(
-                    f"CO2 {CO2} via_device persists after reload",
+                    f"CO2 {CO2} via_device/parent_device persists after reload",
                     co2_entry2 is not None
-                    and co2_entry2.get("via_device_id") is not None,
+                    and co2_entry2.get("parent_id") is not None,
                     f"entry={co2_entry2}",
                 )
             except json.JSONDecodeError:

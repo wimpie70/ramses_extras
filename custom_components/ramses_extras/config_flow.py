@@ -2010,7 +2010,15 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         # Remove orphaned devices
         for device_id, device_entry in orphaned_devices:
             try:
-                if self._config_entry.entry_id in device_entry.config_entries:
+                # HA 2026.9: config_entries (list) is deprecated, replaced
+                # by config_entry_id (single string).  Check the new field
+                # first, fall back to the old list for older HA versions.
+                dev_ce_id = getattr(device_entry, "config_entry_id", None)
+                if dev_ce_id is not None:
+                    belongs = dev_ce_id == self._config_entry.entry_id
+                else:
+                    belongs = self._config_entry.entry_id in device_entry.config_entries
+                if belongs:
                     device_registry.async_remove_device(device_entry.id)
                     _LOGGER.info("Removed orphaned device: %s", device_id)
                 else:

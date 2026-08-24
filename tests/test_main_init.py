@@ -296,8 +296,12 @@ class TestAsyncRemoveEntry:
         mock_entity_reg.entities = {"sensor.test1": entity1, "sensor.other": entity2}
 
         mock_device_reg = MagicMock()
-        device1 = MagicMock(id="dev1", config_entries={"test_entry_id"})
-        device2 = MagicMock(id="dev2", config_entries={"other_entry"})
+        device1 = MagicMock(
+            id="dev1", config_entry_id="test_entry_id", config_entries={"test_entry_id"}
+        )
+        device2 = MagicMock(
+            id="dev2", config_entry_id="other_entry", config_entries={"other_entry"}
+        )
         mock_device_reg.devices = {"dev1": device1, "dev2": device2}
 
         with (
@@ -695,11 +699,13 @@ class TestCleanupOrphanedDevices:
         device1 = MagicMock(
             id="dev1",
             identifiers={(DOMAIN, "32:111111")},
+            config_entry_id="test_entry",
             config_entries={"test_entry"},
         )
         device2 = MagicMock(
             id="dev2",
             identifiers={(DOMAIN, "32:222222")},
+            config_entry_id="test_entry",
             config_entries={"test_entry"},
         )
         mock_device_reg.devices = {"dev1": device1, "dev2": device2}
@@ -1021,7 +1027,9 @@ async def test_async_remove_entry_fallback_entry_id(hass):
     entry.id = "fallback_id"
 
     mock_device_reg = MagicMock()
-    device1 = MagicMock(id="dev1", config_entries={"fallback_id"})
+    device1 = MagicMock(
+        id="dev1", config_entry_id="fallback_id", config_entries={"fallback_id"}
+    )
     mock_device_reg.devices = {"dev1": device1}
 
     mock_entities = MagicMock(entities={})

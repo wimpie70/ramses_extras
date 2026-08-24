@@ -44,6 +44,7 @@ class TestOrphanedDeviceCleanup:
         """Create mock ramses_extras device."""
         device = MagicMock()
         device.id = "device_id_123"
+        device.config_entry_id = "test_entry_id"
         device.config_entries = {"test_entry_id"}
         device.identifiers = {(DOMAIN, "32:153289")}
         return device
@@ -53,6 +54,7 @@ class TestOrphanedDeviceCleanup:
         """Create mock device from other integration."""
         device = MagicMock()
         device.id = "device_id_456"
+        device.config_entry_id = "other_entry_id"
         device.config_entries = {"other_entry_id"}
         device.identifiers = {("other_domain", "18:149488")}
         return device
@@ -143,6 +145,7 @@ class TestOrphanedDeviceCleanup:
         """Test that ramses_extras devices not owned by our config entry are ignored."""
         # Setup mocks - device belongs to different config entry
         mock_ramses_device.config_entries = {"other_entry_id"}
+        mock_ramses_device.config_entry_id = "other_entry_id"
         mock_device_registry.devices.values.return_value = [mock_ramses_device]
         mock_entity_registry.entities.get.return_value = []  # No entities
         mock_device_registry.async_remove_device = AsyncMock()
@@ -168,6 +171,7 @@ class TestOrphanedDeviceCleanup:
         # Create another ramses device with entities
         mock_ramses_device_with_entities = MagicMock()
         mock_ramses_device_with_entities.id = "device_id_789"
+        mock_ramses_device_with_entities.config_entry_id = "test_entry_id"
         mock_ramses_device_with_entities.config_entries = {"test_entry_id"}
         mock_ramses_device_with_entities.identifiers = {(DOMAIN, "18:149488")}
 
