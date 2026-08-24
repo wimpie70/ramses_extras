@@ -160,13 +160,13 @@ try:
         capture_output=True, text=True, timeout=5
     )
     lines = result.stdout.strip().splitlines()
-    # Count RQ lines with the same code+src+dst (duplicates)
+    # Count RQ lines with the same code+src+dst+payload (echo duplicates)
     from collections import Counter
     rq_keys = []
     for line in lines:
         parts = line.split()
         if len(parts) >= 6 and "RQ" in parts:
-            # Key: verb + src + dst + code (ignoring timestamp and RSSI)
+            # Key: verb + src + dst + code + payload
             # parts format: timestamp RSSI verb seq src dst via code len payload
             # or:           timestamp ... verb seq src dst via code len payload
             verb_idx = None
@@ -174,12 +174,13 @@ try:
                 if p in ("RQ", "RP", " I", " W"):
                     verb_idx = i
                     break
-            if verb_idx is not None and verb_idx + 4 < len(parts):
+            if verb_idx is not None and verb_idx + 6 < len(parts):
                 key = (
                     parts[verb_idx],
                     parts[verb_idx + 2],
                     parts[verb_idx + 3],
                     parts[verb_idx + 5],
+                    parts[verb_idx + 7],
                 )
                 rq_keys.append(key)
     rq_counts = Counter(rq_keys)
@@ -211,7 +212,9 @@ except Exception as e:
 
         # With the fix: each RQ appears at most twice (1 TX log + 1 echo
         # that gets suppressed). Without the fix: 3-5 duplicate RQ entries.
-        # We check that no RQ key has more than 2 entries.
+        # We check that no RQ key (verb+src+dst+code+payload) has more than
+        # 2 entries.  Including the payload in the key avoids false positives
+        # from legitimate repeated polls with different payloads.
         ctx.check(
             "No duplicate RQ entries in packet log (>2 per key)",
             len(duplicates) == 0,
