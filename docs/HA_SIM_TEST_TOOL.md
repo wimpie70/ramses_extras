@@ -503,7 +503,7 @@ directly against the source code without needing the ha-sim container.
 | R62 | Topology event-driven schema sync (step 5) | 5 |
 | R65 | HVAC 'belongs to' FAN detected from traffic | 19 |
 | R66 | HVAC dual-role CO2+REM support | 13 |
-| R67 | HVAC via_device grouping (step 6d) | 19 |
+| R67 | HVAC via_device/parent_device grouping (step 6d) | 19 |
 | R68 | Active HVAC topology probing (6f) | 13 |
 
 ### CQRS / DHW hydration
