@@ -180,12 +180,12 @@ class R89BdrActiveStateRealtimeUpdateIssue1042(Recipe):
 
         # 3. Inject 3EF0 I with modulation_level=100% (relay ON)
         #    3EF0 I is a valid broadcast from a BDR (boiler relay state).
-        #    The CQRS ingestion pipeline processes both 3EF0 and 3EF1 to
-        #    update act_state.modulation_level, which BdrSwitch.active reads.
-        #    We use 3EF0 I instead of 3EF1 RP because the dispatcher's
-        #    validator rejects 3EF1 RP to CTL ("Unexpected code for dst
-        #    (CTL) to Rx") — the validator is missing an exception for
-        #    CTL receiving RP 3EF1, which is a separate bug.
+        #    The CQRS ingestion pipeline processes 3EF0 to update
+        #    act_state.modulation_level, which BdrSwitch.active reads.
+        #    We use 3EF0 I (broadcast) rather than 3EF1 RP because in
+        #    real RF the BDR sends 3EF1 RP to the gateway (HGI/18:),
+        #    not to the CTL (01:) — the validator correctly rejects
+        #    3EF1 RP addressed to a CTL.
         #    3EF0 3-byte payload: domain_idx(1) + modulation_level(1) +
         #    flags(1).  0xC8 = 100%, 0x00 = 0%.
         print("  Injecting 3EF0 I (modulation=100%, relay ON)...")
