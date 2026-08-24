@@ -28,7 +28,6 @@
  * @extends HTMLElement
  */
 import * as logger from '../../helpers/logger.js';
-import { deviceCache } from '../../helpers/device-cache.js';
 
 /**
  * Ramses Messages Viewer component.
@@ -73,8 +72,6 @@ class RamsesMessagesViewer extends HTMLElement {
     this._lastVerbsKey = '';
     this._lastCodesKey = '';
 
-    this._knownDevicesOnly = false;
-    this._knownDevices = new Set();
     this._domInitialized = false;
   }
 
@@ -108,24 +105,7 @@ class RamsesMessagesViewer extends HTMLElement {
       this._pairFilterTouched = false;
     }
 
-    if (typeof this._config.known_devices_only === 'boolean') {
-      this._knownDevicesOnly = this._config.known_devices_only;
-    }
-
     this.render();
-  }
-
-  async _loadKnownDevices() {
-    if (!this._hass) {
-      return;
-    }
-
-    try {
-      this._knownDevices = await deviceCache.getKnownDeviceIds(this._hass);
-    } catch (error) {
-      logger.warn('Failed to load known devices:', error);
-      this._knownDevices = new Set();
-    }
   }
 
   async refresh() {
@@ -134,11 +114,6 @@ class RamsesMessagesViewer extends HTMLElement {
     if (!this._fetchMessages) {
       this.render();
       return;
-    }
-
-    // Load known devices if filtering is enabled
-    if (this._knownDevicesOnly && this._knownDevices.size === 0) {
-      await this._loadKnownDevices();
     }
 
     try {
@@ -219,7 +194,6 @@ class RamsesMessagesViewer extends HTMLElement {
       <div id="errorMsg" class="r-xtrs-msg-viewer-error" style="display: none;"></div>
       <div class="r-xtrs-msg-viewer-messages-controls">
         <label><input type="checkbox" id="messagesDecode"> Decode</label>
-        <label><input type="checkbox" id="knownDevicesToggle"> Known devices only</label>
       </div>
       <div id="pairFilters" style="margin-top: 8px;"></div>
       <div id="codeFilters" style="margin-top: 8px;"></div>
@@ -338,16 +312,6 @@ class RamsesMessagesViewer extends HTMLElement {
     };
 
     let normalized = Array.isArray(this._messages) ? this._messages.map(normalizeMessage) : [];
-
-    // Apply known devices filter if enabled
-    if (this._knownDevicesOnly && this._knownDevices.size > 0) {
-      normalized = normalized.filter((m) => {
-        const src = typeof m?.src === 'string' ? m.src : '';
-        const dst = typeof m?.__dstEffective === 'string' ? m.__dstEffective : '';
-        // Keep message if either src or dst is a known device
-        return this._knownDevices.has(src) || this._knownDevices.has(dst);
-      });
-    }
 
     let pairGroups = [];
     const mode = String(this._config?.pair_mode || 'selected');
@@ -479,12 +443,6 @@ class RamsesMessagesViewer extends HTMLElement {
     const decodeCb = this.shadowRoot.getElementById('messagesDecode');
     if (decodeCb) {
       decodeCb.checked = this._decode;
-    }
-
-    // Update known devices checkbox
-    const knownDevicesCb = this.shadowRoot.getElementById('knownDevicesToggle');
-    if (knownDevicesCb) {
-      knownDevicesCb.checked = this._knownDevicesOnly;
     }
 
     // Update pair filters
@@ -623,19 +581,6 @@ class RamsesMessagesViewer extends HTMLElement {
       decodeCb.onchange = (ev) => {
         this._decode = Boolean(ev?.target?.checked);
         void this.refresh();
-      };
-    }
-
-    // Known devices checkbox
-    const knownDevicesCb = this.shadowRoot.querySelector('#knownDevicesToggle');
-    if (knownDevicesCb) {
-      knownDevicesCb.onchange = (ev) => {
-        this._knownDevicesOnly = Boolean(ev?.target?.checked);
-        if (this._knownDevicesOnly) {
-          void this._loadKnownDevices().then(() => this.render());
-        } else {
-          this.render();
-        }
       };
     }
 
