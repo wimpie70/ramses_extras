@@ -85,6 +85,20 @@ _PACKET_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Detect whether ramses_rf's CallbackTransport inherits write_frame from
+# _FullTransport (fixed) or overrides it (old, pre-issue-1041).  When fixed,
+# TX packets are logged and dispatched to add_msg_handler by the parent's
+# write_frame, so the simulator's _inject_inbound_to_stream workaround is
+# no longer needed and would cause duplicates.
+_TX_VIA_MSG_HANDLER: bool = False
+try:
+    from ramses_tx.transport.base import _FullTransport
+    from ramses_tx.transport.callback import CallbackTransport
+
+    _TX_VIA_MSG_HANDLER = CallbackTransport.write_frame is _FullTransport.write_frame
+except Exception:
+    pass
+
 
 @dataclass
 class ActiveDevice:
@@ -450,7 +464,7 @@ class ScenarioEngine:
 
         try:
             value = float(speed)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             value = 1.0
         self._autonomous_speed = max(0.005, min(value, 200.0))
 
@@ -1131,10 +1145,16 @@ class ScenarioEngine:
     ) -> None:
         """Push RQ/W frames the simulator received into the shared message stream.
 
-        The ramses_rf add_msg_handler only fires for inbound RP/I frames;
-        outbound RQ/W commands never appear there for MQTT transports.
-        Injecting them here makes the Packet Log Explorer see the full exchange.
+        This is a workaround for older ramses_rf versions where
+        CallbackTransport.write_frame bypassed _FullTransport.write_frame,
+        so TX packets were never dispatched to add_msg_handler.  When the
+        ramses_rf fix is present (CallbackTransport inherits write_frame
+        from _FullTransport), TX DTOs arrive via add_msg_handler directly
+        and this injection is skipped to avoid duplicates (issue 1041).
         """
+        if _TX_VIA_MSG_HANDLER:
+            return  # ramses_rf fix is present — TX arrives via add_msg_handler
+
         verb_upper = verb.upper().strip()
         if verb_upper not in {"RQ", "W"}:
             return
