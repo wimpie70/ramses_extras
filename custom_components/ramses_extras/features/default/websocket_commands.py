@@ -250,6 +250,8 @@ async def ws_get_entity_mappings(
             "outdoor_humidity": "outdoor_humidity_entity",
             "co2": "co2_entity",
             "comfort_temp_entity": "comfort_temp_entity",
+            "indoor_abs_humidity": "indoor_abs_humid_entity",
+            "outdoor_abs_humidity": "outdoor_abs_humid_entity",
         }
 
         async def _overlay_provider(
@@ -284,6 +286,26 @@ async def ws_get_entity_mappings(
                     card_key = _metric_to_entity_key.get(metric)
                     if card_key and entity_id:
                         merged_mappings[card_key] = entity_id
+
+                # The abs. humidity sensors are ramses_extras entities, not
+                # ramses_cc entities, so the resolver returns None for them.
+                # Construct the entity IDs here so the HVAC fan card can read
+                # their values.  Entity ID pattern:
+                #   sensor.{sensor_type}_{device_id_underscore}
+                device_id_underscore = device_id.replace(":", "_")
+                for side, card_key in (
+                    ("indoor", "indoor_abs_humid_entity"),
+                    ("outdoor", "outdoor_abs_humid_entity"),
+                ):
+                    abs_metric = f"{side}_abs_humidity"
+                    abs_entity_id = (
+                        f"sensor.{side}_absolute_humidity_{device_id_underscore}"
+                    )
+                    # Only set if not already overridden (e.g. by external config)
+                    if not merged_mappings.get(abs_metric):
+                        merged_mappings[abs_metric] = abs_entity_id
+                    if not merged_mappings.get(card_key):
+                        merged_mappings[card_key] = abs_entity_id
 
                 return {
                     "mappings": merged_mappings,
