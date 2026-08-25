@@ -1,7 +1,7 @@
 """Recipe R89: BDR active state real-time update (issue 1042).
 
 Issue 1042: BDR binary sensor (``active``) did not reflect relay state
-changes in real-time.  When a 3EF1 RP arrived and updated
+changes in real-time.  When a 3EF0 I arrived and updated
 ``act_state.modulation_level``, the entity showed the old relay state
 for up to 30 seconds.
 
@@ -16,13 +16,19 @@ The fix calls ``clear_async_attr_cache(self)`` in
 so the next property access dispatches the async getter fresh —
 bypassing the cooldown for this one state write cycle.
 
+The BDR's ``active`` state uses only ``act_state.modulation_level``
+(from 3EF0/3EF1 packets sent by the BDR itself).  A 0008 fallback
+was briefly merged but reverted in 0.60.0 because the CTL's 0008 is
+a command, not a status report — see issues 1046/1047 for the
+RSSI-based communication quality approach that replaces it.
+
 This recipe verifies:
 1. A BDR relay (13:) with its binary_sensor.active entity is created
    from a profile that includes the BDR in the known_list.
-2. After injecting a 3EF1 RP with modulation_level=100% (relay ON),
+2. After injecting a 3EF0 I with modulation_level=100% (relay ON),
    the binary sensor state becomes ``on`` within a few seconds
    (not 30s).
-3. After injecting a 3EF1 RP with modulation_level=0% (relay OFF),
+3. After injecting a 3EF0 I with modulation_level=0% (relay OFF),
    the binary sensor state becomes ``off`` within a few seconds.
 
 See: https://github.com/ramses-rf/ramses_cc/issues/1042
@@ -33,7 +39,7 @@ from __future__ import annotations
 import time
 
 from ..base import Recipe, RecipeContext
-from ..const import CTL, DHW
+from ..const import CTL
 from ..helpers import (
     call_service,
     clear_cached_state,
@@ -48,9 +54,8 @@ from ..helpers import (
 )
 from ..profile import MIXED_SCHEMA, _build_yaml, get_mixed_kl
 
-# BDR device IDs — serial < 262144 (18-bit max) for valid hex_id conversion.
+# BDR device ID — serial < 262144 (18-bit max) for valid hex_id conversion.
 BDR_ID = "13:104201"  # heating BDR (appliance_control, FC domain)
-DHW_BDR_ID = "13:104202"  # DHW BDR (hotwater_valve, FA domain)
 
 
 def _get_entity_state(token: str, entity_id: str) -> str | None:
@@ -100,21 +105,15 @@ class R89BdrActiveStateRealtimeUpdateIssue1042(Recipe):
         #    through.  If the BDR is discovered at runtime, the filter's
         #    _include set is not updated dynamically and all packets from
         #    the BDR are excluded.
-        print(f"  Building custom profile with BDRs {BDR_ID}, {DHW_BDR_ID}...")
+        print(f"  Building custom profile with BDR {BDR_ID}...")
         schema_r89 = dict(MIXED_SCHEMA)
         ctl_schema = dict(schema_r89.get(CTL, {}))
         ctl_schema["system"] = {"appliance_control": BDR_ID}
-        # Add DHW BDR as hotwater_valve
-        dhw_schema = dict(ctl_schema.get("stored_hotwater", {}))
-        dhw_schema["hotwater_valve"] = DHW_BDR_ID
-        ctl_schema["stored_hotwater"] = dhw_schema
         schema_r89[CTL] = ctl_schema
         schema_r89[BDR_ID] = {}
-        schema_r89[DHW_BDR_ID] = {}
 
         kl_r89 = get_mixed_kl()
         kl_r89[BDR_ID] = {"class": "BDR"}
-        kl_r89[DHW_BDR_ID] = {"class": "BDR"}
 
         try:
             await load_profile_yaml(
@@ -283,180 +282,9 @@ class R89BdrActiveStateRealtimeUpdateIssue1042(Recipe):
             f"on={state_on!r} off={state_off!r}",
         )
 
-        # 8. Fallback test: BDR goes silent, CTL sends 0008 FC with 0%
-        #    This simulates the real-world scenario from issue 1042 where
-        #    the BDR only broadcasts 3EF0 I when turning ON, not OFF.
-        #    The fix routes 0008 FC to the BDR's demand_state.relay_demand,
-        #    and BdrSwitch.active falls back to that when act_state is stale.
-        ctx.wait(3, "for state to settle before fallback test")
-
-        # First, turn the BDR back ON via 3EF0 I
-        print("  Injecting 3EF0 I (modulation=100%, relay ON) for fallback test...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": BDR_ID,
-                    "code": "3EF0",
-                    "payload": "00C8FF",
-                    "verb": "I",
-                },
-            )
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
-
-        deadline_on2 = time.monotonic() + 15
-        state_on2 = None
-        while time.monotonic() < deadline_on2:
-            state_on2 = _get_entity_state(ctx.token, entity_id)
-            if state_on2 == "on":
-                break
-            time.sleep(1)
-
-        print(f"  BDR active state after ON inject (fallback): {state_on2}")
-
-        # Now inject 0008 FC from the CTL with 0% relay demand
-        # 0008 2-byte payload: domain_idx(FC) + relay_demand(00)
-        # The ingestion pipeline routes this to the BDR's demand_state
-        print("  Injecting 0008 I (domain=FC, relay_demand=0%, from CTL)...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": CTL,
-                    "code": "0008",
-                    "payload": "FC00",
-                    "verb": "I",
-                },
-            )
-            print("    0008 I injected (FC00)")
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
-
-        # Poll for the binary sensor to turn OFF via the fallback path
-        deadline_off2 = time.monotonic() + 15
-        state_off2 = None
-        while time.monotonic() < deadline_off2:
-            state_off2 = _get_entity_state(ctx.token, entity_id)
-            if state_off2 == "off":
-                break
-            time.sleep(1)
-
-        elapsed_off2 = time.monotonic() - (deadline_off2 - 15)
-        print(
-            "  BDR active state after 0008 FC fallback: "
-            f"{state_off2} (took {elapsed_off2:.1f}s)"
-        )
-
-        ctx.check(
-            "BDR active is 'off' after 0008 FC fallback (BDR silent)",
-            state_off2 == "off",
-            f"got {state_off2!r} after {elapsed_off2:.1f}s",
-        )
-
-        # 9. DHW BDR fallback test: hotwater_valve goes silent,
-        #    CTL sends 0008 FA with 0%.  Same scenario as the heating
-        #    BDR but for the FA domain (DHW valve relay).
-        ctx.wait(3, "for state to settle before DHW BDR fallback test")
-
-        # Find the DHW BDR's active entity
-        def _find_dhw_bdr_active_entity() -> dict | None:
-            entities = get_entities(ctx.token)
-            for e in entities:
-                eid = e.get("entity_id", "")
-                if (
-                    eid.startswith("binary_sensor.")
-                    and DHW_BDR_ID.replace(":", "_") in eid
-                    and "active" in eid
-                ):
-                    return e
-            return None
-
-        wait_for(
-            _find_dhw_bdr_active_entity,
-            timeout=20,
-            interval=2,
-            msg="for DHW BDR active binary_sensor entity",
-        )
-
-        dhw_entity = _find_dhw_bdr_active_entity()
-        if not dhw_entity:
-            ctx.check(
-                "DHW BDR active binary_sensor entity exists",
-                False,
-                f"no binary_sensor entity found for {DHW_BDR_ID}",
-            )
-            return
-
-        dhw_entity_id = dhw_entity["entity_id"]
-        print(f"  Found DHW BDR active entity: {dhw_entity_id}")
-
-        # Turn the DHW BDR ON via 3EF0 I
-        print("  Injecting 3EF0 I (modulation=100%, relay ON) for DHW BDR...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": DHW_BDR_ID,
-                    "code": "3EF0",
-                    "payload": "00C8FF",
-                    "verb": "I",
-                },
-            )
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
-
-        deadline_dhw_on = time.monotonic() + 15
-        state_dhw_on = None
-        while time.monotonic() < deadline_dhw_on:
-            state_dhw_on = _get_entity_state(ctx.token, dhw_entity_id)
-            if state_dhw_on == "on":
-                break
-            time.sleep(1)
-
-        print(f"  DHW BDR active state after ON inject: {state_dhw_on}")
-
-        # Now inject 0008 FA from the CTL with 0% relay demand
-        print("  Injecting 0008 I (domain=FA, relay_demand=0%, from CTL)...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": CTL,
-                    "code": "0008",
-                    "payload": "FA00",
-                    "verb": "I",
-                },
-            )
-            print("    0008 I injected (FA00)")
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
-
-        # Poll for the DHW BDR to turn OFF via the fallback path
-        deadline_dhw_off = time.monotonic() + 15
-        state_dhw_off = None
-        while time.monotonic() < deadline_dhw_off:
-            state_dhw_off = _get_entity_state(ctx.token, dhw_entity_id)
-            if state_dhw_off == "off":
-                break
-            time.sleep(1)
-
-        elapsed_dhw_off = time.monotonic() - (deadline_dhw_off - 15)
-        print(
-            "  DHW BDR active state after 0008 FA fallback: "
-            f"{state_dhw_off} (took {elapsed_dhw_off:.1f}s)"
-        )
-
-        ctx.check(
-            "DHW BDR active is 'off' after 0008 FA fallback (BDR silent)",
-            state_dhw_off == "off",
-            f"got {state_dhw_off!r} after {elapsed_dhw_off:.1f}s",
-        )
+        # Note: The 0008 fallback tests (CTL demand as BDR state) were
+        # removed after the fallback was reverted in 0.60.0.  The CTL's
+        # 0008 is a command, not a status report — using it as the BDR's
+        # active state can be inaccurate even on healthy systems.
+        # See issue 1042 and issues 1046/1047 for the RSSI-based
+        # communication quality approach that replaces the fallback.
