@@ -593,10 +593,22 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                 "outdoor_absolute_humidity",
             ]:
                 result = await self._async_compute_abs_from_sensor_control()
+                _LOGGER.debug(
+                    "abs_humidity %s: sensor_control path result=%s",
+                    self._sensor_type,
+                    result,
+                )
 
             if result is None and not self._area_sensor:
                 temp, rh = self._get_temp_and_humidity()
                 result = self._calculate_abs_humidity(temp, rh)
+                _LOGGER.debug(
+                    "abs_humidity %s: fallback path temp=%s rh=%s result=%s",
+                    self._sensor_type,
+                    temp,
+                    rh,
+                    result,
+                )
 
             if result is not None:
                 current_value = getattr(self, "_attr_native_value", None)
@@ -604,6 +616,13 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                     return
                 self._attr_native_value = result
                 self.async_write_ha_state()
+            else:
+                _LOGGER.debug(
+                    "abs_humidity %s: final result is None, sensor stays"
+                    " unavailable (device_id=%s)",
+                    self._sensor_type,
+                    self._device_id,
+                )
         except Exception as e:
             _LOGGER.debug("Error recalculating humidity for %s: %s", self._attr_name, e)
 
@@ -636,13 +655,14 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
 
         # Find the actual entity IDs from states or fallback to generated names
         # Determine temperature entity
-        temp_entity = ""
-        for name in iter_ramses_cc_entity_ids(
+        temp_candidates = iter_ramses_cc_entity_ids(
             "sensor",
             temp_type,
             device_id_underscore=device_id_underscore,
             slugs=("", "fan"),
-        ):
+        )
+        temp_entity = ""
+        for name in temp_candidates:
             if self.hass.states.get(name) is not None:
                 temp_entity = name
                 break
@@ -653,13 +673,14 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             )
 
         # Determine humidity entity
-        humidity_entity = ""
-        for name in iter_ramses_cc_entity_ids(
+        humidity_candidates = iter_ramses_cc_entity_ids(
             "sensor",
             humidity_type,
             device_id_underscore=device_id_underscore,
             slugs=("", "fan"),
-        ):
+        )
+        humidity_entity = ""
+        for name in humidity_candidates:
             if self.hass.states.get(name) is not None:
                 humidity_entity = name
                 break
@@ -668,6 +689,17 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             humidity_entity = EntityHelpers.generate_entity_name_from_template(
                 "sensor", "{device_id}_" + humidity_type, device_id=device_id_underscore
             )
+
+        _LOGGER.debug(
+            "abs_humidity %s: fallback entities: temp=%s humid=%s"
+            " (device_id=%s, temp_type=%s, humidity_type=%s)",
+            self._sensor_type,
+            temp_entity,
+            humidity_entity,
+            device_id_underscore,
+            temp_type,
+            humidity_type,
+        )
 
         try:
             # Get temperature from ramses_cc sensor
@@ -754,6 +786,10 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         """
         try:
             if not self._is_sensor_control_enabled():
+                _LOGGER.debug(
+                    "abs_humidity %s: sensor_control not enabled, skipping",
+                    self._sensor_type,
+                )
                 return None
 
             # Import resolver lazily to avoid circular imports
@@ -764,6 +800,11 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             device_id_str = extract_device_id_as_string(self._device_id)
             device_type = self._get_device_type(device_id_str)
             if not device_type:
+                _LOGGER.debug(
+                    "abs_humidity %s: no device_type for device_id=%s",
+                    self._sensor_type,
+                    device_id_str,
+                )
                 return None
 
             resolver = SensorControlResolver(self.hass)
@@ -780,8 +821,22 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             metric = f"{side}_abs_humidity"
             metric_cfg = cast(dict[str, Any], abs_inputs.get(metric) or {})
 
+            _LOGGER.debug(
+                "abs_humidity %s: device_id=%s type=%s metric_cfg=%s mappings=%s",
+                self._sensor_type,
+                device_id_str,
+                device_type,
+                metric_cfg,
+                {k: v for k, v in mappings.items() if k.startswith(side)},
+            )
+
             if not metric_cfg:
                 # No special config for this side - let fallback handle it
+                _LOGGER.debug(
+                    "abs_humidity %s: no metric_cfg for %s, falling back",
+                    self._sensor_type,
+                    metric,
+                )
                 return None
 
             temp_cfg = cast(dict[str, Any], metric_cfg.get("temperature") or {})
