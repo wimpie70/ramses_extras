@@ -279,6 +279,146 @@ async def test_ws_get_entity_mappings_overlay_includes_area_sensors(hass, connec
     assert overlay_result["sources"]["indoor_temperature"]["kind"] == "external"
 
 
+async def test_ws_overlay_abs_humidity_uses_registry_lookup(hass, connection):
+    """Test abs humidity entity_id is looked up from registry, not constructed.
+
+    Users may rename entities in the HA UI (e.g. adding a device name prefix).
+    The overlay provider should look up the actual entity_id from the entity
+    registry by unique_id, falling back to the constructed pattern if not found.
+    """
+    hass.data[DOMAIN]["enabled_features"] = {"sensor_control": True}
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_entity_mappings",
+        "feature_id": "default",
+    }
+
+    overlay_holder: dict[str, object] = {}
+
+    class FakeCommand:
+        def __init__(self, _hass, _feature_identifier, overlay_provider=None):
+            overlay_holder["overlay_provider"] = overlay_provider
+
+        async def execute(self, _connection, _msg):
+            return None
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.GetEntityMappingsCommand",
+            FakeCommand,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
+        ) as mock_resolver_cls,
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.entity_registry"
+        ) as mock_er_mod,
+    ):
+        mock_resolver = MagicMock()
+        mock_resolver.resolve_entity_mappings = AsyncMock(
+            return_value={
+                "mappings": {},
+                "sources": {},
+                "raw_internal": {},
+                "abs_humidity_inputs": {},
+                "area_sensors": [],
+            }
+        )
+        mock_resolver_cls.return_value = mock_resolver
+
+        # Mock the entity registry to return a renamed entity_id
+        mock_registry = MagicMock()
+        mock_registry.async_get_entity_id.return_value = (
+            "sensor.zolder_hvacventilator_32_146877_indoor_absolute_humidity_32_146877"
+        )
+        mock_er_mod.async_get.return_value = mock_registry
+
+        await ws_get_entity_mappings(hass, connection, msg)
+
+        overlay_provider = overlay_holder["overlay_provider"]
+        overlay_result = await overlay_provider("32:123456", {})
+
+    # Should use the registry-looked-up entity_id, not the constructed one
+    assert (
+        overlay_result["mappings"]["indoor_abs_humid_entity"]
+        == "sensor.zolder_hvacventilator_32_146877_indoor_absolute_humidity_32_146877"
+    )
+    assert (
+        overlay_result["mappings"]["outdoor_abs_humid_entity"]
+        == "sensor.zolder_hvacventilator_32_146877_indoor_absolute_humidity_32_146877"
+    )
+    # Registry was queried with the correct unique_id
+    mock_registry.async_get_entity_id.assert_any_call(
+        "sensor", DOMAIN, "indoor_absolute_humidity_32_123456"
+    )
+    mock_registry.async_get_entity_id.assert_any_call(
+        "sensor", DOMAIN, "outdoor_absolute_humidity_32_123456"
+    )
+
+
+async def test_ws_overlay_abs_humidity_falls_back_to_pattern(hass, connection):
+    """Test abs humidity falls back to constructed pattern if not in registry."""
+    hass.data[DOMAIN]["enabled_features"] = {"sensor_control": True}
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_entity_mappings",
+        "feature_id": "default",
+    }
+
+    overlay_holder: dict[str, object] = {}
+
+    class FakeCommand:
+        def __init__(self, _hass, _feature_identifier, overlay_provider=None):
+            overlay_holder["overlay_provider"] = overlay_provider
+
+        async def execute(self, _connection, _msg):
+            return None
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.GetEntityMappingsCommand",
+            FakeCommand,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
+        ) as mock_resolver_cls,
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.entity_registry"
+        ) as mock_er_mod,
+    ):
+        mock_resolver = MagicMock()
+        mock_resolver.resolve_entity_mappings = AsyncMock(
+            return_value={
+                "mappings": {},
+                "sources": {},
+                "raw_internal": {},
+                "abs_humidity_inputs": {},
+                "area_sensors": [],
+            }
+        )
+        mock_resolver_cls.return_value = mock_resolver
+
+        # Mock the entity registry to return None (entity not found)
+        mock_registry = MagicMock()
+        mock_registry.async_get_entity_id.return_value = None
+        mock_er_mod.async_get.return_value = mock_registry
+
+        await ws_get_entity_mappings(hass, connection, msg)
+
+        overlay_provider = overlay_holder["overlay_provider"]
+        overlay_result = await overlay_provider("32:123456", {})
+
+    # Should fall back to the constructed pattern
+    assert (
+        overlay_result["mappings"]["indoor_abs_humid_entity"]
+        == "sensor.indoor_absolute_humidity_32_123456"
+    )
+    assert (
+        overlay_result["mappings"]["outdoor_abs_humid_entity"]
+        == "sensor.outdoor_absolute_humidity_32_123456"
+    )
+
+
 async def test_ws_get_available_devices_empty_list(hass, connection):
     """Test ws_get_available_devices with empty devices list."""
     hass.data[DOMAIN]["devices"] = []

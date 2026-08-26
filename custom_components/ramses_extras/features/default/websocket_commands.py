@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry
 
 from ...const import AVAILABLE_FEATURES, DOMAIN
 from ...extras_registry import extras_registry
@@ -294,18 +295,32 @@ async def ws_get_entity_mappings(
 
                 # The abs. humidity sensors are ramses_extras entities, not
                 # ramses_cc entities, so the resolver returns None for them.
-                # Construct the entity IDs here so the HVAC fan card can read
-                # their values.  Entity ID pattern:
-                #   sensor.{sensor_type}_{device_id_underscore}
+                # Look up the actual entity_id from the entity registry by
+                # unique_id.  Users may have renamed the entities in the UI,
+                # so we cannot rely on a constructed pattern.
+                registry = entity_registry.async_get(hass)
                 device_id_underscore = device_id.replace(":", "_")
                 for side, card_key in (
                     ("indoor", "indoor_abs_humid_entity"),
                     ("outdoor", "outdoor_abs_humid_entity"),
                 ):
                     abs_metric = f"{side}_abs_humidity"
-                    abs_entity_id = (
-                        f"sensor.{side}_absolute_humidity_{device_id_underscore}"
-                    )
+                    unique_id = f"{side}_absolute_humidity_{device_id_underscore}"
+                    # Look up the actual entity_id from the registry.
+                    # Users may have renamed entities in the UI, so the
+                    # constructed pattern may not match.
+                    abs_entity_id: str | None = None
+                    try:
+                        abs_entity_id = registry.async_get_entity_id(
+                            "sensor", DOMAIN, unique_id
+                        )
+                    except Exception:
+                        pass
+                    if not abs_entity_id:
+                        # Fallback to constructed pattern if not in registry
+                        abs_entity_id = (
+                            f"sensor.{side}_absolute_humidity_{device_id_underscore}"
+                        )
                     # Only set if not already overridden (e.g. by external config)
                     if not merged_mappings.get(abs_metric):
                         merged_mappings[abs_metric] = abs_entity_id
