@@ -28,7 +28,11 @@ import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocketShared } from '../../helpers/card-services.js';
 
-import './ramses-messages-viewer.js';
+// Side-effect import with cache-busting (static imports don't get ?v= from
+// the bootstrap loader, so the browser would serve a stale cached copy).
+const _v = window.ramsesExtras?.version || '';
+const _vs = _v ? `?v=${encodeURIComponent(_v)}` : '';
+void import(`./ramses-messages-viewer.js${_vs}`);
 
 /**
  * Ramses Packet Log Explorer Card component.
