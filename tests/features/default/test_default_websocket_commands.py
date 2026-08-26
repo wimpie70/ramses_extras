@@ -310,7 +310,9 @@ async def test_ws_overlay_abs_humidity_uses_registry_lookup(hass, connection):
         patch(
             "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
         ) as mock_resolver_cls,
-        patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get,
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.entity_registry"
+        ) as mock_er_mod,
     ):
         mock_resolver = MagicMock()
         mock_resolver.resolve_entity_mappings = AsyncMock(
@@ -329,7 +331,7 @@ async def test_ws_overlay_abs_humidity_uses_registry_lookup(hass, connection):
         mock_registry.async_get_entity_id.return_value = (
             "sensor.zolder_hvacventilator_32_146877_indoor_absolute_humidity_32_146877"
         )
-        mock_er_get.return_value = mock_registry
+        mock_er_mod.async_get.return_value = mock_registry
 
         await ws_get_entity_mappings(hass, connection, msg)
 
@@ -380,7 +382,9 @@ async def test_ws_overlay_abs_humidity_falls_back_to_pattern(hass, connection):
         patch(
             "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
         ) as mock_resolver_cls,
-        patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get,
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.entity_registry"
+        ) as mock_er_mod,
     ):
         mock_resolver = MagicMock()
         mock_resolver.resolve_entity_mappings = AsyncMock(
@@ -397,7 +401,7 @@ async def test_ws_overlay_abs_humidity_falls_back_to_pattern(hass, connection):
         # Mock the entity registry to return None (entity not found)
         mock_registry = MagicMock()
         mock_registry.async_get_entity_id.return_value = None
-        mock_er_get.return_value = mock_registry
+        mock_er_mod.async_get.return_value = mock_registry
 
         await ws_get_entity_mappings(hass, connection, msg)
 

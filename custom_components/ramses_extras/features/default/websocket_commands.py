@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry
 
 from ...const import AVAILABLE_FEATURES, DOMAIN
 from ...extras_registry import extras_registry
@@ -297,8 +298,6 @@ async def ws_get_entity_mappings(
                 # Look up the actual entity_id from the entity registry by
                 # unique_id.  Users may have renamed the entities in the UI,
                 # so we cannot rely on a constructed pattern.
-                from homeassistant.helpers import entity_registry
-
                 registry = entity_registry.async_get(hass)
                 device_id_underscore = device_id.replace(":", "_")
                 for side, card_key in (
