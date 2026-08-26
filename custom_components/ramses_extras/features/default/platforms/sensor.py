@@ -452,6 +452,14 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         an initial calculation.
         """
         await super().async_added_to_hass()
+        _LOGGER.debug(
+            "DefaultHumiditySensor async_added_to_hass: entity_id=%s"
+            " unique_id=%s sensor_type=%s device_id=%s",
+            self.entity_id,
+            self._attr_unique_id,
+            self._sensor_type,
+            self._device_id,
+        )
         # Set up listeners for underlying temperature and humidity sensor
         # for absolute humidity sensors
         if self._is_absolute_humidity_sensor():
@@ -616,6 +624,12 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                     return
                 self._attr_native_value = result
                 self.async_write_ha_state()
+                _LOGGER.debug(
+                    "abs_humidity %s: wrote state=%s entity_id=%s",
+                    self._sensor_type,
+                    result,
+                    self.entity_id,
+                )
             else:
                 _LOGGER.debug(
                     "abs_humidity %s: final result is None, sensor stays"
@@ -624,7 +638,12 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                     self._device_id,
                 )
         except Exception as e:
-            _LOGGER.debug("Error recalculating humidity for %s: %s", self._attr_name, e)
+            _LOGGER.warning(
+                "Error recalculating humidity for %s (entity_id=%s): %s",
+                self._attr_name,
+                getattr(self, "entity_id", "unknown"),
+                e,
+            )
 
     def _get_temp_and_humidity(self) -> tuple[float | None, float | None]:
         """Get temperature and humidity data from ramses_cc entities.
