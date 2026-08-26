@@ -34,8 +34,12 @@ import { callWebSocketShared } from '../../helpers/card-services.js';
 import { copyToClipboard } from '../../helpers/clipboard.js';
 import { deviceCache } from '../../helpers/device-cache.js';
 
-import './ramses-log-explorer.js';
-import './ramses-messages-viewer.js';
+// Side-effect imports with cache-busting (static imports don't get ?v=
+// from the bootstrap loader, so the browser would serve stale copies).
+const _v = window.ramsesExtras?.version || '';
+const _vs = _v ? `?v=${encodeURIComponent(_v)}` : '';
+void import(`./ramses-log-explorer.js${_vs}`);
+void import(`./ramses-messages-viewer.js${_vs}`);
 
 import { trafficAnalyserCardStyle } from './card-styles.js';
 
