@@ -454,13 +454,25 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         an initial calculation.
         """
         await super().async_added_to_hass()
+        # Check if entity is actually in the state machine
+        state_check = self.hass.states.get(self.entity_id) if self.entity_id else None
+        # Check entity registry for disabled status
+        from homeassistant.helpers import entity_registry
+
+        registry = entity_registry.async_get(self.hass)
+        reg_entry = registry.async_get(self.entity_id) if self.entity_id else None
         _LOGGER.debug(
             "DefaultHumiditySensor async_added_to_hass: entity_id=%s"
-            " unique_id=%s sensor_type=%s device_id=%s",
+            " unique_id=%s sensor_type=%s device_id=%s"
+            " in_state_machine=%s registry_disabled_by=%s"
+            " registry_entity_id=%s",
             self.entity_id,
             self._attr_unique_id,
             self._sensor_type,
             self._device_id,
+            state_check is not None,
+            reg_entry.disabled_by if reg_entry else "not_in_registry",
+            reg_entry.entity_id if reg_entry else "N/A",
         )
         # Set up listeners for underlying temperature and humidity sensor
         # for absolute humidity sensors
@@ -626,11 +638,16 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                     return
                 self._attr_native_value = result
                 self.async_write_ha_state()
+                # Verify the state was actually written to HA's state machine
+                verify_state = self.hass.states.get(self.entity_id)
                 _LOGGER.debug(
-                    "abs_humidity %s: wrote state=%s entity_id=%s",
+                    "abs_humidity %s: wrote state=%s entity_id=%s"
+                    " verify_state=%s (entity in state machine: %s)",
                     self._sensor_type,
                     result,
                     self.entity_id,
+                    verify_state.state if verify_state else "None",
+                    verify_state is not None,
                 )
             else:
                 _LOGGER.debug(
