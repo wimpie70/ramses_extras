@@ -98,12 +98,14 @@ class PacketLogParser:
 def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
     """Parse a single ramses packet log line into a normalized message."""
     # Common ramses_log formats:
-    # - With RSSI + extra fields:
-    #   2026-01-20T13:31:43.693075 000 RQ --- 18:149488 01:000000 --:------ 0006 001 00
-    #   2026-01-20T13:31:43.070025 036 I --- 32:153289 --:------ 32:153289 31DA
+    # - With RSSI + extra fields (signed dBm, since ramses_rf 6e0c5242):
+    #   2026-01-20T13:31:43.693075 -39 RQ --- 18:149488 01:000000 --:------ 0006 001 00
+    #   2026-01-20T13:31:43.070025 -36 I --- 32:153289 --:------ 32:153289 31DA
     #   030
     #   00EF...
-    # - Older/shorter format (kept for compatibility):
+    # - Older/shorter format (unsigned RSSI, kept for compatibility):
+    #   2026-01-20T13:31:43.070025 036 I --- 32:153289 --:------ 32:153289 31DA ...
+    # - Oldest format (no RSSI):
     #   2026-01-20T09:58:48.263427 I 32:153289 37:123456 --:------ 31DA 003 010203
     line_no_comment = line.split("#", 1)[0]
     parts = line_no_comment.strip().split()
@@ -120,10 +122,11 @@ def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
         return bool(re.match(r"^\d{3}$", token))
 
     def _is_rssi(token: str) -> bool:
-        return bool(re.match(r"^(\d{3}|---|\.\.\.)$", token))
+        # Matches signed dBm (-39), unsigned (039), and sentinels.
+        return bool(re.match(r"^(?:-?\d{1,3}|---|\.\.\.|///)$", token))
 
     def _is_seqn(token: str) -> bool:
-        return _is_rssi(token)
+        return bool(re.match(r"^(?:\d{1,3}|---)$", token))
 
     try:
         dtm = parts[0]
@@ -132,8 +135,10 @@ def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
         if i >= len(parts):
             return None
 
-        # ramses_log uses: "..." (or "063" etc.) before verb
+        # ramses_log uses: "..." / "-39" / "063" before verb
+        rssi: str | None = None
         if _is_rssi(parts[i]):
+            rssi = parts[i]
             i += 1
 
         if i >= len(parts):
@@ -190,6 +195,7 @@ def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
             source="packet_log",
             raw_line=line,
             parse_warnings=[],
+            rssi=rssi,
         )
     except Exception:
         return None
@@ -219,7 +225,7 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
 
     try:
         from ramses_rf import Message, Packet
-    except (ModuleNotFoundError, ImportError):
+    except ModuleNotFoundError, ImportError:
         return None
 
     dtm_raw = msg.get("dtm")
@@ -339,6 +345,8 @@ class NormalizedMessage:
     :param source: Data source identifier.
     :param raw_line: Raw line used for parsing (log sources).
     :param parse_warnings: Any parsing warnings (best-effort).
+    :param rssi: Received Signal Strength Indicator (signed dBm or
+        sentinel), if available.
     """
 
     dtm: str
@@ -352,6 +360,7 @@ class NormalizedMessage:
     raw_line: str | None = None
     parse_warnings: list[str] = field(default_factory=list)
     decoded_payload: Any = None  # parsed dict from ramses_rf, if available
+    rssi: str | None = None
 
 
 class MessagesProvider:
@@ -477,6 +486,7 @@ class TrafficBufferProvider(MessagesProvider):
                 packet=raw.get("packet"),
                 source="traffic_buffer",
                 decoded_payload=raw.get("decoded_payload"),
+                rssi=raw.get("rssi") if isinstance(raw.get("rssi"), str) else None,
             )
             messages.append(msg)
             if len(messages) >= limit:
@@ -633,6 +643,7 @@ def _parse_ha_log_line(line: str) -> NormalizedMessage | None:
         code = data.get("code")
         payload = data.get("payload")
         packet = data.get("packet")
+        rssi = data.get("rssi")
 
         # Keep dst as-is for broadcast; the UI can derive any effective target
         # from the packet/via fields if needed.
@@ -652,6 +663,7 @@ def _parse_ha_log_line(line: str) -> NormalizedMessage | None:
             source="ha_log",
             raw_line=line,
             parse_warnings=[],
+            rssi=str(rssi) if isinstance(rssi, str) else None,
         )
     except Exception:
         pass
@@ -845,6 +857,7 @@ async def get_messages_from_sources(
             "raw_line": msg.raw_line,
             "parse_warnings": msg.parse_warnings,
             "decoded_payload": msg.decoded_payload,
+            "rssi": msg.rssi,
         }
         for msg in all_messages[:limit]
     ]

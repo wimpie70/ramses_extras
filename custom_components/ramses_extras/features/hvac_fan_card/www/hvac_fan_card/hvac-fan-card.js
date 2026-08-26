@@ -276,14 +276,24 @@ class HvacFanCard extends RamsesBaseCard {
       : this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
+    const indoorAbsEntity = config.indoor_abs_humid_entity;
+    const outdoorAbsEntity = config.outdoor_abs_humid_entity;
     const indoorAbsHumidity = this.getEntityStateAsNumber(
-      config.indoor_abs_humid_entity,
+      indoorAbsEntity,
       null
     );
     const outdoorAbsHumidity = this.getEntityStateAsNumber(
-      config.outdoor_abs_humid_entity,
+      outdoorAbsEntity,
       null
     );
+    logger.debug('HvacFanCard: abs humidity entities:', {
+      indoorAbsEntity,
+      outdoorAbsEntity,
+      indoorAbsHumidity,
+      outdoorAbsHumidity,
+      indoorState: indoorAbsEntity ? this.getEntityState(indoorAbsEntity)?.state : 'no entity',
+      outdoorState: outdoorAbsEntity ? this.getEntityState(outdoorAbsEntity)?.state : 'no entity',
+    });
     const fanControlModeState = this.getEntityState(config.fan_control_mode_entity);
     const fanControlMode = fanControlModeState?.state || null;
     const extrasControlEnabled = fanControlModeState?.attributes?.extras_control_enabled !== false;
@@ -1348,14 +1358,24 @@ class HvacFanCard extends RamsesBaseCard {
       : this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
+    const indoorAbsEntity = config.indoor_abs_humid_entity;
+    const outdoorAbsEntity = config.outdoor_abs_humid_entity;
     const indoorAbsHumidity = this.getEntityStateAsNumber(
-      config.indoor_abs_humid_entity,
+      indoorAbsEntity,
       null
     );
     const outdoorAbsHumidity = this.getEntityStateAsNumber(
-      config.outdoor_abs_humid_entity,
+      outdoorAbsEntity,
       null
     );
+    logger.debug('HvacFanCard: abs humidity entities:', {
+      indoorAbsEntity,
+      outdoorAbsEntity,
+      indoorAbsHumidity,
+      outdoorAbsHumidity,
+      indoorState: indoorAbsEntity ? this.getEntityState(indoorAbsEntity)?.state : 'no entity',
+      outdoorState: outdoorAbsEntity ? this.getEntityState(outdoorAbsEntity)?.state : 'no entity',
+    });
     const fanControlModeState = this.getEntityState(config.fan_control_mode_entity);
     const fanControlMode = fanControlModeState?.state || null;
     const extrasControlEnabled = fanControlModeState?.attributes?.extras_control_enabled !== false;

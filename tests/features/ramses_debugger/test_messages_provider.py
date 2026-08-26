@@ -180,6 +180,36 @@ class TestPacketLogParser:
         assert msg.dst == "18:149488"
         assert msg.code == "10D0"
         assert msg.payload == "006 0038B43E0000"
+        assert msg.rssi == "..."
+
+    @pytest.mark.asyncio
+    async def test_parse_ramses_log_line_with_signed_rssi(self):
+        # Since ramses_rf 6e0c5242, RSSI is normalised to signed dBm.
+        line = (
+            "2026-08-26T10:12:55.941990 -39 I --- 32:153289 --:------ "
+            "32:153289 31DA 030 00EF007FFF392F04CE04D804B404A1"
+        )
+        msg = _parse_packet_log_line(line)
+        assert msg is not None
+        assert msg.verb == "I"
+        assert msg.rssi == "-39"
+        assert msg.src == "32:153289"
+        assert msg.dst == "--:------"
+        assert msg.code == "31DA"
+        assert msg.payload.startswith("030 ")
+
+    @pytest.mark.asyncio
+    async def test_parse_ramses_log_line_with_unsigned_rssi(self):
+        # Older logs use unsigned 3-digit RSSI (e.g. 039).
+        line = (
+            "2026-04-09T10:12:55.941990 039 I --- 32:153289 --:------ "
+            "32:153289 31DA 030 00EF007FFF392F04CE04D804B404A1"
+        )
+        msg = _parse_packet_log_line(line)
+        assert msg is not None
+        assert msg.verb == "I"
+        assert msg.rssi == "039"
+        assert msg.code == "31DA"
 
     @pytest.mark.asyncio
     async def test_parse_ramses_log_line_with_seqn_digits(self):

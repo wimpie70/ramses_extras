@@ -192,6 +192,18 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                     if overlay_result:
                         result.update(overlay_result)
 
+                # Log the final mappings being sent to the card
+                final_mappings = result.get("mappings") or {}
+                if isinstance(final_mappings, dict):
+                    abs_keys = {k: v for k, v in final_mappings.items() if "abs" in k}
+                    if abs_keys:
+                        _LOGGER.debug(
+                            "get_entity_mappings: sending abs_humidity"
+                            " keys for device %s: %s",
+                            device_id,
+                            abs_keys,
+                        )
+
                 # Return the complete result
                 self._send_success(connection, msg["id"], result)
             else:

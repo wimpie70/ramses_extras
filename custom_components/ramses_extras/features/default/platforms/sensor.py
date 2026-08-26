@@ -200,9 +200,11 @@ async def create_default_sensor(
             )
             sensor_list.append(sensor_entity)
             _LOGGER.debug(
-                "Created default %s sensor with calculation logic for device %s",
+                "Created default %s sensor for device %s: entity_id=%s unique_id=%s",
                 sensor_type,
                 device_id_str,
+                sensor_entity.entity_id,
+                sensor_entity._attr_unique_id,
             )
 
     for area_sensor in _get_area_sensors_config(hass, device_id_str, config_entry):

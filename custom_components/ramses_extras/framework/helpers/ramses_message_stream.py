@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -152,7 +153,10 @@ class RamsesMessageStream:
         if len(parts) < 8:
             return None
 
-        if parts[0] in {"...", "---"} or parts[0].isdigit():
+        # Strip RSSI prefix: signed dBm (-39), unsigned (039), or sentinels.
+        # ramses_rf 6e0c5242 normalises RSSI to signed dBm in the log, so
+        # we must accept negative values here too.
+        if re.match(r"^(?:-?\d{1,3}|---|\.\.\.|///)$", parts[0]):
             parts = parts[1:]
 
         if len(parts) < 7:
@@ -215,7 +219,7 @@ class RamsesMessageStream:
                 parsed_msg = Message(dto)
                 data["decoded_payload"] = parsed_msg.payload
                 return
-            except (PacketInvalid, Exception):
+            except PacketInvalid, Exception:
                 pass
 
         # Keep payload as string if we couldn't parse
@@ -240,6 +244,11 @@ class RamsesMessageStream:
         }
         data["payload"] = raw_payload
 
+        # Capture RSSI from the packet DTO for the traffic buffer / viewer.
+        rssi = getattr(pkt, "rssi", None)
+        if isinstance(rssi, str) and rssi:
+            data["rssi"] = rssi
+
         if "frame" not in data:
             frame = self._frame_from_dict(data)
             if frame:
@@ -256,7 +265,7 @@ class RamsesMessageStream:
             try:
                 parsed_msg = Message(msg)
                 data["decoded_payload"] = parsed_msg.payload
-            except (PacketInvalid, Exception):
+            except PacketInvalid, Exception:
                 self._parse_payload(data)
         else:
             self._parse_payload(data)

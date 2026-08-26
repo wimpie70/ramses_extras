@@ -203,6 +203,7 @@ class RamsesMessagesViewer extends HTMLElement {
           <thead>
             <tr>
               <th class="r-xtrs-msg-viewer-col-time r-xtrs-msg-viewer-sortable" data-sort="dtm" title="Timestamp (click to sort)">Time</th>
+              <th class="r-xtrs-msg-viewer-col-rssi r-xtrs-msg-viewer-sortable" data-sort="rssi" title="RSSI in dBm (click to sort)">RSSI</th>
               <th class="r-xtrs-msg-viewer-col-verb r-xtrs-msg-viewer-sortable" data-sort="verb" title="Verb (click to sort)">Verb</th>
               <th class="r-xtrs-msg-viewer-col-code r-xtrs-msg-viewer-sortable" data-sort="code" title="Code (click to sort)">Code</th>
               <th class="r-xtrs-msg-viewer-col-src r-xtrs-msg-viewer-sortable" data-sort="src" title="Source device (click to sort)">Src</th>
@@ -544,6 +545,7 @@ class RamsesMessagesViewer extends HTMLElement {
         return `
           <tr>
             <td class="r-xtrs-msg-viewer-col-time">${msg.dtm || ''}</td>
+            <td class="r-xtrs-msg-viewer-col-rssi">${msg.rssi || ''}</td>
             <td class="r-xtrs-msg-viewer-col-verb">${msg.verb || ''}</td>
             <td class="r-xtrs-msg-viewer-col-code">${msg.code || ''}</td>
             <td class="r-xtrs-msg-viewer-col-src"><span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${srcBg};">${msg.src || ''}</span></td>
