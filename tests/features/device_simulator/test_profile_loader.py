@@ -282,11 +282,11 @@ class TestTriggerRamsesDiscovery:
         coordinator = MagicMock()
         discover = AsyncMock()
         coordinator._async_discovery_task = discover
+        entry = MagicMock(entry_id="entry_id")
+        entry.runtime_data = coordinator
         hass.data = {"ramses_cc": {"entry_id": coordinator}}
         hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(
-            return_value=[MagicMock(entry_id="entry_id")]
-        )
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
         await _trigger_ramses_discovery(hass)
         discover.assert_called_once()
@@ -306,10 +306,10 @@ class TestTriggerRamsesDiscovery:
         """Test when coordinator is None."""
         hass = MagicMock()
         hass.data = {"ramses_cc": {}}
+        entry = MagicMock(entry_id="entry_id")
+        entry.runtime_data = None
         hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(
-            return_value=[MagicMock(entry_id="entry_id")]
-        )
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
         await _trigger_ramses_discovery(hass)
         # Should not raise
@@ -320,11 +320,11 @@ class TestTriggerRamsesDiscovery:
         hass = MagicMock()
         coordinator = MagicMock()
         coordinator._async_discovery_task = None
+        entry = MagicMock(entry_id="entry_id")
+        entry.runtime_data = coordinator
         hass.data = {"ramses_cc": {"entry_id": coordinator}}
         hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(
-            return_value=[MagicMock(entry_id="entry_id")]
-        )
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
         await _trigger_ramses_discovery(hass)
         # Should not raise

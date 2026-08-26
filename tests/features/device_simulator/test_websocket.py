@@ -156,6 +156,7 @@ class TestHelperFunctions:
     def test_get_ramses_cc_coordinator_no_data(self, hass):
         entry = MagicMock()
         entry.entry_id = "test_entry"
+        entry.runtime_data = None
         hass.config_entries.async_entries = MagicMock(return_value=[entry])
         hass.data = {"ramses_cc": {}}
         assert _get_ramses_cc_coordinator(hass) is None
@@ -163,8 +164,9 @@ class TestHelperFunctions:
     def test_get_ramses_cc_coordinator_success(self, hass):
         entry = MagicMock()
         entry.entry_id = "test_entry"
-        hass.config_entries.async_entries = MagicMock(return_value=[entry])
         coordinator = MagicMock()
+        entry.runtime_data = coordinator
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
         hass.data = {"ramses_cc": {"coordinators": {"test_entry": coordinator}}}
         assert _get_ramses_cc_coordinator(hass) == coordinator
 
@@ -209,21 +211,21 @@ class TestHelperFunctions:
         coordinator = MagicMock()
         discover = AsyncMock()
         coordinator._async_discovery_task = discover
+        entry = MagicMock(entry_id="entry_id")
+        entry.runtime_data = coordinator
         hass.data = {"ramses_cc": {"entry_id": coordinator}}
         hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(
-            return_value=[MagicMock(entry_id="entry_id")]
-        )
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
         await _trigger_ramses_discovery(hass)
         discover.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_trigger_ramses_discovery_no_coordinator(self, hass):
+        entry = MagicMock(entry_id="entry_id")
+        entry.runtime_data = None
         hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(
-            return_value=[MagicMock(entry_id="entry_id")]
-        )
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
         hass.data = {"ramses_cc": {}}
 
         # Should not raise
@@ -1984,6 +1986,7 @@ class TestHelperFunctionsAdditional:
         coordinator = MagicMock()
         config_entry = MagicMock()
         config_entry.entry_id = "test_entry"
+        config_entry.runtime_data = coordinator
         hass.config_entries = MagicMock()
         hass.config_entries.async_entries = MagicMock(return_value=[config_entry])
         hass.data = {"ramses_cc": {"coordinators": {"test_entry": coordinator}}}
@@ -2008,10 +2011,11 @@ class TestHelperFunctionsAdditional:
 
         config_entry = MagicMock()
         config_entry.entry_id = "test_entry"
-        hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(return_value=[config_entry])
         coordinator = MagicMock()
         coordinator._async_discovery_task = AsyncMock()
+        config_entry.runtime_data = coordinator
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_entries = MagicMock(return_value=[config_entry])
         hass.data = {"ramses_cc": {"test_entry": coordinator}}
         await _trigger_ramses_discovery(hass)
         coordinator._async_discovery_task.assert_awaited_once()
@@ -2034,6 +2038,7 @@ class TestHelperFunctionsAdditional:
 
         config_entry = MagicMock()
         config_entry.entry_id = "test_entry"
+        config_entry.runtime_data = None
         hass.config_entries = MagicMock()
         hass.config_entries.async_entries = MagicMock(return_value=[config_entry])
         hass.data = {"ramses_cc": {}}
@@ -2047,10 +2052,11 @@ class TestHelperFunctionsAdditional:
 
         config_entry = MagicMock()
         config_entry.entry_id = "test_entry"
-        hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(return_value=[config_entry])
         coordinator = MagicMock()
         coordinator._async_discovery_task = None
+        config_entry.runtime_data = coordinator
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_entries = MagicMock(return_value=[config_entry])
         hass.data = {"ramses_cc": {"test_entry": coordinator}}
         await _trigger_ramses_discovery(hass)
 

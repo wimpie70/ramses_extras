@@ -117,7 +117,10 @@ class DeviceWebSocketCommand(BaseWebSocketCommand):
         :param feature_name: Name of the feature this command belongs to
         """
         super().__init__(hass, feature_name)
-        self._ramses_data = hass.data.get("ramses_cc", {})
+        # ramses_cc stores the coordinator in entry.runtime_data,
+        # not hass.data["ramses_cc"] (older versions).  This dict is
+        # kept for backward compatibility but should not be relied on.
+        self._ramses_data = hass.data.get("ramses_cc", {})  # noqa: F841
 
 
 class GetEntityMappingsCommand(BaseWebSocketCommand):
