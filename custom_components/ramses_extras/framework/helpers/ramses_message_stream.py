@@ -244,9 +244,14 @@ class RamsesMessageStream:
         }
         data["payload"] = raw_payload
 
-        # Capture RSSI from the packet DTO for the traffic buffer / viewer.
-        rssi = getattr(pkt, "rssi", None)
-        if isinstance(rssi, str) and rssi:
+        # Capture RSSI for the traffic buffer / viewer.
+        # ramses_rf's Message stores rssi directly on the message (msg.rssi),
+        # not on a _pkt attribute.  Fall back to pkt.rssi for older versions
+        # or other message types that do use _pkt.
+        rssi = getattr(msg, "rssi", None)
+        if not isinstance(rssi, str) or not rssi:
+            rssi = getattr(pkt, "rssi", None)
+        if isinstance(rssi, str) and rssi and rssi != "...":
             data["rssi"] = rssi
 
         if "frame" not in data:
