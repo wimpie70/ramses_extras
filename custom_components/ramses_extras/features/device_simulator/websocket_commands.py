@@ -127,7 +127,11 @@ def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
     if not entries:
         return None
     cc_entry = entries[0]
-    # ramses_cc stores coordinators at hass.data["ramses_cc"][entry_id]
+    # Modern ramses_cc stores the coordinator in entry.runtime_data
+    coordinator = getattr(cc_entry, "runtime_data", None)
+    if coordinator is not None:
+        return coordinator
+    # Legacy fallback: hass.data["ramses_cc"][entry_id]
     domain_data = hass.data.get("ramses_cc", {})
     coordinator = domain_data.get(cc_entry.entry_id)
     if coordinator is not None:
@@ -304,8 +308,12 @@ async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
         ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
         if not ramses_cc_entries:
             return
-        entry_id = ramses_cc_entries[0].entry_id
-        coordinator = (hass.data.get("ramses_cc") or {}).get(entry_id)
+        cc_entry = ramses_cc_entries[0]
+        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        coordinator = getattr(cc_entry, "runtime_data", None)
+        if coordinator is None:
+            # Legacy fallback: hass.data["ramses_cc"][entry_id]
+            coordinator = (hass.data.get("ramses_cc") or {}).get(cc_entry.entry_id)
         if coordinator is None:
             return
         discover = getattr(coordinator, "_async_discovery_task", None)

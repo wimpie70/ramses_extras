@@ -409,13 +409,9 @@ class RamsesCommands:
         # Convert device_id format if needed (32_153289 -> 32:153289)
         device_id_formatted = device_id.replace("_", ":")
 
-        # Resolve the ramses_cc broker first — without it nothing works.
-        ramses_cc_data = self.hass.data.get("ramses_cc", {})
-        broker = None
-        for _entry_id, broker_instance in ramses_cc_data.items():
-            if hasattr(broker_instance, "get_all_fan_params"):
-                broker = broker_instance
-                break
+        # Resolve the ramses_cc broker via entry.runtime_data (not
+        # hass.data["ramses_cc"], which is no longer used by ramses_cc).
+        broker = await self._get_ramses_cc_coordinator()
 
         if not broker:
             return CommandResult(
@@ -502,12 +498,10 @@ class RamsesCommands:
             # Convert device_id format if needed (32_153289 -> 32:153289)
             device_id_formatted = device_id.replace("_", ":")
 
-            ramses_cc_data = self.hass.data.get("ramses_cc", {})
-            broker = None
-            for entry_id, broker_instance in ramses_cc_data.items():
-                if hasattr(broker_instance, "async_set_fan_param"):
-                    broker = broker_instance
-                    break
+            # Use the same coordinator lookup as _get_ramses_cc_coordinator:
+            # ramses_cc stores the coordinator in entry.runtime_data,
+            # not hass.data["ramses_cc"] (older versions).
+            broker = await self._get_ramses_cc_coordinator()
 
             if not broker:
                 return CommandResult(

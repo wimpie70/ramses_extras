@@ -63,7 +63,17 @@ def _get_ramses_cc_options(hass: HomeAssistant) -> dict[str, Any] | None:
     entry = entries[0]
     options = dict(entry.options or {})
 
-    # Also check hass.data for the coordinator's merged options
+    # Check entry.runtime_data for the coordinator's merged options
+    # (ramses_cc stores the coordinator in entry.runtime_data, not
+    # hass.data["ramses_cc"] as in older versions)
+    coordinator = getattr(entry, "runtime_data", None)
+    if coordinator is not None:
+        coord_options = getattr(coordinator, "options", None)
+        if isinstance(coord_options, dict):
+            # Coordinator.options is a deep merge of data + options
+            return dict(coord_options)
+
+    # Legacy fallback: hass.data["ramses_cc"]
     ramses_cc_data = hass.data.get("ramses_cc", {})
     for _entry_id, coordinator in ramses_cc_data.items():
         if hasattr(coordinator, "options") and isinstance(coordinator.options, dict):
