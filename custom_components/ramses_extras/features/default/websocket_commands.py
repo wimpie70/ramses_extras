@@ -258,6 +258,11 @@ async def ws_get_entity_mappings(
             device_id: str,
             base_mappings: dict[str, str],
         ) -> dict[str, Any]:
+            _LOGGER.debug(
+                "websocket overlay called for device_id=%s sensor_control_enabled=%s",
+                device_id,
+                _is_feature_enabled("sensor_control"),
+            )
             if not _is_feature_enabled("sensor_control"):
                 return {}
 
@@ -306,6 +311,12 @@ async def ws_get_entity_mappings(
                         merged_mappings[abs_metric] = abs_entity_id
                     if not merged_mappings.get(card_key):
                         merged_mappings[card_key] = abs_entity_id
+
+                _LOGGER.debug(
+                    "websocket overlay for %s: abs_humidity mappings: %s",
+                    device_id,
+                    {k: v for k, v in merged_mappings.items() if "abs" in k},
+                )
 
                 return {
                     "mappings": merged_mappings,
