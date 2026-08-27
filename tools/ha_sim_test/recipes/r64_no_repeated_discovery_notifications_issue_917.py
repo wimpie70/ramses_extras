@@ -99,6 +99,12 @@ class R64NoRepeatedDiscoveryNotificationsIssue917(Recipe):
             print("  Profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
+            ctx.check(
+                "Profile loaded for R64 discovery test",
+                False,
+                f"Profile load failed: {str(e)[:100]}",
+            )
+            return
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
 

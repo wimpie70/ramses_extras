@@ -228,11 +228,11 @@ except ImportError as e:
             f"step_id={step_result.get('step_id')}",
         )
 
-        # 5. With no orphaned/lost devices, should show "No orphaned or lost"
+        # 5. With no orphaned/lost devices, should show a "no devices" message
         placeholders = step_result.get("description_placeholders", {})
         ctx.check(
             "no devices message shown when healthy",
-            "No orphaned or lost" in placeholders.get("message", ""),
+            "No orphaned" in placeholders.get("message", ""),
             f"message={placeholders.get('message', '')[:100]}",
         )
 

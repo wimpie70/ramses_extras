@@ -72,7 +72,16 @@ class R25Phase3cFixMismatchNotificationDismissed(Recipe):
             "_class": "BDR",
         }
         fixed_yaml = mixed_yaml(fixed_schema)
-        await load_profile_yaml(ctx.token, fixed_yaml, speed=0.01)
+        try:
+            await load_profile_yaml(ctx.token, fixed_yaml, speed=0.01)
+        except RuntimeError as e:
+            print(f"  Profile load failed: {e}")
+            ctx.check(
+                "Profile loaded for R25 fix mismatch test",
+                False,
+                f"Profile load failed: {str(e)[:100]}",
+            )
+            return
         ctx.wait_for_ramses_cc_reload(msg="for profile reload")
 
         # wait_for_ramses_cc_reload only confirms the schema has devices —

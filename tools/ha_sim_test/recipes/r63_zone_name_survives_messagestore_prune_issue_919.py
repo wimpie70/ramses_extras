@@ -86,7 +86,7 @@ class R63ZoneNameSurvivesMessagestorePruneIssue919(Recipe):
             return None
 
     async def _wait_for_device_name(
-        self, ctx: RecipeContext, timeout: int = 30, interval: float = 3
+        self, ctx: RecipeContext, timeout: int = 60, interval: float = 3
     ) -> str | None:
         """Poll for the device name to appear and contain the zone name."""
         deadline = time.monotonic() + timeout

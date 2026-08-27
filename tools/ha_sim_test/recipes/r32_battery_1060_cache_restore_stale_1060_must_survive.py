@@ -73,6 +73,12 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
             print("  mixed profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
+            ctx.check(
+                "Profile loaded for R32 battery test",
+                False,
+                f"Profile load failed: {str(e)[:100]}",
+            )
+            return
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Wait for the MQTT transport to reconnect after the reload,
@@ -191,7 +197,7 @@ class R32Battery1060CacheRestoreStale1060MustSurvive(Recipe):
                 new_packets_r32[aged_ts] = pkt
             else:
                 new_packets_r32[ts] = pkt
-        storage_r32["client_state"]["packets"] = new_packets_r32
+        storage_r32.setdefault("client_state", {})["packets"] = new_packets_r32
 
         # Capture logs before stop (docker stop wipes the in-memory log buffer
         # only on restart, but capture anyway for completeness)

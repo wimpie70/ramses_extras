@@ -75,7 +75,16 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             "_schema": mismatch_schema,
         }
         mismatch_yaml = _yaml.dump(profile, default_flow_style=False, sort_keys=False)
-        await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
+        try:
+            await load_profile_yaml(ctx.token, mismatch_yaml, speed=0.01)
+        except RuntimeError as e:
+            print(f"  Profile load failed: {e}")
+            ctx.check(
+                "Profile loaded for R24 mismatch test",
+                False,
+                f"Profile load failed: {str(e)[:100]}",
+            )
+            return
         ctx.wait_for_ramses_cc_reload(msg="for profile reload")
         ctx.refresh_token()
         # Wait for the MQTT transport to reconnect after the reload,
