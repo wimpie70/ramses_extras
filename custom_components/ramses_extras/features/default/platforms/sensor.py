@@ -103,6 +103,30 @@ async def async_setup_entry(
         devices,
     )
 
+    # Clear stale deleted-entity entries for abs humidity sensors.
+    # The SimpleEntityManager removes these entities on every restart (because
+    # their entity_id didn't match the expected template), which puts them in
+    # HA's deleted_entities cache.  When the entity is re-created, HA restores
+    # the old (long, device-name-prefixed) entity_id from the cache instead of
+    # generating the correct short one.  Clearing the cache ensures the new
+    # entity_id is generated correctly.
+    try:
+        from homeassistant.helpers import entity_registry as er
+
+        reg = er.async_get(hass)
+        device_ids = [extract_device_id_as_string(d).replace(":", "_") for d in devices]
+        for unique_id_suffix in (
+            "indoor_absolute_humidity",
+            "outdoor_absolute_humidity",
+        ):
+            for did in device_ids:
+                key = ("sensor", "ramses_extras", f"{unique_id_suffix}_{did}")
+                if key in reg.deleted_entities:
+                    reg.deleted_entities.pop(key)
+                    _LOGGER.debug("Cleared deleted_entities cache for %s", key[2])
+    except Exception:
+        _LOGGER.debug("Could not clear deleted_entities cache", exc_info=True)
+
     # Get entity manager to check device_feature_matrix
     entity_manager = hass.data.get("ramses_extras", {}).get("entity_manager")
     if entity_manager is None:
@@ -372,8 +396,22 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
 
     The sensor automatically sets up listeners for underlying temperature
     and humidity entities when they become available, enabling real-time
-    calculation of absolute humidity values.
+
+    .. note::
+        ``_attr_has_entity_name`` is set to ``True`` so that HA generates
+        the entity_id from the entity name alone (e.g.
+        ``sensor.indoor_absolute_humidity_32_150000``) rather than
+        prepending the device name (which would produce
+        ``sensor.hvacventilator_32_150000_indoor_absolute_humidity_32_150000``).
+        This ensures the entity_id matches the pattern expected by
+        ``SimpleEntityManager`` startup validation and the websocket
+        overlay.  Without this, the SimpleEntityManager sees the entity
+        as "extra" (entity_id doesn't match the template) and removes it
+        from the registry on every restart, leaving a ghost entity with
+        no state — the root cause of issue 191.
     """
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -412,9 +450,18 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         self._attr_device_class = config.get("device_class")
         self._attr_icon = config.get("icon")
 
-        # Set unique_id and name
+        # Set unique_id, entity_id, and name.
+        # ``internal_integration_suggested_object_id`` is set so that HA's
+        # entity registry generates the entity_id from this value alone,
+        # WITHOUT prepending the device name.  Without this, HA generates
+        # e.g. "sensor.hvacventilator_32_150000_indoor_absolute_humidity_32_150000"
+        # which doesn't match the SimpleEntityManager's expected pattern and
+        # gets removed on every restart (issue 191).
         device_id_underscore = device_id_str.replace(":", "_")
         self._attr_unique_id = f"{sensor_type}_{device_id_underscore}"
+        self.internal_integration_suggested_object_id = (
+            f"{sensor_type}_{device_id_underscore}"
+        )
 
         name_template = config.get(
             "name_template", f"{sensor_type} {device_id_underscore}"
