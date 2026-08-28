@@ -27,7 +27,6 @@
  * @module ramses-messages-viewer
  * @extends HTMLElement
  */
-import * as logger from '../../helpers/logger.js';
 
 /**
  * Ramses Messages Viewer component.

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from custom_components.ramses_extras.features.device_simulator import system_config
 from custom_components.ramses_extras.features.device_simulator.system_config import (
     ConfigProfileStore,
     SystemConfigProfile,
@@ -298,12 +299,14 @@ class TestRestoreDefaultTimeouts:
 
     def test_restore_without_original_values(self) -> None:
         """Test restore when no original values stored."""
-        # Clear any stored original values
-        if hasattr(apply_timeout_scale, "_original_values"):
-            delattr(apply_timeout_scale, "_original_values")
-
-        result = restore_default_timeouts()
-        assert result is False
+        # Clear the module-level global that tracks stored originals
+        saved = system_config._original_timeout_values
+        system_config._original_timeout_values = None
+        try:
+            result = restore_default_timeouts()
+            assert result is False
+        finally:
+            system_config._original_timeout_values = saved
 
     @pytest.mark.skip(reason="Requires ramses_rf to be installed")
     def test_restore_success(self) -> None:

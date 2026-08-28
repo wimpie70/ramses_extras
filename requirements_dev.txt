@@ -1,13 +1,13 @@
 # Requirements to dev the source code (matching ramses_cc)
-# - last checked/updated: 2026-08-09 (c.f. HA 2026.8.1)
+# - last checked/updated: 2026-08-28 (c.f. HA 2026.8.1)
 #
 
 # requirements (dependencies) are in manifest.json
 # - pip list | grep -E 'ramses|serial'
 
-  aiousbwatcher         >= 1.1.1                 # as per: manifest.json latest: 1.1.1
-  pyserial-asyncio-fast >= 0.14                  # as per: manifest.json latest: 0.16
-  ramses_rf             == 0.52.2                # latest: 0.52.2 (as of 2025-10-27)
+  aiousbwatcher         >= 1.1.2                 # as per: manifest.json latest: 1.1.2
+  pyserial-asyncio-fast >= 0.16                  # as per: manifest.json latest: 0.16
+  ramses_rf             == 0.60.1                # latest: 0.60.1 (as of 2026-08-28)
 
 # Note: hassfest validation is done via GitHub Actions (home-assistant/actions/hassfest@master)
 # For local validation, use HACS or Home Assistant development tools
