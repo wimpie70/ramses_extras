@@ -121,7 +121,15 @@ def test_patch_want_echo_applies_patch():
     mock_module = MagicMock()
     mock_module.WantEcho = mock_want_echo
 
-    with patch.dict(sys.modules, {"ramses_tx.protocol_fsm": mock_module}):
+    # Neutralise the new-path module so _import_state_class falls through
+    # to the old path (ramses_tx.protocol_fsm) where our mock lives.
+    with patch.dict(
+        sys.modules,
+        {
+            "ramses_tx.protocol.fsm": None,
+            "ramses_tx.protocol_fsm": mock_module,
+        },
+    ):
         ramses_tx_patches._patch_want_echo()
 
         # Verify pkt_rcvd was replaced with a new callable
@@ -176,7 +184,15 @@ def test_patched_pkt_rcvd_sent_cmd_none():
     mock_module = MagicMock()
     mock_module.WantEcho = mock_want_echo
 
-    with patch.dict(sys.modules, {"ramses_tx.protocol_fsm": mock_module}):
+    # Neutralise the new-path module so _import_state_class falls through
+    # to the old path (ramses_tx.protocol_fsm) where our mock lives.
+    with patch.dict(
+        sys.modules,
+        {
+            "ramses_tx.protocol.fsm": None,
+            "ramses_tx.protocol_fsm": mock_module,
+        },
+    ):
         ramses_tx_patches._patch_want_echo()
 
         # Call the patched function
