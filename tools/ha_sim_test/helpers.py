@@ -165,6 +165,9 @@ def call_service(
     attempt, does a fast HTTP ping to check if HA is reachable — if not,
     waits up to 15s for it to come back (avoids wasting a 30s HTTP
     timeout on a container that's still restarting).
+
+    On 401 Unauthorized, automatically refreshes the token (the old
+    token may be stale after a container restart).
     """
     ha_url = get_current_instance().ha_url
     url = f"{ha_url}/api/services/{domain}/{service}"
@@ -176,13 +179,14 @@ def call_service(
     if not is_ha_ready():
         wait_for(is_ha_ready, timeout=15, interval=1, msg="for HA before call_service")
 
+    current_token = token
     for attempt in range(3):
         req = urllib.request.Request(
             url,
             data=body,
             method="POST",
             headers={
-                "Authorization": f"Bearer {token}",
+                "Authorization": f"Bearer {current_token}",
                 "Content-Type": "application/json",
             },
         )
@@ -191,6 +195,10 @@ def call_service(
             content = resp.read()
             return json.loads(content) if content else {}
         except urllib.error.HTTPError as e:
+            if e.code == 401 and attempt < 2:
+                current_token = get_token()
+                print("  call_service: refreshed token after 401")
+                continue
             err_body = e.read().decode()
             raise RuntimeError(f"HTTP {e.code}: {err_body}") from e
         except urllib.error.URLError as e:
@@ -213,13 +221,23 @@ def call_service(
 # ---------------------------------------------------------------------------
 # Websocket API helpers (for profile loading)
 # ---------------------------------------------------------------------------
-async def ws_send(token: str, msg: dict, *, retries: int = 3) -> dict:
+async def ws_send(
+    token: str,
+    msg: dict,
+    *,
+    retries: int = 3,
+    refresh_token: Callable[[], str] | None = None,
+) -> dict:
     """Send a websocket message and return the response.
 
     Retries up to *retries* times with backoff for transient timeouts
     and connection errors (common under parallel container contention
     where HA may be too busy to respond within the 30s websocket
     timeout, or may close the connection during a reload).
+
+    If *refresh_token* is provided, it is called to acquire a fresh
+    token on ``auth_invalid`` errors (e.g. after a container restart
+    that invalidates the previous OAuth token).
 
     Before the first attempt, does a fast HTTP ping to check if HA is
     reachable — if not, waits up to 15s for it to come back (avoids
@@ -237,10 +255,11 @@ async def ws_send(token: str, msg: dict, *, retries: int = 3) -> dict:
     # reload" case (recovers in 1-3s), longer for persistent issues.
     _backoff = (1, 3, 5)
 
+    current_token = token
     last_err: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            return await _ws_send_once(token, msg)
+            return await _ws_send_once(current_token, msg)
         except (TimeoutError, aiohttp.ClientError, RuntimeError) as e:
             last_err = e
             err = str(e)
@@ -249,6 +268,13 @@ async def ws_send(token: str, msg: dict, *, retries: int = 3) -> dict:
             # connection issues.
             if "unknown_command" in err or "WS error:" in err:
                 raise
+            # On auth_invalid, refresh the token before retrying.
+            if "auth_invalid" in err:
+                if refresh_token is not None:
+                    current_token = refresh_token()
+                else:
+                    current_token = get_token()
+                print("  ws_send: refreshed token after auth_invalid")
             if attempt < retries:
                 import asyncio as _asyncio
 
@@ -320,6 +346,7 @@ async def load_profile_yaml(
     preload_schema: bool = True,
     reload_ramses: bool = True,
     enable_eavesdrop: bool = False,
+    refresh_token: Callable[[], str] | None = None,
 ) -> dict:
     """Load a custom YAML profile via the device_simulator scenario.
 
@@ -353,6 +380,7 @@ async def load_profile_yaml(
                         "enable_eavesdrop": enable_eavesdrop,
                     },
                 },
+                refresh_token=refresh_token,
             )
             _CREATED_PROFILES.add(profile_name)
             return result
