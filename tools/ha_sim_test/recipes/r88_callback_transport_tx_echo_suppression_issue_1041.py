@@ -154,18 +154,29 @@ except Exception as e:
         # ── 5. Read packet log after the command and check for duplicates ─
         post_code = """
 import json, subprocess
+from datetime import datetime, timedelta
 try:
     result = subprocess.run(
-        ["tail", "-30", "/config/packet_log.log"],
+        ["tail", "-50", "/config/packet_log.log"],
         capture_output=True, text=True, timeout=5
     )
     lines = result.stdout.strip().splitlines()
-    # Count RQ lines with the same code+src+dst+payload (echo duplicates)
+    # Only count RQ lines from the last 10 seconds (echo loops happen
+    # within seconds; legitimate retries from parallel test runs are
+    # spread over minutes and should not be flagged as duplicates).
+    cutoff = datetime.utcnow() - timedelta(seconds=10)
     from collections import Counter
     rq_keys = []
     for line in lines:
         parts = line.split()
         if len(parts) >= 6 and "RQ" in parts:
+            # Parse timestamp (first field, ISO format)
+            try:
+                ts = datetime.fromisoformat(parts[0].replace("Z", ""))
+            except (ValueError, IndexError):
+                continue
+            if ts < cutoff:
+                continue
             # Key: verb + src + dst + code + payload
             # parts format: timestamp RSSI verb seq src dst via code len payload
             # or:           timestamp ... verb seq src dst via code len payload
