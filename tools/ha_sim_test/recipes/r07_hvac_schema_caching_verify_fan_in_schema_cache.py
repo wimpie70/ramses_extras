@@ -78,7 +78,30 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
             f"schema keys={list(schema.keys())}",
         )
 
-        # Trigger a save by calling force_update
+        # Trigger a save by calling force_update.
+        # In parallel mode, the FAN entry may be in the config entry
+        # schema but not yet in the client_state schema (ramses_rf
+        # hasn't processed it).  Wait for the FAN to appear in storage
+        # before calling force_update, otherwise the saved schema will
+        # be missing the FAN entry.
+        def _fan_in_storage() -> bool:
+            s = get_ramses_storage()
+            cs = s.get("client_state", {})
+            sch = cs.get("schema", {})
+            return FAN in sch
+
+        if not _fan_in_storage():
+            print("  Waiting for FAN to appear in client_state schema...")
+            from ..helpers import wait_for
+
+            wait_for(
+                _fan_in_storage,
+                timeout=15,
+                interval=2,
+                msg="for FAN in client_state schema",
+                floor=5.0,
+            )
+
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
             print("  force_update called")
