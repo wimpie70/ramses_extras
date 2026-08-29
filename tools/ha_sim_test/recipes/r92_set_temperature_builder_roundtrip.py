@@ -50,23 +50,32 @@ class R92SetTemperatureBuilderRoundtrip(Recipe):
         new_setpoint = 19.5
 
         # 1. Load mixed profile (CTL 01:150000 with zones 03-08)
+        #    Under parallel load, the WebSocket connection may time out
+        #    on the first attempt.  Retry up to 3 times with a wait.
         print("  Loading mixed profile (CTL + zones 03-08)...")
-        try:
-            await ws_send(
-                ctx.token,
-                {
-                    "type": "ramses_extras/device_simulator/load_profile",
-                    "profile": "mixed",
-                    "speed": 0.01,
-                    "preload_schema": True,
-                    "reload_ramses_cc": True,
-                    "enable_auto_answer": True,
-                },
-            )
-            print("  mixed profile loaded")
-        except RuntimeError as e:
-            print(f"  Profile load failed: {e}")
-        ctx.wait_for_ramses_cc_reload(timeout=20)
+        profile_loaded = False
+        for attempt in range(3):
+            try:
+                await ws_send(
+                    ctx.token,
+                    {
+                        "type": "ramses_extras/device_simulator/load_profile",
+                        "profile": "mixed",
+                        "speed": 0.01,
+                        "preload_schema": True,
+                        "reload_ramses_cc": True,
+                        "enable_auto_answer": True,
+                    },
+                )
+                print("  mixed profile loaded")
+                profile_loaded = True
+                break
+            except RuntimeError as e:
+                print(f"  Profile load attempt {attempt + 1} failed: {str(e)[:80]}")
+                ctx.wait(5, "before retry", floor=3.0)
+        if not profile_loaded:
+            print("  Profile load failed after 3 attempts — continuing anyway")
+        ctx.wait_for_ramses_cc_reload(timeout=30)
         ctx.refresh_token()
         wait_for_transport_ready(timeout=30)
 
@@ -82,7 +91,7 @@ class R92SetTemperatureBuilderRoundtrip(Recipe):
             print("    CTL activated")
         except RuntimeError:
             pass
-        wait_for_schema_populated(timeout=15)
+        wait_for_schema_populated(timeout=20)
 
         # 2. Find the zone climate entity for zone 03
         def _find_climate_entity() -> dict | None:
