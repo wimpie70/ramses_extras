@@ -48,12 +48,28 @@ dto = build_dto(
         data={"fan_mode": "laag", "strategy": strategy},
     )
 )
-print(json.dumps({"payload": dto.payload}))
+climarad_dto = build_dto(
+    Command(
+        src=Address("37:170000"),
+        dst=Address("32:150000"),
+        action=Action.SET_FAN_MODE,
+        data={"fan_mode": "auto", "scheme": "climarad"},
+    )
+)
+print(json.dumps({
+    "payload": dto.payload,
+    "climarad_payload": climarad_dto.payload,
+}))
 """
         )
         ctx.check(
             "Orcon Dutch alias 'laag' builds 000107",
             alias_result.get("payload") == "000107",
+            f"result={alias_result}",
+        )
+        ctx.check(
+            "ClimaRad scheme builds Minibox payload 000506",
+            alias_result.get("climarad_payload") == "000506",
             f"result={alias_result}",
         )
 
