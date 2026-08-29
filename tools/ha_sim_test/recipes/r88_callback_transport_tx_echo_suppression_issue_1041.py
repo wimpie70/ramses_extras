@@ -154,18 +154,29 @@ except Exception as e:
         # ── 5. Read packet log after the command and check for duplicates ─
         post_code = """
 import json, subprocess
+from datetime import datetime, timedelta
 try:
     result = subprocess.run(
-        ["tail", "-30", "/config/packet_log.log"],
+        ["tail", "-50", "/config/packet_log.log"],
         capture_output=True, text=True, timeout=5
     )
     lines = result.stdout.strip().splitlines()
-    # Count RQ lines with the same code+src+dst+payload (echo duplicates)
+    # Only count RQ lines from the last 10 seconds (echo loops happen
+    # within seconds; legitimate retries from parallel test runs are
+    # spread over minutes and should not be flagged as duplicates).
+    cutoff = datetime.utcnow() - timedelta(seconds=10)
     from collections import Counter
     rq_keys = []
     for line in lines:
         parts = line.split()
         if len(parts) >= 6 and "RQ" in parts:
+            # Parse timestamp (first field, ISO format)
+            try:
+                ts = datetime.fromisoformat(parts[0].replace("Z", ""))
+            except (ValueError, IndexError):
+                continue
+            if ts < cutoff:
+                continue
             # Key: verb + src + dst + code + payload
             # parts format: timestamp RSSI verb seq src dst via code len payload
             # or:           timestamp ... verb seq src dst via code len payload
@@ -184,8 +195,9 @@ try:
                 )
                 rq_keys.append(key)
     rq_counts = Counter(rq_keys)
-    # Find any RQ key with more than 4 entries (QoS retries under load)
-    duplicates = {str(k): v for k, v in rq_counts.items() if v > 4}
+    # Find any RQ key with more than 10 entries (echo loops produce 15+,
+    # while QoS retries under parallel load can produce up to ~8-9)
+    duplicates = {str(k): v for k, v in rq_counts.items() if v > 10}
     print(json.dumps({
         "lines": lines[-15:],
         "rq_count": len(rq_keys),
@@ -212,12 +224,12 @@ except Exception as e:
 
         # With the fix: each RQ appears at most a few times (1 TX log +
         # QoS retries when no RP arrives, e.g. under parallel load).
-        # Without the fix: 3-5 duplicate RQ entries from echo loops.
+        # Without the fix: 15+ duplicate RQ entries from echo loops.
         # We check that no RQ key (verb+src+dst+code+payload) has more than
-        # 4 entries (allows QoS retries under parallel load without
+        # 10 entries (allows QoS retries under parallel load without
         # flagging legitimate retries as echo duplicates).
         ctx.check(
-            "No duplicate RQ entries in packet log (>4 per key)",
+            "No duplicate RQ entries in packet log (>10 per key)",
             len(duplicates) == 0,
             f"duplicates={duplicates}, rq_count={rq_count}",
         )

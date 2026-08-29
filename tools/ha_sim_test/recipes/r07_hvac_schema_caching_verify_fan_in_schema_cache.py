@@ -60,11 +60,11 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
                 )
             except RuntimeError as e:
                 print(f"  Profile reload failed: {e}")
-            ctx.wait_for_ramses_cc_reload(timeout=20)
+            ctx.wait_for_ramses_cc_reload(timeout=30)
             ctx.refresh_token()
-            from ..helpers import wait_for_schema_populated
+            from ..helpers import wait_for, wait_for_schema_populated
 
-            wait_for_schema_populated(min_keys=5, timeout=15)
+            wait_for_schema_populated(min_keys=5, timeout=20)
 
         schema = get_schema_retry()
         fan_in_schema = FAN in schema
@@ -78,14 +78,37 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
             f"schema keys={list(schema.keys())}",
         )
 
-        # Trigger a save by calling force_update
+        # Trigger a save by calling force_update.
+        # In parallel mode, the FAN entry may be in the config entry
+        # schema but not yet in the client_state schema (ramses_rf
+        # hasn't processed it).  Wait for the FAN to appear in storage
+        # before calling force_update, otherwise the saved schema will
+        # be missing the FAN entry.
+        # Under parallel load, ramses_rf may take 30-40s to process
+        # the FAN device from the simulator, so use a generous timeout.
+        def _fan_in_storage() -> bool:
+            s = get_ramses_storage()
+            cs = s.get("client_state", {})
+            sch = cs.get("schema", {})
+            return FAN in sch
+
+        if not _fan_in_storage():
+            print("  Waiting for FAN to appear in client_state schema...")
+            wait_for(
+                _fan_in_storage,
+                timeout=45,
+                interval=3,
+                msg="for FAN in client_state schema",
+                floor=10.0,
+            )
+
         try:
             call_service(ctx.token, "ramses_cc", "force_update")
             print("  force_update called")
         except RuntimeError as e:
             print(f"  force_update failed: {e}")
 
-        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
+        ctx.wait_for_schema_stable(timeout=15, msg="for save_client_state")
 
         storage = get_ramses_storage()
 

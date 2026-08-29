@@ -144,6 +144,85 @@ class R50DeviceHealthTrackingIssue767(Recipe):
             print(f"  sync_topology failed: {e}")
         ctx.wait(5, "for scan_state to be persisted", floor=3.0)
 
+        # 1b. Reset last_seen for all devices in scan_state to "now".
+        #     A previous test run may have left stale last_seen values
+        #     (e.g. 10 days ago from the last_seen manipulation below),
+        #     which would cause the "no devices message shown when
+        #     healthy" check to fail.  We reset all last_seen timestamps
+        #     to the current time, then restart HA to pick up the clean
+        #     state.
+        print("  Resetting last_seen for all devices in scan_state...")
+        try:
+            reset_code = """
+import json
+from datetime import datetime, timezone
+p = '/config/.storage/ramses_cc'
+d = json.load(open(p))
+discovery = d.get('data', {}).get('discovery', {})
+scan_state_str = discovery.get('scan_state', '')
+if scan_state_str:
+    scan_state = json.loads(scan_state_str)
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+    count = 0
+    for dev in scan_state.get('devices', []):
+        if 'last_seen' in dev:
+            dev['last_seen'] = now
+            count += 1
+    discovery['scan_state'] = json.dumps(scan_state)
+    d['data']['discovery'] = discovery
+    json.dump(d, open(p, 'w'), indent=2)
+    print(json.dumps({"ok": True, "reset": count}))
+else:
+    print(json.dumps({"ok": False, "error": "no scan_state"}))
+"""
+            r = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    get_current_instance().name,
+                    "python3",
+                    "-c",
+                    reset_code,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            print(f"    {r.stdout.strip()}")
+        except Exception as e:  # noqa: BLE001
+            print(f"    Warning: could not reset last_seen: {e}")
+
+        # Restart HA to pick up the reset scan state.  Without this,
+        # the coordinator's in-memory state (with stale last_seen)
+        # overwrites the .storage file on the next save cycle.
+        print("  Restarting HA to pick up reset scan state...")
+        import subprocess as sp
+
+        sp.run(
+            ["docker", "kill", get_current_instance().name],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+        sp.run(
+            ["docker", "start", get_current_instance().name],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+        wait_for_ha_ready(timeout=60, msg="for HA to restart after scan reset")
+        ctx.refresh_token()
+        ctx.wait_for_ramses_cc_reload(timeout=20)
+        ctx.refresh_token()
+        wait_for_transport_ready(timeout=30)
+        wait_for(
+            lambda: len(grep_ha_log("DiscoveryManager: started", since_lines=200)) > 0,
+            timeout=30,
+            interval=2,
+            msg="for DiscoveryManager to start after restart",
+            floor=5.0,
+        )
+
         # 2. Verify schema loaded
         schema = get_schema_retry()
         ctx.check(

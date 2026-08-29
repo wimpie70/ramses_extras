@@ -247,8 +247,9 @@ class R81ConfigEntryMigrationV2ToV3(Recipe):
 
         wait_for(
             _version_is_3,
-            timeout=15,
+            timeout=30,
             interval=1,
+            floor=10,
             msg="for config entry version=3 to flush to disk",
         )
 
