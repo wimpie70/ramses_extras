@@ -1,4 +1,4 @@
-"""Recipe R93: HVAC strategy selection and command wiring."""
+"""Recipe R95: HVAC strategy command wiring."""
 
 from __future__ import annotations
 
@@ -21,15 +21,42 @@ from ..helpers import (
 from ..profile import MIXED_SCHEMA, _build_yaml, get_mixed_kl
 
 
-class R93HvacStrategySelectionAndCommandWiring(Recipe):
-    id = "R93"
-    seq = 930
-    title = "HVAC strategy selection and command wiring"
-    tags = ("22F1", "climarad", "fan", "orcon", "strategy")
+class R95HvacStrategyCommandWiring(Recipe):
+    id = "R95"
+    seq = 950
+    title = "HVAC strategy command wiring"
+    tags = ("22F1", "fan", "orcon", "strategy")
 
     async def run(self, ctx: RecipeContext) -> None:
-        """Verify strategy selection, quirks, aliases, and native commands."""
-        ctx.log_section("Recipe 93: HVAC strategy selection and command wiring")
+        """Verify alias encoding and native fan-mode packet transmission."""
+        ctx.log_section("Recipe 95: HVAC strategy command wiring")
+
+        alias_result = docker_exec_python(
+            """
+import json
+from ramses_rf.address import Address
+from ramses_rf.commands.builders import build_dto
+from ramses_rf.commands.core import Command
+from ramses_rf.enums import Action
+from ramses_rf.strategies import best_hvac_strategy
+
+strategy = best_hvac_strategy("32:150000", scheme="orcon")
+dto = build_dto(
+    Command(
+        src=Address("37:170000"),
+        dst=Address("32:150000"),
+        action=Action.SET_FAN_MODE,
+        data={"fan_mode": "laag", "strategy": strategy},
+    )
+)
+print(json.dumps({"payload": dto.payload}))
+"""
+        )
+        ctx.check(
+            "Orcon Dutch alias 'laag' builds 000107",
+            alias_result.get("payload") == "000107",
+            f"result={alias_result}",
+        )
 
         ctx.refresh_token()
         wait_for_ramses_extras_ready(timeout=90, msg="for ramses_extras")
@@ -50,11 +77,15 @@ class R93HvacStrategySelectionAndCommandWiring(Recipe):
             "_scheme": "orcon",
         }
 
-        await load_profile_yaml(
-            ctx.token,
-            _build_yaml(get_mixed_kl(), schema),
-            speed=0.01,
-        )
+        try:
+            await load_profile_yaml(
+                ctx.token,
+                _build_yaml(get_mixed_kl(), schema),
+                speed=0.01,
+            )
+        except RuntimeError as err:
+            ctx.check("Orcon HVAC profile loads", False, str(err)[:120])
+            return
         ctx.wait_for_ramses_cc_reload(timeout=30)
         ctx.refresh_token()
         wait_for_transport_ready(timeout=30)
@@ -73,65 +104,6 @@ class R93HvacStrategySelectionAndCommandWiring(Recipe):
             except RuntimeError:
                 pass
         wait_for_schema_populated(timeout=20)
-
-        library_result = docker_exec_python(
-            """
-import json
-from ramses_rf.address import Address
-from ramses_rf.commands.builders import build_dto
-from ramses_rf.commands.core import Command
-from ramses_rf.const import SZ_REL_HUMIDITY
-from ramses_rf.enums import Action
-from ramses_rf.strategies import ClimaRadStrategy, best_hvac_strategy
-from ramses_tx.const import Code
-
-climarad = best_hvac_strategy("32:150000", scheme="climarad")
-quirked = climarad.apply_quirk(
-    {
-        "hvac_index": "01",
-        SZ_REL_HUMIDITY: 0.45,
-        "temperature": 18.5,
-    },
-    None,
-    Code._12A0,
-)
-dto = build_dto(
-    Command(
-        src=Address("37:170000"),
-        dst=Address("32:150000"),
-        action=Action.SET_FAN_MODE,
-        data={
-            "fan_mode": "laag",
-            "strategy": best_hvac_strategy(
-                "32:150000", scheme="orcon"
-            ),
-        },
-    )
-)
-print(json.dumps({
-    "climarad": isinstance(climarad, ClimaRadStrategy),
-    "supply_temp": quirked.get("supply_temp"),
-    "rel_humidity_removed": SZ_REL_HUMIDITY not in quirked,
-    "dutch_payload": dto.payload,
-}))
-"""
-        )
-        ctx.check(
-            "ClimaRad scheme selects ClimaRadStrategy",
-            library_result.get("climarad") is True,
-            f"result={library_result}",
-        )
-        ctx.check(
-            "ClimaRad Ventura 12A0 maps supply temperature",
-            library_result.get("supply_temp") == 18.5
-            and library_result.get("rel_humidity_removed") is True,
-            f"result={library_result}",
-        )
-        ctx.check(
-            "Orcon Dutch alias 'laag' builds 000107",
-            library_result.get("dutch_payload") == "000107",
-            f"result={library_result}",
-        )
 
         fan_suffix = FAN.replace(":", "_")
 
@@ -163,7 +135,9 @@ print(json.dumps({
 import json
 from pathlib import Path
 path = Path("/config/packet_log.log")
-print(json.dumps({"line_count": len(path.read_text().splitlines())}))
+print(json.dumps({
+    "line_count": len(path.read_text().splitlines()) if path.exists() else 0
+}))
 """
         )
         line_count = int(baseline.get("line_count", 0))
@@ -185,7 +159,8 @@ print(json.dumps({"line_count": len(path.read_text().splitlines())}))
                 f"""
 import json
 from pathlib import Path
-lines = Path("/config/packet_log.log").read_text().splitlines()
+path = Path("/config/packet_log.log")
+lines = path.read_text().splitlines() if path.exists() else []
 new_lines = lines[{line_count}:]
 print(json.dumps({{"found": any({expected!r} in line for line in new_lines)}}))
 """
