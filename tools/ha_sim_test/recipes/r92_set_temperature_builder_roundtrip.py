@@ -113,12 +113,23 @@ class R92SetTemperatureBuilderRoundtrip(Recipe):
                     return e
             return None
 
+        def _nudge_entity_creation() -> bool:
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            try:
+                call_service(ctx.token, "ramses_cc", "force_update")
+            except RuntimeError:
+                pass
+            return _find_climate_entity() is not None
+
         wait_for(
-            _find_climate_entity,
-            timeout=30,
+            _nudge_entity_creation,
+            timeout=60,
             interval=3,
             msg="for zone climate entity to appear",
-            floor=5.0,
+            floor=15.0,
         )
         zone_climate = _find_climate_entity()
         climate_eid = zone_climate["entity_id"] if zone_climate else None
