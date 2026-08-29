@@ -61,15 +61,17 @@ class R15VerifyStorageramsesCcHasHvacSchemaKey(Recipe):
                 )
             except RuntimeError as e:
                 print(f"  Profile reload failed: {e}")
-            ctx.wait_for_ramses_cc_reload(timeout=20)
+            ctx.wait_for_ramses_cc_reload(timeout=30)
             ctx.refresh_token()
             from ..helpers import wait_for, wait_for_schema_populated
 
-            wait_for_schema_populated(min_keys=5, timeout=15)
+            wait_for_schema_populated(min_keys=5, timeout=20)
 
             # Wait for FAN to appear in client_state schema before
             # calling force_update (parallel mode timing — ramses_rf
             # may not have processed the FAN device yet).
+            # Under parallel load, ramses_rf may take 30-40s to process
+            # the FAN device from the simulator, so use a generous timeout.
             def _fan_in_storage() -> bool:
                 s = get_ramses_storage()
                 cs = s.get("client_state", {})
@@ -80,10 +82,10 @@ class R15VerifyStorageramsesCcHasHvacSchemaKey(Recipe):
                 print("  Waiting for FAN to appear in client_state schema...")
                 wait_for(
                     _fan_in_storage,
-                    timeout=15,
-                    interval=2,
+                    timeout=45,
+                    interval=3,
                     msg="for FAN in client_state schema",
-                    floor=5.0,
+                    floor=10.0,
                 )
 
             # Trigger a save so client_state.schema is persisted
@@ -91,7 +93,7 @@ class R15VerifyStorageramsesCcHasHvacSchemaKey(Recipe):
                 call_service(ctx.token, "ramses_cc", "force_update")
             except RuntimeError:
                 pass
-            ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
+            ctx.wait_for_schema_stable(timeout=15, msg="for save_client_state")
 
         storage = get_ramses_storage()
 

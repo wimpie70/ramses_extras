@@ -60,11 +60,11 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
                 )
             except RuntimeError as e:
                 print(f"  Profile reload failed: {e}")
-            ctx.wait_for_ramses_cc_reload(timeout=20)
+            ctx.wait_for_ramses_cc_reload(timeout=30)
             ctx.refresh_token()
-            from ..helpers import wait_for_schema_populated
+            from ..helpers import wait_for, wait_for_schema_populated
 
-            wait_for_schema_populated(min_keys=5, timeout=15)
+            wait_for_schema_populated(min_keys=5, timeout=20)
 
         schema = get_schema_retry()
         fan_in_schema = FAN in schema
@@ -84,6 +84,8 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
         # hasn't processed it).  Wait for the FAN to appear in storage
         # before calling force_update, otherwise the saved schema will
         # be missing the FAN entry.
+        # Under parallel load, ramses_rf may take 30-40s to process
+        # the FAN device from the simulator, so use a generous timeout.
         def _fan_in_storage() -> bool:
             s = get_ramses_storage()
             cs = s.get("client_state", {})
@@ -92,14 +94,12 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
 
         if not _fan_in_storage():
             print("  Waiting for FAN to appear in client_state schema...")
-            from ..helpers import wait_for
-
             wait_for(
                 _fan_in_storage,
-                timeout=15,
-                interval=2,
+                timeout=45,
+                interval=3,
                 msg="for FAN in client_state schema",
-                floor=5.0,
+                floor=10.0,
             )
 
         try:
@@ -108,7 +108,7 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
         except RuntimeError as e:
             print(f"  force_update failed: {e}")
 
-        ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
+        ctx.wait_for_schema_stable(timeout=15, msg="for save_client_state")
 
         storage = get_ramses_storage()
 

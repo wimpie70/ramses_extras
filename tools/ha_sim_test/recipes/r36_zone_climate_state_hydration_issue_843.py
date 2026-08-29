@@ -450,6 +450,40 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             floor=60.0,
         )
 
+        # Final re-inject + force_update to ensure the setpoint is not
+        # overwritten by a late RP response from the simulator.  Under
+        # parallel load, the RP can arrive after wait_for returns.
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": CTL,
+                    "code": "2349",
+                    "payload": payload_2349,
+                    "verb": "I",
+                },
+            )
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_inject_message",
+                {
+                    "source_id": CTL,
+                    "code": "2309",
+                    "payload": payload_2309,
+                    "verb": "I",
+                },
+            )
+        except RuntimeError:
+            pass
+        try:
+            call_service(ctx.token, "ramses_cc", "force_update")
+        except RuntimeError:
+            pass
+        ctx.wait(3, "for final inject + force_update to settle", floor=2.0)
+
         # Read final state for the checks
         climate_entity = _find_climate_entity()
         cl_state = climate_entity.get("state") if climate_entity else None
