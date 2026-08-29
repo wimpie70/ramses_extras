@@ -13,7 +13,6 @@ from ..helpers import (
     get_entities,
     load_profile_yaml,
     wait_for,
-    wait_for_ramses_extras_ready,
     wait_for_schema_populated,
     wait_for_transport_ready,
     ws_send,
@@ -59,7 +58,6 @@ print(json.dumps({"payload": dto.payload}))
         )
 
         ctx.refresh_token()
-        wait_for_ramses_extras_ready(timeout=90, msg="for ramses_extras")
 
         schema = deepcopy(MIXED_SCHEMA)
         schema[FAN] = {
