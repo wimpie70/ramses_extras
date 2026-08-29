@@ -10,6 +10,7 @@ from ..base import Recipe, RecipeContext
 from ..const import FAN
 from ..helpers import (
     call_service,
+    docker_exec_python,
     get_schema_retry,
     load_profile_yaml,
     wait_for,
@@ -106,27 +107,58 @@ class R96NonFaked2411DisplayDetection(Recipe):
             floor=5.0,
         )
 
+        def _log_line_count() -> int:
+            result = docker_exec_python(
+                """
+import json
+from pathlib import Path
+path = Path("/config/home-assistant.log")
+print(json.dumps({"count": len(path.read_text().splitlines())}))
+"""
+            )
+            return int(result.get("count", 0))
+
+        def _has_detection_since(line_count: int, device_id: str) -> bool:
+            result = docker_exec_python(
+                f"""
+import json
+from pathlib import Path
+lines = Path("/config/home-assistant.log").read_text().splitlines()
+new_lines = lines[{line_count}:]
+found = any(
+    {device_id!r} in line
+    and "Rule_HVAC_2411_Request_Source_to_DIS" in line
+    for line in new_lines
+)
+print(json.dumps({{"found": found}}))
+"""
+            )
+            return result.get("found") is True
+
+        physical_baseline = _log_line_count()
         _inject_2411(ctx, PHYSICAL_DISPLAY)
         detected = wait_for(
-            lambda: get_schema_retry().get(PHYSICAL_DISPLAY, {}).get("_class") == "DIS",
+            lambda: _has_detection_since(physical_baseline, PHYSICAL_DISPLAY),
             timeout=20,
             interval=2,
-            msg="for physical REM to be classified as DIS",
+            msg="for physical REM DIS evidence event",
             floor=5.0,
         )
         ctx.check(
-            "Non-faked REM requesting 2411 is classified as DIS",
+            "Non-faked REM requesting 2411 emits DIS evidence",
             detected,
-            f"entry={get_schema_retry().get(PHYSICAL_DISPLAY)}",
+            f"device_id={PHYSICAL_DISPLAY}",
         )
 
+        faked_baseline = _log_line_count()
         for _ in range(3):
             _inject_2411(ctx, FAKED_REMOTE)
         ctx.wait(5, "for faked REM requests to be evaluated", floor=3.0)
 
         faked_entry = get_schema_retry().get(FAKED_REMOTE, {})
+        faked_detected = _has_detection_since(faked_baseline, FAKED_REMOTE)
         ctx.check(
             "Faked REM requesting 2411 remains REM",
-            faked_entry.get("_class") == "REM",
-            f"entry={faked_entry}",
+            faked_entry.get("_class") == "REM" and not faked_detected,
+            f"entry={faked_entry}, detection_event={faked_detected}",
         )
