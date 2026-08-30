@@ -768,9 +768,12 @@ Step 6e is passive — it waits for the FAN to send a directed I/RP to a
 REM, which may take hours or never happen if the REM doesn't poll the
 FAN.  6f actively probes each 37:/29: device against each known FAN
 (32:) by sending `RQ 22F1` (fan_mode query) with `from_id=<REM>` to the
-FAN via the new `probe_hvac_binding` service.  If the FAN responds with
-a directed `RP 22F1` to the REM, the scan engine sets `bound_to`
-(passive listener sees the RP) → "belongs to" comment → `remotes[]`.
+FAN via the new `probe_hvac_binding` service.  The scan engine's
+REM→FAN inference catches the directed RQ itself (REM is source, FAN
+is destination) and sets `bound_to` → "belongs to" comment →
+`remotes[]`.  No `RP 22F1` response from the FAN is needed — the RQ
+alone is proof of binding because a REM only sends directed packets
+to its 1FC9-paired FAN.
 
 **Implementation:**
 - New service `ramses_cc.probe_hvac_binding` (registered when
