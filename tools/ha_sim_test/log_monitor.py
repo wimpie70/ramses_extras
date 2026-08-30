@@ -212,6 +212,10 @@ EXPECTED_WARNINGS: list[str] = [
     # when the service call times out under parallel load (R68).
     # The task completes eventually — the timeout is a sim limitation.
     "api service call ramses_cc.probe_hvac_binding",
+    # ramses_cc: DiscoveryManager weak-signal warning — the simulator
+    # generates synthetic RSSI values (e.g. -82 dBm) that trigger the
+    # weak-signal heuristic.  Not a real RF issue, just a sim artifact.
+    "weak signal for",
 ]
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
