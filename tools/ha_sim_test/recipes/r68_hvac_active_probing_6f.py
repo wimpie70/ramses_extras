@@ -3,22 +3,31 @@
 Tests the ``probe_hvac_binding`` service which actively probes HVAC
 topology by sending spoofed ``RQ 22F1`` from 37: devices to 32: FANs.
 
-When the FAN responds with a directed ``RP 22F1``, the scan engine's
-passive listener catches it and sets ``bound_to`` on the 37: device
-→ "belongs to" comment → ``remotes[]``/``sensors[]``.
+The scan engine's REM→FAN inference catches the directed ``RQ 22F1``
+itself (REM is source, FAN is destination) and sets ``bound_to`` on
+the 37: device → "belongs to" comment → ``remotes[]``/``sensors[]``.
+No ``RP 22F1`` response from the FAN is needed — the RQ alone is
+proof of binding because a REM only sends directed packets to its
+1FC9-paired FAN.
+
+Note: in normal operation, REMs send ``I 22F1`` (fire-and-forget fan
+mode commands), not ``RQ 22F1``.  The probe service sends a spoofed
+``RQ 22F1`` to actively provoke a directed exchange that the scan
+engine can catch.  The FAN's protocol table allows ``RP 22F1``, so
+the FAN may also respond — but the scan engine sets ``bound_to``
+from the RQ alone (REM→FAN inference path).
 
 This is the HVAC equivalent of forcing a 000C binding table read —
-it actively provokes the FAN to reveal its relationship with the REM
-instead of waiting passively for the REM to poll.
+it actively provokes a directed REM→FAN exchange instead of waiting
+passively for the REM to poll.
 
 This recipe:
 1. Loads a profile with a FAN but NO remotes/sensors (stripped)
 2. Verifies the REM/CO2 are in orphans_hvac (no parent)
 3. Calls probe_hvac_binding service
-4. Verifies the FAN responds with RP 22F1
-5. Verifies the scan engine sets bound_to on the REM
-6. Verifies the "belongs to" comment appears
-7. Verifies the REM is placed in remotes[] after sync
+4. Verifies the scan engine sets bound_to on the REM (from the RQ)
+5. Verifies the "belongs to" comment appears
+6. Verifies the REM is placed in remotes[] after sync
 
 See: phase4_plan.md step 6f
 """
@@ -211,14 +220,19 @@ class R68HvacActiveProbing(Recipe):
             )
             return
 
-        # 4. Wait for the scan engine to process the RP response.
-        #    If the probe service failed (timeout/connection error), the
-        #    device simulator may not respond to the spoofed RQ 22F1.
-        #    Inject a 22F1 RP from FAN to REM to simulate the FAN's
-        #    response — this is what the scan engine's passive listener
-        #    catches to set bound_to on the REM.
+        # 4. Wait for the scan engine to process the RQ 22F1.
+        #    The scan engine's REM→FAN inference catches the directed
+        #    RQ 22F1 itself (REM is source, FAN is destination) and
+        #    sets bound_to on the REM — no RP response needed.
+        #    If the probe service failed (timeout/connection error),
+        #    the RQ may not have been sent.  In that case, inject a
+        #    22F1 RP from FAN to REM as a fallback — the scan engine's
+        #    FAN→REM inference path also sets bound_to (FAN is source,
+        #    REM is destination, verb is RP).
         if service_timed_out or service_connection_error:
-            print("  Injecting 22F1 RP from FAN to REM (simulating FAN response)...")
+            print(
+                "  Injecting 22F1 RP from FAN to REM (fallback for timed-out probe)..."
+            )
             wait_for_transport_ready(timeout=15)
             ctx.wait(2, "for MQTT to stabilise before RP inject", floor=1.0)
             try:
@@ -234,12 +248,12 @@ class R68HvacActiveProbing(Recipe):
                         "dst": REM,
                     },
                 )
-                print("    22F1 RP injected (FAN→REM)")
+                print("    22F1 RP injected (FAN→REM, fallback path)")
             except RuntimeError as e:
                 print(f"    22F1 RP inject failed: {str(e)[:80]}")
             ctx.wait(3, "for 22F1 RP to arrive", floor=2.0)
 
-        ctx.wait(10, "for scan engine to process RP 22F1 response")
+        ctx.wait(10, "for scan engine to process the RQ/RP 22F1")
 
         # 5. Check the schema AFTER probing.
         schema_after = get_schema_retry()
@@ -269,13 +283,16 @@ class R68HvacActiveProbing(Recipe):
         print(f"  REM comment: {rem_comment[:160] if rem_comment else 'None'}")
 
         # 6. Verify the probe results.
-        # The probe sends RQ 22F1 from REM to FAN.  The FAN should
-        # respond with RP 22F1 directed to the REM.  The scan engine
-        # catches this and sets bound_to on the REM.
+        # The probe sends RQ 22F1 from REM to FAN.  The scan engine's
+        # REM→FAN inference catches the directed RQ itself (REM is
+        # source, FAN is destination) and sets bound_to on the REM.
+        # No RP response from the FAN is needed — the RQ alone is
+        # proof of binding.
         #
-        # In the ha-sim environment, the device simulator handles the
-        # RQ/RP exchange.  The key question is whether the scan engine
-        # processes the RP and sets bound_to.
+        # In the ha-sim environment, the device simulator may also
+        # respond with RP 22F1 (FAN→REM), which the scan engine's
+        # FAN→REM inference path would also catch.  But the RQ alone
+        # is sufficient.
 
         has_rem_in_remotes = REM in remotes_after
         has_rem_belongs = "belongs to" in rem_comment.lower()
