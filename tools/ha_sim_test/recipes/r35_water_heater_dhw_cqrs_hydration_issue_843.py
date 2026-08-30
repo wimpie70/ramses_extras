@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL, DHW
@@ -176,9 +177,17 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
         #    periodically because the scan engine may drop packets under
         #    parallel load.
         _1260_retry_count = 0
+        _last_inject_time = 0.0
+        # Minimum seconds (real time) between re-injection bursts.
+        # See R36 for the full rationale: wait_for scales the poll
+        # interval by WAIT_SCALE_POLL (0.08), so interval=3 becomes
+        # ~0.24s.  Without throttling, the recipe fires ~8 service
+        # calls/second, which can overwhelm the HA REST API under
+        # parallel load.
+        _re_inject_interval = 3.0
 
         def _wh_current_temp_hydrated() -> bool:
-            nonlocal _1260_retry_count
+            nonlocal _1260_retry_count, _last_inject_time
             entities = get_entities(ctx.token)
             for e in entities:
                 if not e["entity_id"].startswith("water_heater."):
@@ -187,21 +196,26 @@ class R35WaterHeaterDhwCqrsHydrationIssue843(Recipe):
                 if attrs.get("current_temperature") is not None:
                     return True
             _1260_retry_count += 1
-            if _1260_retry_count % 2 == 0:
-                try:
-                    call_service(
-                        ctx.token,
-                        "ramses_extras",
-                        "device_simulator_inject_message",
-                        {
-                            "source_id": DHW,
-                            "code": "1260",
-                            "payload": "00157C",
-                            "verb": "I",
-                        },
-                    )
-                except RuntimeError:
-                    pass
+            # Throttle re-injection: only re-inject + force_update
+            # every _RE_INJECT_INTERVAL seconds (real time).
+            now = time.monotonic()
+            if now - _last_inject_time < _re_inject_interval:
+                return False
+            _last_inject_time = now
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": DHW,
+                        "code": "1260",
+                        "payload": "00157C",
+                        "verb": "I",
+                    },
+                )
+            except RuntimeError:
+                pass
             try:
                 call_service(ctx.token, "ramses_cc", "force_update")
             except RuntimeError:
