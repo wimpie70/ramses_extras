@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from ..base import Recipe, RecipeContext
 from ..const import CTL
@@ -388,9 +389,18 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
         #    RP response (with a default setpoint) can overwrite our
         #    injected value.
         _force_update_count = 0
+        _last_inject_time = 0.0
+        # Minimum seconds (real time) between re-injection bursts.
+        # wait_for scales the poll interval by WAIT_SCALE_POLL (0.08),
+        # so interval=2 becomes ~0.16s.  Without throttling, the recipe
+        # fires ~31 service calls/second (2 injects + sync + force_update
+        # per poll), which overwhelms the HA REST API under parallel load
+        # and prevents the 2349 packet from ever being processed.
+        # 3s matches the original design intent (interval=2 + 1s slack).
+        _re_inject_interval = 3.0
 
         def _climate_hydrated() -> bool:
-            nonlocal _force_update_count
+            nonlocal _force_update_count, _last_inject_time
             entity = _find_climate_entity()
             if not entity:
                 return False
@@ -404,9 +414,17 @@ class R36ZoneClimateStateHydrationIssue843(Recipe):
             ):
                 return True
             _force_update_count += 1
-            # Re-inject 2349 and 2309 on every poll to overwrite any RP
-            # responses from the simulator's auto-answer that may have
-            # set temp_state.setpoint back to a default value.
+            # Throttle re-injection: only re-inject + sync + force_update
+            # every _RE_INJECT_INTERVAL seconds (real time), not on every
+            # poll.  The poll itself still runs at the scaled interval so
+            # hydration is detected quickly once it happens.
+            now = time.monotonic()
+            if now - _last_inject_time < _re_inject_interval:
+                return False
+            _last_inject_time = now
+            # Re-inject 2349 and 2309 to overwrite any RP responses from
+            # the simulator's auto-answer that may have set
+            # temp_state.setpoint back to a default value.
             try:
                 call_service(
                     ctx.token,
