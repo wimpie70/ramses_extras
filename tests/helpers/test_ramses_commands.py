@@ -109,16 +109,17 @@ async def test_ramses_commands_send_fan_command_not_found(ramses_commands):
 
 @pytest.mark.asyncio
 async def test_send_packet_success(ramses_commands, mock_hass):
-    """Test _send_packet via coordinator client."""
+    """Test _send_packet via coordinator client (new API, PR 1176)."""
     device_id = "32_111111"
     cmd_def = {"code": "1060", "verb": "W", "payload": "00", "description": "Test"}
 
-    # Mock coordinator and client
+    # Mock coordinator and client with async_send_raw_command (PR 1176)
     mock_coordinator = MagicMock()
     mock_client = MagicMock()
     mock_cmd = MagicMock()
     mock_client.create_cmd = MagicMock(return_value=mock_cmd)
-    mock_client.async_send_cmd = AsyncMock()
+    mock_client.async_send_raw_command = AsyncMock()
+    del mock_client.async_send_cmd
     mock_client.hgi.id = "18:000001"
     mock_coordinator.client = mock_client
 
@@ -139,6 +140,34 @@ async def test_send_packet_success(ramses_commands, mock_hass):
             payload="00",
             from_id="30:111111",
         )
+        mock_client.async_send_raw_command.assert_called_once_with(mock_cmd)
+
+
+@pytest.mark.asyncio
+async def test_send_packet_fallback_old_api(ramses_commands, mock_hass):
+    """Test _send_packet falls back to async_send_cmd on older ramses_rf."""
+    device_id = "32_111111"
+    cmd_def = {"code": "1060", "verb": "W", "payload": "00", "description": "Test"}
+
+    mock_coordinator = MagicMock()
+    mock_client = MagicMock()
+    mock_cmd = MagicMock()
+    mock_client.create_cmd = MagicMock(return_value=mock_cmd)
+    mock_client.async_send_cmd = AsyncMock()
+    del mock_client.async_send_raw_command
+    mock_client.hgi.id = "18:000001"
+    mock_coordinator.client = mock_client
+
+    with (
+        patch.object(
+            ramses_commands, "_get_ramses_cc_coordinator", return_value=mock_coordinator
+        ),
+        patch.object(
+            ramses_commands, "_get_bound_rem_device", return_value="30:111111"
+        ),
+    ):
+        success = await ramses_commands._send_packet(device_id, cmd_def)
+        assert success is True
         mock_client.async_send_cmd.assert_called_once_with(mock_cmd)
 
 

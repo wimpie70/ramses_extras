@@ -270,13 +270,15 @@ class TestRamsesCommands:
 
     @pytest.mark.asyncio
     async def test_send_packet_success(self, ramses_commands, hass):
-        """Test low-level packet sending via coordinator."""
-        # Mock the coordinator and client
+        """Test low-level packet sending via coordinator (new API)."""
+        # Mock the coordinator and client with async_send_raw_command (PR 1176)
         mock_coordinator = MagicMock()
         mock_client = MagicMock()
         mock_cmd = MagicMock()
         mock_client.create_cmd = MagicMock(return_value=mock_cmd)
-        mock_client.async_send_cmd = AsyncMock()
+        mock_client.async_send_raw_command = AsyncMock()
+        # async_send_cmd absent — simulates ramses_rf >= 0.61 (PR 1176)
+        del mock_client.async_send_cmd
         mock_client.hgi.id = "18:000001"
         mock_coordinator.client = mock_client
 
@@ -307,6 +309,41 @@ class TestRamsesCommands:
                 payload="000307",
                 from_id="18:111111",
             )
+            mock_client.async_send_raw_command.assert_called_once_with(mock_cmd)
+
+    @pytest.mark.asyncio
+    async def test_send_packet_fallback_old_api(self, ramses_commands, hass):
+        """Test low-level packet sending falls back to async_send_cmd on
+        older ramses_rf (pre-PR 1176, no async_send_raw_command)."""
+        mock_coordinator = MagicMock()
+        mock_client = MagicMock()
+        mock_cmd = MagicMock()
+        mock_client.create_cmd = MagicMock(return_value=mock_cmd)
+        mock_client.async_send_cmd = AsyncMock()
+        # async_send_raw_command absent — simulates older ramses_rf
+        del mock_client.async_send_raw_command
+        mock_client.hgi.id = "18:000001"
+        mock_coordinator.client = mock_client
+
+        cmd_def = {
+            "code": "22F7",
+            "verb": "W",
+            "payload": "00C8EF",
+            "description": "Open bypass",
+        }
+
+        with (
+            patch.object(
+                ramses_commands,
+                "_get_ramses_cc_coordinator",
+                return_value=mock_coordinator,
+            ),
+            patch.object(
+                ramses_commands, "_get_bound_rem_device", return_value="18:111111"
+            ),
+        ):
+            success = await ramses_commands._send_packet("32_123456", cmd_def)
+            assert success is True
             mock_client.async_send_cmd.assert_called_once_with(mock_cmd)
 
     @pytest.mark.asyncio
@@ -381,6 +418,91 @@ class TestRamsesCommands:
             return_value={"stat": 1}
         )
         assert ramses_commands.get_queue_statistics() == {"stat": 1}
+
+    @pytest.mark.asyncio
+    async def test_send_fan_command_strategy(self, ramses_commands, hass):
+        """Test fan mode command routes through device.set_fan_mode() (strategy)."""
+        mock_device = MagicMock()
+        mock_device.set_fan_mode = AsyncMock()
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.device_by_id = {"32:153289": mock_device}
+
+        mock_client = MagicMock()
+        mock_client.device_registry = mock_device_registry
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.client = mock_client
+
+        with patch.object(
+            ramses_commands,
+            "_get_ramses_cc_coordinator",
+            return_value=mock_coordinator,
+        ):
+            result = await ramses_commands.send_fan_command("32_153289", "fan_high")
+
+        assert result.success is True
+        mock_device.set_fan_mode.assert_called_once_with("high")
+
+    @pytest.mark.asyncio
+    async def test_send_fan_command_strategy_fallback(self, ramses_commands, hass):
+        """Test fan mode command falls back to raw packet when device has no
+        set_fan_mode (older ramses_rf or non-HVAC device)."""
+        mock_client = MagicMock()
+        mock_client.create_cmd = MagicMock(return_value=MagicMock())
+        mock_client.async_send_raw_command = AsyncMock()
+        del mock_client.async_send_cmd
+        mock_client.hgi.id = "18:000001"
+        # No device_registry — strategy path unavailable
+        mock_client.device_registry = None
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.client = mock_client
+
+        with (
+            patch.object(
+                ramses_commands,
+                "_get_ramses_cc_coordinator",
+                return_value=mock_coordinator,
+            ),
+            patch.object(
+                ramses_commands, "_get_bound_rem_device", return_value="18:111111"
+            ),
+        ):
+            result = await ramses_commands.send_fan_command("32_123456", "fan_high")
+
+        # Should fall back to raw packet and succeed
+        assert result.success is True
+        mock_client.async_send_raw_command.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_send_fan_command_non_strategy(self, ramses_commands, hass):
+        """Test non-strategy fan command (bypass) uses raw packet path."""
+        mock_client = MagicMock()
+        mock_client.create_cmd = MagicMock(return_value=MagicMock())
+        mock_client.async_send_raw_command = AsyncMock()
+        del mock_client.async_send_cmd
+        mock_client.hgi.id = "18:000001"
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.client = mock_client
+
+        with (
+            patch.object(
+                ramses_commands,
+                "_get_ramses_cc_coordinator",
+                return_value=mock_coordinator,
+            ),
+            patch.object(
+                ramses_commands, "_get_bound_rem_device", return_value="18:111111"
+            ),
+        ):
+            result = await ramses_commands.send_fan_command(
+                "32_123456", "fan_bypass_open"
+            )
+
+        assert result.success is True
+        mock_client.async_send_raw_command.assert_called_once()
 
 
 @pytest.mark.asyncio
