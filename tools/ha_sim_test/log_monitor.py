@@ -103,6 +103,8 @@ EXPECTED_WARNINGS: list[str] = [
     "probe_hvac_binding: failed to send",
     "Send timed out",
     # ramses_tx: protocol FSM state warnings (transient during reload)
+    # TODO: remove once ramses_rf >= 0.61.0 is the minimum dependency
+    # (FSM deleted in ramses-rf/ramses_rf#1174, this log never appears)
     "ProtocolContext state",
     # ramses_rf: discovery no response retry (simulator may not respond to all RQ)
     "No response for",
