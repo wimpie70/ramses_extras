@@ -287,8 +287,33 @@ class RamsesCommands:
         # Track failed commands for monitoring and retry logic
         self._failed_commands: dict[str, dict[str, Any]] = {}
 
+    # Mapping of fan_* command names to semantic strategy mode names.
+    # Used to route fan mode commands through device.set_fan_mode() which
+    # applies the vendor-specific strategy (Orcon, Itho, Vasco, Nuaire,
+    # ClimaRad) instead of hardcoded Orcon hex payloads.
+    # Only 22F1 fan mode commands are mapped here — bypass (22F7), filter
+    # reset (10D0), timer (22F3), and RQ commands don't have strategy
+    # equivalents and keep the raw packet path.
+    _FAN_COMMAND_TO_STRATEGY_MODE: dict[str, str] = {
+        "fan_high": "high",
+        "fan_medium": "medium",
+        "fan_low": "low",
+        "fan_auto": "auto",
+        "fan_boost": "boost",
+        "fan_away": "away",
+        "fan_disable": "off",
+    }
+
     async def send_fan_command(self, device_id: str, command: str) -> CommandResult:
         """Send a fan command to a Ramses RF device.
+
+        For 22F1 fan mode commands (fan_high, fan_low, etc.), this routes
+        through ``device.set_fan_mode()`` which applies the vendor strategy
+        to translate the semantic mode name to the correct hex payload for
+        the device's brand (Orcon, Itho, Vasco, Nuaire, ClimaRad).
+
+        Falls back to raw packet sending if the device doesn't support
+        ``set_fan_mode()`` (e.g. older ramses_rf or non-HVAC device).
 
         :param device_id: Device identifier (e.g., "32_153289")
         :param command: Command name from HvacVentilator standard commands
@@ -302,12 +327,80 @@ class RamsesCommands:
             _LOGGER.error(error_msg)
             return CommandResult(success=False, error_message=error_msg)
 
-        # Send the packet
+        # Try strategy-based sending for 22F1 fan mode commands
+        strategy_mode = self._FAN_COMMAND_TO_STRATEGY_MODE.get(command)
+        if strategy_mode is not None:
+            strategy_result = await self._send_fan_mode_via_strategy(
+                device_id, strategy_mode
+            )
+            if strategy_result is not None:
+                return strategy_result
+            # Fall through to raw packet if strategy path unavailable
+
+        # Send the packet (raw fallback or non-strategy command)
         success = await self._send_packet(device_id, cmd_def)
         if success:
             return CommandResult(success=True)
         error_msg = f"Failed to send fan command '{command}' to device {device_id}"
         return CommandResult(success=False, error_message=error_msg)
+
+    async def _send_fan_mode_via_strategy(
+        self, device_id: str, mode_name: str
+    ) -> CommandResult | None:
+        """Send a fan mode via device.set_fan_mode() (strategy-aware).
+
+        Returns a CommandResult if the strategy path was used, or None if
+        the strategy path is unavailable (device not found, no
+        set_fan_mode method, or ramses_rf too old) — in which case the
+        caller falls back to raw packet sending.
+
+        :param device_id: Device identifier (e.g., "32_153289")
+        :param mode_name: Semantic fan mode name (e.g., "high", "low")
+        :return: CommandResult if strategy path used, None if unavailable
+        """
+        try:
+            device_id_formatted = device_id.replace("_", ":")
+
+            coordinator = await self._get_ramses_cc_coordinator()
+            if not coordinator or not coordinator.client:
+                return None
+
+            # Resolve the HvacVentilator from the gateway's device registry
+            device_registry = getattr(coordinator.client, "device_registry", None)
+            if device_registry is None:
+                return None
+
+            device = getattr(device_registry, "device_by_id", {}).get(
+                device_id_formatted
+            )
+            if device is None:
+                return None
+
+            set_fan_mode = getattr(device, "set_fan_mode", None)
+            if not callable(set_fan_mode):
+                return None
+
+            _LOGGER.debug(
+                "Sending set_fan_mode '%s' to %s via strategy",
+                mode_name,
+                device_id_formatted,
+            )
+            await set_fan_mode(mode_name)
+
+            # Notify transport monitor
+            get_transport_monitor().notify_command_sent(device_id_formatted)
+
+            return CommandResult(success=True)
+
+        except Exception as e:
+            _LOGGER.warning(
+                "Strategy-based set_fan_mode('%s') failed for %s: %s, "
+                "falling back to raw packet",
+                mode_name,
+                device_id,
+                e,
+            )
+            return None
 
     # Mapping of fan_bypass_* commands to the corresponding 2411 parameter
     # "4B" (Bypass Valve) value used by Orcon and other units that do not
@@ -595,11 +688,17 @@ class RamsesCommands:
 
             cmd = coordinator.client.create_cmd(**kwargs)
 
+            # Use async_send_raw_command (ramses_rf >= 0.61, PR 1176) with
+            # fallback to async_send_cmd for older ramses_rf versions.
+            send_fn = getattr(coordinator.client, "async_send_raw_command", None)
+            if send_fn is None:
+                send_fn = coordinator.client.async_send_cmd
+
             # Handle new timeout behavior in ramses_rf 0.55.6
             # In version 0.55.6, async_send_cmd raises exceptions on timeout
             # instead of silently failing. We need to handle this gracefully.
             try:
-                await coordinator.client.async_send_cmd(cmd)
+                await send_fn(cmd)
             except Exception as e:
                 # Check if this is a timeout error from the new ramses_rf version
                 # These errors indicate the command was sent but no acknowledgment
