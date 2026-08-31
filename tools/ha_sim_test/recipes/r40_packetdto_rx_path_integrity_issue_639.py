@@ -112,28 +112,32 @@ except ImportError as e:
             f"found: {found_forbidden}",
         )
 
-        # 2. Check that _PAYLOAD_DECODER_CB is not used in the transport
+        # 2. Check that the legacy protocol FSM has been decommissioned
+        #    (PR 1174 / Roadmap Item 7 deleted ramses_tx.protocol.fsm
+        #    entirely).  The old check verified _PAYLOAD_DECODER_CB was
+        #    not referenced; the stronger check is that the module no
+        #    longer exists at all.
         code2 = """
-import inspect, json
+import json
 try:
-    from ramses_tx.protocol import fsm
-    src = inspect.getsource(fsm)
-    has_cb = "_PAYLOAD_DECODER_CB" in src
-    print(json.dumps({"has_decoder_cb": has_cb, "ok": True}))
+    import ramses_tx.protocol.fsm  # noqa: F401
+    print(json.dumps({"fsm_present": True, "ok": True}))
+except ImportError as e:
+    print(json.dumps({"fsm_present": False, "ok": True, "error": str(e)}))
 except Exception as e:
-    print(json.dumps({"error": str(e), "ok": False}))
+    print(json.dumps({"fsm_present": None, "ok": False, "error": str(e)}))
 """
         result2 = docker_exec_python(code2)
 
         if result2.get("ok"):
             ctx.check(
-                "protocol_fsm has no _PAYLOAD_DECODER_CB bridge",
-                not result2.get("has_decoder_cb", True),
-                "_PAYLOAD_DECODER_CB still referenced in protocol_fsm",
+                "legacy protocol_fsm decommissioned (module deleted)",
+                result2.get("fsm_present") is False,
+                f"fsm_present={result2.get('fsm_present')}",
             )
         else:
             ctx.check(
-                "protocol_fsm importable for inspection",
+                "legacy protocol_fsm decommissioned (module deleted)",
                 False,
                 result2.get("error", "unknown"),
             )
