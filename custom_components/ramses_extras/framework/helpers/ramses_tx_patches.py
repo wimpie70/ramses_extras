@@ -16,6 +16,17 @@ This module gracefully handles both old and new ramses_tx versions:
 - If the method name ``packet_rcvd`` exists, the upstream fix is
   already in place, so we skip patching (new versions >= 0.59.7)
 - If ``WantRply`` doesn't exist, skip it (removed in 0.59.7+)
+
+.. deprecated::
+    The entire protocol FSM (``ramses_tx.protocol.fsm``) was deleted in
+    ramses_rf PR 1174 (ramses-rf/ramses_rf#1174), so these patches are
+    now a permanent no-op on ramses_rf >= 0.61.0.  The module remains
+    for backward compatibility with older ramses_rf versions.  When the
+    minimum ramses_rf dependency is bumped past 0.61.0, this module and
+    its call site in ``__init__.py`` can be removed entirely.
+
+    # TODO: remove this module once ramses_rf >= 0.61.0 is the minimum
+    # dependency (FSM deleted in ramses-rf/ramses_rf#1174)
 """
 
 from __future__ import annotations
@@ -32,6 +43,11 @@ def apply_ramses_tx_patches() -> None:
     """Patch ramses_tx FSM states to handle _sent_cmd is None gracefully.
 
     Idempotent: safe to call multiple times.
+
+    .. deprecated::
+        No-op on ramses_rf >= 0.61.0 (FSM deleted in
+        ramses-rf/ramses_rf#1174).  See module docstring for removal
+        plan.
     """
     global _patched
     if _patched:

@@ -65,6 +65,8 @@ from .framework.setup.yaml import (
 _LOGGER = logging.getLogger(__name__)
 
 # Patch ramses_tx FSM to prevent AssertionError crashes on unsolicited packets
+# TODO: remove once ramses_rf >= 0.61.0 is the minimum dependency
+# (FSM deleted in ramses-rf/ramses_rf#1174, patches are now a no-op)
 apply_ramses_tx_patches()
 
 # Make setup functions available at module level for Home Assistant

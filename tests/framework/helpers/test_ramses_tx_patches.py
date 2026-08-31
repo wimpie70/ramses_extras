@@ -1,4 +1,17 @@
-"""Tests for ramses_tx FSM patches."""
+"""Tests for ramses_tx FSM patches.
+
+.. deprecated::
+    The ramses_tx protocol FSM was deleted in ramses_rf PR 1174
+    (ramses-rf/ramses_rf#1174), so ``ramses_tx_patches`` is now a
+    permanent no-op on ramses_rf >= 0.61.0.  These tests exercise the
+    patch logic in isolation (via mocked ``sys.modules``) and remain
+    valid for backward compatibility with older ramses_rf versions.
+    When the minimum ramses_rf dependency is bumped past 0.61.0, both
+    ``ramses_tx_patches.py`` and this test file can be removed.
+
+    # TODO: remove this test file once ramses_rf >= 0.61.0 is the
+    # minimum dependency (FSM deleted in ramses-rf/ramses_rf#1174)
+"""
 
 import logging
 from unittest.mock import MagicMock, patch
