@@ -95,12 +95,15 @@ class R99MqttHgiDiscovery(Recipe):
 
         # --- Step 3: Publish RF packets from the new HGI ---
         # Send a 10E0 (device info) packet with the new HGI as source,
-        # and a 30C9 (zone zone) packet to trigger scan tracking.
+        # and a 30C9 (zone temperature) packet to trigger scan tracking.
+        # Frame format: " 000 I --- src dst addr3 code len payload"
+        # For 10E0: src=HGI, dst=--:------ (broadcast), addr3=HGI
+        # For 30C9: src=HGI, dst=--:------ (broadcast), addr3=HGI
         print(f"  Publishing RF packets from {NEW_HGI_ID}...")
         _publish_rf_packet(
             NEW_HGI_ID,
-            f" 000 I --- {NEW_HGI_ID} 63:262142 --:------ 10E0 038 "
-            "000001C8A2050367FEFFFFFFFFFF1D0807E6564D442D3135524D5338362D32",
+            f" 000 I --- {NEW_HGI_ID} --:------ {NEW_HGI_ID} 10E0 012 "
+            "000210000000000000000000",
         )
         _publish_rf_packet(
             NEW_HGI_ID,

@@ -300,23 +300,35 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
         # Check 8: No ERROR logs about schema validation from ramses_rf
         # (if validation and gateway diverge, ramses_rf would log errors
         # about invalid keys or invalid structure)
-        raw_log_r33 = subprocess.run(
-            [
-                "docker",
-                "exec",
-                get_current_instance().name,
-                "grep",
-                r"ERROR.*schema\|ERROR.*validation\|ERROR.*SCH_GLOBAL\|"
-                r"ERROR.*PREVENT_EXTRA\|ERROR.*invalid.*key",
-                "/config/home-assistant.log",
-            ],
-            capture_output=True,
-            text=True,
-        ).stdout
+        # Use docker logs --since baseline to avoid picking up errors
+        # from other recipes running in parallel on the same container.
+        schema_log = (
+            subprocess.run(
+                [
+                    "docker",
+                    "logs",
+                    "--since",
+                    baseline_docker,
+                    get_current_instance().name,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stderr
+            or ""
+        )
         schema_errors = [
             line
-            for line in raw_log_r33.splitlines()
-            if "ramses_cc" in line or "ramses_rf" in line
+            for line in schema_log.splitlines()
+            if ("ramses_cc" in line or "ramses_rf" in line)
+            and " ERROR " in line
+            and (
+                "schema" in line
+                or "validation" in line
+                or "SCH_GLOBAL" in line
+                or "PREVENT_EXTRA" in line
+                or "invalid" in line
+            )
         ]
         ctx.check(
             "No ramses_cc/ramses_rf ERROR logs about schema validation",

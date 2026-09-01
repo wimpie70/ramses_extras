@@ -1278,7 +1278,7 @@ def grep_ha_log(pattern: str, since_lines: int = 0) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def docker_exec_python(code: str, timeout: int = 30) -> dict:
+def docker_exec_python(code: str, timeout: int = 30, retries: int = 2) -> dict:
     """Run Python code inside the ha-sim container and return the result.
 
     The code must print a JSON line to stdout (typically via ``json.dumps``).
@@ -1286,8 +1286,12 @@ def docker_exec_python(code: str, timeout: int = 30) -> dict:
     internals (CommandDTO, PacketDTO, load_fan, etc.) which are only available
     in the container's newer ramses_rf installation.
 
+    Retries up to ``retries`` times on failure (transient container issues
+    under parallel load).
+
     :param code: Python source code to execute inside the container.
     :param timeout: Timeout in seconds.
+    :param retries: Number of retry attempts on failure.
     :return: Parsed JSON dict from stdout, or ``{"error": "..."}`` on failure.
     """
     cmd = [
@@ -1298,25 +1302,46 @@ def docker_exec_python(code: str, timeout: int = 30) -> dict:
         "-c",
         code,
     ]
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        if result.returncode != 0:
-            return {"error": result.stderr.strip()[:500]}
-        # The code should print exactly one JSON line
-        for line in result.stdout.strip().splitlines():
-            line = line.strip()
-            if line.startswith("{"):
-                return json.loads(line)
-        return {"error": f"no JSON in stdout: {result.stdout[:200]}"}
-    except subprocess.TimeoutExpired:
-        return {"error": "timeout"}
-    except (json.JSONDecodeError, Exception) as e:
-        return {"error": str(e)[:200]}
+    last_error: str = ""
+    for attempt in range(retries + 1):
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            if result.returncode != 0:
+                last_error = result.stderr.strip()[:500]
+                if attempt < retries:
+                    import time as _time
+
+                    _time.sleep(1)
+                    continue
+                return {"error": last_error}
+            # The code should print exactly one JSON line
+            for line in result.stdout.strip().splitlines():
+                line = line.strip()
+                if line.startswith("{"):
+                    return json.loads(line)
+            return {"error": f"no JSON in stdout: {result.stdout[:200]}"}
+        except subprocess.TimeoutExpired:
+            last_error = "timeout"
+            if attempt < retries:
+                import time as _time
+
+                _time.sleep(1)
+                continue
+            return {"error": "timeout"}
+        except (json.JSONDecodeError, Exception) as e:
+            last_error = str(e)[:200]
+            if attempt < retries:
+                import time as _time
+
+                _time.sleep(1)
+                continue
+            return {"error": last_error}
+    return {"error": last_error}
 
 
 # ---------------------------------------------------------------------------
