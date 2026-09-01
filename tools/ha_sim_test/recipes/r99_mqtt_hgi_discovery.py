@@ -135,11 +135,10 @@ class R99MqttHgiDiscovery(Recipe):
                 f"entry={entry}",
             )
 
-        # --- Step 7: Check for discovery notification (informational) ---
-        # HGIs auto-discovered via MQTT are registered as known devices,
-        # so they typically don't trigger a "new device" notification.
-        # This check is informational — the key assertion is that the
-        # HGI appears in the schema (Step 6).
+        # --- Step 7: Check for discovery notification ---
+        # A new HGI on the MQTT broker should trigger a discovery
+        # notification so the user can confirm or reject it (e.g. if
+        # it's a neighbour's ESP on the same broker).
         ctx.wait(3, "for discovery notification")
         try:
             notifications = await get_persistent_notifications(ctx.token)
@@ -150,14 +149,11 @@ class R99MqttHgiDiscovery(Recipe):
                 or NEW_HGI_ID in str(n.get("title", ""))
             ]
             notif_ids = [n.get("notification_id") for n in notifications][:5]
-            if hgi_notifications:
-                print(f"  Discovery notification found for {NEW_HGI_ID}")
-            else:
-                print(
-                    f"  No discovery notification for {NEW_HGI_ID} "
-                    f"(expected for auto-registered HGIs), "
-                    f"notifications={notif_ids}"
-                )
+            ctx.check(
+                f"Discovery notification exists for {NEW_HGI_ID}",
+                len(hgi_notifications) > 0,
+                f"notifications={notif_ids}",
+            )
         except Exception as e:
             print(f"  Could not check notifications: {e}")
 
