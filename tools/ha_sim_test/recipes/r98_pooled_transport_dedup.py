@@ -191,8 +191,8 @@ async def run_tests():
         t7b.write_frame.called and not t7a.write_frame.called
     )
 
-    # Test 8: RSSI rolling window keeps last 5
-    results["rssi_avg_last5"] = pool7._avg_rssi(0)
+    # Test 8: RSSI best-across-readings (uses _best_rssi, not _avg_rssi)
+    results["rssi_best_child0"] = pool7._best_rssi(0)
 
     # Test 9: Health monitoring — unhealthy child excluded (PR 4)
     proto9 = make_mock_protocol()
@@ -287,8 +287,8 @@ asyncio.run(run_tests())
             f"result={result}",
         )
         ctx.check(
-            "RSSI rolling window keeps last 5 samples (avg=20.0)",
-            result.get("rssi_avg_last5") == 20.0,
+            "RSSI best-across-readings for child 0 (best=20.0)",
+            result.get("rssi_best_child0") == 20.0,
             f"result={result}",
         )
         ctx.check(
