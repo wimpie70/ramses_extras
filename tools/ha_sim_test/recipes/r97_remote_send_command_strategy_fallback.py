@@ -1,4 +1,4 @@
-"""Recipe R96: remote.send_command strategy fallback."""
+"""Recipe R97: remote.send_command strategy fallback."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ from ..helpers import (
 from ..profile import MIXED_SCHEMA, _build_yaml, get_mixed_kl
 
 
-class R96RemoteSendCommandStrategyFallback(Recipe):
-    id = "R96"
-    seq = 960
+class R97RemoteSendCommandStrategyFallback(Recipe):
+    id = "R97"
+    seq = 970
     title = "remote.send_command strategy fallback"
     tags = ("22F1", "fan", "orcon", "strategy", "remote")
 
@@ -33,7 +33,7 @@ class R96RemoteSendCommandStrategyFallback(Recipe):
         remote.send_command should fall back to set_fan_mode() which uses
         the vendor strategy to translate the mode name.
         """
-        ctx.log_section("Recipe 96: remote.send_command strategy fallback")
+        ctx.log_section("Recipe 97: remote.send_command strategy fallback")
 
         ctx.refresh_token()
 
