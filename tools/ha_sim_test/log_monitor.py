@@ -56,6 +56,11 @@ EXPECTED_WARNINGS: list[str] = [
     "unwanted or invalid",
     # HA: orphaned task exceptions during rapid reload cycles (transient)
     "Task exception was never retrieved",
+    # ramses_rf: TransportError during shutdown — the polling task tries
+    # to send a command while the transport is being torn down. The
+    # exception is caught by the gateway but HA's task runner also logs
+    # it as "Error doing job: TransportError exception in shielded future".
+    "TransportError exception in shielded future",
     # ramses_rf: SUPPRESSED in Zone handler (cosmetic, from zone rebinding)
     "SUPPRESSED in Zone",
     # ramses_rf: SUPPRESSED in SystemBase 000C handler (BDR re-parenting)
