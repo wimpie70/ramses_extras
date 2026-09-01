@@ -40,7 +40,8 @@ from ramses_tx.transport.pooled import PooledTransport, _ChildProtocolProxy
 
 
 def make_packet(verb=I_, code=Code._30C9, src="01:123456",
-                dst="18:000730", addr3="--:------", payload="00"):
+                dst="18:000730", addr3="--:------", payload="00",
+                rssi="000"):
     dto = MagicMock()
     dto.verb = verb
     dto.code = code
@@ -48,7 +49,7 @@ def make_packet(verb=I_, code=Code._30C9, src="01:123456",
     dto.addr2 = dst
     dto.addr3 = addr3
     dto.raw_payload = payload
-    dto.rssi = "000"
+    dto.rssi = rssi
     pkt = MagicMock()
     pkt._dto = dto
     return pkt
@@ -165,6 +166,65 @@ async def run_tests():
         pool6._on_child_packet.called
     )
 
+    # Test 7: RSSI-based outbound selection (PR 3)
+    proto7 = make_mock_protocol()
+    t7a = make_mock_transport(hgi="18:001111")
+    t7b = make_mock_transport(hgi="18:002222")
+    pool7 = PooledTransport(
+        proto7, [t7a, t7b], config=TransportConfig(),
+        dedup_window=10.0,
+    )
+    pool7._child_connected = [True, True]
+    pool7._child_hgi = ["18:001111", "18:002222"]
+
+    # Feed child 0 low-RSSI, child 1 high-RSSI packets.
+    for i in range(5):
+        pool7._on_child_packet(
+            0, make_packet(rssi="020", payload=f"{i:02X}A")
+        )
+        pool7._on_child_packet(
+            1, make_packet(rssi="080", payload=f"{i:02X}B")
+        )
+    await asyncio.sleep(0.01)
+    await pool7.write_frame("frame_rssi")
+    results["rssi_selects_higher"] = (
+        t7b.write_frame.called and not t7a.write_frame.called
+    )
+
+    # Test 8: RSSI rolling window keeps last 5
+    results["rssi_avg_last5"] = pool7._avg_rssi(0)
+
+    # Test 9: Health monitoring — unhealthy child excluded (PR 4)
+    proto9 = make_mock_protocol()
+    t9a = make_mock_transport(hgi="18:001111")
+    t9b = make_mock_transport(hgi="18:002222")
+    pool9 = PooledTransport(
+        proto9, [t9a, t9b], config=TransportConfig(),
+    )
+    pool9._child_connected = [True, True]
+    pool9._child_hgi = ["18:001111", "18:002222"]
+    pool9._child_healthy[0] = False
+
+    await pool9.write_frame("frame_health")
+    results["health_excludes_unhealthy"] = (
+        t9b.write_frame.called and not t9a.write_frame.called
+    )
+
+    # Test 10: Packet received marks child healthy
+    pool9._child_consecutive_errors[0] = 3
+    pool9._on_child_packet(0, make_packet(rssi="050", payload="XX"))
+    results["health_packet_restores"] = (
+        pool9._child_healthy[0] is True
+        and pool9._child_consecutive_errors[0] == 0
+    )
+
+    # Test 11: pool_stats includes health info
+    stats9 = pool9.get_extra_info("pool_stats")
+    results["stats_has_health"] = (
+        "child_health" in stats9 and "consecutive_errors" in stats9
+    )
+    results["stats_has_avg_rssi"] = "avg_rssi" in stats9
+
     print(json.dumps(results))
 
 
@@ -219,5 +279,35 @@ asyncio.run(run_tests())
         ctx.check(
             "_ChildProtocolProxy routes packets to pool",
             result.get("proxy_routes_packet") is True,
+            f"result={result}",
+        )
+        ctx.check(
+            "RSSI-based outbound selects child with higher avg RSSI",
+            result.get("rssi_selects_higher") is True,
+            f"result={result}",
+        )
+        ctx.check(
+            "RSSI rolling window keeps last 5 samples (avg=20.0)",
+            result.get("rssi_avg_last5") == 20.0,
+            f"result={result}",
+        )
+        ctx.check(
+            "Health monitoring excludes unhealthy children from outbound",
+            result.get("health_excludes_unhealthy") is True,
+            f"result={result}",
+        )
+        ctx.check(
+            "Receiving a packet restores child health (resets errors)",
+            result.get("health_packet_restores") is True,
+            f"result={result}",
+        )
+        ctx.check(
+            "pool_stats includes child_health and consecutive_errors",
+            result.get("stats_has_health") is True,
+            f"result={result}",
+        )
+        ctx.check(
+            "pool_stats includes avg_rssi per child",
+            result.get("stats_has_avg_rssi") is True,
             f"result={result}",
         )
