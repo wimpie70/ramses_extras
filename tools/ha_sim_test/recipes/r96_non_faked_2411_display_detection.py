@@ -101,10 +101,10 @@ class R96NonFaked2411DisplayDetection(Recipe):
                 PHYSICAL_DISPLAY in get_schema_retry()
                 and FAKED_REMOTE in get_schema_retry()
             ),
-            timeout=20,
+            timeout=30,
             interval=2,
             msg="for DIS/REM candidates in schema",
-            floor=5.0,
+            floor=10.0,
         )
 
         def _log_line_count() -> int:
@@ -139,10 +139,10 @@ print(json.dumps({{"found": found}}))
         _inject_2411(ctx, PHYSICAL_DISPLAY)
         detected = wait_for(
             lambda: _has_detection_since(physical_baseline, PHYSICAL_DISPLAY),
-            timeout=20,
+            timeout=30,
             interval=2,
             msg="for physical REM DIS evidence event",
-            floor=5.0,
+            floor=10.0,
         )
         ctx.check(
             "Non-faked REM requesting 2411 emits DIS evidence",

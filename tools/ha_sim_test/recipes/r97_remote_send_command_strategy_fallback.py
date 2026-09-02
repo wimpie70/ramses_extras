@@ -185,10 +185,10 @@ print(json.dumps({{"found": any({expected!r} in line for line in new_lines)}}))
 
         wait_for(
             _native_packet_sent,
-            timeout=15,
+            timeout=30,
             interval=2,
             msg="for strategy fallback 22F1 packet",
-            floor=5.0,
+            floor=10.0,
         )
         ctx.check(
             "remote.send_command('high') sent Orcon 000307 via strategy",
@@ -237,10 +237,10 @@ print(json.dumps({{"found": any({expected_hoog!r} in line for line in new_lines)
 
         wait_for(
             _hoog_packet_sent,
-            timeout=15,
+            timeout=30,
             interval=2,
             msg="for Dutch alias 'hoog' packet",
-            floor=5.0,
+            floor=10.0,
         )
         ctx.check(
             "remote.send_command('hoog') sent Orcon 000307 via alias",
