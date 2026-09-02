@@ -63,7 +63,7 @@ def _publish_rf_packet(hgi_id: str, frame: str) -> None:
     """Publish an RF packet to the HGI's /rx topic.
 
     :param hgi_id: The HGI device ID (e.g. "18:009999").
-    :param frame: The RAMSES frame (e.g. " 000 I --- 01:123456 ...").
+    :param frame: The RAMSES frame (e.g. " 000  I --- 01:123456 ...").
     """
     topic = f"{MQTT_TOPIC_NS}/{hgi_id}/rx"
     payload = json.dumps({"msg": frame, "ts": time.strftime("%Y-%m-%dT%H:%M:%S.000")})
@@ -96,18 +96,19 @@ class R99MqttHgiDiscovery(Recipe):
         # --- Step 3: Publish RF packets from the new HGI ---
         # Send a 10E0 (device info) packet with the new HGI as source,
         # and a 30C9 (zone temperature) packet to trigger scan tracking.
-        # Frame format: " 000 I --- src dst addr3 code len payload"
+        # Frame format: " 000  I --- src dst addr3 code len payload"
+        # (two spaces between RSSI and verb — the parser expects " I")
         # For 10E0: src=HGI, dst=--:------ (broadcast), addr3=HGI
         # For 30C9: src=HGI, dst=--:------ (broadcast), addr3=HGI
         print(f"  Publishing RF packets from {NEW_HGI_ID}...")
         _publish_rf_packet(
             NEW_HGI_ID,
-            f" 000 I --- {NEW_HGI_ID} --:------ {NEW_HGI_ID} 10E0 012 "
+            f" 000  I --- {NEW_HGI_ID} --:------ {NEW_HGI_ID} 10E0 012 "
             "000210000000000000000000",
         )
         _publish_rf_packet(
             NEW_HGI_ID,
-            f" 000 I --- {NEW_HGI_ID} --:------ {NEW_HGI_ID} 30C9 003 020708",
+            f" 000  I --- {NEW_HGI_ID} --:------ {NEW_HGI_ID} 30C9 003 020708",
         )
         ctx.wait(3, "for packets to be processed")
 
