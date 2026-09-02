@@ -56,6 +56,11 @@ EXPECTED_WARNINGS: list[str] = [
     "unwanted or invalid",
     # HA: orphaned task exceptions during rapid reload cycles (transient)
     "Task exception was never retrieved",
+    # ramses_rf: TransportError during shutdown — the polling task tries
+    # to send a command while the transport is being torn down. The
+    # exception is caught by the gateway but HA's task runner also logs
+    # it as "Error doing job: TransportError exception in shielded future".
+    "TransportError exception in shielded future",
     # ramses_rf: SUPPRESSED in Zone handler (cosmetic, from zone rebinding)
     "SUPPRESSED in Zone",
     # ramses_rf: SUPPRESSED in SystemBase 000C handler (BDR re-parenting)
@@ -184,11 +189,11 @@ EXPECTED_WARNINGS: list[str] = [
     # parser can't decode some simulator fault log entries (synthetic
     # timestamps / unknown fault codes).  Pre-existing, cosmetic.
     "Failed to process fault log entry",
-    # ramses_tx: "the MQTT device is offline" — expected during profile
+    # ramses_tx: "The MQTT device is offline" — expected during profile
     # reloads: the broker kicks the old client when the new transport
     # connects with the same client ID.  The new transport reconnects
     # automatically.
-    "the MQTT device is offline",
+    "The MQTT device is offline",
     # HA core: "Client unable to keep up with pending messages" —
     # transient websocket overload during rapid test cycling at 100x
     # speed.  Does not occur in production.

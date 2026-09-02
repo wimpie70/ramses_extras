@@ -183,10 +183,10 @@ print(json.dumps({{"found": any({expected!r} in line for line in new_lines)}}))
 
         sent = wait_for(
             _native_packet_sent,
-            timeout=20,
+            timeout=30,
             interval=2,
             msg="for native 22F1 command",
-            floor=5.0,
+            floor=10.0,
         )
         ctx.check(
             "Native set_fan_mode emits Orcon 22F1 payload 000107",

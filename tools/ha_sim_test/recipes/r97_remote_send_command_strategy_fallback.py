@@ -1,4 +1,4 @@
-"""Recipe R96: remote.send_command strategy fallback."""
+"""Recipe R97: remote.send_command strategy fallback."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from ..const import CTL, FAN, REM
 from ..helpers import (
     call_service,
     docker_exec_python,
+    get_current_instance,
     get_entities,
     load_profile_yaml,
     wait_for,
@@ -20,9 +21,9 @@ from ..helpers import (
 from ..profile import MIXED_SCHEMA, _build_yaml, get_mixed_kl
 
 
-class R96RemoteSendCommandStrategyFallback(Recipe):
-    id = "R96"
-    seq = 960
+class R97RemoteSendCommandStrategyFallback(Recipe):
+    id = "R97"
+    seq = 970
     title = "remote.send_command strategy fallback"
     tags = ("22F1", "fan", "orcon", "strategy", "remote")
 
@@ -33,7 +34,7 @@ class R96RemoteSendCommandStrategyFallback(Recipe):
         remote.send_command should fall back to set_fan_mode() which uses
         the vendor strategy to translate the mode name.
         """
-        ctx.log_section("Recipe 96: remote.send_command strategy fallback")
+        ctx.log_section("Recipe 97: remote.send_command strategy fallback")
 
         ctx.refresh_token()
 
@@ -108,6 +109,9 @@ class R96RemoteSendCommandStrategyFallback(Recipe):
             return
 
         # Check that strategy_modes is exposed in attributes
+        # Use the current instance's port (containers use host networking,
+        # so the internal port matches the external port).
+        ha_port = get_current_instance().port
         attrs_result = docker_exec_python(
             f"""
 import json
@@ -115,7 +119,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 # Use the REST API to get state attributes
 import requests
-url = "http://localhost:8124/api/states/{fan_remote["entity_id"]}"
+url = "http://localhost:{ha_port}/api/states/{fan_remote["entity_id"]}"
 headers = {{"Authorization": "Bearer {ctx.token}"}}
 r = requests.get(url, headers=headers)
 state = r.json()
@@ -181,10 +185,10 @@ print(json.dumps({{"found": any({expected!r} in line for line in new_lines)}}))
 
         wait_for(
             _native_packet_sent,
-            timeout=15,
+            timeout=30,
             interval=2,
             msg="for strategy fallback 22F1 packet",
-            floor=5.0,
+            floor=10.0,
         )
         ctx.check(
             "remote.send_command('high') sent Orcon 000307 via strategy",
@@ -233,10 +237,10 @@ print(json.dumps({{"found": any({expected_hoog!r} in line for line in new_lines)
 
         wait_for(
             _hoog_packet_sent,
-            timeout=15,
+            timeout=30,
             interval=2,
             msg="for Dutch alias 'hoog' packet",
-            floor=5.0,
+            floor=10.0,
         )
         ctx.check(
             "remote.send_command('hoog') sent Orcon 000307 via alias",

@@ -30,6 +30,8 @@ from ..helpers import (
     get_schema,
     get_schema_retry,
     load_profile_yaml,
+    wait_for,
+    wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
 )
@@ -62,7 +64,6 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
                 print(f"  Profile reload failed: {e}")
             ctx.wait_for_ramses_cc_reload(timeout=30)
             ctx.refresh_token()
-            from ..helpers import wait_for, wait_for_schema_populated
 
             wait_for_schema_populated(min_keys=5, timeout=20)
 
