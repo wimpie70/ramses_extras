@@ -302,6 +302,9 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
         # about invalid keys or invalid structure)
         # Use docker logs --since baseline to avoid picking up errors
         # from other recipes running in parallel on the same container.
+        # Exclude BIND EXCEPTION errors (expected when BDR devices are
+        # in the schema but not in the known_list — they use "unwanted
+        # or invalid" which matches the "invalid" keyword).
         schema_log = (
             subprocess.run(
                 [
@@ -322,6 +325,9 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
             for line in schema_log.splitlines()
             if ("ramses_cc" in line or "ramses_rf" in line)
             and " ERROR " in line
+            and "BIND EXCEPTION" not in line
+            and "unwanted or invalid" not in line
+            and "not an allowed device_id" not in line
             and (
                 "schema" in line
                 or "validation" in line
