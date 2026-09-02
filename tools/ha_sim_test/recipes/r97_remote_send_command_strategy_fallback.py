@@ -115,7 +115,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 # Use the REST API to get state attributes
 import requests
-url = "http://localhost:8124/api/states/{fan_remote["entity_id"]}"
+url = "http://localhost:8123/api/states/{fan_remote["entity_id"]}"
 headers = {{"Authorization": "Bearer {ctx.token}"}}
 r = requests.get(url, headers=headers)
 state = r.json()
