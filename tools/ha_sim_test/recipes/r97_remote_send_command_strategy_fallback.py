@@ -10,6 +10,7 @@ from ..const import CTL, FAN, REM
 from ..helpers import (
     call_service,
     docker_exec_python,
+    get_current_instance,
     get_entities,
     load_profile_yaml,
     wait_for,
@@ -108,6 +109,9 @@ class R97RemoteSendCommandStrategyFallback(Recipe):
             return
 
         # Check that strategy_modes is exposed in attributes
+        # Use the current instance's port (containers use host networking,
+        # so the internal port matches the external port).
+        ha_port = get_current_instance().port
         attrs_result = docker_exec_python(
             f"""
 import json
@@ -115,7 +119,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 # Use the REST API to get state attributes
 import requests
-url = "http://localhost:8123/api/states/{fan_remote["entity_id"]}"
+url = "http://localhost:{ha_port}/api/states/{fan_remote["entity_id"]}"
 headers = {{"Authorization": "Bearer {ctx.token}"}}
 r = requests.get(url, headers=headers)
 state = r.json()
