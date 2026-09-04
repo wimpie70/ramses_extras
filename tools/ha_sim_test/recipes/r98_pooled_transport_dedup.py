@@ -1,6 +1,6 @@
 """Recipe R98: PooledTransport inbound deduplication.
 
-Verifies that the :class:`PooledTransport` (Roadmap Item 9, PR 2)
+Verifies that the :class:`PooledTransport` (Roadmap Item 9, PR 1)
 correctly deduplicates packets arriving from multiple child transports
 within the sliding time window, and forwards distinct packets without
 loss.  This is a structural test that runs inside the ha-sim container
@@ -9,7 +9,10 @@ where the updated ``ramses_tx`` library is installed.
 The ha-sim container uses a single MQTT transport, so this recipe
 cannot test real multi-HGI pooling end-to-end.  Instead it creates
 mock child transports and verifies the pool's dedup logic, outbound
-round-robin routing, and connection lifecycle handling.
+routing, and connection lifecycle handling.
+
+PR 1 note: the pool now uses ``PoolChild`` dataclass instead of
+parallel arrays.  This recipe was updated to use the new API.
 """
 
 from __future__ import annotations
@@ -36,7 +39,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 from ramses_tx.const import Code, I_, SZ_ACTIVE_HGI
 from ramses_tx.transport.base import TransportConfig
-from ramses_tx.transport.pooled import PooledTransport, _ChildProtocolProxy
+from ramses_tx.transport.pooled import (
+    ConnectionState,
+    NodeAvailability,
+    PooledTransport,
+    _ChildProtocolProxy,
+)
 
 
 def make_packet(verb=I_, code=Code._30C9, src="01:123456",
@@ -50,6 +58,8 @@ def make_packet(verb=I_, code=Code._30C9, src="01:123456",
     dto.addr3 = addr3
     dto.raw_payload = payload
     dto.rssi = rssi
+    dto.seq = "---"
+    dto.length = len(payload) // 2
     pkt = MagicMock()
     pkt._dto = dto
     return pkt
@@ -85,10 +95,15 @@ async def run_tests():
     t1 = make_mock_transport(hgi="18:002222")
     pool = PooledTransport(
         proto, [t0, t1], config=TransportConfig(),
-        dedup_window=1.0,
+        loop=asyncio.get_event_loop(),
     )
-    pool._child_connected = [True, True]
-    pool._child_hgi = ["18:001111", "18:002222"]
+    # Mark children connected (simulates connection_made callback).
+    for child in pool._children:
+        child.connection_state = ConnectionState.CONNECTED
+        child.availability = NodeAvailability.ONLINE
+        child.send_ready = True
+        # Set hgi_id from the mock transport (normally done by mark_connected).
+        child.hgi_id = child.transport.get_extra_info(SZ_ACTIVE_HGI)
 
     pkt = make_packet()
     pool._on_child_packet(0, pkt)
@@ -105,9 +120,13 @@ async def run_tests():
     proto2 = make_mock_protocol()
     pool2 = PooledTransport(
         proto2, [t0, t1], config=TransportConfig(),
+        loop=asyncio.get_event_loop(),
     )
-    pool2._child_connected = [True, True]
-    pool2._child_hgi = ["18:001111", "18:002222"]
+    for child in pool2._children:
+        child.connection_state = ConnectionState.CONNECTED
+        child.availability = NodeAvailability.ONLINE
+        child.send_ready = True
+        child.hgi_id = child.transport.get_extra_info(SZ_ACTIVE_HGI)
 
     pkt_a = make_packet(src="01:111111")
     pkt_b = make_packet(src="01:222222")
@@ -125,8 +144,13 @@ async def run_tests():
     t3b = make_mock_transport(hgi="18:002222", connected=True)
     pool3 = PooledTransport(
         proto3, [t3a, t3b], config=TransportConfig(),
+        loop=asyncio.get_event_loop(),
     )
-    pool3._child_connected = [False, True]
+    pool3._children[0].connection_state = ConnectionState.DISCONNECTED
+    pool3._children[1].connection_state = ConnectionState.CONNECTED
+    pool3._children[1].availability = NodeAvailability.ONLINE
+    pool3._children[1].send_ready = True
+    pool3._children[1].hgi_id = t3b.get_extra_info(SZ_ACTIVE_HGI)
 
     await pool3.write_frame(" 000 I --- 01:123456 18:000730 --:------ 30C9 000 00")
     results["outbound_skips_disconnected"] = (
@@ -140,9 +164,13 @@ async def run_tests():
     proto4 = make_mock_protocol()
     pool4 = PooledTransport(
         proto4, [t0, t1], config=TransportConfig(),
+        loop=asyncio.get_event_loop(),
     )
-    pool4._child_connected = [True, True]
-    pool4._child_hgi = ["18:001111", "18:002222"]
+    for child in pool4._children:
+        child.connection_state = ConnectionState.CONNECTED
+        child.availability = NodeAvailability.ONLINE
+        child.send_ready = True
+        child.hgi_id = child.transport.get_extra_info(SZ_ACTIVE_HGI)
     results["extra_info_hgi"] = pool4.get_extra_info(SZ_ACTIVE_HGI)
 
     # Test 5: Close propagates to all children
@@ -151,6 +179,7 @@ async def run_tests():
     t5b = make_mock_transport(hgi="18:002222")
     pool5 = PooledTransport(
         proto5, [t5a, t5b], config=TransportConfig(),
+        loop=asyncio.get_event_loop(),
     )
     pool5.close()
     results["close_all_children"] = (
@@ -166,64 +195,75 @@ async def run_tests():
         pool6._on_child_packet.called
     )
 
-    # Test 7: RSSI-based outbound selection (PR 3)
+    # Test 7: RSSI-based outbound selection
     proto7 = make_mock_protocol()
     t7a = make_mock_transport(hgi="18:001111")
     t7b = make_mock_transport(hgi="18:002222")
     pool7 = PooledTransport(
         proto7, [t7a, t7b], config=TransportConfig(),
-        dedup_window=10.0,
+        loop=asyncio.get_event_loop(),
     )
-    pool7._child_connected = [True, True]
-    pool7._child_hgi = ["18:001111", "18:002222"]
+    for child in pool7._children:
+        child.connection_state = ConnectionState.CONNECTED
+        child.availability = NodeAvailability.ONLINE
+        child.send_ready = True
+        child.hgi_id = child.transport.get_extra_info(SZ_ACTIVE_HGI)
 
-    # Feed child 0 low-RSSI, child 1 high-RSSI packets.
+    # Feed child 0 strong-RSSI, child 1 weak-RSSI packets.
+    # Use negative dBm integers (already normalized, as from PacketDTO).
     for i in range(5):
         pool7._on_child_packet(
-            0, make_packet(rssi="020", payload=f"{i:02X}A")
+            0, make_packet(rssi=-32, payload=f"{i:02X}A")
         )
         pool7._on_child_packet(
-            1, make_packet(rssi="080", payload=f"{i:02X}B")
+            1, make_packet(rssi=-80, payload=f"{i:02X}B")
         )
     await asyncio.sleep(0.01)
     await pool7.write_frame("frame_rssi")
-    results["rssi_selects_higher"] = (
-        t7b.write_frame.called and not t7a.write_frame.called
+    # Child 0 has stronger signal (-32 vs -128), should be selected.
+    results["rssi_selects_stronger"] = (
+        t7a.write_frame.called and not t7b.write_frame.called
     )
 
-    # Test 8: RSSI best-across-readings (uses _best_rssi, not _avg_rssi)
-    results["rssi_best_child0"] = pool7._best_rssi(0)
+    # Test 8: pool_stats includes per-child info
+    stats7 = pool7.get_extra_info("pool_stats")
+    results["stats_has_children"] = "children" in stats7 or "child_count" in stats7
 
-    # Test 9: Health monitoring — unhealthy child excluded (PR 4)
+    # Test 9: Health monitoring — offline child excluded
     proto9 = make_mock_protocol()
     t9a = make_mock_transport(hgi="18:001111")
     t9b = make_mock_transport(hgi="18:002222")
     pool9 = PooledTransport(
         proto9, [t9a, t9b], config=TransportConfig(),
+        loop=asyncio.get_event_loop(),
     )
-    pool9._child_connected = [True, True]
-    pool9._child_hgi = ["18:001111", "18:002222"]
-    pool9._child_healthy[0] = False
+    pool9._children[0].connection_state = ConnectionState.CONNECTED
+    pool9._children[1].connection_state = ConnectionState.CONNECTED
+    pool9._children[0].availability = NodeAvailability.ONLINE
+    pool9._children[1].availability = NodeAvailability.ONLINE
+    pool9._children[0].send_ready = True
+    pool9._children[1].send_ready = True
+    pool9._children[0].hgi_id = t9a.get_extra_info(SZ_ACTIVE_HGI)
+    pool9._children[1].hgi_id = t9b.get_extra_info(SZ_ACTIVE_HGI)
+    # Mark child 0 as not send-ready (simulates offline/unhealthy).
+    pool9._children[0].send_ready = False
 
     await pool9.write_frame("frame_health")
-    results["health_excludes_unhealthy"] = (
+    results["health_excludes_not_ready"] = (
         t9b.write_frame.called and not t9a.write_frame.called
     )
 
-    # Test 10: Packet received marks child healthy
-    pool9._child_consecutive_errors[0] = 3
+    # Test 10: Packet received updates child state
+    pool9._children[0].consecutive_errors = 3
     pool9._on_child_packet(0, make_packet(rssi="050", payload="XX"))
     results["health_packet_restores"] = (
-        pool9._child_healthy[0] is True
-        and pool9._child_consecutive_errors[0] == 0
+        pool9._children[0].consecutive_errors == 0
     )
 
-    # Test 11: pool_stats includes health info
+    # Test 11: pool_stats includes per-child diagnostics
     stats9 = pool9.get_extra_info("pool_stats")
-    results["stats_has_health"] = (
-        "child_health" in stats9 and "consecutive_errors" in stats9
-    )
-    results["stats_has_avg_rssi"] = "avg_rssi" in stats9
+    results["stats_has_deduped"] = "deduped" in stats9
+    results["stats_has_child_count"] = "children" in stats9
 
     print(json.dumps(results))
 
@@ -282,32 +322,27 @@ asyncio.run(run_tests())
             f"result={result}",
         )
         ctx.check(
-            "RSSI-based outbound selects child with higher avg RSSI",
-            result.get("rssi_selects_higher") is True,
+            "RSSI-based outbound selects child with stronger signal",
+            result.get("rssi_selects_stronger") is True,
             f"result={result}",
         )
         ctx.check(
-            "RSSI best-across-readings for child 0 (best=20.0)",
-            result.get("rssi_best_child0") == 20.0,
+            "Health monitoring excludes not-send-ready children from outbound",
+            result.get("health_excludes_not_ready") is True,
             f"result={result}",
         )
         ctx.check(
-            "Health monitoring excludes unhealthy children from outbound",
-            result.get("health_excludes_unhealthy") is True,
-            f"result={result}",
-        )
-        ctx.check(
-            "Receiving a packet restores child health (resets errors)",
+            "Receiving a packet resets consecutive errors",
             result.get("health_packet_restores") is True,
             f"result={result}",
         )
         ctx.check(
-            "pool_stats includes child_health and consecutive_errors",
-            result.get("stats_has_health") is True,
+            "pool_stats includes deduped count",
+            result.get("stats_has_deduped") is True,
             f"result={result}",
         )
         ctx.check(
-            "pool_stats includes avg_rssi per child",
-            result.get("stats_has_avg_rssi") is True,
+            "pool_stats includes child_count",
+            result.get("stats_has_child_count") is True,
             f"result={result}",
         )
