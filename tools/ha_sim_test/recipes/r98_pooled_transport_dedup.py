@@ -39,7 +39,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 from ramses_tx.const import Code, I_, SZ_ACTIVE_HGI
 from ramses_tx.transport.base import TransportConfig
-from ramses_tx.transport.pooled import PooledTransport, _ChildProtocolProxy
+from ramses_tx.transport.pooled import (
+    ConnectionState,
+    NodeAvailability,
+    PooledTransport,
+    _ChildProtocolProxy,
+)
 
 
 def make_packet(verb=I_, code=Code._30C9, src="01:123456",
@@ -94,7 +99,9 @@ async def run_tests():
     )
     # Mark children connected (simulates connection_made callback).
     for child in pool._children:
-        child.is_connected = True
+        child.connection_state = ConnectionState.CONNECTED
+        child.availability = NodeAvailability.ONLINE
+        child.send_ready = True
 
     pkt = make_packet()
     pool._on_child_packet(0, pkt)
@@ -114,7 +121,9 @@ async def run_tests():
         loop=asyncio.get_event_loop(),
     )
     for child in pool2._children:
-        child.is_connected = True
+        child.connection_state = ConnectionState.CONNECTED
+        child.availability = NodeAvailability.ONLINE
+        child.send_ready = True
 
     pkt_a = make_packet(src="01:111111")
     pkt_b = make_packet(src="01:222222")
@@ -134,8 +143,10 @@ async def run_tests():
         proto3, [t3a, t3b], config=TransportConfig(),
         loop=asyncio.get_event_loop(),
     )
-    pool3._children[0].is_connected = False
-    pool3._children[1].is_connected = True
+    pool3._children[0].connection_state = ConnectionState.DISCONNECTED
+    pool3._children[1].connection_state = ConnectionState.CONNECTED
+    pool3._children[1].availability = NodeAvailability.ONLINE
+    pool3._children[1].send_ready = True
 
     await pool3.write_frame(" 000 I --- 01:123456 18:000730 --:------ 30C9 000 00")
     results["outbound_skips_disconnected"] = (
@@ -152,7 +163,9 @@ async def run_tests():
         loop=asyncio.get_event_loop(),
     )
     for child in pool4._children:
-        child.is_connected = True
+        child.connection_state = ConnectionState.CONNECTED
+        child.availability = NodeAvailability.ONLINE
+        child.send_ready = True
     results["extra_info_hgi"] = pool4.get_extra_info(SZ_ACTIVE_HGI)
 
     # Test 5: Close propagates to all children
@@ -186,7 +199,9 @@ async def run_tests():
         loop=asyncio.get_event_loop(),
     )
     for child in pool7._children:
-        child.is_connected = True
+        child.connection_state = ConnectionState.CONNECTED
+        child.availability = NodeAvailability.ONLINE
+        child.send_ready = True
 
     # Feed child 0 low-RSSI, child 1 high-RSSI packets.
     # rssi is hex: 020 = -32 dBm, 080 = -128 dBm
@@ -219,8 +234,12 @@ async def run_tests():
         proto9, [t9a, t9b], config=TransportConfig(),
         loop=asyncio.get_event_loop(),
     )
-    pool9._children[0].is_connected = True
-    pool9._children[1].is_connected = True
+    pool9._children[0].connection_state = ConnectionState.CONNECTED
+    pool9._children[1].connection_state = ConnectionState.CONNECTED
+    pool9._children[0].availability = NodeAvailability.ONLINE
+    pool9._children[1].availability = NodeAvailability.ONLINE
+    pool9._children[0].send_ready = True
+    pool9._children[1].send_ready = True
     # Mark child 0 as not send-ready (simulates offline/unhealthy).
     pool9._children[0].send_ready = False
 
