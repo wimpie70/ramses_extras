@@ -1,1 +1,77 @@
-issues:
+Structural risks
+1. The ESP32 reset root cause is deferred to PR 3 implementation time — but it gates the entire serial-transmit feature
+The plan acknowledges in problem 3 (line 56) that the ESP32 reset cause is "not yet known." PR 3 then says "Establish the safe ESP startup grace/readiness behavior using the physical device while implementing this PR" (line 720).
+
+This is the single biggest risk in the plan. If hardware testing reveals that the ESP32 resets on any write — not just writes during the boot window — then signature_policy="delayed" does not help, and pooled serial transmit is blocked entirely. The plan treats this as an implementation detail, but it is a fundamental feasibility question that should be answered before committing to the six-PR sequence. A time-boxed spike with a physical ESP32 USB HGI would either de-risk PR 3 or re-scope it.
+
+2. Hardware availability is a hard gate but is not addressed as a risk
+PR 3 requires "Two serial HGIs," "ESP32 USB device" (line 742–744). PR 5 requires "One USB plus one MQTT ESP" (line 841). PR 6 requires "physical Zigbee verification" (line 880). The completion criteria for these PRs cannot be met without the physical hardware. The plan never states who has this hardware, whether it is available now, or what happens to the PR sequence if a PR cannot meet its hardware gate.
+
+3. PR 4 spans two repositories but is described as one PR
+PR 4 (line 756) says Repositories: ramses_rf, then ramses_cc and describes implementation in both. Cross-repo PRs are hard to review, merge in order, and test in CI. The ramses_rf half (callback interface changes) must merge before the ramses_cc half (the adapter that uses those callbacks) can be tested. This should be two PRs with an explicit merge-order dependency, or the plan should state how a cross-repo PR is reviewed and landed.
+
+4. PR 1 and PR 2 are full reworks of already-in-flight draft PRs 1184 and 1185
+The plan says "rework draft PR 1184" (line 611) and "rework draft PR 1185 on the revised PR 1184 foundation" (line 658). This means substantial work is being discarded or heavily rewritten. The plan does not acknowledge the cost of this rework, whether there is a migration path for users already testing the draft PRs, or whether the rework can be done incrementally on the existing branches rather than from scratch.
+
+Design gaps
+5. "Fixed design decisions for consensus" is self-contradictory
+Section "Fixed design decisions for consensus" (line 551) says: "The implementation plan starts from these decisions rather than treating them as questions to research" — and then immediately says "Consensus is required on these boundaries" (line 569). If consensus is required, they are not fixed; they are proposals. This matters because PR 2's implementation depends on at least two of them (RSSI algorithm, QoS matching scope) that are still open.
+
+6. The RSSI algorithm is explicitly undecided
+Line 676 says "Retain the strongest-of-three RssiTracker policy unless consensus selects the roadmap's five-sample average." Line 515 says the same thing. PR 2's routing implementation, tests, and diagnostics all depend on this choice. Leaving it open means PR 2 cannot be fully implemented or tested until a decision is made that is outside the PR's scope.
+
+7. The dedup key is deferred to implementation time
+PR 1 says "Decide and test the dedup key, including sequence-number behavior" (line 628). This is a correctness-critical decision: if the key is too broad, legitimate repeated transmissions are dropped; if too narrow, duplicates pass through. The plan lists tests for both cases (lines 639, 644) but does not state the key design. This should be decided before implementation, not during.
+
+8. The trust/membership policy is deferred to PR 5
+Section 9 (line 406) lists three possible trust modes and says "The initial release should choose one clear default." PR 5 says "Choose one canonical accepted-HGI source" (line 818). This is a critical design decision that affects the config flow, the schema model, and the discovery UX. Deferring it to PR 5 implementation means PRs 1–4 are built without knowing how acceptance is represented.
+
+9. The pause_writing() no-op (problem 4) is not explicitly assigned to any PR
+Problem 4 (line 60) says the direct MQTT transport calls pause_writing() on offline, but _ChildProtocolProxy.pause_writing() is a no-op, so an offline MQTT child can remain eligible. PR 4 discusses LWT and availability mapping but never explicitly says "fix the pause_writing no-op" or "wire pause_writing into PoolChild availability." It is implied by the availability-model work, but given that this is a known bug, it should be called out explicitly.
+
+10. Backward compatibility for the disable_sending split is not discussed
+PR 3 splits disable_sending into disable_sending + signature_policy + startup_grace + configured_hgi_id (lines 329–334). Existing callers — including ramses_cc's coordinator and transport_factory — pass disable_sending as part of TransportConfig. The plan does not say:
+
+Whether signature_policy gets a default that preserves current behavior.
+Whether TransportConfig gains new fields with defaults or requires explicit values.
+Whether ramses_cc needs a coordinated change to pass the new fields.
+If TransportConfig is shared between ramses_rf and ramses_cc, this is a cross-repo compatibility concern that PR 3 does not flag.
+
+11. The fate of the existing single-HGI RamsesMqttBridge path is ambiguous
+PR 4 says "Extend or replace RamsesMqttBridge with a multi-HGI HA-native adapter" (line 776). "Extend or replace" is two different decisions with different risk profiles:
+
+Replace: the single-HGI path changes too, risking regression for every existing MQTT user.
+Extend: the single-HGI path remains a separate code path, adding maintenance burden and a second adapter to test.
+The plan should pick one. Given invariant 11 (backward compatibility for single-HGI), "extend with the single-HGI case as a one-element pool through the same adapter" is probably the right answer, but it is not stated.
+
+12. Cross-dongle echo correlation has untested edge cases
+The plan says the selected child's local echo and another child's over-air copy "may arrive in either order" and must be correlated by exact fingerprint (lines 280–282, 392). PR 2's tests cover the basic case (line 692). But the plan does not address:
+
+What happens when two pool HGIs transmit different commands at nearly the same time (e.g., QoS retry of command A on HGI-1 while command B is sent on HGI-2). Can the echo of A be confused with the over-air copy of B?
+What happens if a QoS retry selects a different child — does the pending echo fingerprint change, and what about the over-air copy of the first attempt still in flight?
+These are concurrency edge cases that the "exact fingerprint" approach handles in principle, but the plan does not list tests for them.
+
+13. The standalone paho wildcard adapter is under-specified
+PR 4 says "Drive the same multiplexer through a standalone wildcard paho adapter, including exact per-HGI outbound publication" (line 770). But the current paho path in ramses_tx is per-HGI (each MqttTransport creates its own MqttConnectionManager with its own paho client). Making it wildcard means reworking the standalone paho path too — not just the HA path. The plan treats this as a minor addition but it is a second adapter implementation that shares no code with the HA adapter except the router contract.
+
+14. No effort estimate or sequencing realism
+Six PRs across three repositories, each with hardware verification, regression tests, and ha_sim_test coverage, with strict dependency ordering (PR 1 → PR 2 → PR 3/PR 4 → PR 5, plus PR 6). The plan does not acknowledge the scale of this effort or whether it is realistic as a single coordinated push. If PR 1 takes longer than expected, everything downstream stalls.
+
+Things the plan gets right
+To be fair, the plan is strong in several ways:
+
+The architecture invariants (lines 146–166) are well-reasoned and correctly keep ramses_rf clean.
+The failure classification (lines 381–394) is the right model — definite pre-transmission vs. ambiguous vs. confirmed echo vs. QoS timeout.
+The separation of transport availability, RF activity, and route quality (problem 5) is the correct decomposition.
+The cold-start deterministic fallback with multicast prohibition (line 459) is a real safety concern that the plan handles correctly.
+The "rule for every PR" (lines 594–606) — failing test first, smallest fix, negative paths, hardware verification — is good engineering discipline.
+The plan is honest about what is broken and what is unknown, which is more valuable than a plan that pretends everything is figured out.
+My recommendation
+The plan is a solid architectural document but is not yet ready to be executed as-is. The highest-impact changes before starting:
+
+Run the ESP32 reset characterization spike first. It is the cheapest way to de-risk the most expensive unknown.
+Make the three open design decisions (RSSI algorithm, dedup key, trust/membership policy) before PR 1, not during PR 1/2/5.
+Split PR 4 into two PRs (one per repository) with an explicit merge order.
+Pick "extend" or "replace" for RamsesMqttBridge and state the backward-compatibility story.
+Address TransportConfig backward compatibility for the disable_sending split explicitly, including the ramses_cc side.
+Add explicit hardware-availability and effort-scope risk acknowledgment.
