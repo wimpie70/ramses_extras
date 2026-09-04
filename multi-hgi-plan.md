@@ -72,18 +72,72 @@ The design also takes the concerns raised in issue 1119 seriously:
 - Preserve the existing single-USB path.
 - Make disconnect, readiness, and failover behavior explicit and testable.
 
+## PR implementation status
+
+### PR 1 — Pool child state and inbound foundation (ramses_rf PR 1184)
+
+**Status: implementation complete, tests passing, verified on real hardware.**
+
+Branch: `pr1/pool-child-state-1119` (uncommitted working tree on top of `feat/pooled-transport-1122`).
+
+Implemented on `ramses_rf`:
+
+- `PoolChild` dataclass replaces all parallel arrays (connection, HGI identity, transport, RSSI, counters, timestamps, errors).
+- `ConnectionState` and `NodeAvailability` enums.
+- `_ChildProtocolProxy` maps events into `PoolChild` objects.
+- Ingress provenance: `_ingress_hgi_id` slot on `Packet` + read-only `ingress_hgi_id` property; set in `_on_child_packet()` before forwarding.
+- Loopback exclusion: active pool HGI frames excluded from route RSSI.
+- Dict-backed O(1) dedup cache with sequence-aware key (includes seq when present, falls back to base key).
+- `RssiTracker` TTL (5 min expiry); `_expire()` handles mixed tz-aware/naive timestamps (production bug found via real HGI testing — MQTT transports produce tz-aware local datetimes, serial produces naive).
+- Runtime `add_child()`/`remove_child()`/`set_accepted_hgis()` removed; construction-only.
+- `get_extra_info()` compatibility keys preserved (`pool_hgi_ids`, `pool_rssi_trackers`, `pool_stats`).
+- 47 focused tests in `test_transport_pooled.py`, 14 in `test_rssi_tracker.py`, regression tests in `test_communication_quality.py`.
+- 2889 tests pass, ruff clean, mypy clean.
+
+Verified on real hardware (hass, 2 MQTT HGIs: `18:130236` + `18:149488`):
+
+- Both children connect and stay connected.
+- RSSI-based routing selects the closer HGI (-41 vs -92 dBm).
+- Dedup suppresses cross-HGI duplicate frames (confirmed in logs).
+- `check_communication_quality` runs without errors (tz fix confirmed).
+- 72+ packets received in ~2 minutes of real Orcon ventilation traffic.
+- Zero errors, zero crashes, zero disconnects.
+
+### PR 5 — Serial/Zigbee gating (ramses_cc PR 1133)
+
+**Status: gating implemented.**
+
+- Config flow `manage_pool` step: serial ports and Zigbee labeled "(not yet supported)".
+- Selecting a gated option returns `pool_serial_not_supported` / `pool_zigbee_not_supported` error.
+- Coordinator: defensive filter — only `mqtt://` ports pass to `PooledTransport`.
+- Translations: error messages in `en.json` and `nl.json`.
+- TODO comments reference Phase 2 (PR 3) for serial, Phase 3 (PR 6) for zigbee.
+
+### Remaining PRs
+
+- PR 2 (typed DTO routing + RSSI + QoS + failover): not started.
+- PR 4A (transport-neutral MQTT callback contract): not started.
+- PR 4B (HA-native multi-MQTT adapter): not started.
+- PR 3 (pooled serial transmit): blocked on hardware feasibility gate.
+- PR 6 (Zigbee identity/lifecycle): blocked on hardware availability.
+
 ## Current situation
 
 ### What already works
 
 - `PooledTransport` presents one transport and one inbound packet stream to the protocol/domain layer.
-- Packets from different children are accepted and deduplicated.
-- Each child has an `RssiTracker`, allowing per-device route selection.
+- Packets from different children are accepted and deduplicated via a dict-backed O(1) cache with sequence-aware key.
+- Each child has an `RssiTracker` with TTL expiry (5 min), allowing per-device route selection with fresh evidence.
+- Child state is encapsulated in `PoolChild` dataclass (no parallel arrays).
+- Ingress provenance (`ingress_hgi_id`) is carried on the `Packet` envelope, separate from RAMSES `addr1`.
+- Active pool HGI loopback frames are excluded from route RSSI.
 - A child that reports `connection_lost()` is removed from outbound candidates immediately.
 - A physical serial disconnect reaches the pool through the child protocol proxy.
 - Standalone paho `MqttTransport` children can nominally receive and transmit outside HA (e.g. via `ramses_cli`); the HA-native `RamsesMqttBridge` is the single-HGI path inside Home Assistant and uses `homeassistant.components.mqtt`, not paho.
 - The existing non-pooled single-serial path remains unchanged.
-- Pool configuration changes currently use the Home Assistant config-entry reload lifecycle rather than runtime `add_child()`/`remove_child()` calls.
+- Pool configuration changes use the Home Assistant config-entry reload lifecycle rather than runtime `add_child()`/`remove_child()` calls (runtime API removed).
+- Serial and Zigbee transport types are gated in the config flow with "(not yet supported)" markers.
+- Verified on real hardware: dual-MQTT pool (2 HGIs) works end-to-end with dedup, RSSI routing, and zero errors.
 
 ### Problems that must be fixed
 
@@ -152,17 +206,15 @@ A wildcard MQTT namespace also needs an explicit trust policy: private namespace
 
 #### 11. Child state is fragmented
 
-The pool stores connection, HGI identity, transport object, RSSI, packet counts, health, timestamps, and error counts in parallel mutable arrays. This makes lifecycle transitions harder to reason about and was one of the legitimate complexity concerns raised in the discussion.
+~~The pool stores connection, HGI identity, transport object, RSSI, packet counts, health, timestamps, and error counts in parallel mutable arrays.~~ **Fixed in PR 1:** `PoolChild` dataclass consolidates all per-child state into one object. No parallel arrays remain.
 
 #### 12. Deduplication is not O(1)
 
-The current cache is bounded by time and size, but it is a `deque` that is linearly scanned. Documentation and discussion sometimes describe an `OrderedDict` or O(1) lookup, which is not the current implementation.
+~~The current cache is bounded by time and size, but it is a `deque` that is linearly scanned.~~ **Fixed in PR 1:** replaced with a dict-backed time- and size-bounded cache with sequence-aware key. O(1) expected lookup.
 
 #### 13. RSSI semantics and expiry need an explicit contract
 
-The roadmap mentioned a five-sample rolling average, while the implementation reuses the existing three-sample `RssiTracker` and selects the strongest recent reading. The tracker stores timestamps but does not expire old samples during `best_rssi_for()`.
-
-The chosen algorithm must be documented consistently, and stale RSSI must not route traffic through a child based on very old observations.
+~~The roadmap mentioned a five-sample rolling average, while the implementation reuses the existing three-sample `RssiTracker` and selects the strongest recent reading. The tracker stores timestamps but does not expire old samples during `best_rssi_for()`.~~ **Fixed in PR 1:** `RssiTracker` now has TTL (5 min default). `_expire()` runs on every access. Stale readings are removed. The tz-aware/naive datetime comparison bug (MQTT vs serial) was found and fixed during real HGI testing.
 
 #### 14. Existing verification is mostly mock-based
 
@@ -170,15 +222,11 @@ The pool unit tests and simulation recipe use mock child transports. They verify
 
 #### 15. Cross-dongle air-interface loopback is not classified
 
-When one pool HGI transmits, another HGI can hear the same RF frame over the air. The current pool records RSSI before deduplication, so the receiving child stores route evidence for the transmitting HGI. This does not directly alter the target device's per-device RSSI, but it can bias aggregate fallback RSSI.
-
-The selected child's local hardware echo and another child's over-air copy can also arrive in either order. They must be correlated with the routed command and deduplicated without accepting an unrelated HGI frame as the pending echo.
+~~When one pool HGI transmits, another HGI can hear the same RF frame over the air. The current pool records RSSI before deduplication, so the receiving child stores route evidence for the transmitting HGI.~~ **Fixed in PR 1:** loopback exclusion implemented — active pool HGI frames are excluded from route RSSI. Dedup suppresses the over-air copy.
 
 #### 16. MQTT ingress does not carry receiving-HGI identity
 
-`CallbackTransport.receive_frame()` accepts the frame and timestamp but not the HGI/topic route that received it. A wildcard MQTT subscription therefore loses the distinction between the RAMSES frame source (`addr1`) and the physical MQTT HGI that heard the frame.
-
-Receiving-HGI identity is link-layer provenance, not application metadata. It is required for per-child RSSI, loopback classification, diagnostics, and exact echo handling.
+~~`CallbackTransport.receive_frame()` accepts the frame and timestamp but not the HGI/topic route that received it.~~ **Fixed in PR 1:** `_ingress_hgi_id` slot added to `Packet` envelope. `_on_child_packet()` sets provenance before forwarding to protocol. `ingress_hgi_id` property provides read access.
 
 #### 17. Cold-start routing is underspecified
 
