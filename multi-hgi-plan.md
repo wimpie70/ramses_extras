@@ -76,9 +76,9 @@ The design also takes the concerns raised in issue 1119 seriously:
 
 ### PR 1 — Pool child state and inbound foundation (ramses_rf PR 1184)
 
-**Status: implementation complete, tests passing, verified on real hardware.**
+**Status: implementation complete, tests passing, verified on real hardware, rebased on upstream master.**
 
-Branch: `pr1/pool-child-state-1119` (uncommitted working tree on top of `feat/pooled-transport-1122`).
+Branch: `feat/pooled-transport-1122` (force-pushed to `wimpie70/ramses_rf`, PR 1184 open, local tracking branch `pr1/pool-child-state-1119`).
 
 Implemented on `ramses_rf`:
 
@@ -88,11 +88,12 @@ Implemented on `ramses_rf`:
 - Ingress provenance: `_ingress_hgi_id` slot on `Packet` + read-only `ingress_hgi_id` property; set in `_on_child_packet()` before forwarding.
 - Loopback exclusion: active pool HGI frames excluded from route RSSI.
 - Dict-backed O(1) dedup cache with sequence-aware key (includes seq when present, falls back to base key).
-- `RssiTracker` TTL (5 min expiry); `_expire()` handles mixed tz-aware/naive timestamps (production bug found via real HGI testing — MQTT transports produce tz-aware local datetimes, serial produces naive).
+- `RssiTracker` TTL (5 min expiry for pool children, `None` default for gateway communication-quality trackers); `_expire()` handles mixed tz-aware/naive timestamps (production bug found via real HGI testing — MQTT transports produce tz-aware local datetimes, serial produces naive).
+- `_RSSI_UNKNOWN` sentinel changed from `0` to `-999` so real negative RSSI values are preferred over the unknown sentinel.
 - Runtime `add_child()`/`remove_child()`/`set_accepted_hgis()` removed; construction-only.
 - `get_extra_info()` compatibility keys preserved (`pool_hgi_ids`, `pool_rssi_trackers`, `pool_stats`).
 - 47 focused tests in `test_transport_pooled.py`, 14 in `test_rssi_tracker.py`, regression tests in `test_communication_quality.py`.
-- 2889 tests pass, ruff clean, mypy clean.
+- 2966 tests pass, ruff clean, mypy clean.
 
 Verified on real hardware (hass, 2 MQTT HGIs: `18:130236` + `18:149488`):
 
@@ -103,15 +104,39 @@ Verified on real hardware (hass, 2 MQTT HGIs: `18:130236` + `18:149488`):
 - 72+ packets received in ~2 minutes of real Orcon ventilation traffic.
 - Zero errors, zero crashes, zero disconnects.
 
-### PR 5 — Serial/Zigbee gating (ramses_cc PR 1133)
+### PR 5 — Serial/Zigbee gating + multi-HGI pool config flow (ramses_cc PR 1133)
 
-**Status: gating implemented.**
+**Status: gating + config flow + coordinator wiring implemented, all CI checks passing (lint, test, type, validate, coverage), rebased on upstream master.**
+
+Branch: `feat/pool-all-1119` (force-pushed to `wimpie70/ramses_cc`, PR 1133 open).
+
+Implemented on `ramses_cc`:
 
 - Config flow `manage_pool` step: serial ports and Zigbee labeled "(not yet supported)".
 - Selecting a gated option returns `pool_serial_not_supported` / `pool_zigbee_not_supported` error.
-- Coordinator: defensive filter — only `mqtt://` ports pass to `PooledTransport`.
+- Config flow `manage_pool_mqtt` step: add MQTT broker as pool child (host, port, auth, topic_path).
+- Config flow `manage_pool_zigbee` step: select Zigbee device (gated, shows form but cannot save in Phase 1).
+- Coordinator: `_create_pool_transport_constructor()` wires `pooled_transport_factory` from `ramses_tx` with lazy import guard for older published versions.
+- Coordinator: defensive filter — only `mqtt://` ports pass to `PooledTransport`; serial and Zigbee are filtered out.
+- Coordinator: `_extract_pool_hgis_from_schema()` discovers accepted HGIs from schema (18: devices with `_owner == root_owner` and `_class: HGI`).
+- Coordinator: `_build_explicit_mqtt_url()` constructs per-HGI MQTT URLs from wildcard broker URL.
+- Coordinator: `_get_primary_hgi_id()` resolves primary HGI from URL path, `CONF_MQTT_HGI_ID`, or schema fallback.
+- Coordinator: `_register_pool_hgis()` registers pool HGIs in discovery scan and clears `_suppress_not_seen` for connected HGIs.
+- Discovery: `sync_with_schema()` accepts optional schema dict and populates `_schema_no_owner_ids` for HGIs without `_owner` (discovery candidates).
+- Discovery: `check_for_new_devices()` flags schema-no-owner HGIs for review instead of suppressing them; re-flags accepted devices that lost `_owner`.
+- Schemas: `sync_learned_topology()` backfills `_owner` on existing entries missing it (e.g. auto-discovered HGIs).
+- Event: `RamsesRegexEvent` converts bytes in payload to hex for JSON serialization.
 - Translations: error messages in `en.json` and `nl.json`.
 - TODO comments reference Phase 2 (PR 3) for serial, Phase 3 (PR 6) for zigbee.
+
+Coverage: all `custom_components/ramses_cc` modules above 95% Silver IQS threshold (config_flow, coordinator, discovery, event, schemas all pass `verify_module_coverage.py`).
+
+Tests added (1,245 lines):
+- config_flow: 603 lines (manage_pool_mqtt, manage_pool_zigbee, schema member removal, credential masking, duplicate detection).
+- coordinator: 428 lines (pool constructor, _register_pool_hgis, _build_explicit_mqtt_url, _extract_pool_hgis_from_schema, _get_primary_hgi_id, _create_client filtering).
+- discovery: 108 lines (sync_with_schema schema param, check_for_new_devices no-owner flagging, removed device re-marking).
+- event: 70 lines (bytes payload hex conversion).
+- schemas: 36 lines (sync_learned_topology _owner backfill).
 
 ### Remaining PRs
 
@@ -121,22 +146,34 @@ Verified on real hardware (hass, 2 MQTT HGIs: `18:130236` + `18:149488`):
 - PR 3 (pooled serial transmit): blocked on hardware feasibility gate.
 - PR 6 (Zigbee identity/lifecycle): blocked on hardware availability.
 
+### Upstream compatibility note
+
+PR 1148 (merged to upstream master 2026-09-04) added `CONF_GATEWAY_OFFLINE_NOTIFY` — a user-configurable option to disable the gateway-offline notification for low-traffic networks. This feature is self-contained in `const.py`, `config_flow.py` (advanced_features step), and `coordinator.py` (`_async_health_check` early return). It does not touch any pool/multi-HGI code and has no impact on the plan. PR 1133 has been rebased on top of this merge with no conflicts beyond a trivial import-list merge in `test_coordinator.py`.
+
 ## Current situation
 
 ### What already works
 
 - `PooledTransport` presents one transport and one inbound packet stream to the protocol/domain layer.
 - Packets from different children are accepted and deduplicated via a dict-backed O(1) cache with sequence-aware key.
-- Each child has an `RssiTracker` with TTL expiry (5 min), allowing per-device route selection with fresh evidence.
+- Each child has an `RssiTracker` with TTL expiry (5 min for pool children, no expiry for gateway communication-quality trackers), allowing per-device route selection with fresh evidence.
 - Child state is encapsulated in `PoolChild` dataclass (no parallel arrays).
 - Ingress provenance (`ingress_hgi_id`) is carried on the `Packet` envelope, separate from RAMSES `addr1`.
 - Active pool HGI loopback frames are excluded from route RSSI.
+- `_RSSI_UNKNOWN` sentinel is `-999` (not `0`) so real negative RSSI values are preferred.
 - A child that reports `connection_lost()` is removed from outbound candidates immediately.
 - A physical serial disconnect reaches the pool through the child protocol proxy.
 - Standalone paho `MqttTransport` children can nominally receive and transmit outside HA (e.g. via `ramses_cli`); the HA-native `RamsesMqttBridge` is the single-HGI path inside Home Assistant and uses `homeassistant.components.mqtt`, not paho.
 - The existing non-pooled single-serial path remains unchanged.
 - Pool configuration changes use the Home Assistant config-entry reload lifecycle rather than runtime `add_child()`/`remove_child()` calls (runtime API removed).
 - Serial and Zigbee transport types are gated in the config flow with "(not yet supported)" markers.
+- Config flow supports adding MQTT pool children (broker host, port, auth, topic path).
+- Coordinator wires `pooled_transport_factory` from `ramses_tx` with a lazy import guard for older published versions.
+- Coordinator filters non-MQTT ports from pool construction (defensive serial/Zigbee exclusion).
+- Coordinator extracts accepted HGIs from schema, builds per-HGI MQTT URLs, and registers pool HGIs in discovery.
+- Discovery flags schema-no-owner HGIs for review instead of suppressing them (issue 1119).
+- Schemas backfill `_owner` on existing entries missing it (e.g. auto-discovered HGIs).
+- All `custom_components/ramses_cc` modules pass the 95% Silver IQS coverage threshold.
 - Verified on real hardware: dual-MQTT pool (2 HGIs) works end-to-end with dedup, RSSI routing, and zero errors.
 
 ### Problems that must be fixed
