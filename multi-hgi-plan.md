@@ -1,5 +1,7 @@
 # robust transport-neutral HGI pooling
 
+updated: sep 4, 18:22
+
 ## Terminology
 
 To keep all contributors aligned:
@@ -1064,9 +1066,10 @@ Make `PortTransport` a fully send-capable pool child without reintroducing ESP s
 ## PR 4A — Transport-neutral MQTT callback contract (Phase 1)
 
 **Repository:** `ramses_rf`
-**Current PR:** new focused PR on PRs 1 and 2
+**Current PR:** https://github.com/ramses-rf/ramses_rf/pull/1195 (draft)
 **Depends on:** PRs 1 and 2
 **Phase:** 1 — MQTT pool (first release)
+**Status:** implemented, CI green (5/5 checks pass)
 
 Define the transport-neutral callback contract in `ramses_tx` that PR 4B implements through `homeassistant.components.mqtt`. All route policy remains in `ramses_tx`. This PR defines the contract only; it does not add a standalone paho pool adapter.
 
