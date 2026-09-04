@@ -1,0 +1,32 @@
+MQTT Paired Packet Fixture Analysis
+============================================================
+Collection: 2026-09-03T08:06:40.367355Z
+Duration: 90s
+Total RX messages: 0
+Unique frame contents: 0
+Paired (2+ HGIs): 0
+Single-HGI only: 0
+
+HGI message counts:
+
+Paired packet examples (first 20):
+------------------------------------------------------------
+
+============================================================
+RSSI Analysis:
+------------------------------------------------------------
+
+============================================================
+Sequence field analysis (dedup key decision):
+------------------------------------------------------------
+Paired packets with sequence field: 0
+  Same sequence across HGIs: 0
+  Different sequence across HGIs: 0
+
+
+============================================================
+Timing analysis (paired packet arrival delta):
+------------------------------------------------------------
+No timing data available (need ts from MQTT payload)
+
+Status messages: 0
