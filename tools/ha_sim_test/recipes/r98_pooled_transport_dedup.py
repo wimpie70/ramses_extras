@@ -102,6 +102,8 @@ async def run_tests():
         child.connection_state = ConnectionState.CONNECTED
         child.availability = NodeAvailability.ONLINE
         child.send_ready = True
+        # Set hgi_id from the mock transport (normally done by mark_connected).
+        child.hgi_id = child.transport.get_extra_info(SZ_ACTIVE_HGI)
 
     pkt = make_packet()
     pool._on_child_packet(0, pkt)
@@ -124,6 +126,7 @@ async def run_tests():
         child.connection_state = ConnectionState.CONNECTED
         child.availability = NodeAvailability.ONLINE
         child.send_ready = True
+        child.hgi_id = child.transport.get_extra_info(SZ_ACTIVE_HGI)
 
     pkt_a = make_packet(src="01:111111")
     pkt_b = make_packet(src="01:222222")
@@ -147,6 +150,7 @@ async def run_tests():
     pool3._children[1].connection_state = ConnectionState.CONNECTED
     pool3._children[1].availability = NodeAvailability.ONLINE
     pool3._children[1].send_ready = True
+    pool3._children[1].hgi_id = t3b.get_extra_info(SZ_ACTIVE_HGI)
 
     await pool3.write_frame(" 000 I --- 01:123456 18:000730 --:------ 30C9 000 00")
     results["outbound_skips_disconnected"] = (
@@ -166,6 +170,7 @@ async def run_tests():
         child.connection_state = ConnectionState.CONNECTED
         child.availability = NodeAvailability.ONLINE
         child.send_ready = True
+        child.hgi_id = child.transport.get_extra_info(SZ_ACTIVE_HGI)
     results["extra_info_hgi"] = pool4.get_extra_info(SZ_ACTIVE_HGI)
 
     # Test 5: Close propagates to all children
@@ -202,18 +207,16 @@ async def run_tests():
         child.connection_state = ConnectionState.CONNECTED
         child.availability = NodeAvailability.ONLINE
         child.send_ready = True
+        child.hgi_id = child.transport.get_extra_info(SZ_ACTIVE_HGI)
 
-    # Feed child 0 low-RSSI, child 1 high-RSSI packets.
-    # rssi is hex: 020 = -32 dBm, 080 = -128 dBm
-    # Actually rssi in the DTO is a string like "020" which gets
-    # parsed as int(0x20) = 32, then negated to -32 dBm.
-    # For the pool, lower absolute value = stronger signal.
+    # Feed child 0 strong-RSSI, child 1 weak-RSSI packets.
+    # Use negative dBm integers (already normalized, as from PacketDTO).
     for i in range(5):
         pool7._on_child_packet(
-            0, make_packet(rssi="020", payload=f"{i:02X}A")
+            0, make_packet(rssi=-32, payload=f"{i:02X}A")
         )
         pool7._on_child_packet(
-            1, make_packet(rssi="080", payload=f"{i:02X}B")
+            1, make_packet(rssi=-80, payload=f"{i:02X}B")
         )
     await asyncio.sleep(0.01)
     await pool7.write_frame("frame_rssi")
@@ -240,6 +243,8 @@ async def run_tests():
     pool9._children[1].availability = NodeAvailability.ONLINE
     pool9._children[0].send_ready = True
     pool9._children[1].send_ready = True
+    pool9._children[0].hgi_id = t9a.get_extra_info(SZ_ACTIVE_HGI)
+    pool9._children[1].hgi_id = t9b.get_extra_info(SZ_ACTIVE_HGI)
     # Mark child 0 as not send-ready (simulates offline/unhealthy).
     pool9._children[0].send_ready = False
 
@@ -258,7 +263,7 @@ async def run_tests():
     # Test 11: pool_stats includes per-child diagnostics
     stats9 = pool9.get_extra_info("pool_stats")
     results["stats_has_deduped"] = "deduped" in stats9
-    results["stats_has_child_count"] = "child_count" in stats9
+    results["stats_has_child_count"] = "children" in stats9
 
     print(json.dumps(results))
 
