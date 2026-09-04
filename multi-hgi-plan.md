@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 4, 18:22
+updated: sep 4, 19:15
 
 ## Terminology
 
@@ -142,8 +142,9 @@ Tests added (1,245 lines):
 
 ### Remaining PRs
 
-- PR 4A (transport-neutral MQTT callback contract): not started.
-- PR 4B (HA-native multi-MQTT adapter): not started.
+- PR 4A (transport-neutral MQTT callback contract): **implemented, CI green (5/5), draft PR 1195 open.**
+- PR 4B (HA-native multi-MQTT adapter): **implemented, lint CI green, draft PR 1157 open.** Type/test/coverage CI fail because PR 4A modules are not yet in published `ramses-rf==0.60.4`. Will go green after PR 4A merges and a new `ramses-rf` version is published.
+- PR 5 (canonical membership + config flow + MQTT pool assembly): **implemented, lint/ruff/mypy clean, 1554 tests pass, draft PR 5 open.** CI type/test failures expected until PR 4A merges and `ramses-rf` publishes a new version.
 - PR 3 (pooled serial transmit): blocked on hardware feasibility gate.
 - PR 6 (Zigbee identity/lifecycle): blocked on hardware availability.
 
@@ -202,6 +203,10 @@ PR 1148 (merged to upstream master 2026-09-04) added `CONF_GATEWAY_OFFLINE_NOTIF
 - `PortProtocol` uses the routing API for each QoS attempt; `_pending_cmd` is set from the final routed DTO for correct echo matching.
 - `SourcePolicy.PRESERVE` protects faked-device command sources from pool-level patching.
 - `WriteOutcome` classifies write results as `SUBMITTED`, `NOT_SUBMITTED`, or `AMBIGUOUS` for safe failover decisions.
+- Transport-neutral MQTT callback contract: `MqttPoolInbound`, `MqttPoolOutbound`, `MqttDiscoveryCallback` protocols in `ramses_tx.transport.callbacks`. `MqttCallbackPoolAdapter` bridges callbacks to `PooledTransport` with pre-created logical children, LWT/broker event mapping, and outbound publishing.
+- HA-native multi-HGI MQTT pool bridge: `RamsesMqttPoolBridge` in `ramses_cc` drives multiple configured HGIs through one HA-managed MQTT connection using the callback contract. Wildcard RX/CMD/status subscriptions, HGI ID extraction from topics, Packet parsing, per-HGI LWT handling, and per-HGI `!V` handshake.
+- Single-HGI HA MQTT path (`RamsesMqttBridge`) remains unchanged — a single MQTT HGI is not a pool with one child.
+- Callback-driven children are treated as evofw3-compatible by `PooledTransport.get_extra_info(SZ_IS_EVOFW3)`.
 
 ### Problems that must be fixed
 
@@ -226,9 +231,9 @@ It is not yet known whether the reset is caused by DTR/RTS transitions, writes d
 
 #### 4. MQTT LWT does not affect pool eligibility
 
-The direct MQTT transport already observes online/offline status and tracks ESP IDs. However, its offline path calls `pause_writing()`, while `_ChildProtocolProxy.pause_writing()` is a no-op. The pool can therefore continue considering an offline MQTT child connected.
+~~The direct MQTT transport already observes online/offline status and tracks ESP IDs. However, its offline path calls `pause_writing()`, while `_ChildProtocolProxy.pause_writing()` is a no-op. The pool can therefore continue considering an offline MQTT child connected.~~ **Fixed in PR 4A+4B:** LWT offline is now propagated as a definitive availability event through `MqttCallbackPoolAdapter.on_child_offline(definitive=True)`, which marks the child disconnected and removes it from outbound eligibility. LWT online triggers `on_child_online()` which marks the child connected and send-ready.
 
-The HA-native `RamsesMqttBridge` monitors the broker connection but does not currently maintain per-ESP availability.
+~~The HA-native `RamsesMqttBridge` monitors the broker connection but does not currently maintain per-ESP availability.~~ **Fixed in PR 4B:** `RamsesMqttPoolBridge` tracks per-ESP LWT status separately from the HA broker connection. Broker disconnect marks all MQTT children unavailable; broker reconnect restores subscriptions without duplicating children. Per-ESP LWT offline affects only that child.
 
 #### 5. Packet silence is not a reliable availability model
 
@@ -260,7 +265,7 @@ If a selected child raises during `write_frame()`, the pool does not classify th
 
 #### 9. MQTT bypasses Home Assistant in pooled mode
 
-The HA-native single-HGI path uses `RamsesMqttBridge` through `homeassistant.components.mqtt` (no paho). But when the pool is created for multiple MQTT HGIs, the current code instantiates `MqttTransport` (direct paho) children for `mqtt://` URLs, bypassing HA's broker credentials, SSL configuration, and lifecycle. Phase 1 fixes this: the pool inside HA gets its MQTT children through the PR 4A callback contract implemented by `RamsesMqttBridge`, not through `MqttTransport`.
+~~The HA-native single-HGI path uses `RamsesMqttBridge` through `homeassistant.components.mqtt` (no paho). But when the pool is created for multiple MQTT HGIs, the current code instantiates `MqttTransport` (direct paho) children for `mqtt://` URLs, bypassing HA's broker credentials, SSL configuration, and lifecycle.~~ **Fixed in PR 4B:** `RamsesMqttPoolBridge` drives multiple configured HGIs through one HA-managed MQTT connection using the PR 4A callback contract. No direct paho clients are created inside Home Assistant. The pool gets its MQTT children through `MqttCallbackPoolAdapter`, not through `MqttTransport`.
 
 #### 10. Membership policy is incomplete
 
@@ -1103,9 +1108,45 @@ The existing `MqttTransport` (direct paho) remains in `ramses_tx` for standalone
 ## PR 4B — Home Assistant-native multi-HGI MQTT adapter (Phase 1)
 
 **Repository:** `ramses_cc`
-**Current PR:** rework the MQTT portion of draft ramses_cc PR 1133
+**Current PR:** https://github.com/ramses-rf/ramses_cc/pull/1157 (draft)
 **Depends on:** PR 4A
 **Phase:** 1 — MQTT pool (first release)
+**Status:** implemented, lint CI green, draft PR open. Type/test/coverage CI expected to fail until PR 4A is merged and published.
+
+Branch: `pr4b/ha-mqtt-pool-adapter` (pushed to `wimpie70/ramses_cc`).
+
+Implemented on `ramses_cc`:
+
+- New `mqtt_pool_bridge.py`: `RamsesMqttPoolBridge` class implementing `MqttPoolOutbound`.
+  - Subscribes to wildcard RX (`{prefix}/+/rx`), CMD result (`{prefix}/+/cmd/result`), and status/LWT (`{prefix}/+`) topics through `homeassistant.components.mqtt`.
+  - Extracts HGI ID from each MQTT topic (validates `NN:NNNNNN` format).
+  - Parses RX frame strings into `Packet` objects via `Packet.from_file()` before handing to `MqttCallbackPoolAdapter.on_child_packet()` with `ingress_hgi_id`.
+  - Command results (`!V` responses) are logged but not fed as RF packets — the protocol's `_is_evofw3` flag is set from `transport.get_extra_info(SZ_IS_EVOFW3)` during `connection_made`.
+  - LWT online: marks child online via adapter, sends `!V` to that HGI only.
+  - LWT offline: marks child offline via adapter (definitive).
+  - Broker connected/disconnected: delegates to adapter (`on_broker_connected` / `on_broker_disconnected`).
+  - Unknown HGI on wildcard status: fires `discovery_callback.on_unknown_hgi()` (no PoolChild created).
+  - `publish_frame()`: publishes to the correct HGI's `/tx` or `/cmd/cmd` topic.
+  - `close()`: unsubscribes from all wildcard topics + broker status.
+  - `wait_online_timeout` configurable (default 30s); gracefully continues if no child comes online within timeout.
+- `coordinator.py`: when `_is_mqtt_ha` and schema has multiple HGIs, uses `RamsesMqttPoolBridge`. Single-HGI path unchanged (uses existing `RamsesMqttBridge`). `mqtt_bridge` typed as `RamsesMqttBridge | RamsesMqttPoolBridge | None`.
+- `PooledTransport.get_extra_info(SZ_IS_EVOFW3)` (ramses_rf): callback-driven children treated as evofw3-compatible (ramses_esp is evofw3-compatible).
+- 23 tests in `test_mqtt_pool_bridge.py` covering init, wildcard subscription, HGI extraction, LWT online/offline, broker disconnect, outbound publishing, RX frame parsing, cleanup, and `MqttPoolOutbound` protocol compliance.
+- All 1650 ramses_cc tests pass locally, ruff clean, mypy clean (only pre-existing `@callback` decorator warnings).
+
+**Known CI status:**
+- Lint: green.
+- Type/test/coverage: fail because `ramses-rf==0.60.4` (published) does not have PR 4A's `ramses_tx.transport.callbacks` and `ramses_tx.transport.mqtt_pool` modules. Will go green after PR 4A merges and `ramses-rf` version is bumped in `requirements_dev.txt`.
+- `requirements_dev.txt` was NOT modified — upstream pin must not be changed for a draft PR.
+
+**Fact-check findings (addressed):**
+- Discovery callback is now wired in `coordinator.py` via `_MqttHgiDiscoveryCallback` — unknown HGIs are logged and flagged for discovery review (not added to pool).
+- 5 new tests added: no-child-online timeout, LWT offline sibling isolation, broker recovery no duplicate children, discovery callback invocation, ingress_hgi_id kwarg verification.
+- `wait_online_timeout` default is 30s (hard-coded); not exposed in config options yet — PR 5 may expose it. **Update (PR 5):** now exposed in `manage_pool` options form and wired through to `RamsesMqttPoolBridge`.
+
+**Fact-check findings (deferred to PR 5 or noted as limitations):**
+- Heartbeat/last-packet expiry is NOT implemented. An ESP that silently stops sending but never sends LWT `offline` will stay marked online. LWT is the sole source-of-truth for MQTT child availability in Phase 1. This is acceptable because ramses_esp sends LWT reliably on graceful disconnect, but a power-loss scenario could leave a stale online child. PR 5 may add a heartbeat timeout if real-world testing shows this is needed.
+- `wait_online_timeout` is not exposed in config options — hard-coded 30s default. **Resolved in PR 5:** now configurable via `manage_pool` form (1-300s, default 30s).
 
 Generalize `RamsesMqttBridge` to drive the PR 4A callback contract through Home Assistant's shared MQTT connection. Two paths exist inside HA:
 
@@ -1204,6 +1245,36 @@ Make schema/config membership authoritative and construct MQTT pools through one
 - Serial and Zigbee transport types are gated with "(not yet supported)" and `TODO:` remarks in the config flow.
 - Focused `ramses_cc` tests, full suite, Ruff, strict mypy, and targeted/full `ha_sim_test` pass.
 - **Phase 1 release:** the dual-MQTT pool is complete when the Phase 1 release verification passes. Serial and hybrid support remain gated until Phase 2.
+
+### PR 5 status and fact-check findings
+
+**Status: implementation complete, draft PR 5 open (https://github.com/wimpie70/ramses_cc/pull/5).**
+
+Branch: `pr5/membership-config-flow-pool-assembly` (pushed to `wimpie70/ramses_cc`).
+
+**Implemented:**
+
+- `CONF_WAIT_ONLINE_TIMEOUT` constant (default 30s) exposed in `manage_pool` options form via `NumberSelector` (1-300s). Wired through to `RamsesMqttPoolBridge` in the HA MQTT multi-HGI path.
+- `manage_pool_mqtt` step now requires an HGI device ID (`18:NNNNNN`) and creates a schema entry with `_class: HGI` and `_owner: root_owner` so `_extract_pool_hgis_from_schema()` includes it as an accepted pool member on reload.
+- `_MqttHgiDiscoveryCallback.on_unknown_hgi()` inserts unknown HGIs into the schema as discovery candidates (`_class: HGI`, no `_owner`) so `sync_with_schema` → `check_for_new_devices` can prompt the user. Does not overwrite existing entries.
+- Stale `set_accepted_hgis` runtime call removed from `_create_pool_transport_constructor` (method was removed from `PooledTransport` in PR 1).
+- Translations added for `manage_pool_mqtt` step, `wait_online_timeout`, `hgi_id_required`, `hgi_id_invalid`.
+- 8 new regression tests (1554 total pass, ruff + mypy clean).
+
+**Fact-check findings (addressed):**
+
+- `manage_pool_mqtt` now creates schema HGI entries with `_owner` — the canonical membership source is the schema, not `CONF_ADDITIONAL_PORTS`.
+- Unknown HGIs from the wildcard topic are inserted as discovery candidates (no `_owner`) — they cannot send commands until the user accepts them and the config entry reloads.
+- `wait_online_timeout` is now configurable and wired through.
+
+**Fact-check findings (noted as limitations / deferred):**
+
+- **Config-entry migration for legacy `CONF_ACCEPTED_HGIS`**: not implemented. The legacy non-HA-MQTT pool path still reads `CONF_ACCEPTED_HGIS` and passes it to `_create_pool_transport_constructor`. A migration that converts `CONF_ACCEPTED_HGIS` to owned schema HGI entries is deferred to a follow-up. The HA MQTT path does not use `CONF_ACCEPTED_HGIS` at all — it derives membership entirely from the schema.
+- **Schema `_owner` backfill exemption for ownerless HGI candidates**: `sync_learned_topology()` backfills `_owner` for all devices without an owner (including `18:` HGIs). This means a discovery candidate HGI could get its `_owner` backfilled to `root_owner` by `sync_learned_topology`, which would promote it to an accepted pool member without explicit user action. This is a potential issue — the backfill logic at `schemas.py:1303-1383` does not exclude `18:` HGI entries. However, in practice, `sync_learned_topology` is only called when the user explicitly syncs topology, and the discovery candidate would have been reviewed by then. A follow-up should add an exemption for `18:` HGI entries in the backfill logic.
+- **Pre-create configured ownerless MQTT HGIs as receive-only children**: the coordinator's `_extract_pool_hgis_from_schema()` already includes ownerless HGIs as pool members (receive-only children). This is working as designed — ownerless HGIs are included so their packets are received and the scan engine can discover them, but they cannot send commands until the user accepts them.
+- **HA USB consumer listing (issue 1143)**: not addressed in this PR. The nested `("serial_port", "port_name")` key path issue is a HA core fix, not a ramses_cc change. Deferred.
+- **Diagnostics/config UI display**: not addressed in this PR. The plan calls for showing transport kind, address, HGI ID, broker/topic, availability, acceptance, and send readiness in diagnostics. Deferred to a follow-up.
+- **Remove unused runtime hot-add/remove wiring**: not addressed. The `_register_pool_hgis` method still exists and is called at startup and from `sync_topology`. This is intentional — it registers schema HGIs in the discovery scan so they are not offered as unknown devices.
 
 ## PR 6 — Correct Zigbee identity and lifecycle (Phase 3)
 
