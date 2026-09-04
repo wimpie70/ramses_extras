@@ -145,7 +145,7 @@ Tests added (1,245 lines):
 
 - PR 4A (transport-neutral MQTT callback contract): **implemented, CI green (5/5), draft PR 1195 open.** Ready for review/merge — all checks pass on `ramses-rf/ramses_rf`.
 - PR 4B (HA-native multi-MQTT adapter): **implemented, lint CI green, draft PR 1157 open.** Type/test/coverage CI fail because PR 4A modules are not yet in published `ramses-rf==0.60.4`. Will go green after PR 4A merges and a new `ramses-rf` version is published.
-- PR 5 (canonical membership + config flow + MQTT pool assembly): **implemented, lint/ruff/mypy clean, 1558 tests pass, draft PR 5 open on wimpie70 fork.** Includes: `wait_online_timeout` config option, `manage_pool_mqtt` schema HGI entry creation, discovery callback schema insertion, `sync_learned_topology` backfill exemption for `18:` HGI candidates, v3→v4 `CONF_ACCEPTED_HGIS` migration, stale `set_accepted_hgis` cleanup. ha_sim_test R01/R02/R11/R47 pass (14/14 functional checks). CI type/test failures expected until PR 4A merges and `ramses-rf` publishes a new version. Upstream PR blocked — `feat/pool-all-1119` base branch is not on upstream yet.
+- PR 5 (canonical membership + config flow + MQTT pool assembly): **implemented, lint/ruff/mypy clean, 1554 tests pass, draft PR 5 open on wimpie70 fork.** Includes: `wait_online_timeout` config option, `manage_pool_mqtt` schema HGI entry creation, discovery callback schema insertion, `sync_learned_topology` backfill exemption for `18:` HGI candidates, `CONF_ACCEPTED_HGIS` dropped entirely (unreleased — schema is canonical source), stale `set_accepted_hgis` cleanup. ha_sim_test R01/R02/R11/R47 pass (14/14 functional checks). CI type/test failures expected until PR 4A merges and `ramses-rf` publishes a new version. Upstream PR blocked — `feat/pool-all-1119` base branch is not on upstream yet.
 - PR 3 (pooled serial transmit): blocked on hardware feasibility gate.
 - PR 6 (Zigbee identity/lifecycle): blocked on hardware availability.
 
@@ -1262,10 +1262,10 @@ Branch: `pr5/membership-config-flow-pool-assembly` (pushed to `wimpie70/ramses_c
 - `manage_pool_mqtt` step now requires an HGI device ID (`18:NNNNNN`) and creates a schema entry with `_class: HGI` and `_owner: root_owner` so `_extract_pool_hgis_from_schema()` includes it as an accepted pool member on reload.
 - `_MqttHgiDiscoveryCallback.on_unknown_hgi()` inserts unknown HGIs into the schema as discovery candidates (`_class: HGI`, no `_owner`) so `sync_with_schema` → `check_for_new_devices` can prompt the user. Does not overwrite existing entries.
 - `sync_learned_topology()` no longer backfills `_owner` onto `18:` HGI discovery candidates — prevents silent promotion to accepted pool member without explicit user action.
-- v3→v4 config-entry migration: converts legacy `CONF_ACCEPTED_HGIS` to owned schema HGI entries (`_class: HGI`, `_owner: root_owner`). Does not overwrite foreign owners. Removes `CONF_ACCEPTED_HGIS` from options after migration.
+- v3→v4 config-entry migration: **not needed** — `CONF_ACCEPTED_HGIS` was never released (only existed on the `feat/pool-all-1119` draft branch). Dropped entirely; the schema is the canonical membership source. Config entry version stays at 3.
 - Stale `set_accepted_hgis` runtime call removed from `_create_pool_transport_constructor` (method was removed from `PooledTransport` in PR 1).
 - Translations added for `manage_pool_mqtt` step, `wait_online_timeout`, `hgi_id_required`, `hgi_id_invalid`.
-- 11 new regression tests (1558 total pass, ruff + mypy clean).
+- 8 new regression tests (1554 total pass, ruff + mypy clean).
 - ha_sim_test R01/R02/R11/R47 pass (14/14 functional checks, 0 unexpected errors).
 
 **Fact-check findings (addressed):**
@@ -1276,7 +1276,7 @@ Branch: `pr5/membership-config-flow-pool-assembly` (pushed to `wimpie70/ramses_c
 
 **Fact-check findings (noted as limitations / deferred):**
 
-- **Config-entry migration for legacy `CONF_ACCEPTED_HGIS`**: **Resolved.** v3→v4 migration converts `CONF_ACCEPTED_HGIS` to owned schema HGI entries. Does not overwrite foreign owners. The legacy non-HA-MQTT pool path still reads `CONF_ACCEPTED_HGIS` from options (if it somehow survives migration), but the HA MQTT path derives membership entirely from the schema.
+- **Config-entry migration for legacy `CONF_ACCEPTED_HGIS`**: **Dropped.** `CONF_ACCEPTED_HGIS` was never released (only existed on the `feat/pool-all-1119` draft branch). Removed entirely — the schema is the canonical membership source. No migration needed. Config entry version stays at 3.
 - **Schema `_owner` backfill exemption for ownerless HGI candidates**: **Resolved.** `sync_learned_topology()` now exempts `18:` HGI entries with `_class: HGI` from `_owner` backfill. Discovery candidates stay ownerless until the user explicitly accepts them via the config flow.
 - **Pre-create configured ownerless MQTT HGIs as receive-only children**: the coordinator's `_extract_pool_hgis_from_schema()` already includes ownerless HGIs as pool members (receive-only children). This is working as designed — ownerless HGIs are included so their packets are received and the scan engine can discover them, but they cannot send commands until the user accepts them.
 - **HA USB consumer listing (issue 1143)**: not addressed in this PR. The nested `("serial_port", "port_name")` key path issue is a HA core fix, not a ramses_cc change. Deferred.
