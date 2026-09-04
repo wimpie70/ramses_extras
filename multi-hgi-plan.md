@@ -140,11 +140,32 @@ Tests added (1,245 lines):
 
 ### Remaining PRs
 
-- PR 2 (typed DTO routing + RSSI + QoS + failover): not started.
 - PR 4A (transport-neutral MQTT callback contract): not started.
 - PR 4B (HA-native multi-MQTT adapter): not started.
 - PR 3 (pooled serial transmit): blocked on hardware feasibility gate.
 - PR 6 (Zigbee identity/lifecycle): blocked on hardware availability.
+
+### PR 2 — Pre-serialization routing contract (ramses_rf PR 1194)
+
+**Status: implementation complete, all CI checks passing (lint, test, type, coverage), draft PR open.**
+
+Branch: `pr2/typed-routing-1119` (pushed to `wimpie70/ramses_rf`, PR 1194 open).
+
+Implemented on `ramses_rf`:
+
+- New `routing.py` module with immutable boundary objects:
+  - `SourcePolicy` enum: `GATEWAY` (transport may patch source) vs `PRESERVE` (faked-device commands keep intentional source).
+  - `RouteRequest`: immutable wrapper around `CommandDTO` + `SourcePolicy`.
+  - `RoutedCommand`: immutable result with pinned `child_id` + final DTO.
+  - `WriteOutcome`: conservative classification (`SUBMITTED`, `NOT_SUBMITTED`, `AMBIGUOUS`) for safe failover decisions.
+- `TransportInterface` gains default `prepare_command()` and `write_routed()` methods that non-pooled transports inherit as pass-through.
+- `PooledTransport.prepare_command()`: extracts target from `addr2`, selects best child via RSSI/cold-start fallback, patches source address based on `SourcePolicy` and selected child's HGI ID.
+- `PooledTransport.write_routed()`: dispatches to pinned child, returns `WriteOutcome` (handles missing child, TypeError fallback for `disable_tx_limits`).
+- `PortProtocol._process_tx_item()`: wraps each QoS attempt in `prepare_command()` + `write_routed()`, sets `_pending_cmd` from final routed DTO so QoS echo matching uses the actual source-patched command.
+- `SourcePolicy` determined in `send_cmd()`: `GATEWAY` when `addr1` is the gateway placeholder or active HGI ID, `PRESERVE` for intentional non-gateway sources (faked-device commands).
+- Legacy `write_frame()` path preserved for backward compatibility (delegates to child selection + frame re-patching).
+- 23 focused tests in `test_routing.py`, 7 updated tests in `test_protocol_transceiver.py`.
+- 2989 tests pass, ruff clean, mypy clean.
 
 ### Upstream compatibility note
 
@@ -175,6 +196,10 @@ PR 1148 (merged to upstream master 2026-09-04) added `CONF_GATEWAY_OFFLINE_NOTIF
 - Schemas backfill `_owner` on existing entries missing it (e.g. auto-discovered HGIs).
 - All `custom_components/ramses_cc` modules pass the 95% Silver IQS coverage threshold.
 - Verified on real hardware: dual-MQTT pool (2 HGIs) works end-to-end with dedup, RSSI routing, and zero errors.
+- Pre-serialization routing contract: `prepare_command()` / `write_routed()` on `TransportInterface` with typed `RouteRequest`, `RoutedCommand`, `SourcePolicy`, and `WriteOutcome`.
+- `PortProtocol` uses the routing API for each QoS attempt; `_pending_cmd` is set from the final routed DTO for correct echo matching.
+- `SourcePolicy.PRESERVE` protects faked-device command sources from pool-level patching.
+- `WriteOutcome` classifies write results as `SUBMITTED`, `NOT_SUBMITTED`, or `AMBIGUOUS` for safe failover decisions.
 
 ### Problems that must be fixed
 
@@ -928,7 +953,7 @@ Refactor `PooledTransport` around one child object per route while preserving th
 ## PR 2 — Pre-serialization routing, RSSI, QoS, and safe failover
 
 **Repository:** `ramses_rf`
-**Current PR:** rework draft PR 1185 on the revised PR 1184 foundation
+**Current PR:** draft PR 1194 on the revised PR 1184 foundation
 **Depends on:** PR 1
 
 Introduce the transport-neutral outbound router and make it the only path that selects a child.
