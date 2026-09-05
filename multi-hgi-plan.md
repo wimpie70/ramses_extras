@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 5, 15:10
+updated: sep 5, 15:35
 
 ## Terminology
 
@@ -179,17 +179,20 @@ PR 1148 (merged to upstream master 2026-09-04) added `CONF_GATEWAY_OFFLINE_NOTIF
 
 Tested on hass with 2 ESP32 HGIs (`18:130236` + `18:149488`), MQTT broker at `192.168.40.11:1883`, topic `RAMSES/GATEWAY`. Serial via `/dev/ttyACM0`.
 
-| Test                                    | Result | Notes                                                                                                     |
-| --------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
-| 1: single serial HGI (no pool)          | PASS   | Normal operation, no pool bridge created                                                                  |
-| 2: 1 serial + 1 MQTT (hybrid pool)      | PASS   | Both children connected, RSSI routing (-39 vs -84), dedup, `prepare_command` with `SourcePolicy.PRESERVE` |
-| 2b: serial unplug → MQTT failover       | PASS   | `child 0 disconnected (Errno 5)`, pool continued with child 1, `22F1` fan command delivered via MQTT      |
-| 3: 1 MQTT + 1 serial (reversed primary) | SKIP   | Phase 2 — serial pool children are not selectable in the config flow (gated with "(not yet supported)")   |
-| 4: 0 → 1 MQTT (add MQTT to serial)      | PASS   | Adding MQTT URL to `additional_ports` creates hybrid pool                                                 |
-| 5: 1 → 2 MQTT (both via MqttPoolBridge) | PASS   | Both HGIs via wildcard MQTT, schema-derived pool members, dedup, RSSI routing                             |
-| 6: 2 → 1 MQTT (demote one HGI)          | PASS   | Demoted HGI stays as receive-only discovery candidate, notification sent (no duplicate after fix)         |
-| 7: 1 → 0 MQTT (no accepted HGIs)        | PASS   | Backfill exemption for `18:` HGI entries prevents silent promotion (fixed)                                |
-| 8: LWT failover (power off one ESP)     | PASS   | LWT detected in ~49s, `child offline (definitive=True)`, pool failover to remaining HGI, no crash         |
+| Test                                     | Result | Notes                                                                                                     |
+| ---------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| 1: single serial HGI (no pool)           | PASS   | Normal operation, no pool bridge created                                                                  |
+| 2: 1 serial + 1 MQTT (hybrid pool)       | PASS   | Both children connected, RSSI routing (-39 vs -84), dedup, `prepare_command` with `SourcePolicy.PRESERVE` |
+| 2b: serial unplug → MQTT failover        | PASS   | `child 0 disconnected (Errno 5)`, pool continued with child 1, `22F1` fan command delivered via MQTT      |
+| 3: 1 MQTT + 1 serial (reversed primary)  | SKIP   | Phase 2 — serial pool children are not selectable in the config flow (gated with "(not yet supported)")   |
+| 4: 0 → 1 MQTT (add MQTT to serial)       | PASS   | Adding MQTT URL to `additional_ports` creates hybrid pool                                                 |
+| 5: 1 → 2 MQTT (both via MqttPoolBridge)  | PASS   | Both HGIs via wildcard MQTT, schema-derived pool members, dedup, RSSI routing                             |
+| 6: 2 → 1 MQTT (demote one HGI)           | PASS   | Demoted HGI stays as receive-only discovery candidate, notification sent (no duplicate after fix)         |
+| 7: 1 → 0 MQTT (no accepted HGIs)         | PASS   | Backfill exemption for `18:` HGI entries prevents silent promotion (fixed)                                |
+| 8: LWT failover (power off one ESP)      | PASS   | LWT detected in ~49s, `child offline (definitive=True)`, pool failover to remaining HGI, no crash         |
+| 9: Outbound failover (primary unplugged) | PASS   | `22F1` fan commands (medium, low) routed via `18:149488/tx` while primary offline                         |
+| 10: Broker disconnect/reconnect          | PASS   | Both HGIs offline → online (`2/2 connected`) within ~150ms, no `AssertionError` (after fix)               |
+| 11: Primary rejoins after unplug         | PASS   | `!V` sent to `18:130236` on reconnect, pool back to `2/2 connected`                                       |
 
 ### Bugs found during live testing
 
@@ -202,6 +205,10 @@ Tested on hass with 2 ESP32 HGIs (`18:130236` + `18:149488`), MQTT broker at `19
 4. **Communication quality uses only primary RSSI tracker** (fixed): `DeviceBase.communication_quality` only passed the gateway's single `_rssi_tracker` to `compute_quality()`, ignoring RSSI data from other pool children. With 2 HGIs, a device heard strongly by one HGI (-39 dBm) but weakly by another (-89 dBm) was flagged as "weak signal". Fixed in `ramses_rf` `dev_base.py` to gather `pool_rssi_trackers` from `PooledTransport.get_extra_info()` so `best_rssi` reflects the strongest signal across all HGIs. 6 regression tests added in `test_base.py::TestCommunicationQuality`.
 
 5. **Faked device in weak-signal notification** (verified, not a bug): The faked remote `37:168270` appeared in a "Schema mismatches detected" notification, but current dev logs show it is correctly skipped by `discovery.py`'s `is_faked` check. The notification was stale or from a production instance without the fix.
+
+6. **`AssertionError` on broker reconnect** (fixed in `ramses_rf` PR 4A): `PortProtocol._set_active_hgi()` asserted it should only be called once, but `connection_lost()` did not reset `_active_hgi`. When the MQTT broker disconnected and reconnected, `connection_made()` fired again and hit the assertion. Fixed by resetting `_active_hgi` and `_is_evofw3` in `connection_lost()` and relaxing the assertion to a warning. All 3037 `ramses_rf` tests pass.
+
+7. **`temp_control` overrides manual fan speed** (issue 216, `ramses_extras` — not a pool bug): The `temp_control` automation sends `22F1` (high) immediately after a manual fan speed command, undoing the user's setting. `humidity_control` correctly detects manual overrides, but `temp_control` only checks bypass position changes, not `22F1` fan speed changes. The pool delivers both commands correctly — this is an automation logic issue in `ramses_extras`, not a pool issue. Tracked in https://github.com/wimpie70/ramses_extras/issues/216.
 
 ## Release-readiness audit (2026-09-05)
 
