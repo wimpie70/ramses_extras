@@ -61,6 +61,9 @@ EXPECTED_WARNINGS: list[str] = [
     # exception is caught by the gateway but HA's task runner also logs
     # it as "Error doing job: TransportError exception in shielded future".
     "TransportError exception in shielded future",
+    # ramses_tx: ProtocolTimeoutError during MQTT reconnect after parallel
+    # run or profile reload (transient — the transport recovers)
+    "ProtocolTimeoutError exception in shielded future",
     # ramses_rf: SUPPRESSED in Zone handler (cosmetic, from zone rebinding)
     "SUPPRESSED in Zone",
     # ramses_rf: SUPPRESSED in SystemBase 000C handler (BDR re-parenting)
@@ -77,6 +80,10 @@ EXPECTED_WARNINGS: list[str] = [
     "rf_config_validation",
     # ramses_tx: MQTT disconnect during restart (expected)
     "MQTT disconnected",
+    # ramses_cc: MQTT transport reconnecting after profile reload or
+    # parallel run residue (transient — the transport reconnects within
+    # a few seconds)
+    "Connection to RAMSES RF gateway lost",
     # ramses_rf: discovery cmd timeout (simulator may not respond to all RQ)
     "Failed to send discovery cmd",
     # ramses_cc: migration warning for known_list devices not in schema

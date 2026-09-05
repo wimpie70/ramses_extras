@@ -49,9 +49,25 @@ class GatewayStub:
     def device_registry(self):
         return self
 
+    def get_device(self, device_id):
+        return self.device_by_id.get(device_id)
+
     def _add_device(self, dev):
         self.device_by_id[dev.id] = dev
         self.devices.append(dev)
+
+
+class FanStub:
+    # Minimal fan stub for set_ventilation_demand strategy resolution
+
+    def __init__(self, fan_id, scheme="orcon"):
+        self.id = fan_id
+        self._scheme = scheme
+        self._strategy = None  # force best_hvac_strategy fallback
+        self.entity_state = MagicMock()
+        self.entity_state.get_value = AsyncMock(
+            return_value={"description": "Orcon"}
+        )
 
 
 async def run_tests():
@@ -116,6 +132,10 @@ async def run_tests():
             str(code) for code in default_codes
         ]
 
+    # Register a fan stub so set_ventilation_demand can resolve strategy
+    fan = FanStub("32:155617", scheme="orcon")
+    gateway._add_device(fan)
+
     await sensor.set_ventilation_demand("32:155617", 0.5)
     dispatched = gateway.dispatcher.send.await_args
     intent = dispatched.args[0]
@@ -175,9 +195,9 @@ asyncio.run(run_tests())
             f"result={result}",
         )
         ctx.check(
-            "50% Orcon demand encodes first-domain 31E0 payload 0000640001000000",
+            "50% Orcon demand encodes 31E0 payload (second-domain VMD format)",
             result.get("demand_verb") == " I"
             and result.get("demand_code") == "31E0"
-            and result.get("demand_payload") == "0000640001000000",
+            and result.get("demand_payload") == "0000000001003200",
             f"result={result}",
         )

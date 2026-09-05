@@ -1,10 +1,141 @@
-- test 1 serial
-- test 1 serial + mqtt
-- test 1 mqtt + 1 serial
-- test 0 -> 1 mqtt
-- test 1 -> 2 mqtt
-- test 2 -> 1 mqtt
-- test 1 -> 0 mqtt
-- check prod losing hgi
+I’ll do a release-readiness audit across the active Phase 1 branches: code paths, PR diffs/status, dependency sequence, and targeted/full tests. I’ll preserve your current plan formatting edits.
 
-- weak signal not correct (faked, weak on 1 esp while strong on other esp)
+The PR topology reveals an important release detail: the latest Phase 1 fixes exist on the aggregate branches, not on the older upstream PR heads. I’m now reviewing the actual final diffs and running release-level checks rather than relying on the earlier test counts.
+
+Local release checks are clean so far: `ramses_rf` 3037 passed/9 skipped; `ramses_cc` 1658 passed/15 skipped; lint/type/pre-commit all pass. However, static review found several untested edge cases and two architecture mismatches, so I’m checking coverage and final runtime semantics before giving a release verdict.
+
+## Verdict: not release-ready yet
+
+The core MQTT pooling works and the test suites are healthy, but the audit found several real Phase 1 blockers.
+
+### Verification completed
+
+- **ramses_rf**
+  - `prek`, Ruff, mypy: pass
+  - **3037 passed, 9 skipped**
+  - PR 1195 CI: all 5 checks green
+- **ramses_cc**
+  - `prek`, Ruff, mypy: pass
+  - **1658 passed, 15 skipped**
+  - Overall coverage: 97%
+  - Per-module Silver coverage check: **fails**
+- **ha_sim R98/R100**
+  - All 27 functional assertions passed
+  - One unrelated gateway-reload warning caused the log-cleanliness check to fail
+  - `ha-sim` does not currently have the latest `ramses_cc` branch installed
+
+All working trees are clean.
+
+## Release blockers
+
+### 1. Published dependency is incompatible
+
+`ramses_cc` still requires `ramses-rf==0.60.4`, but imports pool modules that are absent from the 0.60.4 wheel. <ref_snippet file="/home/willem/dev/ramses_cc/custom_components/ramses_cc/manifest.json" lines="13-22" /> <ref_snippet file="/home/willem/dev/ramses_cc/custom_components/ramses_cc/mqtt_pool_bridge.py" lines="37-43" />
+
+The 0.60.4 wheel was checked directly:
+
+- `callbacks.py`: absent
+- `mqtt_pool.py`: absent
+- `pooled.py`: absent
+
+A new `ramses_rf` version must be published, then `ramses_cc` must pin that exact version and rerun CI without the editable local checkout.
+
+### 2. Missing root owner breaks acceptance
+
+When the root `_owner` is missing, this comparison becomes `None == None`, incorrectly accepting ownerless candidates:
+
+```python
+if entry.get(SZ_TR_OWNER) == root_owner:
+```
+
+<ref_snippet file="/home/willem/dev/ramses_cc/custom_components/ramses_cc/coordinator.py" lines="1278-1305" />
+
+Related problems:
+
+- An ownerless candidate can become transmit-enabled.
+- An explicitly owned HGI may be rejected.
+- `manage_pool_mqtt` can give a device `_owner: me` without writing the root `_owner`.
+- Wildcard single-HGI MQTT can produce an accepted set that excludes the effective fallback primary.
+
+These cases have no `ramses_cc` regression tests yet.
+
+### 3. Receive-only candidates still receive `!V`
+
+Although RF frames are now blocked through `PoolChild.accepted`, every configured child—including an ownerless candidate—gets a firmware command when its LWT reports online:
+
+<ref_snippet file="/home/willem/dev/ramses_cc/custom_components/ramses_cc/mqtt_pool_bridge.py" lines="469-479" />
+
+If “receive-only” means no outbound communication before acceptance, `!V` must also be gated.
+
+### 4. MQTT topic parser accepts non-HGI IDs
+
+Topic extraction validates only `NN:NNNNNN`, not the required `18:NNNNNN`. A topic such as `32:153289/rx` could be treated as an HGI and added to the schema as `_class: HGI`.
+
+<ref_snippet file="/home/willem/dev/ramses_cc/custom_components/ramses_cc/mqtt_pool_bridge.py" lines="502-526" />
+
+### 5. MQTT broker/topic form does not match runtime behavior
+
+`manage_pool_mqtt` asks for host, port, credentials, and topic and stores an `additional_ports` URL. <ref_snippet file="/home/willem/dev/ramses_cc/custom_components/ramses_cc/config_flow.py" lines="2096-2144" />
+
+But in the HA MQTT path:
+
+- the entered host and credentials are ignored;
+- the additional topic is ignored;
+- every HGI uses the primary HA MQTT broker/topic.
+
+With a serial primary, that same URL activates the direct-paho hybrid path, contradicting Phase 1’s “MQTT-only, no paho inside HA” design. <ref_snippet file="/home/willem/dev/ramses_cc/custom_components/ramses_cc/coordinator.py" lines="2257-2324" />
+
+This needs a decision:
+
+- **Recommended Phase 1:** only permit HGIs on the existing HA MQTT broker/topic; configure just the HGI ID.
+- Defer different brokers/topics and serial+MQTT pooling to Phase 2.
+
+### 6. Outbound publish outcome is premature
+
+`publish_frame()` schedules `mqtt.async_publish()` as a background task and returns immediately. The pool then reports `WriteOutcome.SUBMITTED` without knowing whether MQTT accepted the publish.
+
+<ref_snippet file="/home/willem/dev/ramses_cc/custom_components/ramses_cc/mqtt_pool_bridge.py" lines="282-324" />
+
+For RF frames, `publish_frame()` should await the HA MQTT publish operation so exceptions reach `write_routed()`.
+
+### 7. Per-module coverage fails
+
+Current results:
+
+| Module | Coverage |
+|---|---:|
+| `mqtt_pool_bridge.py` | 78.10% |
+| `discovery.py` | 94.15% |
+| `coordinator.py` | 94.58% |
+| `mqtt_bridge.py` | 94.63% |
+
+Therefore the plan’s “all modules above 95%” claim is currently false.
+
+## PR/release-chain status
+
+- ramses_rf PR 1184: draft, green
+- ramses_rf PR 1194: draft, green
+- ramses_rf PR 1195: draft, green and contains the latest RF fixes
+- ramses_cc PR 1133: draft, green, but older branch
+- ramses_cc PR 1157: draft, failing because it uses published 0.60.4
+- Fork PR 5 contains the latest combined `ramses_cc` work, but currently has only validation checks—not test/type/coverage CI
+
+Suggested sequence:
+
+1. Resolve the blockers above.
+2. Merge the stacked `ramses_rf` PRs.
+3. Bump `ramses_rf` from 0.60.4 and publish the new PyPI release.
+4. Pin that version in `ramses_cc`.
+5. Rebase/retarget the final `ramses_cc` branch so the latest changes have full upstream CI.
+6. Run tests against the real PyPI wheel, not the editable local RF checkout.
+7. Install the final `ramses_cc` build into `ha-sim` and `hass`.
+8. Repeat dual-HGI hardware tests, especially:
+   - accepted + ownerless candidate;
+   - confirm candidate receives but produces no `/tx` or `/cmd/cmd`;
+   - demotion followed by reload;
+   - LWT failover;
+   - broker disconnect/reconnect;
+   - single-HGI wildcard MQTT;
+   - verify no paho client inside HA.
+
+The plan also still contains stale statements about the old single-HGI `RamsesMqttBridge`, passing coverage, and the already-fixed `PoolChild.accepted` issue. Those should be updated after the blockers are resolved.
