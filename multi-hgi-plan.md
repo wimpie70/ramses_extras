@@ -1490,7 +1490,7 @@ The MQTT pool feature is complete only when all of the following are true:
 8. [x] Schema ownership is the sole MQTT authorization authority, unknown wildcard IDs cannot mutate pool structure, and acceptance changes take effect by config-entry reload.
 9. [x] Existing single-USB and single-HA-MQTT behavior remains compatible. (Single-USB remains non-pooled and unchanged.)
 10. [x] Full repository suites, complete `ha_sim_test`, diagnostics review, and mandatory physical dual-MQTT release evidence pass.
-11. [ ] All transport-path runtime dependencies are declared explicitly in `ramses_cc`'s `manifest.json` or `ramses_rf`'s `pyproject.toml`, the `serialx` pin is reconciled with the HA container baseline, and no CI workflow thresholds or caching were regressed. — **Blocked: `ramses_rf` must publish pool modules; CI cannot pass until then.**
+11. [x] All transport-path runtime dependencies are declared explicitly in `ramses_cc`'s `manifest.json` or `ramses_rf`'s `pyproject.toml` (`paho-mqtt>=2.1.0`, `serialx>=1.8.2`). [x] The `serialx` pin is reconciled with the HA container baseline. [ ] No CI workflow thresholds or caching were regressed — **blocked: `ramses_rf` must publish pool modules; CI cannot pass until then.**
 12. [x] Serial and Zigbee transport types are gated in the config flow with "(not yet supported)" and `TODO:` remarks. No serial or Zigbee pool children are instantiated.
 
 ### Phase 2 — Serial and hybrid pool
