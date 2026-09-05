@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 5, 12:00
+updated: sep 5, 13:00
 
 ## Terminology
 
@@ -94,7 +94,7 @@ Implemented on `ramses_rf`:
 - `_RSSI_UNKNOWN` sentinel changed from `0` to `-999` so real negative RSSI values are preferred over the unknown sentinel.
 - Runtime `add_child()`/`remove_child()`/`set_accepted_hgis()` removed; construction-only.
 - `get_extra_info()` compatibility keys preserved (`pool_hgi_ids`, `pool_rssi_trackers`, `pool_stats`).
-- 47 focused tests in `test_transport_pooled.py`, 14 in `test_rssi_tracker.py`, regression tests in `test_communication_quality.py`.
+- 51 focused tests in `test_transport_pooled.py`, 23 in `test_rssi_tracker.py`, regression tests in `test_communication_quality.py` and `test_base.py::TestCommunicationQuality`.
 - 2966 tests pass, ruff clean, mypy clean.
 
 Verified on real hardware (hass, 2 MQTT HGIs: `18:130236` + `18:149488`):
@@ -106,11 +106,11 @@ Verified on real hardware (hass, 2 MQTT HGIs: `18:130236` + `18:149488`):
 - 72+ packets received in ~2 minutes of real Orcon ventilation traffic.
 - Zero errors, zero crashes, zero disconnects.
 
-### PR 5 — Serial/Zigbee gating + multi-HGI pool config flow (ramses_cc PR 1133)
+### PR 5 — Serial/Zigbee gating + multi-HGI pool config flow (ramses_cc PR 1133 / fork PR 5)
 
 **Status: gating + config flow + coordinator wiring implemented, all CI checks passing (lint, test, type, validate, coverage), rebased on upstream master.**
 
-Branch: `feat/pool-all-1119` (force-pushed to `wimpie70/ramses_cc`, PR 1133 open).
+Branch: `pr5/membership-config-flow-pool-assembly` (current), previously `feat/pool-all-1119`. Upstream PR 1133, fork PR 5 — both refer to the same work.
 
 Implemented on `ramses_cc`:
 
@@ -122,9 +122,9 @@ Implemented on `ramses_cc`:
 - Coordinator: defensive filter — only `mqtt://` ports pass to `PooledTransport`; serial and Zigbee are filtered out.
 - Coordinator: `_extract_pool_hgis_from_schema()` discovers accepted HGIs from schema (18: devices with `_owner == root_owner` and `_class: HGI`).
 - Coordinator: `_build_explicit_mqtt_url()` constructs per-HGI MQTT URLs from wildcard broker URL.
-- Coordinator: `_get_primary_hgi_id()` resolves primary HGI from URL path, `CONF_MQTT_HGI_ID`, or schema fallback.
+- Coordinator: `_get_primary_hgi_id()` resolves primary HGI from `CONF_MQTT_HGI_ID`, URL path, or schema fallback.
 - Coordinator: `_register_pool_hgis()` registers pool HGIs in discovery scan and clears `_suppress_not_seen` for connected HGIs.
-- Discovery: `sync_with_schema()` accepts optional schema dict and populates `_schema_no_owner_ids` for HGIs without `_owner` (discovery candidates).
+- Discovery: `sync_with_schema()` accepts optional schema dict and populates `_schema_no_owner_ids` for all schema devices without `_owner` (not just HGIs — any ownerless device is tracked for review).
 - Discovery: `check_for_new_devices()` flags schema-no-owner HGIs for review instead of suppressing them; re-flags accepted devices that lost `_owner`.
 - Schemas: `sync_learned_topology()` backfills `_owner` on existing entries missing it (e.g. auto-discovered HGIs).
 - Event: `RamsesRegexEvent` converts bytes in payload to hex for JSON serialization.
@@ -133,13 +133,13 @@ Implemented on `ramses_cc`:
 
 Coverage: all `custom_components/ramses_cc` modules above 95% Silver IQS threshold (config_flow, coordinator, discovery, event, schemas all pass `verify_module_coverage.py`).
 
-Tests added (1,245 lines):
+Tests added (approximate diff lines at time of writing; current file sizes are larger due to subsequent additions):
 
-- config_flow: 603 lines (manage_pool_mqtt, manage_pool_zigbee, schema member removal, credential masking, duplicate detection).
-- coordinator: 428 lines (pool constructor, \_register_pool_hgis, \_build_explicit_mqtt_url, \_extract_pool_hgis_from_schema, \_get_primary_hgi_id, \_create_client filtering).
-- discovery: 108 lines (sync_with_schema schema param, check_for_new_devices no-owner flagging, removed device re-marking).
-- event: 70 lines (bytes payload hex conversion).
-- schemas: 36 lines (sync_learned_topology \_owner backfill).
+- config_flow: ~603 lines added (manage_pool_mqtt, manage_pool_zigbee, schema member removal, credential masking, duplicate detection).
+- coordinator: ~428 lines added (pool constructor, \_register_pool_hgis, \_build_explicit_mqtt_url, \_extract_pool_hgis_from_schema, \_get_primary_hgi_id, \_create_client filtering).
+- discovery: ~108 lines added (sync_with_schema schema param, check_for_new_devices no-owner flagging, removed device re-marking).
+- event: ~70 lines added (bytes payload hex conversion).
+- schemas: ~36 lines added (sync_learned_topology \_owner backfill).
 
 ### Remaining PRs
 
@@ -184,7 +184,7 @@ Tested on hass with 2 ESP32 HGIs (`18:130236` + `18:149488`), MQTT broker at `19
 | 1: single serial HGI (no pool)          | PASS   | Normal operation, no pool bridge created                                                                  |
 | 2: 1 serial + 1 MQTT (hybrid pool)      | PASS   | Both children connected, RSSI routing (-39 vs -84), dedup, `prepare_command` with `SourcePolicy.PRESERVE` |
 | 2b: serial unplug → MQTT failover       | PASS   | `child 0 disconnected (Errno 5)`, pool continued with child 1, `22F1` fan command delivered via MQTT      |
-| 3: 1 MQTT + 1 serial (reversed primary) | SKIP   | Phase 2 — serial as pool child is gated (`disable_sending=True`, no serial pool children in config flow)  |
+| 3: 1 MQTT + 1 serial (reversed primary) | SKIP   | Phase 2 — serial pool children are not selectable in the config flow (gated with "(not yet supported)")   |
 | 4: 0 → 1 MQTT (add MQTT to serial)      | PASS   | Adding MQTT URL to `additional_ports` creates hybrid pool                                                 |
 | 5: 1 → 2 MQTT (both via MqttPoolBridge) | PASS   | Both HGIs via wildcard MQTT, schema-derived pool members, dedup, RSSI routing                             |
 | 6: 2 → 1 MQTT (demote one HGI)          | PASS   | Demoted HGI stays as receive-only discovery candidate, notification sent (no duplicate after fix)         |
@@ -234,14 +234,14 @@ Tested on hass with 2 ESP32 HGIs (`18:130236` + `18:149488`), MQTT broker at `19
 - `WriteOutcome` classifies write results as `SUBMITTED`, `NOT_SUBMITTED`, or `AMBIGUOUS` for safe failover decisions.
 - Transport-neutral MQTT callback contract: `MqttPoolInbound`, `MqttPoolOutbound`, `MqttDiscoveryCallback` protocols in `ramses_tx.transport.callbacks`. `MqttCallbackPoolAdapter` bridges callbacks to `PooledTransport` with pre-created logical children, LWT/broker event mapping, and outbound publishing.
 - HA-native multi-HGI MQTT pool bridge: `RamsesMqttPoolBridge` in `ramses_cc` drives multiple configured HGIs through one HA-managed MQTT connection using the callback contract. Wildcard RX/CMD/status subscriptions, HGI ID extraction from topics, Packet parsing, per-HGI LWT handling, and per-HGI `!V` handshake.
-- Single-HGI HA MQTT path (`RamsesMqttBridge`) remains unchanged — a single MQTT HGI is not a pool with one child.
+- Single-HGI HA MQTT path now uses `RamsesMqttPoolBridge` for all MQTT paths (including single HGI). The old `RamsesMqttBridge` class still exists but is no longer instantiated in production code.
 - Callback-driven children are treated as evofw3-compatible by `PooledTransport.get_extra_info(SZ_IS_EVOFW3)`.
 
 ### Problems that must be fixed
 
-#### 1. Pooled serial transmission is disabled
+#### 1. Pooled serial transmission is not supported
 
-All serial children are created with `disable_sending=True` to avoid an immediate startup signature exchange that was resetting some ESP32 USB gateways. The same setting also blocks every later call to `write_frame()`.
+Serial pool children are gated in the config flow with "(not yet supported)" and filtered by the coordinator (`coordinator.py` only passes `mqtt://` ports to `PooledTransport`). The underlying serial-send safety issue (ESP32 USB reset on startup signature exchange) remains uncharacterized. This is a Phase 2 prerequisite, not a runtime `disable_sending` flag.
 
 Effects:
 
@@ -281,12 +281,14 @@ If a selected child raises during `write_frame()`, the pool does not classify th
 
 #### 7. Outbound routing occurs after serialization
 
-`PooledTransport.write_frame()` splits the ASCII frame, treats `addr1` as source and `addr2` as target, checks the `18:` prefix, and rewrites the frame. This causes:
+~~`PooledTransport.write_frame()` splits the ASCII frame, treats `addr1` as source and `addr2` as target, checks the `18:` prefix, and rewrites the frame. This causes:~~
 
-- Link/domain boundary concerns.
-- Double source patching.
-- QoS/echo risk if the protocol expects a command different from the final transmitted frame.
-- Zigbee corruption when an IEEE address is treated as a RAMSES source address.
+~~- Link/domain boundary concerns.~~
+~~- Double source patching.~~
+~~- QoS/echo risk if the protocol expects a command different from the final transmitted frame.~~
+~~- Zigbee corruption when an IEEE address is treated as a RAMSES source address.~~
+
+**Fixed in PR 2:** `PooledTransport.prepare_command()` selects child and patches source **before** serialization. `PortProtocol._process_tx_item` sets `_pending_cmd = routed.command` before serializing, so QoS echo matching uses the actual source-patched command.
 
 #### 8. Zigbee identity conflates two address spaces
 
@@ -298,7 +300,9 @@ If a selected child raises during `write_frame()`, the pool does not classify th
 
 #### 10. Membership policy is incomplete
 
-Schema entries without an owner are documented as receive-only discovery candidates, but no complete `send_ready=False` path enforces that behavior. `CONF_ACCEPTED_HGIS` is read separately and is not derived consistently from schema ownership; the current pool acceptance setter filters inbound forwarding but does not gate outbound selection. The current schema synchronization also backfills missing `_owner` values, including discovered HGI entries, which can silently promote an intended receive-only candidate.
+~~Schema entries without an owner are documented as receive-only discovery candidates, but no complete `send_ready=False` path enforces that behavior. `CONF_ACCEPTED_HGIS` is read separately and is not derived consistently from schema ownership; the current pool acceptance setter filters inbound forwarding but does not gate outbound selection.~~ ~~The current schema synchronization also backfills missing `_owner` values, including discovered HGI entries, which can silently promote an intended receive-only candidate.~~
+
+**Partially fixed:** `CONF_ACCEPTED_HGIS` is fully removed. Schema ownership is canonical. `sync_learned_topology` backfill exempts `18:` HGI entries. However, `PoolChild.accepted` is always initialized to `True` and never updated — ownerless discovery candidates that are added as pool children for receive-only observation can still be selected for outbound transmission. This is a **remaining Phase 1 bug** that must be fixed before release.
 
 A wildcard MQTT namespace also needs an explicit trust policy: private namespace, allowlist, schema ownership, or another acceptance mechanism.
 
@@ -340,13 +344,17 @@ HA-native MQTT is required inside `ramses_cc`, but the transport-neutral multipl
 
 #### 20. The current command/transport API is frame-only
 
-`PortProtocol` currently patches a `CommandDTO`, stores it as the pending command, serializes it, applies outbound regex rules, and only then calls `TransportInterface.write_frame()`. `PooledTransport` therefore cannot select a child and produce the final source-correct DTO before serialization without an explicit protocol/transport preparation API.
+~~`PortProtocol` currently patches a `CommandDTO`, stores it as the pending command, serializes it, applies outbound regex rules, and only then calls `TransportInterface.write_frame()`. `PooledTransport` therefore cannot select a child and produce the final source-correct DTO before serialization without an explicit protocol/transport preparation API.~~
 
-The design must also account for outbound regex rules. A regex-mutated wire frame cannot silently differ in positional addresses from the DTO used for routing and QoS.
+~~The design must also account for outbound regex rules. A regex-mutated wire frame cannot silently differ in positional addresses from the DTO used for routing and QoS.~~
+
+**Fixed in PR 2:** Typed `prepare_command()`/`write_routed()` contract exists on `TransportInterface` and `PooledTransport`. `PortProtocol._process_tx_item` uses the routing API before serialization.
 
 #### 21. Runtime MQTT discovery conflicts with immutable pool membership
 
-A wildcard subscription can observe an HGI that was not present when the config entry loaded. Creating a routable `PoolChild` immediately would be a runtime structural mutation, contradicting the first-release reload-only membership rule.
+~~A wildcard subscription can observe an HGI that was not present when the config entry loaded. Creating a routable `PoolChild` immediately would be a runtime structural mutation, contradicting the first-release reload-only membership rule.~~
+
+**Fixed in PR 4A+4B:** `on_unknown_hgi` only reports to the discovery callback; no `PoolChild` is created at runtime. Newly observed wildcard HGIs remain adapter-side discovery metadata only. A config-entry reload is required to materialize a new pool child.
 
 For the first release, configured accepted HGIs and configured ownerless receive-only HGIs are materialized during config-entry setup. A newly observed wildcard HGI remains adapter-side discovery metadata only. It cannot contribute routing evidence or transmit until the user accepts it and the resulting config-entry reload rebuilds the pool.
 
@@ -390,7 +398,7 @@ Before the pool PRs merge to `ramses_rf` and `ramses_cc`, reconcile the dependen
 
 1. **Membership:** schema ownership is canonical for MQTT HGI authorization. Classification requires an explicit non-empty root owner (migration uses the existing value or the established `"me"` default). A child `_owner` equal to that root means accepted; no child `_owner` means configured receive-only; foreign, rejected, or disabled means excluded. Config migration seeds an owned schema HGI for an existing primary `CONF_MQTT_HGI_ID`/explicit MQTT URL and converts legacy `CONF_ACCEPTED_HGIS` entries before that independent authority is removed. Explicitly configured local serial ports define transport inventory and are locally trusted, but remain non-send-ready until identity and startup validation.
 2. **Cold-start primary:** the first configured eligible child in stable config order is primary. Round-robin is not the default and is used only if explicitly configured as policy.
-3. **RSSI:** use the roadmap's five-sample rolling arithmetic mean over fresh samples. At least one fresh sample is sufficient; equal scores use stable config order. The maximum sample age is a named, documented setting chosen from captured traffic before PR 2, not an implicit forever-valid value. **Resolved from fixtures:** 5 minutes (see "Captured-fixture evidence" below).
+3. **RSSI:** use the strongest (highest) fresh RSSI from a five-sample window per child. At least one fresh sample is sufficient; equal scores use stable config order. The maximum sample age is a named, documented setting chosen from captured traffic before PR 2, not an implicit forever-valid value. **Resolved from fixtures:** 5 minutes (see "Captured-fixture evidence" below). **Implementation note:** the code uses `max()` (best RSSI), not an arithmetic mean — this is the correct behavior for spatial diversity where the strongest signal should win.
 4. **Deduplication:** capture paired local-echo and over-air/USB/MQTT copies and decide whether their transport-assigned sequence fields are stable. Freeze the canonical key before PR 1 implementation and document why sequence is included or normalized. RSSI, timestamp, ingress child, and `is_tx` are never part of the content key. **Resolved from fixtures:** sequence is sender-assigned and stable across HGIs (50/50 paired packets); include sequence when present, fall back to `(verb, addr1, addr2, addr3, code, length, payload)` when absent (see "Captured-fixture evidence" below).
 5. **Source intent:** source substitution must be driven by an explicit `GATEWAY` versus `PRESERVE` policy in the immutable outbound request, not by an `addr1.startswith("18:")` heuristic. Existing callers may default to `GATEWAY` only for the exact gateway placeholder/current active HGI; faked-device call paths must pass `PRESERVE`, including for an intentional `18:` source.
 6. **Structural mutation:** no public runtime `add_child()`/`remove_child()` contract is supported in the first release. Acceptance changes and new wildcard-discovered MQTT HGIs take effect through config-entry reload.
@@ -799,7 +807,7 @@ The new plan changes the implementation detail and completion criteria because t
 | Membership                | Not defined in the `ramses_rf` Item 9 roadmap                                        | Schema ownership is canonical for MQTT authorization; transport inventory, disabled state, configured receive-only candidates, and unknown adapter-side discovery metadata are distinct                                      |
 | Runtime membership        | Not required by the Item 9 roadmap; issue 1119 later proposed hot add/remove         | Initial implementation uses Home Assistant config-entry reload for structural membership changes; runtime `add_child()`/`remove_child()` are deferred until concurrency is designed safely                                   |
 | Dedup implementation      | A receive deduplication window                                                       | A time- and size-bounded dictionary-backed cache provides expected O(1) lookup; key and sequence semantics are tested and documented                                                                                         |
-| RSSI calculation          | Five-sample rolling average                                                          | Retain the five-sample arithmetic mean, add an explicit maximum sample age, require at least one fresh sample, and use stable configuration order for ties                                                                   |
+| RSSI calculation          | Five-sample rolling average                                                          | Five-sample window with strongest (highest) fresh RSSI selection, explicit maximum sample age (5 min), at least one fresh sample, stable configuration order for ties                                                        |
 | RSSI lifetime             | Not specified                                                                        | Stale evidence expires, and route data is cleared or quarantined when a child goes definitively offline                                                                                                                      |
 | HA configuration          | Only “coordinate multi-transport config flow”                                        | One canonical trust/membership source is required, MQTT wildcard discovery is separated from acceptance, and credentials remain owned by HA MQTT                                                                             |
 | Zigbee                    | Not named in the original Item 9 transport list                                      | Zigbee is supported only after its IEEE transport address is separated from its RAMSES `18:` HGI identity                                                                                                                    |
@@ -1051,7 +1059,7 @@ Introduce the transport-neutral outbound router and make it the only path that s
 ## PR 3 — Full pooled serial transmission and reconnect (Phase 2)
 
 **Repository:** `ramses_rf`
-**Current PR:** new focused PR stacked on revised PR 1185
+**Current PR:** new focused PR stacked on PR 2 (PR 1194)
 **Depends on:** PR 2, PR 5 (Phase 1 release), and the serial hardware feasibility gate
 **Phase:** 2 — serial and hybrid pool
 
@@ -1350,7 +1358,7 @@ Phase 1 — MQTT pool (first release)
   Rework ramses_rf PR 1184
     PR 1: child state + inbound dedup
                 |
-  Rework ramses_rf PR 1185
+  Rework ramses_rf PR 1194
     PR 2: typed DTO routing + RSSI + QoS + failover
                 |
                 +--> PR 4A: transport-neutral MQTT callback contract
