@@ -688,11 +688,19 @@ class RamsesCommands:
 
             cmd = coordinator.client.create_cmd(**kwargs)
 
-            # Use async_send_raw_command (ramses_rf >= 0.61, PR 1176) with
+            # Use async_send_raw_command (ramses_rf >= 0.60.4, PR 1177) with
             # fallback to async_send_cmd for older ramses_rf versions.
             send_fn = getattr(coordinator.client, "async_send_raw_command", None)
             if send_fn is None:
-                send_fn = coordinator.client.async_send_cmd
+                send_fn = getattr(coordinator.client, "async_send_cmd", None)
+            if send_fn is None:
+                _LOGGER.error(
+                    "Cannot send command %s: ramses_rf Gateway has neither "
+                    "async_send_raw_command nor async_send_cmd — "
+                    "please upgrade ramses-rf to >= 0.60.4",
+                    cmd_def["code"],
+                )
+                return False
 
             # Handle new timeout behavior in ramses_rf 0.55.6
             # In version 0.55.6, async_send_cmd raises exceptions on timeout
