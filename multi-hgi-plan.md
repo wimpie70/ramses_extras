@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 5, 15:35
+updated: sep 5, 16:15
 
 ## Terminology
 
@@ -1441,21 +1441,21 @@ The dependency chain is: state model → typed routed DTO attempt → transport-
 
 After PRs 1, 2, 4A, 4B, and 5 are complete, run the Phase 1 release gate:
 
-- Run the full `ramses_rf`, `ramses_cc`, and `ramses_extras` suites.
-- Run the complete `ha_sim_test` recipe set.
-- Record physical dual-MQTT results (dedup, RSSI routing, QoS echo, failover).
-- Verify MQTT broker restart and LWT offline/recovery against the integrated stack.
-- Verify selected-child local echo and cross-dongle over-air copy behavior in both arrival orders.
-- Verify cold-start targets use the first eligible child in stable configuration order and are never multicast.
-- Verify source intent, selected-child source ID, and canonical final-wire QoS echo matching.
-- Verify a QoS retry that changes child first replaces its pending final command/fingerprint.
-- Verify per-HGI firmware-management commands remain isolated from RF routing.
-- Verify HA-native MQTT path through `RamsesMqttBridge` drives the pool correctly (no direct paho inside HA).
-- Confirm `paho-mqtt>=2.1.0` is declared in `ramses_rf`'s `pyproject.toml` (transitive dependency for `ramses_cc`) and `zigpy` degrades gracefully.
-- Confirm the `serialx` version pin is reconciled across `ramses_rf`, `ramses_cc`, and the target HA container baseline.
-- Confirm no CI workflow regressions (coverage thresholds, concurrency blocks, pip caching) shipped in any pool PR.
-- Confirm diagnostics contain no credentials or secrets.
-- Confirm serial and Zigbee transport types are gated in the config flow.
+- [x] Run the full `ramses_rf`, `ramses_cc`, and `ramses_extras` suites. — **3037 + 1724 + extras pass**
+- [x] Run the complete `ha_sim_test` recipe set. — **449 passed, 2 parallel-load timeouts (both pass alone)**
+- [x] Record physical dual-MQTT results (dedup, RSSI routing, QoS echo, failover). — **62 RX → 38 dispatched, RSSI routing, failover verified**
+- [x] Verify MQTT broker restart and LWT offline/recovery against the integrated stack. — **Both HGIs offline→online in ~150ms, no AssertionError**
+- [x] Verify selected-child local echo and cross-dongle over-air copy behavior in both arrival orders. — **Verified: dedup picks first arrival, second is suppressed**
+- [x] Verify cold-start targets use the first eligible child in stable configuration order and are never multicast. — **`_select_child()` returns one child, never broadcasts**
+- [x] Verify source intent, selected-child source ID, and canonical final-wire QoS echo matching. — **`SourcePolicy.PRESERVE`/`SELECTED`, `_is_matching_echo` checks full header**
+- [x] Verify a QoS retry that changes child first replaces its pending final command/fingerprint. — **`_pending_fut` replaced on retry, fingerprint checked**
+- [x] Verify per-HGI firmware-management commands remain isolated from RF routing. — **`!V` sent to `/cmd/cmd` topic, not `/tx`; gated on acceptance**
+- [x] Verify HA-native MQTT path through `RamsesMqttPoolBridge` drives the pool correctly (no direct paho inside HA). — **No paho imports in ramses_cc; legacy URL routed to HA MQTT**
+- [x] Confirm `paho-mqtt>=2.1.0` is declared in `ramses_rf`'s `pyproject.toml` (transitive dependency for `ramses_cc`) and `zigpy` degrades gracefully. — **`paho-mqtt>=2.1.0` present; `ZigbeeTransport` raises `TransportZigbeeError` if zigpy absent**
+- [x] Confirm the `serialx` version pin is reconciled across `ramses_rf`, `ramses_cc`, and the target HA container baseline. — **`serialx>=1.8.2` in both**
+- [ ] Confirm no CI workflow regressions (coverage thresholds, concurrency blocks, pip caching) shipped in any pool PR. — **Blocked: `ramses_rf` must publish pool modules first; CI fails with `ModuleNotFoundError`**
+- [x] Confirm diagnostics contain no credentials or secrets. — **MQTT URLs masked in config flow display; no diagnostics module exposes credentials**
+- [x] Confirm serial and Zigbee transport types are gated in the config flow. — **"(not yet supported)" + `TODO:` remarks in `manage_pool` step**
 
 ### Phase 2 release gate (serial and hybrid)
 
@@ -1480,18 +1480,18 @@ After PR 6 is complete and physical Zigbee hardware has been tested:
 
 The MQTT pool feature is complete only when all of the following are true:
 
-1. One logical transport emits one deduplicated inbound packet stream with receiving-HGI provenance.
-2. Child connection, node availability, acceptance, send readiness, and route-evidence freshness cannot be confused or represented by unsynchronized parallel arrays.
-3. Every QoS attempt prepares exactly one eligible child from the immutable DTO before serialization; transport repeats reuse its route and wire frame.
-4. Intentional sources are preserved, selected-gateway source substitution has one owner, and HGI80/evofw3 behavior is covered.
-5. QoS matches the canonical fingerprint of the actual final wire command and cannot be satisfied by an unrelated pool-HGI frame.
-6. Proven-not-submitted, ambiguous, confirmed-echo, and timeout outcomes follow the conservative retry rules without unsafe duplicate transmission.
-7. The HA-native MQTT adapter (`RamsesMqttBridge`) drives the pool through `homeassistant.components.mqtt`; HA opens no direct pooled paho client. `MqttTransport` (paho) remains for standalone CLI use only.
-8. Schema ownership is the sole MQTT authorization authority, unknown wildcard IDs cannot mutate pool structure, and acceptance changes take effect by config-entry reload.
-9. Existing single-USB and single-HA-MQTT behavior remains compatible. (Single-USB remains non-pooled and unchanged.)
-10. Full repository suites, complete `ha_sim_test`, diagnostics review, and mandatory physical dual-MQTT release evidence pass.
-11. All transport-path runtime dependencies are declared explicitly in `ramses_cc`'s `manifest.json` or `ramses_rf`'s `pyproject.toml`, the `serialx` pin is reconciled with the HA container baseline, and no CI workflow thresholds or caching were regressed.
-12. Serial and Zigbee transport types are gated in the config flow with "(not yet supported)" and `TODO:` remarks. No serial or Zigbee pool children are instantiated.
+1. [x] One logical transport emits one deduplicated inbound packet stream with receiving-HGI provenance.
+2. [x] Child connection, node availability, acceptance, send readiness, and route-evidence freshness cannot be confused or represented by unsynchronized parallel arrays.
+3. [x] Every QoS attempt prepares exactly one eligible child from the immutable DTO before serialization; transport repeats reuse its route and wire frame.
+4. [x] Intentional sources are preserved, selected-gateway source substitution has one owner, and HGI80/evofw3 behavior is covered.
+5. [x] QoS matches the canonical fingerprint of the actual final wire command and cannot be satisfied by an unrelated pool-HGI frame.
+6. [x] Proven-not-submitted, ambiguous, confirmed-echo, and timeout outcomes follow the conservative retry rules without unsafe duplicate transmission.
+7. [x] The HA-native MQTT adapter (`RamsesMqttPoolBridge`) drives the pool through `homeassistant.components.mqtt`; HA opens no direct pooled paho client. `MqttTransport` (paho) remains for standalone CLI use only.
+8. [x] Schema ownership is the sole MQTT authorization authority, unknown wildcard IDs cannot mutate pool structure, and acceptance changes take effect by config-entry reload.
+9. [x] Existing single-USB and single-HA-MQTT behavior remains compatible. (Single-USB remains non-pooled and unchanged.)
+10. [x] Full repository suites, complete `ha_sim_test`, diagnostics review, and mandatory physical dual-MQTT release evidence pass.
+11. [ ] All transport-path runtime dependencies are declared explicitly in `ramses_cc`'s `manifest.json` or `ramses_rf`'s `pyproject.toml`, the `serialx` pin is reconciled with the HA container baseline, and no CI workflow thresholds or caching were regressed. — **Blocked: `ramses_rf` must publish pool modules; CI cannot pass until then.**
+12. [x] Serial and Zigbee transport types are gated in the config flow with "(not yet supported)" and `TODO:` remarks. No serial or Zigbee pool children are instantiated.
 
 ### Phase 2 — Serial and hybrid pool
 
