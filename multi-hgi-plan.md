@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 5, 11:00
+updated: sep 5, 12:00
 
 ## Terminology
 
@@ -179,25 +179,29 @@ PR 1148 (merged to upstream master 2026-09-04) added `CONF_GATEWAY_OFFLINE_NOTIF
 
 Tested on hass with 2 ESP32 HGIs (`18:130236` + `18:149488`), MQTT broker at `192.168.40.11:1883`, topic `RAMSES/GATEWAY`. Serial via `/dev/ttyACM0`.
 
-| Test                                    | Result  | Notes                                                                                                     |
-| --------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| 1: single serial HGI (no pool)          | PASS    | Normal operation, no pool bridge created                                                                  |
-| 2: 1 serial + 1 MQTT (hybrid pool)      | PASS    | Both children connected, RSSI routing (-39 vs -84), dedup, `prepare_command` with `SourcePolicy.PRESERVE` |
-| 2b: serial unplug → MQTT failover       | PASS    | `child 0 disconnected (Errno 5)`, pool continued with child 1, `22F1` fan command delivered via MQTT      |
-| 3: 1 MQTT + 1 serial (reversed primary) | SKIP    | Phase 2 — serial as pool child is gated (`disable_sending=True`, no serial pool children in config flow)  |
-| 4: 0 → 1 MQTT (add MQTT to serial)      | PASS    | Adding MQTT URL to `additional_ports` creates hybrid pool                                                 |
-| 5: 1 → 2 MQTT (both via MqttPoolBridge) | PASS    | Both HGIs via wildcard MQTT, schema-derived pool members, dedup, RSSI routing                             |
-| 6: 2 → 1 MQTT (demote one HGI)          | PASS    | Demoted HGI stays as receive-only discovery candidate, notification sent (no duplicate after fix)         |
-| 7: 1 → 0 MQTT (no accepted HGIs)        | PARTIAL | `sync_learned_topology` backfills `_owner` onto `18:` HGI, silently promoting it (plan problem #10)       |
-| 8: LWT failover (power off one ESP)     | PASS    | LWT detected in ~49s, `child offline (definitive=True)`, pool failover to remaining HGI, no crash         |
+| Test                                    | Result | Notes                                                                                                     |
+| --------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| 1: single serial HGI (no pool)          | PASS   | Normal operation, no pool bridge created                                                                  |
+| 2: 1 serial + 1 MQTT (hybrid pool)      | PASS   | Both children connected, RSSI routing (-39 vs -84), dedup, `prepare_command` with `SourcePolicy.PRESERVE` |
+| 2b: serial unplug → MQTT failover       | PASS   | `child 0 disconnected (Errno 5)`, pool continued with child 1, `22F1` fan command delivered via MQTT      |
+| 3: 1 MQTT + 1 serial (reversed primary) | SKIP   | Phase 2 — serial as pool child is gated (`disable_sending=True`, no serial pool children in config flow)  |
+| 4: 0 → 1 MQTT (add MQTT to serial)      | PASS   | Adding MQTT URL to `additional_ports` creates hybrid pool                                                 |
+| 5: 1 → 2 MQTT (both via MqttPoolBridge) | PASS   | Both HGIs via wildcard MQTT, schema-derived pool members, dedup, RSSI routing                             |
+| 6: 2 → 1 MQTT (demote one HGI)          | PASS   | Demoted HGI stays as receive-only discovery candidate, notification sent (no duplicate after fix)         |
+| 7: 1 → 0 MQTT (no accepted HGIs)        | PASS   | Backfill exemption for `18:` HGI entries prevents silent promotion (fixed)                                |
+| 8: LWT failover (power off one ESP)     | PASS   | LWT detected in ~49s, `child offline (definitive=True)`, pool failover to remaining HGI, no crash         |
 
 ### Bugs found during live testing
 
 1. **Duplicate discovery notification** (fixed): An HGI that was both in `_schema_no_owner_ids` and in the scan engine (receive-only pool child) was added to `new_ids` twice — once by the HGI loop and once by the scan-engine loop in `check_for_new_devices()`. Fixed by skipping HGIs in `_schema_no_owner_ids` in the scan-engine loop.
 
-2. **Backfill promotes HGI candidate** (plan problem #10, not yet fixed): `sync_learned_topology` backfills `_owner: me` onto `18:` HGI entries that have no `_owner`, silently promoting a receive-only discovery candidate to an accepted pool member. This blocks Test 7 (1 → 0 MQTT) from working — the HGI gets re-promoted on every reload. The backfill must exempt `18:` HGI entries (issue 1119).
+2. **Backfill promotes HGI candidate** (plan problem #10, fixed): `sync_learned_topology` backfills `_owner: me` onto `18:` HGI entries that have no `_owner`, silently promoting a receive-only discovery candidate to an accepted pool member. **Fixed:** backfill now exempts `18:` HGI entries. Test 7 (1 → 0 MQTT) passes — the HGI stays as a discovery candidate without `_owner`.
 
 3. **"Add new port" label** (fixed): The dropdown label in `manage_pool` said "Add new port" but also lists existing serial ports for selection. Changed to "Add/edit port" in `en.json` and `nl.json`.
+
+4. **Communication quality uses only primary RSSI tracker** (fixed): `DeviceBase.communication_quality` only passed the gateway's single `_rssi_tracker` to `compute_quality()`, ignoring RSSI data from other pool children. With 2 HGIs, a device heard strongly by one HGI (-39 dBm) but weakly by another (-89 dBm) was flagged as "weak signal". Fixed in `ramses_rf` `dev_base.py` to gather `pool_rssi_trackers` from `PooledTransport.get_extra_info()` so `best_rssi` reflects the strongest signal across all HGIs. 6 regression tests added in `test_base.py::TestCommunicationQuality`.
+
+5. **Faked device in weak-signal notification** (verified, not a bug): The faked remote `37:168270` appeared in a "Schema mismatches detected" notification, but current dev logs show it is correctly skipped by `discovery.py`'s `is_faked` check. The notification was stale or from a production instance without the fix.
 
 ## Current situation
 
