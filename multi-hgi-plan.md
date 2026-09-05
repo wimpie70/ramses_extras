@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 4, 19:15
+updated: sep 5, 11:00
 
 ## Terminology
 
@@ -174,6 +174,30 @@ Implemented on `ramses_rf`:
 ### Upstream compatibility note
 
 PR 1148 (merged to upstream master 2026-09-04) added `CONF_GATEWAY_OFFLINE_NOTIFY` — a user-configurable option to disable the gateway-offline notification for low-traffic networks. This feature is self-contained in `const.py`, `config_flow.py` (advanced_features step), and `coordinator.py` (`_async_health_check` early return). It does not touch any pool/multi-HGI code and has no impact on the plan. PR 1133 has been rebased on top of this merge with no conflicts beyond a trivial import-list merge in `test_coordinator.py`.
+
+## Live hardware test results (2026-09-05)
+
+Tested on hass with 2 ESP32 HGIs (`18:130236` + `18:149488`), MQTT broker at `192.168.40.11:1883`, topic `RAMSES/GATEWAY`. Serial via `/dev/ttyACM0`.
+
+| Test                                    | Result  | Notes                                                                                                     |
+| --------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| 1: single serial HGI (no pool)          | PASS    | Normal operation, no pool bridge created                                                                  |
+| 2: 1 serial + 1 MQTT (hybrid pool)      | PASS    | Both children connected, RSSI routing (-39 vs -84), dedup, `prepare_command` with `SourcePolicy.PRESERVE` |
+| 2b: serial unplug → MQTT failover       | PASS    | `child 0 disconnected (Errno 5)`, pool continued with child 1, `22F1` fan command delivered via MQTT      |
+| 3: 1 MQTT + 1 serial (reversed primary) | SKIP    | Phase 2 — serial as pool child is gated (`disable_sending=True`, no serial pool children in config flow)  |
+| 4: 0 → 1 MQTT (add MQTT to serial)      | PASS    | Adding MQTT URL to `additional_ports` creates hybrid pool                                                 |
+| 5: 1 → 2 MQTT (both via MqttPoolBridge) | PASS    | Both HGIs via wildcard MQTT, schema-derived pool members, dedup, RSSI routing                             |
+| 6: 2 → 1 MQTT (demote one HGI)          | PASS    | Demoted HGI stays as receive-only discovery candidate, notification sent (no duplicate after fix)         |
+| 7: 1 → 0 MQTT (no accepted HGIs)        | PARTIAL | `sync_learned_topology` backfills `_owner` onto `18:` HGI, silently promoting it (plan problem #10)       |
+| 8: LWT failover (power off one ESP)     | PASS    | LWT detected in ~49s, `child offline (definitive=True)`, pool failover to remaining HGI, no crash         |
+
+### Bugs found during live testing
+
+1. **Duplicate discovery notification** (fixed): An HGI that was both in `_schema_no_owner_ids` and in the scan engine (receive-only pool child) was added to `new_ids` twice — once by the HGI loop and once by the scan-engine loop in `check_for_new_devices()`. Fixed by skipping HGIs in `_schema_no_owner_ids` in the scan-engine loop.
+
+2. **Backfill promotes HGI candidate** (plan problem #10, not yet fixed): `sync_learned_topology` backfills `_owner: me` onto `18:` HGI entries that have no `_owner`, silently promoting a receive-only discovery candidate to an accepted pool member. This blocks Test 7 (1 → 0 MQTT) from working — the HGI gets re-promoted on every reload. The backfill must exempt `18:` HGI entries (issue 1119).
+
+3. **"Add new port" label** (fixed): The dropdown label in `manage_pool` said "Add new port" but also lists existing serial ports for selection. Changed to "Add/edit port" in `en.json` and `nl.json`.
 
 ## Current situation
 
