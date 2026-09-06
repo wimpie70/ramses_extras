@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 5, 21:30
+updated: sep 6, 7:30
 
 ## Terminology
 
