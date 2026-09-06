@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 5, 16:15
+updated: sep 5, 21:30
 
 ## Terminology
 
@@ -143,9 +143,9 @@ Tests added (approximate diff lines at time of writing; current file sizes are l
 
 ### Remaining PRs
 
-- PR 4A (transport-neutral MQTT callback contract): **implemented, CI green (5/5), draft PR 1195 open.** Ready for review/merge — all checks pass on `ramses-rf/ramses_rf`.
-- PR 4B (HA-native multi-MQTT adapter): **implemented, lint CI green, draft PR 1157 open.** Type/test/coverage CI fail because PR 4A modules are not yet in published `ramses-rf==0.60.4`. Will go green after PR 4A merges and a new `ramses-rf` version is published.
-- PR 5 (canonical membership + config flow + MQTT pool assembly): **implemented, lint/ruff/mypy clean, 1713 tests pass, draft PR 5 open on wimpie70 fork.** Includes: `wait_online_timeout` config option, `manage_pool_mqtt` HGI-only schema entry creation (no host/port/credentials), discovery callback schema insertion, `sync_learned_topology` backfill exemption for `18:` HGI candidates, `CONF_ACCEPTED_HGIS` dropped entirely (unreleased — schema is canonical source), stale `set_accepted_hgis` cleanup, serial-primary MQTT pool member gating. ha_sim_test full parallel run: 449 passed, 2 failed (parallel load timeouts — both pass when run alone). CI type/test failures expected until PR 4A merges and `ramses-rf` publishes a new version. Upstream PR blocked — `feat/pool-all-1119` base branch is not on upstream yet.
+- PR 4A (transport-neutral MQTT callback contract): **merged into ramses_rf master as PR 1195.** `ramses-rf==0.60.5` published on PyPI includes `callbacks.py` and `mqtt_pool.py`.
+- PR 4B (HA-native multi-MQTT adapter): **merged into ramses_cc master as PR 1157.** All CI checks pass against `ramses-rf==0.60.5`.
+- PR 5 (canonical membership + config flow + MQTT pool assembly): **rebased onto current master (includes PRs 1157, 1158, 1161–1165), 1742 tests pass locally, draft PR 1160 open.** Includes: `wait_online_timeout` config option, `manage_pool_mqtt` HGI-only schema entry creation (no host/port/credentials), discovery callback schema insertion, `sync_learned_topology` backfill exemption for `18:` HGI candidates, `CONF_ACCEPTED_HGIS` dropped entirely (unreleased — schema is canonical source), stale `set_accepted_hgis` cleanup, serial-primary MQTT pool member gating. CI should now pass with `ramses-rf==0.60.5` on PyPI.
 - PR 3 (pooled serial transmit): blocked on hardware feasibility gate.
 - PR 6 (Zigbee identity/lifecycle): blocked on hardware availability.
 
@@ -228,15 +228,15 @@ A full release-readiness audit was performed across all active Phase 1 branches.
 
 6. **Per-module coverage failed** — Added 40+ regression tests. All modules now pass the 95% Silver IQS threshold: `coordinator.py` 95%, `discovery.py` 95%, `mqtt_bridge.py` 100%, `mqtt_pool_bridge.py` 98%, total 96%.
 
-### Blocker deferred to release
+### Blocker resolved
 
-7. **Published dependency incompatible** — `ramses_cc` imports pool modules (`callbacks.py`, `mqtt_pool.py`, `pooled.py`) absent from published `ramses-rf==0.60.4`. A new `ramses_rf` PyPI release must be published, then `ramses_cc` must pin that exact version and rerun CI without the editable local checkout. This will be solved at release time.
+7. **Published dependency incompatible** — ~~`ramses_cc` imports pool modules (`callbacks.py`, `mqtt_pool.py`, `pooled.py`) absent from published `ramses-rf==0.60.4`.~~ **Resolved:** `ramses-rf==0.60.5` published on PyPI includes all pool modules. `ramses_cc` manifest pins `ramses-rf==0.60.5`. CI now resolves the modules without an editable checkout.
 
 ### Verification results (post-fix)
 
 | Check                                  | Result                                                                   |
 | -------------------------------------- | ------------------------------------------------------------------------ |
-| ramses_cc tests                        | 1713 passed, 15 skipped                                                  |
+| ramses_cc tests                        | 1742 passed, 15 skipped (after rebase onto master with 0.60.5)           |
 | ramses_rf tests                        | 3037 passed, 9 skipped                                                   |
 | Ruff lint                              | All checks passed                                                        |
 | Mypy type check                        | No issues found                                                          |
@@ -412,7 +412,7 @@ For the first release, configured accepted HGIs and configured ownerless receive
 
 `ramses_cc` declares `"quality_scale": "silver"` in its manifest. Three dependency declarations and one CI hygiene item were identified as not meeting the Bronze `dependency-transparency` rule or the Silver `test-coverage` rule. **All three dependency items are now resolved; the CI item was previously fixed:**
 
-- **paho-mqtt** ~~is not declared in `ramses_cc`'s `manifest.json`~~ **Not needed in `ramses_cc`'s manifest.** `ramses_cc` does not import paho. It is a transitive dependency via `ramses-rf==0.60.4` (declared in `ramses_rf`'s `pyproject.toml`), and HA's pip resolver installs it automatically (`pip show paho-mqtt` confirms `Required-by: ramses_rf`). `MqttTransport` (direct paho, in `ramses_tx`) is used for standalone CLI use only. Inside Home Assistant, MQTT uses `homeassistant.components.mqtt` via `RamsesMqttBridge` — no direct paho clients.
+- **paho-mqtt** ~~is not declared in `ramses_cc`'s `manifest.json`~~ **Not needed in `ramses_cc`'s manifest.** `ramses_cc` does not import paho. It is a transitive dependency via `ramses-rf==0.60.5` (declared in `ramses_rf`'s `pyproject.toml`), and HA's pip resolver installs it automatically (`pip show paho-mqtt` confirms `Required-by: ramses_rf`). `MqttTransport` (direct paho, in `ramses_tx`) is used for standalone CLI use only. Inside Home Assistant, MQTT uses `homeassistant.components.mqtt` via `RamsesMqttPoolBridge` — no direct paho clients.
 - **zigpy** ~~is not declared in `ramses_rf`'s `pyproject.toml` or `ramses_cc`'s `manifest.json`~~ **Done:** `ZigbeeTransport._async_init` now catches `ImportError` separately and raises a clear `TransportZigbeeError("zigpy is required for Zigbee transport: ... Install it or use a different transport.")` instead of letting a bare `ImportError` propagate from a method body. zigpy is not declared as a hard manifest requirement because Zigbee transport is niche and most users do not need it installed.
 - **serialx** ~~has conflicting version floors~~ **Done:** all serialx APIs used by `ramses_tx` are available in 1.8.2 (the HA container version). The `>=1.9.0` pin was opportunistic, not feature-driven. Both `ramses_rf`'s `pyproject.toml` and `ramses_cc`'s `manifest.json` are now `serialx>=1.8.2`, matching the HA container baseline. Pinning to 1.8.2 (not 1.8.0) because 1.8.1 fixed a POSIX fd leak, a Win32 close/connection_lost race, and missing USB string descriptors on Linux.
 - **CI workflow regressions** in the current draft PR 1133 lower the coverage threshold from `95 98` to `90 97` (violating the Silver `test-coverage` rule: ">95% test coverage for all integration modules"), remove `concurrency:` blocks from 6 workflow files, and remove pip caching from `check-cov.yml`. These are hygiene regressions that must not ship in any pool PR. **Fixed:** reverted to upstream master values in commit `05815ffc` on `feat/pool-all-1119`.
@@ -438,7 +438,7 @@ The physical traditional serial, ESP USB, MQTT ESP, and Zigbee devices needed fo
 
 Before the pool PRs merge to `ramses_rf` and `ramses_cc`, reconcile the dependency declarations so the Bronze `dependency-transparency` rule is met and the next `ramses_rf` release can install on current HA containers:
 
-1. **paho-mqtt:** `MqttTransport` (direct paho, in `ramses_tx`) depends on it for standalone CLI use and non-HA configurations. Inside HA, the pool uses `homeassistant.components.mqtt` — no direct paho clients. `paho-mqtt>=2.1.0` is declared in `ramses_rf`'s `pyproject.toml` and installed transitively when `ramses-rf==0.60.4` is installed. It is NOT declared in `ramses_cc`'s `manifest.json` because `ramses_cc` does not import paho. **Done:** verified that HA's pip resolver installs paho-mqtt as a transitive dependency of ramses_rf (`pip show paho-mqtt` → `Required-by: ramses_rf`).
+1. **paho-mqtt:** `MqttTransport` (direct paho, in `ramses_tx`) depends on it for standalone CLI use and non-HA configurations. Inside HA, the pool uses `homeassistant.components.mqtt` — no direct paho clients. `paho-mqtt>=2.1.0` is declared in `ramses_rf`'s `pyproject.toml` and installed transitively when `ramses-rf==0.60.5` is installed. It is NOT declared in `ramses_cc`'s `manifest.json` because `ramses_cc` does not import paho. **Done:** verified that HA's pip resolver installs paho-mqtt as a transitive dependency of ramses_rf (`pip show paho-mqtt` → `Required-by: ramses_rf`).
 2. **zigpy:** either declare `zigpy` in `ramses_cc`'s `manifest.json` (ensures HA installs it even without ZHA), or make `ZigbeeTransport.__init__` raise a clear `ConfigEntryNotReady("zigpy is required for Zigbee transport; install it or use a different transport")` instead of a bare `ImportError` deep in a method body. The choice is recorded before PR 6 starts. **Done:** `ZigbeeTransport._async_init` now catches `ImportError` separately and raises a clear `TransportZigbeeError` with installation guidance, rather than letting a bare `ImportError` propagate from a method body. zigpy is not declared as a hard requirement in `manifest.json` because Zigbee transport is a niche feature and most users do not need it.
 3. **serialx:** verify whether the pool code actually needs `serialx>=1.9.0` features, or if the pin was bumped opportunistically. If 1.9.0 is required, coordinate with HA to bundle `serialx>=1.9.0` and document the minimum HA version. If 1.9.0 is not required, lower `ramses_rf`'s pin to match the HA container. Update `ramses_cc`'s `manifest.json` serialx pin to match whatever floor is chosen. This must be resolved before the next `ramses_rf` release that ships the pool. **Done:** all serialx APIs used by `ramses_tx` (`BaseSerialTransport`, `SerialException`, `serial_for_url`, `create_serial_connection`) are available in 1.8.2 (the HA container version). The `>=1.9.0` pin was opportunistic, not feature-driven. Both `ramses_rf`'s `pyproject.toml` and `ramses_cc`'s `manifest.json` are now `serialx>=1.8.2`, matching the HA container baseline. Pinning to 1.8.2 (not 1.8.0) because 1.8.1 fixed a POSIX fd leak, a Win32 close/connection_lost race, and missing USB string descriptors on Linux.
 4. **CI workflows:** the current draft PR 1133 lowered coverage thresholds and removed `concurrency:` blocks and pip caching. **Fixed:** these have been reverted to upstream master values in commit `05815ffc` on `feat/pool-all-1119`. Coverage thresholds must not be lowered to accommodate pool code; add tests to raise coverage instead.
@@ -1224,7 +1224,7 @@ Implemented on `ramses_cc`:
 **Known CI status:**
 
 - Lint: green.
-- Type/test/coverage: fail because `ramses-rf==0.60.4` (published) does not have PR 4A's `ramses_tx.transport.callbacks` and `ramses_tx.transport.mqtt_pool` modules. Will go green after PR 4A merges and `ramses-rf` version is bumped in `requirements_dev.txt`.
+- Type/test/coverage: ~~fail because `ramses-rf==0.60.4` (published) does not have PR 4A's `ramses_tx.transport.callbacks` and `ramses_tx.transport.mqtt_pool` modules.~~ **Resolved: PR 4A merged, `ramses-rf==0.60.5` published with pool modules, PR 4B merged into ramses_cc master.**
 - `requirements_dev.txt` was NOT modified — upstream pin must not be changed for a draft PR.
 
 **Fact-check findings (addressed):**
@@ -1453,7 +1453,7 @@ After PRs 1, 2, 4A, 4B, and 5 are complete, run the Phase 1 release gate:
 - [x] Verify HA-native MQTT path through `RamsesMqttPoolBridge` drives the pool correctly (no direct paho inside HA). — **No paho imports in ramses_cc; legacy URL routed to HA MQTT**
 - [x] Confirm `paho-mqtt>=2.1.0` is declared in `ramses_rf`'s `pyproject.toml` (transitive dependency for `ramses_cc`) and `zigpy` degrades gracefully. — **`paho-mqtt>=2.1.0` present; `ZigbeeTransport` raises `TransportZigbeeError` if zigpy absent**
 - [x] Confirm the `serialx` version pin is reconciled across `ramses_rf`, `ramses_cc`, and the target HA container baseline. — **`serialx>=1.8.2` in both**
-- [ ] Confirm no CI workflow regressions (coverage thresholds, concurrency blocks, pip caching) shipped in any pool PR. — **Blocked: `ramses_rf` must publish pool modules first; CI fails with `ModuleNotFoundError`**
+- [x] Confirm no CI workflow regressions (coverage thresholds, concurrency blocks, pip caching) shipped in any pool PR. — **`ramses-rf==0.60.5` published with pool modules; `ramses_cc` pins 0.60.5; PR 1160 rebased and 1742 tests pass locally; CI should now pass**
 - [x] Confirm diagnostics contain no credentials or secrets. — **MQTT URLs masked in config flow display; no diagnostics module exposes credentials**
 - [x] Confirm serial and Zigbee transport types are gated in the config flow. — **"(not yet supported)" + `TODO:` remarks in `manage_pool` step**
 
