@@ -140,12 +140,12 @@ class R99MqttHgiDiscovery(Recipe):
 
         # --- Step 7: Verify HGI is tracked by discovery scan ---
         # HGIs discovered via MQTT are added to the schema by
-        # sync_learned_topology and tracked as "known HGIs" by the
-        # discovery scan. They do NOT trigger a user-facing discovery
-        # notification (unlike regular devices) because HGIs are
-        # gateways, not devices that need user review/acceptance.
-        # The schema + classification checks above are sufficient to
-        # verify MQTT HGI auto-discovery works.
+        # sync_learned_topology as ownerless discovery candidates
+        # (_class: HGI, no _owner).  They DO trigger a user-facing
+        # discovery notification so the user can review and accept
+        # them into the transmit pool (issue 1119).
+        # The schema + classification checks above verify the core
+        # auto-discovery; notification checking is covered by R102.
 
         # --- Cleanup: remove the new HGI from the schema ---
         print(f"  Cleaning up: removing {NEW_HGI_ID} from schema...")
