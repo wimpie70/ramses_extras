@@ -394,6 +394,19 @@ class TransportMonitor:
         if not self._coordinator or not getattr(self._coordinator, "client", None):
             return False
 
+        # For pooled transports (multi-HGI), check if at least one child
+        # is connected.  The Gateway object exists even when all children
+        # are offline, so checking client existence alone is insufficient.
+        client = self._coordinator.client
+        engine = getattr(client, "_engine", None)
+        if engine is not None:
+            transport = getattr(engine, "_transport", None)
+            if transport is not None:
+                # PooledTransport exposes _connected_children
+                connected_children = getattr(transport, "_connected_children", None)
+                if connected_children is not None:
+                    return len(connected_children) > 0
+
         return True
 
     def is_device_available(self, device_id: str) -> bool:

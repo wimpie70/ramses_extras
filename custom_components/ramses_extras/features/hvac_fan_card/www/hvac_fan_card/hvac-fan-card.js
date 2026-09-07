@@ -250,7 +250,20 @@ class HvacFanCard extends RamsesBaseCard {
     const legacyTransportStateEntity = `binary_sensor.${config.device_id.replace(/:/g, '_')}_transport_state`;
     const transportState = this.getEntityState(transportStateEntity)
       || this.getEntityState(legacyTransportStateEntity);
-    const transportAvailable = transportState?.state === 'on';
+    let transportAvailable = transportState?.state === 'on';
+
+    // Fallback: if no transport_state binary sensor exists, check if the
+    // climate entity is available (not 'unavailable'). This handles the case
+    // where the transport state sensor was never created (e.g. fan device
+    // discovered after startup) or the pool transport is working but the
+    // sensor is stale.
+    if (!transportAvailable) {
+      const climateEntity = this.getEntityState(`climate.${config.device_id.replace(/:/g, '_')}`);
+      if (climateEntity && climateEntity.state !== 'unavailable' && climateEntity.state !== 'unknown') {
+        transportAvailable = true;
+      }
+    }
+
     const filterDaysRemaining = this._getFilterDaysRemaining(da10D0Data.days_remaining, config);
     const timerMinutesRemaining = this._getTimerMinutesRemaining(
       da31Data.remaining_mins,
@@ -1334,7 +1347,19 @@ class HvacFanCard extends RamsesBaseCard {
     const legacyTransportStateEntity = `binary_sensor.${config.device_id.replace(/:/g, '_')}_transport_state`;
     const transportState = this.getEntityState(transportStateEntity)
       || this.getEntityState(legacyTransportStateEntity);
-    const transportAvailable = transportState?.state === 'on';
+    let transportAvailable = transportState?.state === 'on';
+
+    // Fallback: if no transport_state binary sensor exists, check if the
+    // climate entity is available (not 'unavailable'). This handles the case
+    // where the transport state sensor was never created (e.g. fan device
+    // discovered after startup) or the pool transport is working but the
+    // sensor is stale.
+    if (!transportAvailable) {
+      const climateEntity = this.getEntityState(`climate.${config.device_id.replace(/:/g, '_')}`);
+      if (climateEntity && climateEntity.state !== 'unavailable' && climateEntity.state !== 'unknown') {
+        transportAvailable = true;
+      }
+    }
 
     // Get data from 31DA messages
     const da31Data = this.get31DAData();
@@ -2324,27 +2349,35 @@ class HvacFanCard extends RamsesBaseCard {
       return fanInfoDisplay;
     };
 
-    if (fanControlMode === 'manual_override') {
-      const requestedSpeed = fanControlAttrs?.winning_demand?.requested_speed
-        || fanControlAttrs?.resolved_command
-        || fanRateEntityState;
-      const normalizedRate = normalizeFanLabel(requestedSpeed);
-
-      if (normalizedRate === 'low' || normalizedRate === 'medium' || normalizedRate === 'high') {
-        return normalizedRate;
-      }
-
-      return 'manual';
-    }
-
+    // Always prefer the actual fan state (from 31DA fan_info or fan_info
+    // entity) over the requested speed.  The actual state reflects what
+    // the fan is really doing, while the requested speed is what we asked
+    // it to do — the fan may not have responded (e.g. a real remote
+    // changed it, or the command was ignored).
     const normalizedFanMode = normalizeFanLabel(fanMode);
     if (normalizedFanMode) {
       return normalizedFanMode;
     }
 
+    // Fall back to the actual fan rate entity (also from 31DA responses)
+    // before checking the manual_override requested speed.
     const normalizedRate = normalizeFanLabel(fanRateEntityState);
     if (normalizedRate === 'low' || normalizedRate === 'medium' || normalizedRate === 'high') {
       return normalizedRate;
+    }
+
+    // Only use the requested speed from manual_override as a last resort,
+    // when no actual fan state is available.
+    if (fanControlMode === 'manual_override') {
+      const requestedSpeed = fanControlAttrs?.winning_demand?.requested_speed
+        || fanControlAttrs?.resolved_command;
+      const normalizedRequested = normalizeFanLabel(requestedSpeed);
+
+      if (normalizedRequested === 'low' || normalizedRequested === 'medium' || normalizedRequested === 'high') {
+        return normalizedRequested;
+      }
+
+      return 'manual';
     }
 
     return 'auto';

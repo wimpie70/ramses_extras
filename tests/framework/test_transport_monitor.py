@@ -206,7 +206,17 @@ class TestTransportMonitor:
         hass.async_create_task = MagicMock(
             side_effect=lambda coro: asyncio.create_task(coro)
         )
-        hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(client=MagicMock())}}
+        hass.data = {
+            "ramses_cc": {
+                "mock_coordinator": MagicMock(
+                    client=MagicMock(
+                        _engine=MagicMock(
+                            _transport=MagicMock(_connected_children=[MagicMock()])
+                        )
+                    )
+                )
+            }
+        }
         monitor._hass = hass
 
         callback = MagicMock()
@@ -238,7 +248,17 @@ class TestTransportMonitor:
         hass.async_create_task = MagicMock(
             side_effect=lambda coro: asyncio.create_task(coro)
         )
-        hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(client=MagicMock())}}
+        hass.data = {
+            "ramses_cc": {
+                "mock_coordinator": MagicMock(
+                    client=MagicMock(
+                        _engine=MagicMock(
+                            _transport=MagicMock(_connected_children=[MagicMock()])
+                        )
+                    )
+                )
+            }
+        }
         monitor._hass = hass
 
         callback = MagicMock()

@@ -679,12 +679,23 @@ class RamsesCommands:
             if from_id:
                 kwargs["from_id"] = from_id
 
+            # For pooled transports, the placeholder HGI 18:000730 is
+            # patched to the selected child's HGI by PooledTransport
+            # .prepare_command() at send time.  For single-transport
+            # gateways, remap it here as before.
             if (
                 kwargs["device_id"] == "18:000730"
                 and kwargs.get("from_id", "18:000730") == "18:000730"
-                and coordinator.client.hgi.id
             ):
-                kwargs["device_id"] = coordinator.client.hgi.id
+                client = coordinator.client
+                engine = getattr(client, "_engine", None)
+                transport = getattr(engine, "_transport", None) if engine else None
+                # If this is a PooledTransport, let it patch the source
+                # at send time — don't override with a single HGI here.
+                if not hasattr(transport, "_connected_children"):
+                    hgi = getattr(client, "hgi", None)
+                    if hgi and hgi.id:
+                        kwargs["device_id"] = hgi.id
 
             cmd = coordinator.client.create_cmd(**kwargs)
 
@@ -741,6 +752,17 @@ class RamsesCommands:
                         f"Ramses command sent (with timeout): {cmd_def['description']}"
                     )
                     return True
+
+                # "No connected child transport available for send" means the
+                # pool has no online HGI — the target device is not at fault,
+                # so don't mark it offline.  Log and return False.
+                if "No connected child transport" in str(e):
+                    _LOGGER.warning(
+                        f"Cannot send {cmd_def['code']} to {device_id_formatted}: "
+                        f"no connected HGI in pool ({cmd_def['description']})"
+                    )
+                    return False
+
                 # Re-raise non-timeout errors as they indicate real problems
                 # Examples: device not found, transport disconnected, etc.
                 transport_monitor.mark_device_offline_immediate(device_id_formatted)
