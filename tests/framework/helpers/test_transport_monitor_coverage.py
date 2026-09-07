@@ -93,7 +93,11 @@ class TestTransportMonitorCoverage:
         hass.loop.call_soon_threadsafe = MagicMock(
             side_effect=lambda func, coro, *a, **kw: coro.close()
         )
-        hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(client=MagicMock())}}
+        # Build a mock coordinator/client with a pooled transport that
+        # has one connected child, so _is_transport_active() returns True.
+        mock_client = MagicMock()
+        mock_client._engine._transport._connected_children = [MagicMock()]
+        hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(client=mock_client)}}
         existing_task = MagicMock()
         existing_task.done.return_value = False
         monitor._device_timeout_tasks["32:123456"] = existing_task
@@ -287,9 +291,13 @@ class TestTransportMonitorCoverage:
         assert result is False
 
     def test__is_transport_active_exception(self, monitor):
-        """Test _is_transport_active handles exceptions."""
+        """Test _is_transport_active with a non-pooled (single) transport."""
         monitor._coordinator = MagicMock()
-        monitor._coordinator.client = MagicMock()
+        mock_client = MagicMock()
+        # A non-pooled transport has no _connected_children attribute;
+        # _is_transport_active should fall back to True.
+        mock_client._engine._transport = MagicMock(spec=[])
+        monitor._coordinator.client = mock_client
 
         result = monitor._is_transport_active()
         assert result is True
