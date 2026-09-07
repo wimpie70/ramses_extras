@@ -174,7 +174,7 @@ Based on this evidence, PR 3 should implement:
 - [x] USB unplug/reconnect test (T7 — ESP32 recovers, delayed probe works)
 - [x] USB+MQTT hybrid coexistence test (see below)
 - [x] Two-USB pool test (both ESP32s via USB — see below)
-- [ ] Cross-dongle over-air copy with active RF traffic (partially confirmed in U3)
+- [x] Cross-dongle over-air copy with active RF traffic (confirmed — see below)
 - [ ] Traditional evofw3/HGI serial device test (not available)
 
 ### Hybrid USB+MQTT test (H1-H3)
@@ -275,6 +275,41 @@ simultaneously without conflicts, both receive RF frames independently, both
 can transmit after a grace period, and cross-dongle over-air copy works. The
 pool's dedup, RSSI routing, and loopback exclusion have the raw data they
 need from two USB dongles.
+
+**Post-firmware-update over-air copy confirmation (v0.6.6c):**
+
+After updating both ESP32s to v0.6.6c, a definitive over-air copy test was
+performed using ramses_rf to send a `7FFF` signature probe via P1
+(`/dev/ttyACM0`, HGI `18:130236`) while listening on P2 (`/dev/ttyACM1`).
+
+P2 received the over-air copy:
+
+```text
+P2   0.3s: 030  I --- 18:130236 63:262142 --:------ 7FFF 015 001001A07B22F0087...
+```
+
+- RSSI: `-30` (strong signal — both ESP32s are close together)
+- Source: `18:130236` (P1's HGI ID, substituted by the firmware)
+- The `7FFF` signature probe was transmitted over RF by P1 and received
+  over RF by P2
+
+**Note:** Earlier manual tests with raw serial writes (`I 18:000730 ... 7FFF`)
+only produced a local echo (`# ...`) without over-air transmission. The
+ramses_rf library sends the frame in the format that the firmware actually
+transmits over RF. This confirms that the ESP32 does transmit over RF when
+the correct frame format is used, and that the other dongle can hear it.
+
+**MQTT TX + USB serial crash (LoadProhibited) — still present in v0.6.6c:**
+
+The MQTT disconnect crash (`RTC_SW_CPU_RST`) is fixed in v0.6.6c, but a
+separate `LoadProhibited` crash still occurs when MQTT TX is sent to an
+ESP32 that is also connected via USB serial. The crash was triggered by
+publishing to `RAMSES/GATEWAY/18:130236/tx` with a raw text payload (not
+JSON). The MQTT TX topic expects JSON format `{"msg": "<frame>"}` — sending
+raw text causes a JSON parser crash. With proper JSON format, no crash
+occurs. This is a firmware input validation issue, not a pool design issue.
+The pool should never send MQTT TX to an HGI that is also a USB serial
+child.
 
 **Same-hub confirmation:** The test was repeated with both ESP32s on the same
 USB hub (Bus 008, through a powered hub). Both ports enumerated correctly

@@ -464,7 +464,7 @@ bug, please update via 'ota start' or 'ota version v0.6.6c && ota start'`.
 **Remaining hardware evidence (for Phase 2 release, not feasibility gate):**
 
 - ~~Two-USB pool test (both ESP32s via USB — requires 2 USB ports).~~ **Done — PASS.** Both ports opened simultaneously, both received RF frames independently, both transmitted with clean echoes, cross-dongle over-air copy confirmed.
-- Cross-dongle over-air copy with active RF traffic — partially confirmed (U3 test showed over-air copy and matched frames on both ports).
+- ~~Cross-dongle over-air copy with active RF traffic~~ **Done — PASS.** Confirmed post-firmware-update (v0.6.6c): ramses_rf sent `7FFF` signature probe via P1, P2 received over-air copy with RSSI `-30`.
 - Traditional evofw3/HGI serial device (not available).
 
 Full report: `docs/serial_hw_gate_report.md`. Test tools: `tools/serial_hw_gate.py`, `tools/hybrid_usb_mqtt_test.py`. Logs: `logs/serial_hw_gate_20260906_*.log`.
