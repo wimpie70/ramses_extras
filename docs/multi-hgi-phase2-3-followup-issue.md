@@ -19,9 +19,10 @@ USB/serial and Zigbee configurations can be described as safe. **Phasing is
 implementation order, not a reduction in scope** — multi-USB, hybrid, and
 Zigbee operation are release criteria for the complete feature.
 
-### Phase 1 status (almost done)
+### Phase 1 status (done — ready for release)
 
-Phase 1 (MQTT-only pool) is implemented and verified on real hardware:
+Phase 1 (MQTT-only pool) is implemented, verified on real hardware, and all
+issue 1171 config bugs are fixed:
 
 - PR 1 (ramses_rf PR 1184): `PoolChild` state model, ingress provenance, O(1)
   dedup, `RssiTracker` TTL — implementation complete, tests passing, verified
@@ -35,12 +36,23 @@ Phase 1 (MQTT-only pool) is implemented and verified on real hardware:
 - PR 5 (ramses_cc PR 1133 / fork PR 5): canonical schema-ownership membership,
   config flow, MQTT pool assembly, serial/Zigbee gating — implementation
   complete, draft PR open.
+- PR 1178 (ramses_cc, this branch): issue 1171 config bug fixes — pool
+  removal, re-add, display, healing, sentinel filtering, CI coverage.
 
 Live hardware test results (2026-09-05, hass, 2 ESP32 MQTT HGIs): 11/11 test
 scenarios pass (dual-MQTT, hybrid serial+MQTT receive, LWT failover, broker
 restart, unplug/reconnect, outbound failover). 6 bugs found during live testing
 were fixed. Release-readiness audit: 7 blockers found, 6 fixed in-cycle, 1
 (published dependency) resolved with `ramses-rf==0.60.5`.
+
+Issue 1171 live hardware test results (2026-09-07, hass, 2 ESP32 MQTT HGIs +
+1 USB ESP): 6/6 test scenarios pass:
+- USB-only primary (serial connection, no pool bridge)
+- USB primary + MQTT add blocked (error shown, re-add options hidden)
+- 1 MQTT (HA MQTT primary, HGI discovered and accepted)
+- 2 MQTT + dedup (both HGIs online, duplicate packets deduped)
+- Remove both MQTT HGIs with confirmation (pool cleared, no re-enrichment)
+- No "healing" of empty serial_port on restart
 
 See the "PR implementation status" and "Live hardware test results" sections of
 [`multi-hgi-plan.md`](../multi-hgi-plan.md) for full details.
@@ -54,6 +66,9 @@ and cannot be selected. `TODO: re-enable when Phase 2` (serial) and
 underlying `PortTransport` and `ZigbeeTransport` classes are **not modified or
 removed** — they remain ready for un-gating. The coordinator defensively
 filters non-`mqtt://` ports from pool construction.
+
+Re-add of removed HGIs is also gated: the "Re-add HGI" dropdown options are
+only shown when the primary transport is MQTT or empty (not serial).
 
 ---
 
@@ -70,6 +85,11 @@ starts (see below).
 (`ramses_rf`, new focused PR stacked on PR 2 / PR 1194).
 
 ### Hardware feasibility gate (Phase 2 prerequisite)
+
+**Status: IN PROGRESS** (started 2026-09-08)
+
+**Hardware available:** 2x ESP32 devices, each capable of both USB serial and
+MQTT. No traditional serial evofw3/HGI device available yet.
 
 This gate blocks Phase 2, not Phase 1. Before PR 3 starts, reproduce and
 characterize the ESP USB behavior with the same physical device in both the
