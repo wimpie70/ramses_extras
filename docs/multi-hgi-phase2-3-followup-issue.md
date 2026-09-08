@@ -452,6 +452,13 @@ during Phase 2/3 work if they become relevant:
   marked online. LWT is the sole source-of-truth for MQTT child availability
   in Phase 1. A heartbeat timeout may be added if real-world testing shows
   this is needed.
+- **Gateway status binary sensor does not reflect per-HGI offline state**
+  (issue 1171 comment by silverailscolo). The `RamsesGatewayBinarySensor`
+  tracks the ramses_rf gateway's `is_active`, which in a pool setup reflects
+  the overall pool bridge state, not individual HGI connectivity. If the
+  primary HGI is unplugged but cached packets are loaded or other HGIs are
+  still online, the sensor stays "OK". Per-HGI online/offline sensors and
+  proper last-packet expiry are Phase 2 items.
 - **Diagnostics/config UI display** of transport kind, address, HGI ID,
   broker/topic, availability, acceptance, and send readiness — not addressed
   in PR 5.
