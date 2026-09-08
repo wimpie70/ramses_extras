@@ -28,8 +28,54 @@ frame and checks for an echo — the same mechanism ramses_rf uses in
 | Device | Port | Overall | Echo to `_PUZZ` | DTR/RTS reset | Unplug/reconnect |
 |--------|------|---------|-----------------|---------------|------------------|
 | ESP32-S3-WROOM1 (evofw3) | `/dev/tty.usbmodem1101` | **PASS** | PASS (86 bytes) | RESET on DTR=LOW (expected) | PASS |
-| FTDI evofw3 dongle | `/dev/tty.usbserial-A50285BI` | **FAIL** | FAIL (0 bytes, all variants) | no reset (FT232 has no auto-reset circuit) | FAIL (reconnected, no echo) |
+| FTDI evofw3 dongle (nanoCUL) | `/dev/tty.usbserial-A50285BI` | **FAIL** | FAIL (0 bytes, all variants) | no reset (FT232 has no auto-reset circuit) | FAIL (reconnected, no echo) |
 | HGI80 (via pty) | `/dev/ttys001` | **FAIL** | FAIL (0 bytes — see below) | `[Errno 25] Inappropriate ioctl` (pty artifact) | FAIL (unplug not detected — pty artifact) |
+
+### Additional device tested (comment 5588991130)
+
+silverailscolo tested a fourth device — a "real evofw3" on
+`/dev/cu.usbmodem101` (USB CDC, ATmega32U4 with native USB, PCB USB
+connector). This device **allows control** of the heating system (RF TX
+works in production), but:
+
+| Test | Result | Bytes | Notes |
+|------|--------|-------|-------|
+| Boot banner capture | PASS | 0 | No banner |
+| **Version command (!V + V)** | **PASS** | 16 | **`# evofw3 0.7.1`** |
+| Immediate _PUZZ probe | FAIL | 0 | No echo |
+| Paced _PUZZ probe (1ms) | FAIL | 0 | No echo |
+| Paced _PUZZ probe (5ms) | FAIL | 0 | No echo |
+| Ordinary RF write | FAIL | 0 | No response |
+
+**CRITICAL FINDING: the `_PUZZ` echo is NOT a valid indicator of whether
+a device can send RF.**
+
+This device:
+- **CAN send RF** (silverailscolo confirms: "Allows control")
+- **CAN receive serial commands** (version command responds)
+- **CANNOT echo `_PUZZ`** (no RF loopback)
+
+The `_PUZZ` echo mechanism requires RF TX + RF loopback (the device
+receives its own transmission). Not all evofw3 hardware/platforms
+support RF loopback. The ATmega32U4 with native USB does not, even
+though its RF TX works for controlling heating.
+
+This means:
+1. **The feasibility gate's reliance on `_PUZZ` echo is wrong** — it
+   rejects devices that can send RF but don't loopback.
+2. **ramses_rf's `connect_with_signature()` is wrong** for these
+   devices — it requires `_PUZZ` echo to get the HGI ID, but the echo
+   never comes.
+3. **The ESP32-S3 is the exception, not the rule** — it happens to
+   support RF loopback, but that's not guaranteed across all evofw3
+   hardware.
+4. **The pool needs `signature_policy = SKIP` + `configured_hgi_id`**
+   for ALL evofw3 devices that don't echo, not just the nanoCUL.
+
+The version command (`!V\r` → `# evofw3 0.7.1`) is a better diagnostic:
+- It tests the serial RX path without involving RF
+- It works on the ATmega32U4 device (which can control heating)
+- It fails on the nanoCUL (which may have a timing or hardware issue)
 
 ### Test environment: macOS host, not the HA container
 
