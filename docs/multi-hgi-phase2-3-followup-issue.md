@@ -86,34 +86,47 @@ starts (see below).
 
 ### Hardware feasibility gate (Phase 2 prerequisite)
 
-**Status: PASSED** (2026-09-08, single ESP32 USB JTAG serial debug unit)
+**Status: PASSED** (2026-09-08, 2x ESP32 USB JTAG serial debug units)
 
-**Hardware tested:** 1x ESP32 USB JTAG serial debug unit (CC:BA:97:09:FC:BC),
-`/dev/ttyACM0`. A second ESP32 is available for two-USB testing.
+**Hardware tested:** 2x ESP32 USB JTAG serial debug units:
+- `/dev/ttyACM0` (CC:BA:97:09:FC:BC), firmware 0.6.6c
+- `/dev/ttyACM1` (CC:BA:97:0A:47:F0)
 
-**Test tool:** `tools/esp_usb_feasibility_test.py`
+**Test tools:**
+- `tools/esp_usb_feasibility_test.py` — async, requires `serialx` (from ramses_rf venv)
+- `tools/esp_usb_feasibility_standalone.py` — standalone, requires only `pyserial`
 
-**Results (3 runs, 18/18 steps passed, 0 resets detected):**
+**Results (dual-port test, 13/13 steps passed, 0 resets detected):**
 
-| Test | Result | Notes |
-|------|--------|-------|
-| Port open (no write) | PASS | No reset, no spurious data |
-| Immediate 7FFF probe | PASS | Echo received (86-103 bytes) |
-| Repeated probes (5x) | PASS | 5 echoes (430 bytes), no reset loop |
-| Delayed probe (2s grace) | PASS | Echo received (86 bytes) |
-| Ordinary RF write | PASS | Response received (52 bytes) |
-| Close/reopen | PASS | Reopened successfully, no reset |
+| Test | Port 1 | Port 2 | Notes |
+|------|--------|--------|-------|
+| Port open (no write) | PASS | PASS | No reset, no spurious data |
+| Immediate 7FFF probe | PASS | PASS | Echo received (86-103 bytes) |
+| Repeated probes (5x) | PASS | PASS | 5 echoes each (430 bytes), no reset loop |
+| Delayed probe (2s grace) | PASS | PASS | Echo received (86-140 bytes) |
+| Ordinary RF write | PASS | PASS | Response received (52 bytes) |
+| Close/reopen | PASS | PASS | Reopened successfully, no reset |
+| Dual simultaneous write | PASS | — | Both ports echoed simultaneously |
 
-**Key finding:** The ESP32 USB JTAG serial debug unit does NOT exhibit the
-reset loop problem. Immediate writes, repeated writes, and close/reopen all
-work without triggering an ESP reset. This suggests the reset loop concern
-may not apply to this specific ESP32 variant/firmware.
+**Key finding:** The ESP32 USB JTAG serial debug units (firmware 0.6.6c) do NOT
+exhibit the reset loop problem. Immediate writes, repeated writes, close/reopen,
+and dual-port simultaneous writes all work without triggering an ESP reset.
+
+**Current code handling of reset-prone ESPs:** The existing `PortTransport` has
+a binary `disable_sending` flag. When `True`, it skips the signature probe
+entirely (`connect_sans_signature`) and blocks all writes — the child becomes
+permanently receive-only with no HGI ID. When `False`, it sends immediate
+signature probes (40x, 0.05s gap) which would trigger reset loops on affected
+hardware. The Phase 2 plan (PR 3) splits this into `signature_policy:
+"immediate"|"delayed"|"skip"` + `startup_grace: float | None` to allow a
+delayed probe after the ESP stabilizes.
 
 **Still needed before Phase 2 release:**
-- Two-USB test (both ESPs connected via USB simultaneously)
 - USB unplug/reconnect test (physical disconnect during operation)
 - Hybrid USB+MQTT test (one ESP on USB, one on MQTT, both in pool)
-- Traditional serial evofw3/HGI device test (if available)
+- Traditional serial evofw3/HGI device test — a standalone test script
+  (`tools/esp_usb_feasibility_standalone.py`) has been written for Egbert to
+  run on his traditional evofw3 device. It requires only `pyserial`.
 release validation must be identified before PR 3 starts. Automated PR checks
 remain mandatory; hardware results are recorded separately as release evidence
 because CI cannot reproduce them.

@@ -328,16 +328,140 @@ async def run_feasibility_gate(
     return report
 
 
+async def run_dual_port_test(
+    port1: str, port2: str, delay: float = 2.0
+) -> tuple[FeasibilityReport, FeasibilityReport]:
+    """Run feasibility tests on two ports simultaneously."""
+    print(f"\nDual-Port USB Feasibility Test")
+    print(f"Port 1: {port1}")
+    print(f"Port 2: {port2}")
+    print(f"Delay: {delay}s")
+    print("-" * 60)
+
+    # Run both tests concurrently
+    report1, report2 = await asyncio.gather(
+        run_feasibility_gate(port1, repeats=1, delay=delay),
+        run_feasibility_gate(port2, repeats=1, delay=delay),
+    )
+
+    # Additional dual-port specific tests
+    print("\n--- Dual-port simultaneous write test ---")
+    start = time.perf_counter()
+    try:
+        ser1 = serialx.AsyncSerial(port1, baudrate=115200)
+        ser2 = serialx.AsyncSerial(port2, baudrate=115200)
+        await ser1.open()
+        await ser2.open()
+
+        # Send signature to both simultaneously
+        ts = int(time.time() * 1000)
+        frame = (SIGNATURE_FRAME.format(ts=ts) + "\r\n").encode()
+        ser1.write_nowait(frame)
+        ser2.write_nowait(frame)
+
+        # Read from both concurrently
+        data1, data2 = await asyncio.gather(
+            read_for_duration(ser1, 1.0),
+            read_for_duration(ser2, 1.0),
+        )
+        await ser1.close()
+        await ser2.close()
+        duration = time.perf_counter() - start
+
+        echo1 = b"7FFF" in data1
+        echo2 = b"7FFF" in data2
+        reset1 = detect_reset(data1)
+        reset2 = detect_reset(data2)
+
+        result = TestResult(
+            name="Dual simultaneous write",
+            success=echo1 and echo2,
+            duration=duration,
+            bytes_received=len(data1) + len(data2),
+            reset_detected=reset1 or reset2,
+            notes=f"Port1: {'echo' if echo1 else 'no echo'}{' (RESET)' if reset1 else ''}, "
+            f"Port2: {'echo' if echo2 else 'no echo'}{' (RESET)' if reset2 else ''}",
+        )
+        report1.add(result)
+        print(
+            f"  [{'PASS' if result.success else 'FAIL'}] {result.name}: "
+            f"{result.duration:.3f}s — {result.notes}"
+        )
+    except Exception as e:
+        result = TestResult(
+            name="Dual simultaneous write",
+            success=False,
+            duration=time.perf_counter() - start,
+            notes=str(e),
+        )
+        report1.add(result)
+        print(f"  [FAIL] {result.name}: {result.notes}")
+
+    print(report1.summary())
+    return report1, report2
+
+
+def generate_report(
+    reports: list[FeasibilityReport],
+    output_file: str | None = None,
+) -> str:
+    """Generate a markdown report for sharing."""
+    lines = [
+        "# ESP32 USB Feasibility Gate Report",
+        f"\n**Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"**Tool:** tools/esp_usb_feasibility_test.py",
+        "\n## Results\n",
+    ]
+
+    for report in reports:
+        lines.append(f"### Port: `{report.port}`\n")
+        lines.append("| Test | Result | Duration | Bytes | Reset | Notes |")
+        lines.append("|------|--------|----------|-------|-------|-------|")
+        for r in report.results:
+            status = "PASS" if r.success else "FAIL"
+            reset = "YES" if r.reset_detected else "no"
+            notes = r.notes.replace("|", "\\|")
+            lines.append(
+                f"| {r.name} | {status} | {r.duration:.3f}s | "
+                f"{r.bytes_received} | {reset} | {notes} |"
+            )
+        lines.append("")
+
+    all_passed = all(r.all_passed for r in reports)
+    total_resets = sum(
+        sum(1 for r in report.results if r.reset_detected) for report in reports
+    )
+    lines.append("## Summary\n")
+    lines.append(f"- **Overall:** {'PASSED' if all_passed else 'FAILED'}")
+    lines.append(f"- **Total resets detected:** {total_resets}")
+    lines.append(
+        f"- **Ports tested:** {', '.join(r.port for r in reports)}"
+    )
+
+    report_text = "\n".join(lines)
+    if output_file:
+        with open(output_file, "w") as f:
+            f.write(report_text)
+        print(f"\nReport written to: {output_file}")
+    return report_text
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="ESP32 USB feasibility gate test for Phase 2"
     )
     parser.add_argument("port", help="Serial port (e.g. /dev/ttyACM0)")
     parser.add_argument(
+        "--port2", help="Second serial port for dual-port test"
+    )
+    parser.add_argument(
         "--repeats", type=int, default=1, help="Number of full test cycles"
     )
     parser.add_argument(
         "--delay", type=float, default=2.0, help="Grace period delay (seconds)"
+    )
+    parser.add_argument(
+        "--report", "-r", help="Write markdown report to this file"
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Verbose logging"
@@ -349,11 +473,24 @@ def main() -> None:
     else:
         logging.basicConfig(level=logging.INFO)
 
-    report = asyncio.run(
-        run_feasibility_gate(args.port, repeats=args.repeats, delay=args.delay)
-    )
+    if args.port2:
+        reports = asyncio.run(
+            run_dual_port_test(args.port, args.port2, delay=args.delay)
+        )
+        all_passed = all(r.all_passed for r in reports)
+    else:
+        report = asyncio.run(
+            run_feasibility_gate(
+                args.port, repeats=args.repeats, delay=args.delay
+            )
+        )
+        reports = [report]
+        all_passed = report.all_passed
 
-    if report.all_passed:
+    if args.report:
+        generate_report(reports, args.report)
+
+    if all_passed:
         print("\nFEASIBILITY GATE: PASSED")
         sys.exit(0)
     else:
