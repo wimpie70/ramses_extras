@@ -511,6 +511,128 @@ def test_version_command_no_dtr(port: str) -> TestResult:
         )
 
 
+def test_version_command_slow_baud(
+    port: str, baudrate: int = 57600, boot_wait: float = 3.0
+) -> TestResult:
+    """Send version command at a slower baud rate.
+
+    The evofw3 README and ramses_rf's port.py comment both note that the
+    ATmega328p host baud rate is "57600 (or 115200, YMMV)".  Some nanoCUL
+    builds may use 57600 as the default.  If the device is running at
+    57600 and we open at 115200, the boot banner would be garbled — but
+    we see a clean 17-byte banner, so 115200 is likely correct.
+
+    This test tries 57600 as a fallback, with a 3s boot wait.  If it
+    gets a response where the 115200 version command failed, the device
+    is running at 57600 (and the 17 "clean" bytes at 115200 were a
+    coincidence).
+    """
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=baudrate, timeout=0.1)
+        boot_data = read_for_duration(ser, boot_wait)
+        ser.reset_input_buffer()
+
+        ser.write(EVOFW3_VERSION_CMD)
+        ser.flush()
+        evofw3_data = read_for_duration(ser, 1.0)
+        ser.reset_input_buffer()
+
+        ser.write(CULFW_VERSION_CMD)
+        ser.flush()
+        culfw_data = read_for_duration(ser, 1.0)
+
+        ser.close()
+        duration = time.perf_counter() - start
+
+        boot_str = boot_data.decode(errors="replace").strip()
+        evofw3_resp = evofw3_data.decode(errors="replace").strip()
+        culfw_resp = culfw_data.decode(errors="replace").strip()
+
+        got_evofw3 = "evofw3" in evofw3_resp
+        got_culfw = "CUL" in culfw_resp or culfw_resp.startswith("V ")
+
+        if got_evofw3:
+            notes = f"evofw3 @ {baudrate}: {evofw3_resp!r} (boot: {boot_str!r})"
+            success = True
+        elif got_culfw:
+            notes = f"culfw @ {baudrate}: {culfw_resp!r} (boot: {boot_str!r})"
+            success = True
+        elif evofw3_resp or culfw_resp:
+            notes = f"@{baudrate}: evofw3={evofw3_resp!r} culfw={culfw_resp!r}"
+            success = False
+        else:
+            notes = f"No response @ {baudrate} baud"
+            success = False
+
+        total_bytes = len(boot_data) + len(evofw3_data) + len(culfw_data)
+        return TestResult(
+            name=f"Version command @ {baudrate} baud",
+            success=success,
+            duration=duration,
+            bytes_received=total_bytes,
+            notes=notes,
+            received_data=boot_data + evofw3_data + culfw_data,
+        )
+    except Exception as e:
+        return TestResult(
+            f"Version command @ {baudrate} baud",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
+def test_slow_paced_probe(
+    port: str, byte_delay_ms: float = 10.0, boot_wait: float = 3.0
+) -> TestResult:
+    """Send _PUZZ with very slow pacing (10ms/byte) after a long boot wait.
+
+    This combines all timing mitigations:
+    - 3s boot wait (lets the device finish booting after DTR reset)
+    - 10ms/byte pacing (avoids 32-byte RX buffer overflow)
+    - 3s read after send (gives time for RF TX + loopback echo)
+
+    If this test passes, we know the device CAN echo — the issue was
+    purely timing.  If it still fails, the device's RF TX path is
+    broken (known nanoCUL/ATmega328p limitation).
+    """
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1)
+        boot_data = read_for_duration(ser, boot_wait)
+        ser.reset_input_buffer()
+
+        ts = int(time.time() * 1000)
+        frame = (SIGNATURE_FRAME.format(ts=ts) + "\r\n").encode()
+        write_with_pacing(ser, frame, byte_delay_ms)
+        data = read_for_duration(ser, 3.0)
+        ser.close()
+        duration = time.perf_counter() - start
+
+        boot_str = boot_data.decode(errors="replace").strip()
+        got_echo = b"7FFF" in data
+        return TestResult(
+            name=f"Slow paced probe ({byte_delay_ms}ms/byte, {boot_wait}s boot)",
+            success=got_echo,
+            duration=duration,
+            bytes_received=len(data),
+            notes=(
+                f"Got echo (boot: {boot_str!r})"
+                if got_echo
+                else f"No echo (boot: {boot_str!r})"
+            ),
+            received_data=data,
+        )
+    except Exception as e:
+        return TestResult(
+            f"Slow paced probe ({byte_delay_ms}ms/byte, {boot_wait}s boot)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
 def test_paced_probe(port: str, byte_delay_ms: float = 1.0) -> TestResult:
     """Send the _PUZZ signature frame with inter-byte pacing.
 
@@ -788,8 +910,10 @@ def run_feasibility_gate(
             report.add(test_version_command(port))
             report.add(test_version_command_delayed(port))
             report.add(test_version_command_no_dtr(port))
+            report.add(test_version_command_slow_baud(port))
             report.add(test_paced_probe(port, nanocul_pace_ms))
             report.add(test_paced_write(port, nanocul_pace_ms))
+            report.add(test_slow_paced_probe(port))
         if i == 0 and include_dtr:
             print("\n--- DTR/RTS open mode test ---")
             for r in test_dtr_rts_modes(port):
