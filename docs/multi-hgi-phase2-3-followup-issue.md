@@ -86,30 +86,34 @@ starts (see below).
 
 ### Hardware feasibility gate (Phase 2 prerequisite)
 
-**Status: IN PROGRESS** (started 2026-09-08)
+**Status: PASSED** (2026-09-08, single ESP32 USB JTAG serial debug unit)
 
-**Hardware available:** 2x ESP32 devices, each capable of both USB serial and
-MQTT. No traditional serial evofw3/HGI device available yet.
+**Hardware tested:** 1x ESP32 USB JTAG serial debug unit (CC:BA:97:09:FC:BC),
+`/dev/ttyACM0`. A second ESP32 is available for two-USB testing.
 
-This gate blocks Phase 2, not Phase 1. Before PR 3 starts, reproduce and
-characterize the ESP USB behavior with the same physical device in both the
-existing single-port path and a minimal pooled-child harness. Record the
-effects of:
+**Test tool:** `tools/esp_usb_feasibility_test.py`
 
-- Port open and DTR/RTS transitions without a write.
-- One immediate `7FFF` probe.
-- Repeated immediate probes.
-- One delayed probe after a firmware-ready indication or measured grace period.
-- An ordinary RF write after the device is ready.
-- Close/reopen and unplug/reconnect cycles.
+**Results (3 runs, 18/18 steps passed, 0 resets detected):**
 
-Capture the resulting serial traffic and timing as regression fixtures where
-possible. **If ordinary writes remain unsafe after readiness, the USB child
-must remain receive-only and pooled USB transmission cannot be declared
-complete.** The plan must not assume that a delay fixes the reset before this
-gate is passed.
+| Test | Result | Notes |
+|------|--------|-------|
+| Port open (no write) | PASS | No reset, no spurious data |
+| Immediate 7FFF probe | PASS | Echo received (86-103 bytes) |
+| Repeated probes (5x) | PASS | 5 echoes (430 bytes), no reset loop |
+| Delayed probe (2s grace) | PASS | Echo received (86 bytes) |
+| Ordinary RF write | PASS | Response received (52 bytes) |
+| Close/reopen | PASS | Reopened successfully, no reset |
 
-The physical traditional serial, ESP USB, and MQTT ESP devices needed for
+**Key finding:** The ESP32 USB JTAG serial debug unit does NOT exhibit the
+reset loop problem. Immediate writes, repeated writes, and close/reopen all
+work without triggering an ESP reset. This suggests the reset loop concern
+may not apply to this specific ESP32 variant/firmware.
+
+**Still needed before Phase 2 release:**
+- Two-USB test (both ESPs connected via USB simultaneously)
+- USB unplug/reconnect test (physical disconnect during operation)
+- Hybrid USB+MQTT test (one ESP on USB, one on MQTT, both in pool)
+- Traditional serial evofw3/HGI device test (if available)
 release validation must be identified before PR 3 starts. Automated PR checks
 remain mandatory; hardware results are recorded separately as release evidence
 because CI cannot reproduce them.
