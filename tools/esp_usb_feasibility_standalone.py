@@ -233,7 +233,151 @@ def test_close_reopen(port: str) -> TestResult:
         return TestResult("Close/reopen", False, time.perf_counter() - start, notes=str(e))
 
 
-def run_feasibility_gate(port: str, repeats: int = 1, delay: float = 2.0) -> FeasibilityReport:
+def test_dtr_rts_modes(port: str) -> list[TestResult]:
+    """Test opening the port with different DTR/RTS settings.
+
+    pyserial sets DTR=True/RTS=True on open by default.  On boards with a
+    USB-to-UART bridge (CP2102, CH340, FT232), DTR/RTS are wired to EN/GPIO0
+    through a transistor circuit and the transition can reset the ESP32.
+    This test tries different combinations to find which prevent the reset.
+    """
+    modes = [
+        ("default (dsrdtr=False)", {"dsrdtr": False}),
+        ("dsrdtr=True (no auto DTR/RTS)", {"dsrdtr": True}),
+        ("DTR=LOW after open", {"dsrdtr": True, "_set_dtr": False}),
+        ("RTS=LOW after open", {"dsrdtr": True, "_set_rts": False}),
+        ("both LOW after open", {"dsrdtr": True, "_set_dtr": False, "_set_rts": False}),
+    ]
+
+    results: list[TestResult] = []
+    for label, kwargs in modes:
+        set_dtr = kwargs.pop("_set_dtr", None)
+        set_rts = kwargs.pop("_set_rts", None)
+        start = time.perf_counter()
+        try:
+            ser = serial.Serial(port, baudrate=115200, timeout=0.1, **kwargs)
+            if set_dtr is not None:
+                ser.setDTR(set_dtr)
+            if set_rts is not None:
+                ser.setRTS(set_rts)
+            data = read_for_duration(ser, 2.0)
+            ser.close()
+            duration = time.perf_counter() - start
+            reset_detected = detect_reset(data)
+            results.append(TestResult(
+                name=f"DTR/RTS: {label}",
+                success=True,
+                duration=duration,
+                bytes_received=len(data),
+                reset_detected=reset_detected,
+                notes="RESET detected" if reset_detected else "No reset",
+                received_data=data,
+            ))
+        except Exception as e:
+            results.append(TestResult(
+                name=f"DTR/RTS: {label}",
+                success=False,
+                duration=time.perf_counter() - start,
+                notes=str(e),
+            ))
+    return results
+
+
+def test_unplug_reconnect(port: str, timeout: float = 30.0) -> TestResult:
+    """Test physical unplug/reconnect cycle.
+
+    Opens the port, waits for the user to unplug and reconnect the USB
+    cable, then verifies the port can be reopened and the device responds.
+    Interactive — prints prompts to stdout.
+    """
+    import os
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1)
+        print(f"  >>> UNPLUG {port} now, then plug it back in <<<")
+        # Wait for the port to disappear (unplug)
+        unplugged = False
+        deadline_unplug = time.perf_counter() + timeout
+        while time.perf_counter() < deadline_unplug:
+            if not os.path.exists(port):
+                unplugged = True
+                print(f"  >>> Unplug detected, waiting for reconnect... <<<")
+                break
+            time.sleep(0.3)
+        if not unplugged:
+            ser.close()
+            return TestResult(
+                name="Unplug/reconnect",
+                success=False,
+                duration=time.perf_counter() - start,
+                notes="Unplug not detected within timeout",
+            )
+        # Close the broken port
+        try:
+            ser.close()
+        except Exception:
+            pass
+
+        # Wait for the port to reappear (reconnect)
+        reconnected = False
+        boot_data = b""
+        data = b""
+        deadline_reconnect = time.perf_counter() + timeout
+        while time.perf_counter() < deadline_reconnect:
+            if os.path.exists(port):
+                try:
+                    ser2 = serial.Serial(port, baudrate=115200, timeout=0.1)
+                    # Wait for device to boot
+                    boot_data = read_for_duration(ser2, 3.0)
+                    # Send a signature probe
+                    ts = int(time.time() * 1000)
+                    frame = (SIGNATURE_FRAME.format(ts=ts) + "\r\n").encode()
+                    ser2.write(frame)
+                    data = read_for_duration(ser2, 1.0)
+                    ser2.close()
+                    reconnected = True
+                    break
+                except Exception:
+                    time.sleep(0.5)
+            else:
+                time.sleep(0.3)
+
+        duration = time.perf_counter() - start
+        if not reconnected:
+            return TestResult(
+                name="Unplug/reconnect",
+                success=False,
+                duration=duration,
+                notes="Reconnect not detected within timeout",
+            )
+        all_data = boot_data + data
+        reset_detected = detect_reset(all_data)
+        got_echo = b"7FFF" in data or b"I ---" in data
+        return TestResult(
+            name="Unplug/reconnect",
+            success=got_echo,
+            duration=duration,
+            bytes_received=len(all_data),
+            reset_detected=reset_detected,
+            notes="Reconnected, echo received" if got_echo else "Reconnected, no echo",
+            received_data=all_data,
+        )
+    except Exception as e:
+        return TestResult(
+            name="Unplug/reconnect",
+            success=False,
+            duration=time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
+def run_feasibility_gate(
+    port: str,
+    repeats: int = 1,
+    delay: float = 2.0,
+    include_dtr: bool = False,
+    include_unplug: bool = False,
+) -> FeasibilityReport:
     report = FeasibilityReport(port=port)
     print(f"\nESP32/evofw3 USB Feasibility Gate Test")
     print(f"Port: {port}")
@@ -249,6 +393,13 @@ def run_feasibility_gate(port: str, repeats: int = 1, delay: float = 2.0) -> Fea
         report.add(test_delayed_probe(port, delay))
         report.add(test_ordinary_write(port))
         report.add(test_close_reopen(port))
+        if i == 0 and include_dtr:
+            print("\n--- DTR/RTS open mode test ---")
+            for r in test_dtr_rts_modes(port):
+                report.add(r)
+        if i == 0 and include_unplug:
+            print("\n--- Unplug/reconnect test ---")
+            report.add(test_unplug_reconnect(port))
     print(report.summary())
     return report
 
@@ -286,9 +437,23 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=1, help="Number of full test cycles")
     parser.add_argument("--delay", type=float, default=2.0, help="Grace period delay (seconds)")
     parser.add_argument("--report", "-r", help="Write markdown report to this file")
+    parser.add_argument(
+        "--dtr-test", action="store_true",
+        help="Test DTR/RTS open modes to find reset-preventing settings",
+    )
+    parser.add_argument(
+        "--unplug-test", action="store_true",
+        help="Test physical unplug/reconnect (interactive — prompts to unplug)",
+    )
     args = parser.parse_args()
 
-    report = run_feasibility_gate(args.port, repeats=args.repeats, delay=args.delay)
+    report = run_feasibility_gate(
+        args.port,
+        repeats=args.repeats,
+        delay=args.delay,
+        include_dtr=args.dtr_test,
+        include_unplug=args.unplug_test,
+    )
     reports = [report]
 
     if args.report:
