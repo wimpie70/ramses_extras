@@ -445,14 +445,21 @@ def main() -> None:
         "--unplug-test", action="store_true",
         help="Test physical unplug/reconnect (interactive — prompts to unplug)",
     )
+    parser.add_argument(
+        "--all", action="store_true",
+        help="Run all tests: basic + DTR/RTS + unplug/reconnect",
+    )
     args = parser.parse_args()
+
+    include_dtr = args.dtr_test or args.all
+    include_unplug = args.unplug_test or args.all
 
     report = run_feasibility_gate(
         args.port,
         repeats=args.repeats,
         delay=args.delay,
-        include_dtr=args.dtr_test,
-        include_unplug=args.unplug_test,
+        include_dtr=include_dtr,
+        include_unplug=include_unplug,
     )
     reports = [report]
 
