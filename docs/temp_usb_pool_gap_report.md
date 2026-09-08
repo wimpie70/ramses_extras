@@ -559,6 +559,46 @@ the HGI ID. The `!I` command returns the ID over serial without RF
 loopback, and it works on all evofw3 hardware. The `_PUZZ` echo only
 works on the ESP32-S3.
 
+### Run 4: `!I` command WORKS — HGI ID confirmed (comment 5589372490)
+
+silverailscolo ran the updated script with the `!I` test on the
+"real evofw3" device (`/dev/cu.usbmodem101`, ATmega32U4):
+
+| Test | Result | Bytes | Notes |
+|------|--------|-------|-------|
+| Boot banner capture | PASS | 0 | No banner (ATmega32U4 doesn't print one) |
+| **Version command (!V + V)** | **PASS** | 16 | **`# evofw3 0.7.1`** |
+| **Version command (delayed 3s)** | **PASS** | 128 | `# evofw3 0.7.1` + RF traffic in boot data |
+| **Version command (no DTR)** | **PASS** | 16 | `# evofw3 0.7.1` |
+| **Version command @ 57600** | **PASS** | 72 | `# evofw3 0.7.1` + RF traffic |
+| **ID command (!I)** | **PASS** | 13 | **`HGI ID: 18:006402`** |
+| Paced _PUZZ probe (1ms) | FAIL | 0 | No echo (no RF loopback) |
+| Paced RF write (1ms) | FAIL | 0 | No response |
+| Slow paced probe (10ms, 3s boot) | FAIL | 1170 | 1170 bytes RF traffic, no `7FFF` echo |
+
+**The `!I` command WORKS and returns the HGI ID: `18:006402`.**
+
+This is the key result. The HGI ID is discovered over serial without
+any RF involvement. This proves the approach works:
+
+1. Send `!I\r` over serial
+2. Parse `# 18:006402\r\n` response
+3. Extract class=18, ID=006402
+4. No `_PUZZ` probe needed
+5. No RF loopback needed
+6. Works on ATmega32U4 (confirmed) and should work on all evofw3
+
+**All version command variants pass** (0.5s, 3s, no-DTR, 57600) — the
+serial RX path works fine on this device at all timings.
+
+**The `_PUZZ` echo fails as expected** — no RF loopback on ATmega
+hardware. The slow paced probe received 1170 bytes of RF traffic
+(ambient RAMSES packets from nearby devices) but no `7FFF` echo.
+
+**The non-nanoCUL run** (without `--nanocul` flag) shows the basic
+tests only — all 0 bytes, no version/ID commands tested. This
+confirms the `--nanocul` flag is needed for the diagnostic tests.
+
 
 
 ### ramses_rf (`feat/phase2-signature-policy` branch, 6 commits)
