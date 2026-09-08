@@ -134,41 +134,35 @@ serial relay (socat, ser2net, ESPHome serial-to-network, etc.).
     reflashed with evofw3 to work.
 
 - **HGI80** (`/dev/ttys001`) — this test tells us **nothing about the
-  HGI80 itself.** Three independent problems:
+  HGI80 itself.** The HGI80 cannot be tested on macOS at all.
 
-  1. **`/dev/ttys001` is a pseudo-terminal, not a USB device.** A pty is
-     a virtual serial port. It does not support `TIOCMSET` (hardware line
-     control), which is why DTR/RTS failed with `[Errno 25] Inappropriate
-     ioctl for device`. `os.path.exists()` stays true when physical USB is
-     unplugged, which is why unplug was not detected. These are pty
-     limitations, not HGI80 limitations.
+  **The HGI80 is NOT a standard USB-serial device.** It uses a Texas
+  Instruments TUSB3410 USB-to-serial chip (VID `0x10ac`, PID `0x0102`).
+  On Linux, it requires the `ti_usb_3410_5052` kernel driver AND a
+  firmware file (`ti_usb-v10ac-p0102.fw`). Without the driver, the
+  TUSB3410 stays in its boot-loader mode.
 
-  2. **0 bytes received across all tests** (~11 seconds of listening).
-     Even through a pty relay, if the HGI80 were connected and emitting RF
-     traffic, bytes would come through. 0 bytes means the pty was
-     connected to nothing, or the HGI80 wasn't powered/connected, or the
-     relay wasn't working.
+  **On macOS, the HGI80 shows up as a Removable Disk** (USB mass
+  storage), not a serial device. silverailscolo confirmed this:
+  "The HGI80 just doesn't show up on macOS as a serial device, only as
+  a Removable Disk. Too smart." This is the TUSB3410 boot-loader mode
+  — macOS doesn't have the `ti_usb_3410_5052` driver, so the device
+  falls back to mass storage presentation.
 
-  3. **Container/USB-forwarding layer.** If HA runs in a Docker container
-     on a separate Linux server, the USB devices on the Mac cannot be
-     accessed directly. They must be forwarded via a network serial relay
-     (socat, ser2net, etc.). The `/dev/ttys001` pty could be the Mac end
-     of such a relay — but if the relay was misconfigured, the HGI80 was
-     unplugged, or the cable/hub was faulty, the pty would show 0 bytes
-     and the ioctl errors we see. The test cannot distinguish between
-     "HGI80 doesn't work" and "the relay/cable/hub to the HGI80 is broken."
-
-     Common container USB-forwarding gotchas:
-     - Docker `--device /dev/ttyUSB0` passes the raw device node, but
-       `/dev/serial/by-id/...` symlinks need a separate bind mount and
-       may not resolve inside the container.
-     - socat/ser2net relays add latency and may not forward DTR/RTS
-       line-control signals (hence the pty).
-     - USB hubs can drop devices under power draw; the HGI80 draws
-       more power than a typical FTDI dongle.
-     - A pty relay that is running but not connected to a live USB device
-       produces exactly the symptoms seen: 0 bytes, ioctl errors, no
-       unplug detection.
+  This means:
+  1. **`/dev/ttys001` was never connected to the real HGI80.** The pty
+     was connected to something else (a relay, a proxy, or nothing).
+  2. **The HGI80 can only be tested on Linux** (HA OS, Docker on Linux)
+     with the `ti_usb_3410_5052` driver and firmware loaded. On Linux
+     it appears as `/dev/ttyUSB*`.
+  3. **The 0 bytes, DTR/RTS ioctl errors, and no unplug detection are
+     all pty artifacts**, not HGI80 limitations. They tell us nothing
+     about the HGI80 hardware.
+  4. **The HGI80 may work perfectly fine** — it just can't be tested on
+     macOS. silverailscolo plans to "set it up as a USB HGI on my HA
+     kit and try controlling" — this is the correct approach. On HA OS
+     (Linux), the driver should load automatically and the HGI80 should
+     appear as `/dev/ttyUSB*`.
 
 ---
 
@@ -351,7 +345,7 @@ and `!V\r` (evofw3) version commands and a boot banner capture.
 Identical results — all probes fail, version command fails, 17 bytes
 boot banner only.
 
-### Conclusion: evofw3 confirmed, serial RX path broken
+### Conclusion: evofw3 confirmed, but RX path may NOT be broken
 
 The boot banner capture is conclusive:
 
@@ -365,57 +359,46 @@ The boot banner capture is conclusive:
 **The device IS running evofw3** — not culfw. The culfw hypothesis is
 disproven.
 
-**The version command (`!V\r` AND `V\r`) both fail** — 0 bytes, no
-response to either. Since the device is running evofw3, `!V\r` is the
-correct command syntax. The fact that it produces no response means the
-**serial RX path (host → device) is broken**. The device can send (the
-boot banner appears in every test) but cannot receive.
+**However, the "RX path broken" conclusion may be premature.** Looking
+at the timing pattern across all tests in run 3:
 
-**The buffer-overflow hypothesis (section 1a) is disproven.** The `!V`
-command is only 3 bytes — it cannot overflow a 32-byte buffer. The
-device cannot receive even 3 bytes from the host.
+| Test | Wait before send | Read duration | Bytes |
+|------|-----------------|---------------|-------|
+| Port open (no write) | n/a | 2.0s | 17 |
+| Immediate probe | 0s | 1.0s | **0** |
+| Repeated probes | 0s | 1.0s | **0** |
+| Delayed probe (2s) | 2.0s | 1.0s | 17 |
+| Ordinary RF write | 2.0s | 2.0s | 17 |
+| Close/reopen | 0.5s | 1.0s | **0** |
+| Boot banner capture | n/a | 2.0s | 17 |
+| Version command | **0.5s** | 1.0s+1.0s | **0** |
+| Paced probe | 0.5s | 2.0s | 17 |
+| Paced RF write | 0.5s | 2.0s | 17 |
 
-**The "passes" in earlier runs were false positives from ambient RF
-traffic.** Run 3 has no false positives — all tests consistently fail.
-The earlier "passes" (delayed probe at 73 bytes, paced RF write at 129
-bytes) were ambient RF traffic containing `I ---`, not command echoes.
+Tests that read for 2s get 17 bytes (the boot banner). Tests that read
+for only 1s after a quick write get 0 bytes. The version command waits
+only **0.5s** before sending — which may be too short.
 
-### Root cause: hardware fault on the FTDI TXD → ATmega RXD path
+**New hypothesis: the device resets on port open (DTR toggle) and
+takes 1-2s to boot.** pyserial sets DTR=True on open by default. On
+many nanoCUL/Arduino boards, DTR is wired to the ATmega reset line for
+auto-reset during flashing. Opening the port resets the device, it
+takes 1-2s to boot, and commands sent before boot completes are lost.
 
-The nanoCUL's serial path has two directions:
-- **ATmega TXD → FTDI RXD** (device → host): WORKS. The boot banner
-  (`\x11# evofw3 0.7.1\r\n`, 17 bytes) appears in every test.
-- **FTDI TXD → ATmega RXD** (host → device): BROKEN. Neither `!V\r` nor
-  `V\r` produces any response — the device cannot receive any data.
+The 17 bytes always appear in tests that read for 2+ seconds because
+the boot banner arrives 1-2s after port open. Tests that read for only
+1s miss the banner (it arrives after the read ends). The version
+command sends at 0.5s — before the device has finished booting.
 
-Possible causes:
-1. **Bad solder joint or broken trace** on the FTDI TXD → ATmega RXD
-   line on the nanoCUL PCB.
-2. **Wrong FTDI cable wiring** — if the nanoCUL is connected via an
-   external FTDI cable (not a built-in USB stick), the TXD/RXD lines
-   may be crossed or disconnected.
-3. **FTDI chip TXD driver failed** — the FTDI chip's TXD output is
-   dead.
-4. **ATmega RXD pin damaged** — the ATmega328p's RXD pin is not
-   receiving.
-5. **DTR/RTS flow control issue** — the FTDI chip is holding the
-   ATmega's RXD line in a state that prevents reception.
+**This means the RX path might be fine — we're just sending commands
+too early.** The updated test script now includes two new tests:
+- `test_version_command_delayed`: waits 3s after port open before
+  sending (lets the device finish booting)
+- `test_version_command_no_dtr`: opens with `dsrdtr=True` and
+  `DTR=False` to prevent the reset entirely
 
-### Implications for pool support
-
-This specific nanoCUL device **cannot work in a RAMSES pool** — it
-cannot receive commands, so it cannot be used for outbound routing or
-signature probing. It can only receive RF traffic and send it to the
-host (one-way: RF → serial).
-
-The fix is NOT a code change in ramses_rf or ramses_cc. The fix is to
-repair or replace the nanoCUL hardware:
-- Check the FTDI TXD → ATmega RXD connection (solder joints, cable).
-- Try a different nanoCUL or a different USB-serial cable.
-- If using an external FTDI cable, check TXD/RXD are not swapped.
-
-Once a working nanoCUL is available, the buffer-overflow hypothesis
-from section 1a can be re-tested with the paced probe.
+If either of these gets a version response, the root cause is timing
+(DTR reset + boot delay), not a broken RX path.
 
 
 
@@ -567,19 +550,24 @@ for outbound routing.
 Either way, per-child config overrides (Gap D) are needed to coexist
 with ESP32 children in a mixed pool.
 
-### HGI80 — test invalid; needs re-test via real USB path
+### HGI80 — cannot be tested on macOS; needs Linux test
 
-- The `/dev/ttys001` test tells us nothing about the HGI80. The pty
-  cannot do hardware line control (DTR/RTS), cannot detect unplug, and
-  showed 0 bytes across all tests.
-- If HA runs in a container on a separate server, the pty may be a
-  network serial relay (socat/ser2net) that was misconfigured, or the
-  HGI80 was not connected/powered, or the cable/hub was faulty.
-- Once re-tested via the real USB path, the HGI80 would need
-  `signature_policy = SKIP` (auto-detected via `_is_hgi80`, Gap C) +
-  per-child config overrides (Gap D).
+- The HGI80 uses a TI TUSB3410 USB-to-serial chip (VID `0x10ac`,
+  PID `0x0102`), not a standard FTDI or CDC device.
+- On macOS, it shows up as a **Removable Disk** (USB mass storage)
+  because macOS lacks the `ti_usb_3410_5052` driver. The TUSB3410
+  falls back to its boot-loader mode, which presents as mass storage.
+- The `/dev/ttys001` test was never connected to the real HGI80 — it
+  was a pty connected to something else (or nothing).
+- The HGI80 can only be tested on Linux (HA OS, Docker on Linux) with
+  the `ti_usb_3410_5052` driver and firmware loaded. On Linux it
+  appears as `/dev/ttyUSB*`.
+- silverailscolo plans to "set it up as a USB HGI on my HA kit and try
+  controlling" — this is the correct approach.
+- Once tested on Linux, the HGI80 would need `signature_policy = SKIP`
+  (auto-detected via `_is_hgi80`, Gap C) + per-child config overrides
+  (Gap D).
 - HGI80 placeholder behavior remains supported (architecture invariant 9).
-- **Cannot assess pool readiness until a valid test is run.**
 
 ---
 
@@ -601,30 +589,40 @@ Regression tests required" section (`multi-hgi-phase2-3-followup-issue.md:216-23
 
 ## 6. Open questions for silverailscolo
 
-The nanoCUL questions have been answered by run 3 (comment 5588219009):
+The nanoCUL questions have been partially answered by run 3 (comment
+5588219009):
 
 - **Firmware:** evofw3 0.7.1 (confirmed by boot banner `\x11# evofw3 0.7.1`)
-- **Serial RX path:** broken (neither `!V\r` nor `V\r` produces a response)
-- **Conclusion:** hardware fault on FTDI TXD → ATmega RXD path
+- **Serial RX path:** unclear — the version command failed, but it
+  may have been sent before the device finished booting (DTR reset +
+  1-2s boot delay). The updated script now tests with a 3s delay and
+  with DTR disabled.
 
 Remaining questions:
 
-1. **nanoCUL hardware check:** Can you inspect the nanoCUL's FTDI-to-ATmega
-   serial connection? The device can send (boot banner works) but cannot
-   receive (no command response). Likely causes: bad solder joint on
-   FTDI TXD, crossed TXD/RXD if using an external cable, or damaged
-   ATmega RXD pin. If you have a second nanoCUL, try that one.
+1. **Re-run with updated script (delayed + no-DTR version commands):**
+   The previous version command waited only 0.5s before sending, which
+   may be too short if the device resets on port open and takes 1-2s to
+   boot. The updated script now includes:
+   - `test_version_command_delayed`: waits 3s after port open
+   - `test_version_command_no_dtr`: opens with DTR disabled
 
-2. **HGI80 test setup:** The HGI80 was tested via `/dev/ttys001`, a
-   pseudo-terminal — not a USB device. The test showed 0 bytes, DTR/RTS
-   ioctl errors, and no unplug detection, all of which are pty artifacts.
-   Can you re-run the feasibility test via the HGI80's real USB device
-   path (e.g. `/dev/cu.usbserial-*` on macOS, or `/dev/ttyUSB*` on Linux)?
+   ```
+   python esp_usb_feasibility_standalone.py /dev/tty.usbserial-A50285BI --nanocul --report report_ftdi_nanocul_run4.md
+   ```
+
+   If either of these gets a version response, the root cause is
+   timing (DTR reset + boot delay), not a broken RX path.
+
+2. **HGI80 on Linux:** The HGI80 cannot be tested on macOS — it
+   shows up as a Removable Disk (USB mass storage) because macOS lacks
+   the `ti_usb_3410_5052` driver. silverailscolo plans to set it up on
+   the HA kit (Linux) instead — this is the correct approach. On Linux
+   with the `ti_usb_3410_5052` driver and firmware loaded, the HGI80
+   should appear as `/dev/ttyUSB*`. Can you run the feasibility test
+   there once it's set up?
 
 3. **Container/USB forwarding:** Where does your HA instance run (HA OS,
-   Docker on Linux, Docker on Mac, etc.)? If HA is in a container on a
-   separate server, how are USB devices forwarded to it (socat, ser2net,
-   direct `--device` passthrough, USB-over-IP)? The `/dev/ttys001` pty
-   suggests a relay was involved — if so, was it correctly connected to
-   the HGI80 at test time? Could a cable, hub, or power issue have
-   disconnected the HGI80?
+   Docker on Linux, Docker on Mac, etc.)? If HA is in a container, how
+   are USB devices forwarded to it (socat, ser2net, direct `--device`
+   passthrough, USB-over-IP)?

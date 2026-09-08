@@ -363,6 +363,154 @@ def test_version_command(port: str) -> TestResult:
         )
 
 
+def test_version_command_delayed(port: str, boot_wait: float = 3.0) -> TestResult:
+    """Send version command after waiting for the device to finish booting.
+
+    pyserial sets DTR=True on port open by default.  On many nanoCUL /
+    Arduino boards, DTR is connected to the ATmega reset line, so opening
+    the port resets the device.  The device then takes 1-2s to boot
+    before it can receive commands.
+
+    The standard test_version_command waits only 0.5s, which may be too
+    short.  This test waits 3s (configurable) before sending, to ensure
+    the device has finished booting.
+
+    If this test passes where test_version_command failed, the root cause
+    is not a broken RX path but a timing issue: commands were sent
+    before the device finished booting.
+    """
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1)
+        # Wait for the device to finish booting after DTR reset
+        boot_data = read_for_duration(ser, boot_wait)
+        ser.reset_input_buffer()
+
+        # Send evofw3 version command
+        ser.write(EVOFW3_VERSION_CMD)
+        ser.flush()
+        evofw3_data = read_for_duration(ser, 1.0)
+        ser.reset_input_buffer()
+
+        # Send culfw version command
+        ser.write(CULFW_VERSION_CMD)
+        ser.flush()
+        culfw_data = read_for_duration(ser, 1.0)
+
+        ser.close()
+        duration = time.perf_counter() - start
+
+        boot_str = boot_data.decode(errors="replace").strip()
+        evofw3_resp = evofw3_data.decode(errors="replace").strip()
+        culfw_resp = culfw_data.decode(errors="replace").strip()
+
+        got_evofw3 = "evofw3" in evofw3_resp
+        got_culfw = "CUL" in culfw_resp or culfw_resp.startswith("V ")
+
+        if got_evofw3:
+            notes = f"evofw3: {evofw3_resp!r} (boot: {boot_str!r})"
+            success = True
+        elif got_culfw:
+            notes = f"culfw: {culfw_resp!r} (boot: {boot_str!r})"
+            success = True
+        elif evofw3_resp or culfw_resp:
+            notes = (
+                f"evofw3_resp={evofw3_resp!r} culfw_resp={culfw_resp!r}"
+                f" (boot: {boot_str!r})"
+            )
+            success = False
+        else:
+            notes = f"No response after {boot_wait}s wait (boot: {boot_str!r})"
+            success = False
+
+        total_bytes = len(boot_data) + len(evofw3_data) + len(culfw_data)
+        return TestResult(
+            name=f"Version command (delayed {boot_wait}s)",
+            success=success,
+            duration=duration,
+            bytes_received=total_bytes,
+            notes=notes,
+            received_data=boot_data + evofw3_data + culfw_data,
+        )
+    except Exception as e:
+        return TestResult(
+            f"Version command (delayed {boot_wait}s)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
+def test_version_command_no_dtr(port: str) -> TestResult:
+    """Send version command with DTR/RTS disabled to prevent reset on open.
+
+    pyserial sets DTR=True on port open by default.  On nanoCUL boards
+    where DTR is wired to the ATmega reset line, this resets the device
+    on every port open.  Using dsrdtr=True prevents the DTR toggle.
+
+    If this test passes where the standard version command failed, the
+    root cause is DTR-triggered reset, not a broken RX path.
+    """
+    start = time.perf_counter()
+    try:
+        # dsrdtr=True prevents pyserial from toggling DTR on open
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1, dsrdtr=True)
+        # Explicitly set DTR=False to ensure reset line is not asserted
+        ser.setDTR(False)
+        time.sleep(0.5)
+        ser.reset_input_buffer()
+
+        # Send evofw3 version command
+        ser.write(EVOFW3_VERSION_CMD)
+        ser.flush()
+        evofw3_data = read_for_duration(ser, 1.0)
+        ser.reset_input_buffer()
+
+        # Send culfw version command
+        ser.write(CULFW_VERSION_CMD)
+        ser.flush()
+        culfw_data = read_for_duration(ser, 1.0)
+
+        ser.close()
+        duration = time.perf_counter() - start
+
+        evofw3_resp = evofw3_data.decode(errors="replace").strip()
+        culfw_resp = culfw_data.decode(errors="replace").strip()
+
+        got_evofw3 = "evofw3" in evofw3_resp
+        got_culfw = "CUL" in culfw_resp or culfw_resp.startswith("V ")
+
+        if got_evofw3:
+            notes = f"evofw3: {evofw3_resp!r}"
+            success = True
+        elif got_culfw:
+            notes = f"culfw: {culfw_resp!r}"
+            success = True
+        elif evofw3_resp or culfw_resp:
+            notes = f"evofw3_resp={evofw3_resp!r} culfw_resp={culfw_resp!r}"
+            success = False
+        else:
+            notes = "No response (DTR disabled)"
+            success = False
+
+        total_bytes = len(evofw3_data) + len(culfw_data)
+        return TestResult(
+            name="Version command (no DTR reset)",
+            success=success,
+            duration=duration,
+            bytes_received=total_bytes,
+            notes=notes,
+            received_data=evofw3_data + culfw_data,
+        )
+    except Exception as e:
+        return TestResult(
+            "Version command (no DTR reset)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
 def test_paced_probe(port: str, byte_delay_ms: float = 1.0) -> TestResult:
     """Send the _PUZZ signature frame with inter-byte pacing.
 
@@ -638,6 +786,8 @@ def run_feasibility_gate(
             print("\n--- nanoCUL / ATmega328p diagnostic tests ---")
             report.add(test_boot_banner(port))
             report.add(test_version_command(port))
+            report.add(test_version_command_delayed(port))
+            report.add(test_version_command_no_dtr(port))
             report.add(test_paced_probe(port, nanocul_pace_ms))
             report.add(test_paced_write(port, nanocul_pace_ms))
         if i == 0 and include_dtr:
