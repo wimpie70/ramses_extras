@@ -506,6 +506,59 @@ too early.** The updated test script now includes two new tests:
 If either of these gets a version response, the root cause is timing
 (DTR reset + boot delay), not a broken RX path.
 
+### Run 4: nanoCUL on HA box — BREAKTHROUGH (comment 5589305896)
+
+silverailscolo ran the test on the HA box itself (Linux), with the
+nanoCUL running as the active HGI ("yes, can control"):
+
+```
+Port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
+```
+
+Results: ALL tests show 0 bytes — no boot banner, no version command,
+no echo, nothing. But the nanoCUL IS working (controlling heating).
+
+**The `!V` response was swallowed by ramses_tx.** The HA log shows:
+
+```
+2026-09-08 19:32:35.331 WARNING (MainThread)
+  [ramses_tx.transport.base] # evofw3 0.7.1
+  < PacketInvalid(Null packet)
+```
+
+**This is the root cause of ALL the test failures.** The feasibility
+test was running while ramses_tx had the port open. On Linux, two
+processes CAN open the same serial port, but bytes go to whichever
+process reads first. ramses_tx is actively reading, so it gets all
+the bytes and the test gets nothing.
+
+ramses_tx sees the `!V` response (`# evofw3 0.7.1`) but rejects it as
+`PacketInvalid(Null packet)` because it's not a RAMSES packet — it's
+an evofw3 debug command response. ramses_tx only parses RAMSES packet
+format and treats everything else as invalid.
+
+**The nanoCUL works.** It's controlling heating in production. The
+feasibility test failures are ALL test artifacts:
+
+| Environment | ramses_tx running? | Boot banner | Version cmd | Cause |
+|-------------|-------------------|-------------|-------------|-------|
+| macOS | No | 17 bytes | FAIL | DTR reset timing (sent at 0.5s, device still booting) |
+| HA Linux | Yes | 0 bytes | FAIL | ramses_tx eats all bytes |
+
+**The fix for the test:** stop ramses_tx before running the
+feasibility test. The test must have exclusive access to the serial
+port.
+
+**The fix for ramses_tx:** filter out evofw3 debug responses (lines
+starting with `#`) before the packet parser, instead of logging them
+as `PacketInvalid`. These are valid evofw3 responses, not invalid
+packets.
+
+**The fix for ramses_rf:** use `!I\r` instead of `_PUZZ` to discover
+the HGI ID. The `!I` command returns the ID over serial without RF
+loopback, and it works on all evofw3 hardware. The `_PUZZ` echo only
+works on the ESP32-S3.
+
 
 
 ### ramses_rf (`feat/phase2-signature-policy` branch, 6 commits)
@@ -695,30 +748,30 @@ Regression tests required" section (`multi-hgi-phase2-3-followup-issue.md:216-23
 
 ## 6. Open questions for silverailscolo
 
-The nanoCUL questions have been partially answered by run 3 (comment
-5588219009):
+The nanoCUL mystery is SOLVED (comment 5589305896):
 
-- **Firmware:** evofw3 0.7.1 (confirmed by boot banner `\x11# evofw3 0.7.1`)
-- **Serial RX path:** unclear — the version command failed, but it
-  may have been sent before the device finished booting (DTR reset +
-  1-2s boot delay). The updated script now tests with a 3s delay and
-  with DTR disabled.
+- **Firmware:** evofw3 0.7.1 (confirmed by boot banner and HA log)
+- **Serial RX path:** WORKS — the `!V` response was seen by ramses_tx
+  (`# evofw3 0.7.1 < PacketInvalid(Null packet)`)
+- **RF TX:** WORKS — "yes, can control" (controlling heating in production)
+- **_PUZZ echo:** does NOT work (no RF loopback on ATmega hardware)
+- **All feasibility test failures:** test artifacts — ramses_tx was
+  eating all bytes because it had the port open
 
 Remaining questions:
 
-1. **Re-run with updated script (delayed + no-DTR version commands):**
-   The previous version command waited only 0.5s before sending, which
-   may be too short if the device resets on port open and takes 1-2s to
-   boot. The updated script now includes:
-   - `test_version_command_delayed`: waits 3s after port open
-   - `test_version_command_no_dtr`: opens with DTR disabled
+1. **Re-run feasibility test with ramses_tx STOPPED:** The test must
+   have exclusive access to the serial port. Stop the ramses_cc
+   integration (or the HA container) before running the test:
 
    ```
-   python esp_usb_feasibility_standalone.py /dev/tty.usbserial-A50285BI --nanocul --report report_ftdi_nanocul_run4.md
+   python esp_usb_feasibility_standalone.py \
+     /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0 \
+     --nanocul --report report_ftdi_nanocul_exclusive.md
    ```
 
-   If either of these gets a version response, the root cause is
-   timing (DTR reset + boot delay), not a broken RX path.
+   This should show the boot banner, version command response, and
+   `!I` ID command response that were previously swallowed by ramses_tx.
 
 2. **HGI80 on Linux:** The HGI80 cannot be tested on macOS — it
    shows up as a Removable Disk (USB mass storage) because macOS lacks
