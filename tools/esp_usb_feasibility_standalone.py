@@ -8,6 +8,8 @@ Usage:
     python esp_usb_feasibility_standalone.py /dev/ttyUSB0
     python esp_usb_feasibility_standalone.py COM3
     python esp_usb_feasibility_standalone.py /dev/ttyUSB0 --report report.md
+    python esp_usb_feasibility_standalone.py /dev/ttyUSB0 --nanocul
+    python esp_usb_feasibility_standalone.py /dev/ttyUSB0 --nanocul --pace-ms 2.0
 
 Install:
     pip install pyserial
@@ -27,8 +29,14 @@ except ImportError:
     print("ERROR: pyserial not installed. Run: pip install pyserial")
     sys.exit(1)
 
-SIGNATURE_FRAME = " I --- 18:000730 --:------ 18:000730 7FFF 012 0010{ts:012X}76357635763576357635"
+SIGNATURE_FRAME = (
+    " I --- 18:000730 --:------ 18:000730 7FFF 012 0010{ts:012X}76357635763576357635"
+)
 PING_FRAME = " R --- 18:000730 00:000730 --:------ 10E0 001 00"
+
+# evofw3 debug command: "!V\r" → "# evofw3 0.7.3\r\n"
+# Used to confirm the device is running evofw3 and the host serial path works.
+EVOFW3_VERSION_CMD = b"!V\r"
 
 
 @dataclass
@@ -85,6 +93,21 @@ def read_for_duration(ser: serial.Serial, duration: float) -> bytes:
     return b"".join(chunks)
 
 
+def write_with_pacing(ser: serial.Serial, data: bytes, delay_ms: float) -> None:
+    """Write bytes one at a time with a delay between each byte.
+
+    The ATmega328p (nanoCUL) has a 32-byte software ring buffer for the
+    host USART.  If the main loop is busy with radio RX (software UART
+    interrupts), the buffer can overflow before a long frame is fully
+    received.  Pacing gives the main loop time to drain each byte.
+    """
+    delay_s = delay_ms / 1000.0
+    for byte in data:
+        ser.write(bytes([byte]))
+        ser.flush()
+        time.sleep(delay_s)
+
+
 def test_port_open_no_write(port: str) -> TestResult:
     start = time.perf_counter()
     try:
@@ -103,7 +126,9 @@ def test_port_open_no_write(port: str) -> TestResult:
             received_data=data,
         )
     except Exception as e:
-        return TestResult("Port open (no write)", False, time.perf_counter() - start, notes=str(e))
+        return TestResult(
+            "Port open (no write)", False, time.perf_counter() - start, notes=str(e)
+        )
 
 
 def test_immediate_probe(port: str) -> TestResult:
@@ -128,7 +153,9 @@ def test_immediate_probe(port: str) -> TestResult:
             received_data=data,
         )
     except Exception as e:
-        return TestResult("Immediate 7FFF probe", False, time.perf_counter() - start, notes=str(e))
+        return TestResult(
+            "Immediate 7FFF probe", False, time.perf_counter() - start, notes=str(e)
+        )
 
 
 def test_repeated_probes(port: str, count: int = 5) -> TestResult:
@@ -155,7 +182,12 @@ def test_repeated_probes(port: str, count: int = 5) -> TestResult:
             received_data=data,
         )
     except Exception as e:
-        return TestResult(f"Repeated probes ({count}x)", False, time.perf_counter() - start, notes=str(e))
+        return TestResult(
+            f"Repeated probes ({count}x)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
 
 
 def test_delayed_probe(port: str, delay: float = 2.0) -> TestResult:
@@ -181,7 +213,12 @@ def test_delayed_probe(port: str, delay: float = 2.0) -> TestResult:
             received_data=data,
         )
     except Exception as e:
-        return TestResult(f"Delayed probe (after {delay}s)", False, time.perf_counter() - start, notes=str(e))
+        return TestResult(
+            f"Delayed probe (after {delay}s)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
 
 
 def test_ordinary_write(port: str) -> TestResult:
@@ -206,7 +243,125 @@ def test_ordinary_write(port: str) -> TestResult:
             received_data=data,
         )
     except Exception as e:
-        return TestResult("Ordinary RF write", False, time.perf_counter() - start, notes=str(e))
+        return TestResult(
+            "Ordinary RF write", False, time.perf_counter() - start, notes=str(e)
+        )
+
+
+def test_version_command(port: str) -> TestResult:
+    """Send the evofw3 '!V' command and check for a version string.
+
+    This tests the host serial path in both directions without involving
+    RF TX.  evofw3's 'V' command (cmd.c) responds with:
+        # evofw3 0.7.3\\r\\n
+    If we get this response, the device is running evofw3 and the host
+    serial path works.  If not, either the device is not running evofw3,
+    the baud rate is wrong, or the serial path is broken.
+    """
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1)
+        time.sleep(0.5)  # let any boot banner drain
+        ser.reset_input_buffer()
+        ser.write(EVOFW3_VERSION_CMD)
+        ser.flush()
+        data = read_for_duration(ser, 1.0)
+        ser.close()
+        duration = time.perf_counter() - start
+        got_version = b"evofw3" in data
+        return TestResult(
+            name="evofw3 version command (!V)",
+            success=got_version,
+            duration=duration,
+            bytes_received=len(data),
+            notes=f"Got: {data.decode(errors='replace').strip()!r}"
+            if data
+            else "No response",
+            received_data=data,
+        )
+    except Exception as e:
+        return TestResult(
+            "evofw3 version command (!V)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
+def test_paced_probe(port: str, byte_delay_ms: float = 1.0) -> TestResult:
+    """Send the _PUZZ signature frame with inter-byte pacing.
+
+    The ATmega328p (nanoCUL) has a 32-byte software ring buffer for the
+    host USART (RXBUF in tty.h).  The _PUZZ frame is 82 bytes.  If the
+    main loop is busy with radio RX (software UART interrupts), the
+    buffer overflows before the full frame is received, and no echo is
+    produced.  Pacing gives the main loop time to drain each byte.
+
+    If this test passes where test_immediate_probe failed, the root
+    cause is buffer overflow, and the fix is byte-pacing in ramses_rf
+    for nanoCUL devices.
+    """
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1)
+        time.sleep(0.5)  # let any boot banner drain
+        ser.reset_input_buffer()
+        ts = int(time.time() * 1000)
+        frame = (SIGNATURE_FRAME.format(ts=ts) + "\r\n").encode()
+        write_with_pacing(ser, frame, byte_delay_ms)
+        data = read_for_duration(ser, 2.0)
+        ser.close()
+        duration = time.perf_counter() - start
+        got_echo = b"7FFF" in data or b"I ---" in data
+        return TestResult(
+            name=f"Paced 7FFF probe ({byte_delay_ms}ms/byte)",
+            success=got_echo,
+            duration=duration,
+            bytes_received=len(data),
+            notes="Got echo" if got_echo else "No echo",
+            received_data=data,
+        )
+    except Exception as e:
+        return TestResult(
+            f"Paced 7FFF probe ({byte_delay_ms}ms/byte)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
+def test_paced_write(port: str, byte_delay_ms: float = 1.0) -> TestResult:
+    """Send an ordinary RF write with inter-byte pacing.
+
+    Same as test_ordinary_write but with pacing, to test whether a
+    normal RF command works once the buffer overflow issue is avoided.
+    """
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1)
+        time.sleep(0.5)
+        ser.reset_input_buffer()
+        frame = (PING_FRAME + "\r\n").encode()
+        write_with_pacing(ser, frame, byte_delay_ms)
+        data = read_for_duration(ser, 2.0)
+        ser.close()
+        duration = time.perf_counter() - start
+        got_response = b"10E0" in data or b"RP" in data or b"I ---" in data
+        return TestResult(
+            name=f"Paced RF write ({byte_delay_ms}ms/byte)",
+            success=got_response,
+            duration=duration,
+            bytes_received=len(data),
+            notes="Got response" if got_response else "No response",
+            received_data=data,
+        )
+    except Exception as e:
+        return TestResult(
+            f"Paced RF write ({byte_delay_ms}ms/byte)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
 
 
 def test_close_reopen(port: str) -> TestResult:
@@ -230,7 +385,9 @@ def test_close_reopen(port: str) -> TestResult:
             received_data=data,
         )
     except Exception as e:
-        return TestResult("Close/reopen", False, time.perf_counter() - start, notes=str(e))
+        return TestResult(
+            "Close/reopen", False, time.perf_counter() - start, notes=str(e)
+        )
 
 
 def test_dtr_rts_modes(port: str) -> list[TestResult]:
@@ -264,22 +421,26 @@ def test_dtr_rts_modes(port: str) -> list[TestResult]:
             ser.close()
             duration = time.perf_counter() - start
             reset_detected = detect_reset(data)
-            results.append(TestResult(
-                name=f"DTR/RTS: {label}",
-                success=True,
-                duration=duration,
-                bytes_received=len(data),
-                reset_detected=reset_detected,
-                notes="RESET detected" if reset_detected else "No reset",
-                received_data=data,
-            ))
+            results.append(
+                TestResult(
+                    name=f"DTR/RTS: {label}",
+                    success=True,
+                    duration=duration,
+                    bytes_received=len(data),
+                    reset_detected=reset_detected,
+                    notes="RESET detected" if reset_detected else "No reset",
+                    received_data=data,
+                )
+            )
         except Exception as e:
-            results.append(TestResult(
-                name=f"DTR/RTS: {label}",
-                success=False,
-                duration=time.perf_counter() - start,
-                notes=str(e),
-            ))
+            results.append(
+                TestResult(
+                    name=f"DTR/RTS: {label}",
+                    success=False,
+                    duration=time.perf_counter() - start,
+                    notes=str(e),
+                )
+            )
     return results
 
 
@@ -291,6 +452,7 @@ def test_unplug_reconnect(port: str, timeout: float = 30.0) -> TestResult:
     Interactive — prints prompts to stdout.
     """
     import os
+
     start = time.perf_counter()
     try:
         ser = serial.Serial(port, baudrate=115200, timeout=0.1)
@@ -301,7 +463,7 @@ def test_unplug_reconnect(port: str, timeout: float = 30.0) -> TestResult:
         while time.perf_counter() < deadline_unplug:
             if not os.path.exists(port):
                 unplugged = True
-                print(f"  >>> Unplug detected, waiting for reconnect... <<<")
+                print("  >>> Unplug detected, waiting for reconnect... <<<")
                 break
             time.sleep(0.3)
         if not unplugged:
@@ -377,12 +539,16 @@ def run_feasibility_gate(
     delay: float = 2.0,
     include_dtr: bool = False,
     include_unplug: bool = False,
+    include_nanocul: bool = False,
+    nanocul_pace_ms: float = 1.0,
 ) -> FeasibilityReport:
     report = FeasibilityReport(port=port)
-    print(f"\nESP32/evofw3 USB Feasibility Gate Test")
+    print("\nESP32/evofw3 USB Feasibility Gate Test")
     print(f"Port: {port}")
     print(f"Repeats: {repeats}")
     print(f"Delay: {delay}s")
+    if include_nanocul:
+        print(f"nanoCUL tests: enabled (pace={nanocul_pace_ms}ms/byte)")
     print("-" * 60)
     for i in range(repeats):
         if repeats > 1:
@@ -393,6 +559,11 @@ def run_feasibility_gate(
         report.add(test_delayed_probe(port, delay))
         report.add(test_ordinary_write(port))
         report.add(test_close_reopen(port))
+        if i == 0 and include_nanocul:
+            print("\n--- nanoCUL / ATmega328p diagnostic tests ---")
+            report.add(test_version_command(port))
+            report.add(test_paced_probe(port, nanocul_pace_ms))
+            report.add(test_paced_write(port, nanocul_pace_ms))
         if i == 0 and include_dtr:
             print("\n--- DTR/RTS open mode test ---")
             for r in test_dtr_rts_modes(port):
@@ -418,10 +589,15 @@ def generate_report(reports: list[FeasibilityReport], output_file: str) -> None:
             status = "PASS" if r.success else "FAIL"
             reset = "YES" if r.reset_detected else "no"
             notes = r.notes.replace("|", "\\|")
-            lines.append(f"| {r.name} | {status} | {r.duration:.3f}s | {r.bytes_received} | {reset} | {notes} |")
+            lines.append(
+                f"| {r.name} | {status} | {r.duration:.3f}s"
+                f" | {r.bytes_received} | {reset} | {notes} |"
+            )
         lines.append("")
     all_passed = all(r.all_passed for r in reports)
-    total_resets = sum(sum(1 for r in rep.results if r.reset_detected) for rep in reports)
+    total_resets = sum(
+        sum(1 for r in rep.results if r.reset_detected) for rep in reports
+    )
     lines.append("## Summary\n")
     lines.append(f"- **Overall:** {'PASSED' if all_passed else 'FAILED'}")
     lines.append(f"- **Total resets detected:** {total_resets}")
@@ -432,22 +608,44 @@ def generate_report(reports: list[FeasibilityReport], output_file: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="ESP32/evofw3 USB feasibility gate test")
+    parser = argparse.ArgumentParser(
+        description="ESP32/evofw3 USB feasibility gate test"
+    )
     parser.add_argument("port", help="Serial port (e.g. /dev/ttyUSB0 or COM3)")
-    parser.add_argument("--repeats", type=int, default=1, help="Number of full test cycles")
-    parser.add_argument("--delay", type=float, default=2.0, help="Grace period delay (seconds)")
+    parser.add_argument(
+        "--repeats", type=int, default=1, help="Number of full test cycles"
+    )
+    parser.add_argument(
+        "--delay", type=float, default=2.0, help="Grace period delay (seconds)"
+    )
     parser.add_argument("--report", "-r", help="Write markdown report to this file")
     parser.add_argument(
-        "--dtr-test", action="store_true",
+        "--dtr-test",
+        action="store_true",
         help="Test DTR/RTS open modes to find reset-preventing settings",
     )
     parser.add_argument(
-        "--unplug-test", action="store_true",
+        "--unplug-test",
+        action="store_true",
         help="Test physical unplug/reconnect (interactive — prompts to unplug)",
     )
     parser.add_argument(
-        "--all", action="store_true",
+        "--all",
+        action="store_true",
         help="Run all tests: basic + DTR/RTS + unplug/reconnect",
+    )
+    parser.add_argument(
+        "--nanocul",
+        action="store_true",
+        help="Run nanoCUL/ATmega328p diagnostic tests: version command, "
+        "paced probe (inter-byte delay to avoid 32-byte RX buffer overflow), "
+        "and paced RF write",
+    )
+    parser.add_argument(
+        "--pace-ms",
+        type=float,
+        default=1.0,
+        help="Inter-byte delay in ms for paced tests (default: 1.0ms)",
     )
     args = parser.parse_args()
 
@@ -460,6 +658,8 @@ def main() -> None:
         delay=args.delay,
         include_dtr=include_dtr,
         include_unplug=include_unplug,
+        include_nanocul=args.nanocul,
+        nanocul_pace_ms=args.pace_ms,
     )
     reports = [report]
 
