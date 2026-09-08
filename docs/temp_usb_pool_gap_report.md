@@ -77,6 +77,66 @@ The version command (`!V\r` → `# evofw3 0.7.1`) is a better diagnostic:
 - It works on the ATmega32U4 device (which can control heating)
 - It fails on the nanoCUL (which may have a timing or hardware issue)
 
+### The `!I` command — HGI ID over serial, no RF needed
+
+evofw3's `cmd.c` has a second command that solves the identification
+problem entirely:
+
+```
+case 'I':  validCmd = cmd_id( cmd );            break;
+```
+
+```c
+static uint8_t cmd_id( struct cmd *cmd ) {
+  uint8_t  class;
+  uint32_t id;
+  device_get_id( &class, &id );
+  command.n = sprintf_P( command.buffer,
+      PSTR("# %02hu:%06lu\r\n"), class, id );
+  return 1;
+}
+```
+
+**`!I\r` returns the HGI class and ID directly over serial** — no RF
+TX, no RF loopback, no `_PUZZ` echo. The response format is:
+```
+# 18:000730\r\n
+```
+
+This is the reliable way to identify an evofw3 device and get its HGI
+ID. It works on ALL evofw3 hardware regardless of RF loopback
+capability.
+
+**Why `_PUZZ` echo fails but `!I` would work:**
+
+The `_PUZZ` signature probe relies on RF loopback:
+1. Host sends `_PUZZ` frame over serial
+2. evofw3 transmits it over RF (CC1101 TX mode)
+3. evofw3 switches CC1101 to RX mode
+4. evofw3 receives its own RF transmission (loopback)
+5. evofw3 prints the received frame on serial
+
+Step 4 is the problem. The CC1101 is half-duplex — it cannot receive
+while transmitting. After TX completes, it switches to RX, but the
+transmitted signal is already gone unless there's a near-field
+reflector or the radio supports internal loopback. The ESP32-S3
+happens to support this; ATmega-based devices (nanoCUL, ATmega32U4)
+do not.
+
+The `!I` command skips RF entirely — it reads the HGI ID from
+EEPROM/device signature and prints it over serial. This should work
+on every evofw3 device.
+
+**Implication for ramses_rf:** `connect_with_signature()` could use
+`!I` instead of `_PUZZ` to discover the HGI ID. This would:
+- Work on all evofw3 hardware (not just ESP32-S3)
+- Not require RF loopback
+- Be faster (no RF TX/RX cycle)
+- Be more reliable (no RF interference)
+
+The updated test script now includes `test_id_command` which sends
+`!I\r` and parses the HGI ID from the response.
+
 ### Test environment: macOS host, not the HA container
 
 All three device paths are **macOS** naming conventions:

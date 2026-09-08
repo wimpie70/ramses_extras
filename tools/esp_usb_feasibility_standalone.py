@@ -18,6 +18,7 @@ Install:
 from __future__ import annotations
 
 import argparse
+import re
 import select
 import sys
 import time
@@ -41,6 +42,19 @@ PING_FRAME = " R --- 18:000730 00:000730 --:------ 10E0 001 00"
 # while evofw3 uses "!" as the command prefix.
 EVOFW3_VERSION_CMD = b"!V\r"
 CULFW_VERSION_CMD = b"V\r"
+
+# evofw3 ID command: "!I\r" → "# 18:000730\r\n"
+# This returns the HGI class and ID directly over serial — NO RF
+# loopback needed.  This is the reliable way to identify an evofw3
+# device and get its HGI ID, because it does not depend on the CC1101
+# radio being able to receive its own transmission.
+#
+# The _PUZZ signature probe relies on RF loopback (TX + self-RX),
+# which not all evofw3 hardware supports.  The ATmega32U4 with native
+# USB (e.g. /dev/cu.usbmodem101) can send RF but does NOT echo _PUZZ.
+# The !I command works on all evofw3 devices regardless of RF
+# loopback capability.
+EVOFW3_ID_CMD = b"!I\r"
 
 
 @dataclass
@@ -511,6 +525,76 @@ def test_version_command_no_dtr(port: str) -> TestResult:
         )
 
 
+def test_id_command(port: str, boot_wait: float = 3.0) -> TestResult:
+    """Send the evofw3 '!I' command to get the HGI ID over serial.
+
+    evofw3's cmd.c handles '!I\\r' by calling device_get_id() and printing
+    "# 18:000730\\r\\n" — the HGI class and ID, directly over serial.
+
+    This is the KEY diagnostic test because it does NOT involve RF at all:
+    - No RF TX (unlike _PUZZ probe)
+    - No RF loopback (unlike _PUZZ echo)
+    - Just serial RX (host → device) + serial TX (device → host)
+
+    If '!V' works but '!I' doesn't, the device is running evofw3 but
+    device_get_id() is failing (firmware bug or EEPROM issue).
+
+    If '!I' works, we get the HGI ID WITHOUT needing the _PUZZ echo.
+    This means ramses_rf could use '!I' instead of _PUZZ to discover
+    the HGI ID — a fundamental improvement for devices that can't
+    echo (ATmega32U4, nanoCUL, etc.).
+
+    The response format is: "# 18:000730\\r\\n"
+    We parse it to extract class and ID.
+    """
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1)
+        boot_data = read_for_duration(ser, boot_wait)
+        ser.reset_input_buffer()
+
+        ser.write(EVOFW3_ID_CMD)
+        ser.flush()
+        id_data = read_for_duration(ser, 1.0)
+
+        ser.close()
+        duration = time.perf_counter() - start
+
+        boot_str = boot_data.decode(errors="replace").strip()
+        id_resp = id_data.decode(errors="replace").strip()
+
+        # Response format: "# 18:000730"
+        # Parse class:ID from the response
+        match = re.search(r"#\s*(\d+):(\d+)", id_resp)
+        if match:
+            hgi_class = int(match.group(1))
+            hgi_id = int(match.group(2))
+            notes = f"HGI ID: {hgi_class:02d}:{hgi_id:06d} (boot: {boot_str!r})"
+            success = True
+        elif id_resp:
+            notes = f"Got: {id_resp!r} (boot: {boot_str!r})"
+            success = False
+        else:
+            notes = f"No response (boot: {boot_str!r})"
+            success = False
+
+        return TestResult(
+            name="ID command (!I)",
+            success=success,
+            duration=duration,
+            bytes_received=len(boot_data) + len(id_data),
+            notes=notes,
+            received_data=boot_data + id_data,
+        )
+    except Exception as e:
+        return TestResult(
+            "ID command (!I)",
+            False,
+            time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
 def test_version_command_slow_baud(
     port: str, baudrate: int = 57600, boot_wait: float = 3.0
 ) -> TestResult:
@@ -911,6 +995,7 @@ def run_feasibility_gate(
             report.add(test_version_command_delayed(port))
             report.add(test_version_command_no_dtr(port))
             report.add(test_version_command_slow_baud(port))
+            report.add(test_id_command(port))
             report.add(test_paced_probe(port, nanocul_pace_ms))
             report.add(test_paced_write(port, nanocul_pace_ms))
             report.add(test_slow_paced_probe(port))
