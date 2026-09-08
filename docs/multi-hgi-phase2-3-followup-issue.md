@@ -151,6 +151,7 @@ child, never both). The crash should be reported to the ramses_esp project.
 
 **Remaining hardware evidence (for Phase 2 release, not feasibility gate):**
 - ~~Two-USB pool test~~ **Done — PASS.** Both ports opened simultaneously, both received RF independently, both transmitted cleanly, cross-dongle over-air copy confirmed.
+- ~~USB unplug/reconnect test~~ **Done — PASS.** Device unplugged, detected via `os.path.exists()`, reconnected after ~28s, ESP booted, echo received. No reset loop on reconnect.
 - Cross-dongle over-air copy with active RF traffic — partially confirmed.
 - Traditional evofw3/HGI serial device (not available). A standalone test
   script (`tools/esp_usb_feasibility_standalone.py`) has been written for
