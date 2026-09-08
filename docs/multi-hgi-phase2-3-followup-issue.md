@@ -191,6 +191,22 @@ enables serial children in pool construction.
 - Propagate serial read/write/disconnect failures into the child state model.
 - Apply the PR 2 proven-not-submitted-versus-ambiguous outcome policy to serial
   writes.
+- **Hybrid pool construction (ramses_cc):** the coordinator must build a single
+  `PooledTransport` that combines serial children (via serialx transport) and
+  MQTT children (via the HA-native `RamsesMqttPoolBridge`, callback-driven).
+  This is the core of Phase 2 — mixed serial+MQTT pools are the whole goal.
+  - Serial primary + MQTT additional: serial children via
+    `pooled_transport_factory`, MQTT children via `RamsesMqttPoolBridge`.
+  - MQTT primary + serial additional: MQTT children via
+    `RamsesMqttPoolBridge`, serial children via `pooled_transport_factory`.
+  - Both directions produce one `PooledTransport` with mixed transport-driven
+    and callback-driven children.
+- **No paho in ramses_cc (invariant):** MQTT pool children inside HA always
+  go through the HA-native `RamsesMqttPoolBridge`
+  (`homeassistant.components.mqtt`), never through paho transports.  The
+  `pooled_transport_factory` is used only for serial (serialx) children.
+  Paho is permitted only in the standalone `ramses_rf` CLI when run without
+  `ramses_cc` and without HA.
 - **ramses_cc side:** remove the serial gating in the `manage_pool` config-flow
   step (drop the `pool_serial_not_supported` error and the "(not yet
   supported)" label). Remove the defensive `mqtt://`-only filter in
@@ -212,6 +228,13 @@ enables serial children in pool construction.
 - Existing single-USB startup and transmission remain unchanged.
 - Serial and Zigbee transport types are un-gated/remaining-gated correctly in
   the config flow (serial selectable, Zigbee still "(not yet supported)").
+- Hybrid pool: serial primary + MQTT additional constructs a single
+  `PooledTransport` with serial (transport-driven) and MQTT
+  (callback-driven, HA-native) children.
+- Hybrid pool: MQTT primary + serial additional constructs the same mixed
+  pool in the reverse direction.
+- No paho transport is instantiated inside `ramses_cc` for any pool
+  configuration (serial-only, MQTT-only, or hybrid).
 
 #### Required release hardware evidence
 
