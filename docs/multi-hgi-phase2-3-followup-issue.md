@@ -78,13 +78,13 @@ only shown when the primary transport is MQTT or empty (not serial).
 children, without reintroducing ESP32 USB startup reset loops. Un-gate serial
 transport in the config flow.
 
-**Prerequisite:** the **serial hardware feasibility gate** must pass before PR 3
-starts (see below).
+**Prerequisite:** the **serial hardware feasibility gate** ~~must pass before
+PR 3 starts~~ **PASSED 2026-09-06** (see below).
 
 **Delivery PR:** PR 3 — Full pooled serial transmission and reconnect
 (`ramses_rf`, new focused PR stacked on PR 2 / PR 1194).
 
-### Hardware feasibility gate (Phase 2 prerequisite)
+### Hardware feasibility gate (Phase 2 prerequisite) — PASSED 2026-09-06
 
 **Status: PASSED** (2026-09-08, 2x ESP32 USB JTAG serial debug units)
 
@@ -96,7 +96,20 @@ starts (see below).
 - `tools/esp_usb_feasibility_test.py` — async, requires `serialx` (from ramses_rf venv)
 - `tools/esp_usb_feasibility_standalone.py` — standalone, requires only `pyserial`
 
-**Results (dual-port test, 13/13 steps passed, 0 resets detected):**
+This gate blocks Phase 2, not Phase 1. ~~Before PR 3 starts, reproduce and
+characterize the ESP USB behavior with the same physical device in both the
+existing single-port path and a minimal pooled-child harness.~~ **Done.**
+
+**Result: PASS.** Pooled serial transmission is feasible with a delayed
+startup policy. Full report: `docs/serial_hw_gate_report.md`.
+
+**Root cause:** pyserial sets DTR=True/RTS=True on port open. The ESP32-S3
+uses DTR/RTS for auto-reset. The transition pulses EN and resets the chip.
+This is a one-time reset per port open, **not a reset loop**. The ESP32 boots
+in ~1.9s (cold) or ~0.4s (warm WiFi) and then operates normally with ~10ms
+echo latency.
+
+**Our test results (dual-port, 13/13 steps passed, 0 resets detected):**
 
 | Test | Port 1 | Port 2 | Notes |
 |------|--------|--------|-------|
@@ -121,21 +134,35 @@ hardware. The Phase 2 plan (PR 3) splits this into `signature_policy:
 "immediate"|"delayed"|"skip"` + `startup_grace: float | None` to allow a
 delayed probe after the ESP stabilizes.
 
-**Still needed before Phase 2 release:**
-- USB unplug/reconnect test (physical disconnect during operation)
-- Hybrid USB+MQTT test (one ESP on USB, one on MQTT, both in pool)
-- Traditional serial evofw3/HGI device test — a standalone test script
-  (`tools/esp_usb_feasibility_standalone.py`) has been written for Egbert to
-  run on his traditional evofw3 device. It requires only `pyserial`.
-release validation must be identified before PR 3 starts. Automated PR checks
-remain mandatory; hardware results are recorded separately as release evidence
-because CI cannot reproduce them.
+**Recommended Phase 2 defaults:**
+- `signature_policy = "delayed"` with `startup_grace = 3.0s` for pooled serial
+  children (grace period is once per port open, not per message).
+- `signature_policy = "immediate"` for non-pooled single-USB (backward
+  compatible).
+- Do NOT change DTR/RTS after open — any transition resets the ESP32.
+- `disable_sending` remains a permanent send permission flag, not a startup
+  workaround.
+
+**Hybrid USB+MQTT test:** Both transports can receive RF frames independently.
+A ramses_esp 0.4.9 firmware crash was found when MQTT TX is sent to an ESP32
+that is also on USB serial — this is a firmware bug, not a pool issue. The
+pool design prevents this scenario (an HGI is either a USB child or an MQTT
+child, never both). The crash should be reported to the ramses_esp project.
+
+**Remaining hardware evidence (for Phase 2 release, not feasibility gate):**
+- ~~Two-USB pool test~~ **Done — PASS.** Both ports opened simultaneously, both received RF independently, both transmitted cleanly, cross-dongle over-air copy confirmed.
+- Cross-dongle over-air copy with active RF traffic — partially confirmed.
+- Traditional evofw3/HGI serial device (not available). A standalone test
+  script (`tools/esp_usb_feasibility_standalone.py`) has been written for
+  Egbert to run on his traditional evofw3 device. It requires only `pyserial`.
+
+Test tools: `tools/serial_hw_gate.py`, `tools/hybrid_usb_mqtt_test.py`, `tools/two_usb_test.py`, `tools/esp_usb_feasibility_test.py`, `tools/esp_usb_feasibility_standalone.py`.
 
 ### PR 3 — Full pooled serial transmission and reconnect
 
 **Repository:** `ramses_rf`
 **Depends on:** PR 2 (PR 1194), PR 5 (Phase 1 release), and the serial hardware
-feasibility gate.
+feasibility gate (**PASSED 2026-09-06**).
 **Phase:** 2 — serial and hybrid pool.
 
 Make `PortTransport` a fully send-capable pool child without reintroducing ESP
@@ -319,7 +346,7 @@ Phase 1 — MQTT pool (first release) — ALMOST DONE
   PR 5: membership + MQTT-only config flow
   = Phase 1 release (dual-MQTT pool) =
 
-Phase 2 — Serial and hybrid pool (after hardware feasibility gate)
+Phase 2 — Serial and hybrid pool (hardware feasibility gate PASSED 2026-09-06)
   PR 2 + PR 4B + PR 5
               |
               +--> PR 3: pooled serial transmit (un-gate serial in config flow)
@@ -409,15 +436,22 @@ startup_grace: float | None
 configured_hgi_id: str | None
 ```
 
-Proposed ESP-aware startup:
+Proposed ESP-aware startup (validated by hardware feasibility gate, 2026-09-06):
 
-1. Open the port once using a stable path.
+1. Open the port once using a stable path. **Do NOT change DTR/RTS after
+   open** — any transition resets the ESP32.
 2. Avoid immediate repeated writes.
-3. Wait for a firmware-ready signal or measured grace period.
+3. Wait `startup_grace` seconds (default 3.0s, minimum 2.0s) for the ESP32
+   to finish booting. The grace period is needed **once per port open**
+   (startup or reconnect), not per message.
 4. Perform one controlled signature probe when supported.
 5. Obtain/validate the RAMSES HGI ID.
-6. Set `send_ready=True`.
-7. Permit normal writes.
+6. **Detect ramses_esp firmware version** from boot banner (`# ramses_esp
+   <version>`) or `!V` response. Log a warning if below v0.6.1 (known MQTT
+   disconnect crash bug, fixed in v0.6.1+). Do not block operation — the pool
+   can work around crashes with grace period re-application.
+7. Set `send_ready=True`.
+8. Permit normal writes (~10ms echo latency after boot).
 
 Fallbacks:
 
@@ -508,6 +542,21 @@ during Phase 2/3 work if they become relevant:
   `CONF_ADDITIONAL_PORTS` and the "port in use" indicator in HA 2026.9+.
 - **Optional private-namespace auto-accept mode** for wildcard MQTT HGIs is
   deferred.
+- **ramses_esp firmware crash (MQTT disconnect + USB serial)**: ramses_esp
+  0.4.9 and 0.5.2 crash with `RTC_SW_CPU_RST` when the MQTT connection
+  disconnects (e.g. when the USB serial port is opened and the DTR/RTS
+  reset drops the MQTT connection). Both ESP32s crash when either port is
+  opened, even sequentially. A separate `LoadProhibited` crash occurs when
+  MQTT TX is sent to an ESP32 that is also on USB serial. The ESP32
+  auto-reboots and recovers in ~1.9s. This is a firmware bug, not a pool
+  issue. **FIXED in v0.6.6c** — both ESP32s updated via OTA, no crashes
+  observed after update. The fix was likely introduced in v0.6.1 (ramses_esp
+  issue 30: "Fix misconfigured MQTT reboot loop"). No need to file a firmware
+  issue — the update resolves it. The serial transport should detect the
+  ramses_esp firmware version on startup and log a warning if below v0.6.1,
+  advising the user to update via OTA. The config flow should enforce mutual
+  exclusivity: an HGI ID configured as USB serial should not be addable as
+  an MQTT pool member, and vice versa.
 
 ---
 
@@ -522,6 +571,9 @@ during Phase 2/3 work if they become relevant:
   - ramses_cc PR 1133 (PR 5: membership + config flow + MQTT pool assembly)
 - Fixture evidence: `fixtures/fixture_report.md`, `fixtures/pool_test_report.md`
 - Analyzer: `tools/analyze_fixture.py`
+- Hardware feasibility gate report: `docs/serial_hw_gate_report.md`
+- Hardware test tools: `tools/serial_hw_gate.py`, `tools/hybrid_usb_mqtt_test.py`
+- Hardware test logs: `logs/serial_hw_gate_20260906_*.log`
 - Related issues:
   - https://github.com/ramses-rf/ramses_rf/issues/1119 (original multi-HGI
     discussion)
