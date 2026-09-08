@@ -134,6 +134,59 @@ async def test_port_open_no_write(port: str) -> TestResult:
         )
 
 
+async def test_dtr_rts_modes(port: str) -> list[TestResult]:
+    """Test opening the port with different DTR/RTS settings.
+
+    This tests whether serialx's dtr_on_open/rts_on_open options can
+    prevent the ESP32 reset-on-open behavior.
+    """
+    from serialx.common import PinState
+
+    modes = [
+        ("default (DTR=H, RTS=H)", {}),
+        ("dtr_on_open=LOW", {"dtr_on_open": PinState.LOW}),
+        ("rts_on_open=LOW", {"rts_on_open": PinState.LOW}),
+        ("both LOW", {
+            "dtr_on_open": PinState.LOW,
+            "rts_on_open": PinState.LOW,
+        }),
+        ("both UNDEFINED", {
+            "dtr_on_open": PinState.UNDEFINED,
+            "rts_on_open": PinState.UNDEFINED,
+        }),
+    ]
+
+    results: list[TestResult] = []
+    for label, kwargs in modes:
+        start = time.perf_counter()
+        try:
+            ser = serialx.AsyncSerial(
+                port, baudrate=115200, **kwargs
+            )
+            await ser.open()
+            data = await read_for_duration(ser, 2.0)
+            await ser.close()
+            duration = time.perf_counter() - start
+            reset_detected = detect_reset(data)
+            results.append(TestResult(
+                name=f"DTR/RTS: {label}",
+                success=True,
+                duration=duration,
+                bytes_received=len(data),
+                reset_detected=reset_detected,
+                notes="RESET detected" if reset_detected else "No reset",
+                received_data=data,
+            ))
+        except Exception as e:
+            results.append(TestResult(
+                name=f"DTR/RTS: {label}",
+                success=False,
+                duration=time.perf_counter() - start,
+                notes=str(e),
+            ))
+    return results
+
+
 async def test_immediate_probe(port: str) -> TestResult:
     """Test 2: One immediate 7FFF signature probe after port open."""
     start = time.perf_counter()
@@ -464,6 +517,10 @@ def main() -> None:
         "--report", "-r", help="Write markdown report to this file"
     )
     parser.add_argument(
+        "--dtr-test", action="store_true",
+        help="Test DTR/RTS open modes to find reset-preventing settings",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true", help="Verbose logging"
     )
     args = parser.parse_args()
@@ -472,6 +529,22 @@ def main() -> None:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
+
+    if args.dtr_test:
+        print(f"\nDTR/RTS Open Mode Test")
+        print(f"Port: {args.port}")
+        print("-" * 60)
+        results = asyncio.run(test_dtr_rts_modes(args.port))
+        for r in results:
+            status = "PASS" if r.success else "FAIL"
+            reset = " [RESET]" if r.reset_detected else ""
+            print(
+                f"  [{status}] {r.name}: {r.duration:.3f}s, "
+                f"{r.bytes_received} bytes{reset} — {r.notes}"
+            )
+        resets = sum(1 for r in results if r.reset_detected)
+        print(f"\n{len(results)} modes tested, {resets} reset(s) detected")
+        sys.exit(0 if resets == 0 else 1)
 
     if args.port2:
         reports = asyncio.run(
