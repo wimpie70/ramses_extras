@@ -16,7 +16,7 @@ Install:
 from __future__ import annotations
 
 import argparse
-import asyncio
+import select
 import sys
 import time
 from dataclasses import dataclass, field
@@ -74,7 +74,6 @@ def detect_reset(data: bytes) -> bool:
 
 
 def read_for_duration(ser: serial.Serial, duration: float) -> bytes:
-    import select
     chunks: list[bytes] = []
     deadline = time.perf_counter() + duration
     while time.perf_counter() < deadline:
