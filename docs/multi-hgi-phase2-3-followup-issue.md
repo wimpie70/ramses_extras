@@ -19,9 +19,10 @@ USB/serial and Zigbee configurations can be described as safe. **Phasing is
 implementation order, not a reduction in scope** — multi-USB, hybrid, and
 Zigbee operation are release criteria for the complete feature.
 
-### Phase 1 status (almost done)
+### Phase 1 status (done — ready for release)
 
-Phase 1 (MQTT-only pool) is implemented and verified on real hardware:
+Phase 1 (MQTT-only pool) is implemented, verified on real hardware, and all
+issue 1171 config bugs are fixed:
 
 - PR 1 (ramses_rf PR 1184): `PoolChild` state model, ingress provenance, O(1)
   dedup, `RssiTracker` TTL — implementation complete, tests passing, verified
@@ -35,12 +36,23 @@ Phase 1 (MQTT-only pool) is implemented and verified on real hardware:
 - PR 5 (ramses_cc PR 1133 / fork PR 5): canonical schema-ownership membership,
   config flow, MQTT pool assembly, serial/Zigbee gating — implementation
   complete, draft PR open.
+- PR 1178 (ramses_cc, this branch): issue 1171 config bug fixes — pool
+  removal, re-add, display, healing, sentinel filtering, CI coverage.
 
 Live hardware test results (2026-09-05, hass, 2 ESP32 MQTT HGIs): 11/11 test
 scenarios pass (dual-MQTT, hybrid serial+MQTT receive, LWT failover, broker
 restart, unplug/reconnect, outbound failover). 6 bugs found during live testing
 were fixed. Release-readiness audit: 7 blockers found, 6 fixed in-cycle, 1
 (published dependency) resolved with `ramses-rf==0.60.5`.
+
+Issue 1171 live hardware test results (2026-09-07, hass, 2 ESP32 MQTT HGIs +
+1 USB ESP): 6/6 test scenarios pass:
+- USB-only primary (serial connection, no pool bridge)
+- USB primary + MQTT add blocked (error shown, re-add options hidden)
+- 1 MQTT (HA MQTT primary, HGI discovered and accepted)
+- 2 MQTT + dedup (both HGIs online, duplicate packets deduped)
+- Remove both MQTT HGIs with confirmation (pool cleared, no re-enrichment)
+- No "healing" of empty serial_port on restart
 
 See the "PR implementation status" and "Live hardware test results" sections of
 [`multi-hgi-plan.md`](../multi-hgi-plan.md) for full details.
@@ -54,6 +66,9 @@ and cannot be selected. `TODO: re-enable when Phase 2` (serial) and
 underlying `PortTransport` and `ZigbeeTransport` classes are **not modified or
 removed** — they remain ready for un-gating. The coordinator defensively
 filters non-`mqtt://` ports from pool construction.
+
+Re-add of removed HGIs is also gated: the "Re-add HGI" dropdown options are
+only shown when the primary transport is MQTT or empty (not serial).
 
 ---
 
@@ -71,6 +86,16 @@ PR 3 starts~~ **PASSED 2026-09-06** (see below).
 
 ### Hardware feasibility gate (Phase 2 prerequisite) — PASSED 2026-09-06
 
+**Status: PASSED** (2026-09-08, 2x ESP32 USB JTAG serial debug units)
+
+**Hardware tested:** 2x ESP32 USB JTAG serial debug units:
+- `/dev/ttyACM0` (CC:BA:97:09:FC:BC), firmware 0.6.6c
+- `/dev/ttyACM1` (CC:BA:97:0A:47:F0)
+
+**Test tools:**
+- `tools/esp_usb_feasibility_test.py` — async, requires `serialx` (from ramses_rf venv)
+- `tools/esp_usb_feasibility_standalone.py` — standalone, requires only `pyserial`
+
 This gate blocks Phase 2, not Phase 1. ~~Before PR 3 starts, reproduce and
 characterize the ESP USB behavior with the same physical device in both the
 existing single-port path and a minimal pooled-child harness.~~ **Done.**
@@ -83,6 +108,31 @@ uses DTR/RTS for auto-reset. The transition pulses EN and resets the chip.
 This is a one-time reset per port open, **not a reset loop**. The ESP32 boots
 in ~1.9s (cold) or ~0.4s (warm WiFi) and then operates normally with ~10ms
 echo latency.
+
+**Our test results (dual-port, 13/13 steps passed, 0 resets detected):**
+
+| Test | Port 1 | Port 2 | Notes |
+|------|--------|--------|-------|
+| Port open (no write) | PASS | PASS | No reset, no spurious data |
+| Immediate 7FFF probe | PASS | PASS | Echo received (86-103 bytes) |
+| Repeated probes (5x) | PASS | PASS | 5 echoes each (430 bytes), no reset loop |
+| Delayed probe (2s grace) | PASS | PASS | Echo received (86-140 bytes) |
+| Ordinary RF write | PASS | PASS | Response received (52 bytes) |
+| Close/reopen | PASS | PASS | Reopened successfully, no reset |
+| Dual simultaneous write | PASS | — | Both ports echoed simultaneously |
+
+**Key finding:** The ESP32 USB JTAG serial debug units (firmware 0.6.6c) do NOT
+exhibit the reset loop problem. Immediate writes, repeated writes, close/reopen,
+and dual-port simultaneous writes all work without triggering an ESP reset.
+
+**Current code handling of reset-prone ESPs:** The existing `PortTransport` has
+a binary `disable_sending` flag. When `True`, it skips the signature probe
+entirely (`connect_sans_signature`) and blocks all writes — the child becomes
+permanently receive-only with no HGI ID. When `False`, it sends immediate
+signature probes (40x, 0.05s gap) which would trigger reset loops on affected
+hardware. The Phase 2 plan (PR 3) splits this into `signature_policy:
+"immediate"|"delayed"|"skip"` + `startup_grace: float | None` to allow a
+delayed probe after the ESP stabilizes.
 
 **Recommended Phase 2 defaults:**
 - `signature_policy = "delayed"` with `startup_grace = 3.0s` for pooled serial
@@ -102,9 +152,11 @@ child, never both). The crash should be reported to the ramses_esp project.
 **Remaining hardware evidence (for Phase 2 release, not feasibility gate):**
 - ~~Two-USB pool test~~ **Done — PASS.** Both ports opened simultaneously, both received RF independently, both transmitted cleanly, cross-dongle over-air copy confirmed.
 - Cross-dongle over-air copy with active RF traffic — partially confirmed.
-- Traditional evofw3/HGI serial device (not available).
+- Traditional evofw3/HGI serial device (not available). A standalone test
+  script (`tools/esp_usb_feasibility_standalone.py`) has been written for
+  Egbert to run on his traditional evofw3 device. It requires only `pyserial`.
 
-Test tools: `tools/serial_hw_gate.py`, `tools/hybrid_usb_mqtt_test.py`, `tools/two_usb_test.py`.
+Test tools: `tools/serial_hw_gate.py`, `tools/hybrid_usb_mqtt_test.py`, `tools/two_usb_test.py`, `tools/esp_usb_feasibility_test.py`, `tools/esp_usb_feasibility_standalone.py`.
 
 ### PR 3 — Full pooled serial transmission and reconnect
 
@@ -471,6 +523,13 @@ during Phase 2/3 work if they become relevant:
   marked online. LWT is the sole source-of-truth for MQTT child availability
   in Phase 1. A heartbeat timeout may be added if real-world testing shows
   this is needed.
+- **Gateway status binary sensor does not reflect per-HGI offline state**
+  (issue 1171 comment by silverailscolo). The `RamsesGatewayBinarySensor`
+  tracks the ramses_rf gateway's `is_active`, which in a pool setup reflects
+  the overall pool bridge state, not individual HGI connectivity. If the
+  primary HGI is unplugged but cached packets are loaded or other HGIs are
+  still online, the sensor stays "OK". Per-HGI online/offline sensors and
+  proper last-packet expiry are Phase 2 items.
 - **Diagnostics/config UI display** of transport kind, address, HGI ID,
   broker/topic, availability, acceptance, and send readiness — not addressed
   in PR 5.
