@@ -323,6 +323,123 @@ selected for outbound routing.
 Either way, the nanoCUL needs per-child config overrides (Gap D) to
 coexist with ESP32 children in a mixed pool.
 
+---
+
+## 1b. nanoCUL re-test results (issue 1171, comment 5587745610)
+
+silverailscolo ran the updated `--nanocul` script on the FTDI device.
+Two runs were reported:
+
+### Run 1: `/dev/tty.usbserial-A50285BI`, 1ms/byte pacing
+
+| Test | Result | Bytes | Notes |
+|------|--------|-------|-------|
+| Port open (no write) | PASS | 17 | Boot banner |
+| Immediate 7FFF probe | FAIL | 0 | No echo |
+| Repeated probes (5x) | FAIL | 0 | 0 echoes |
+| Delayed probe (2s) | FAIL | 17 | No echo (just banner) |
+| Ordinary RF write | FAIL | 17 | No response |
+| Close/reopen | PASS | 0 | Reopened OK |
+| **evofw3 version command (!V)** | **FAIL** | **0** | **No response** |
+| Paced 7FFF probe (1ms/byte) | FAIL | 17 | No echo |
+| Paced RF write (1ms/byte) | PASS | 129 | "Got response" |
+
+### Run 2: `/dev/cu.usbserial-A50285BI`, 5ms/byte pacing
+
+| Test | Result | Bytes | Notes |
+|------|--------|-------|-------|
+| Port open (no write) | PASS | 17 | Boot banner |
+| Immediate 7FFF probe | FAIL | 0 | No echo |
+| Repeated probes (5x) | FAIL | 0 | 0 echoes |
+| **Delayed probe (2s)** | **PASS** | **73** | **"Got echo"** |
+| Ordinary RF write | FAIL | 17 | No response |
+| Close/reopen | PASS | 0 | Reopened OK |
+| **evofw3 version command (!V)** | **FAIL** | **0** | **No response** |
+| Paced 7FFF probe (5ms/byte) | FAIL | 17 | No echo |
+| Paced RF write (5ms/byte) | FAIL | 17 | No response |
+
+### Analysis
+
+**CRITICAL: the `!V` command may be the wrong command for this device.**
+
+The `!V` test assumed the device is running evofw3, which uses `!` as a
+command prefix. But the nanoCUL ships with **culfw** by default, and
+culfw uses bare single-letter commands (no `!` prefix):
+
+| Firmware | Version command | Expected response |
+|----------|-----------------|-------------------|
+| evofw3 | `!V\r` | `# evofw3 0.7.3\r\n` |
+| culfw | `V\r` | `V 1.67 nanoCUL868\r\n` |
+
+If the device is running culfw, `!V\r` would be ignored (the `!` byte
+goes to culfw's message parser as noise, not a command). The `!V` test
+failing in both runs is therefore **expected for culfw** and does NOT
+prove the serial RX path is broken.
+
+The updated test script now sends **both** `V\r` (culfw) and `!V\r`
+(evofw3) and reports which responded. It also captures the raw boot
+banner bytes to identify the firmware.
+
+**The "passes" are likely false positives from ambient RF traffic.**
+
+The delayed probe (run 2, 73 bytes, "PASS") and paced RF write (run 1,
+129 bytes, "PASS") both check for `b"I ---" in data` — the start of ANY
+inbound RAMSES packet. If there are Honeywell devices broadcasting
+nearby, their RF traffic contains `I ---` and triggers a false
+positive. Evidence:
+- The delayed probe "passed" in run 2 but failed in run 1 (same test,
+  different port path). Echo behavior should be consistent.
+- The paced RF write "passed" at 1ms but failed at 5ms. Slower pacing
+  should be better, not worse. The pass at 1ms is coincidental RF
+  traffic.
+- No test that checks specifically for `7FFF` (the signature echo)
+  ever passed. Only tests that also accept `I ---` (any RF packet)
+  "passed."
+
+**Two competing hypotheses:**
+
+1. **Device is running culfw, not evofw3.** culfw can listen to EvoHome
+   RF traffic (via the `v` command — lowercase, for EvoHome listen mode)
+   but cannot send/echo RAMSES packets. The no-echo result is expected.
+   The `!V` failure is expected (wrong command syntax). The 17 bytes on
+   port open are received RF traffic, not a boot banner. **Test: send
+   `V\r` and check for `V ... CUL868` response.**
+
+2. **Device is running evofw3 but the serial RX path is broken.** The
+   17 bytes are the evofw3 boot banner (`# evofw3 0.7.3\r\n`). The `!V`
+   failure means the host-to-device serial path is broken (bad solder
+   joint, crossed cable, dead FTDI TXD, etc.). **Test: send `V\r` — if
+   it also fails, the RX path is broken regardless of firmware.**
+
+The updated test script distinguishes these by sending both `V\r` and
+`!V\r` and capturing the raw boot banner content.
+
+### What the new test will show
+
+| `V\r` response | `!V\r` response | Boot banner | Conclusion |
+|----------------|-----------------|------------|------------|
+| `V ... CUL868` | none | RF traffic, no banner | **culfw** — can listen only, cannot echo `_PUZZ` |
+| none | `# evofw3 0.7.3` | `# evofw3 0.7.3\r\n` | **evofw3, RX works** — buffer overflow hypothesis applies |
+| none | none | `# evofw3 0.7.3\r\n` | **evofw3, RX broken** — hardware issue |
+| none | none | no banner | **wrong baud or dead device** |
+
+### Conclusion for pool support (pending re-test)
+
+- **If culfw:** the device can only listen to RF traffic, not send. It
+  cannot echo `_PUZZ` and cannot be used for outbound routing. It could
+  work as a receive-only pool child with `signature_policy = SKIP` +
+  `configured_hgi_id` (Gap B + Gap D), but only if culfw's EvoHome
+  listen mode (`v l`) is enabled. Reflashing with evofw3 would add TX
+  support and make it a full pool member.
+
+- **If evofw3 with broken RX:** the device cannot receive commands at
+  all. It cannot work in a pool. The fix is hardware repair or
+  replacement.
+
+- **If evofw3 with working RX:** the buffer-overflow hypothesis from
+  section 1a applies, and the paced probe test should be re-run with
+  the corrected version command to confirm the RX path works first.
+
 
 
 ### ramses_rf (`feat/phase2-signature-policy` branch, 6 commits)
@@ -507,45 +624,34 @@ Regression tests required" section (`multi-hgi-phase2-3-followup-issue.md:216-23
 
 ## 6. Open questions for silverailscolo
 
-1. **nanoCUL echo test with byte pacing:** Re-run the feasibility script
-   with the new `--nanocul` flag on the FTDI device:
+1. **Re-run with updated script (culfw + evofw3 version commands):**
+   The previous `!V` test assumed evofw3, but the nanoCUL may be running
+   culfw (which uses `V\r` without `!` prefix). The updated script now
+   sends **both** `V\r` and `!V\r` and captures the raw boot banner:
 
    ```
-   python esp_usb_feasibility_standalone.py /dev/tty.usbserial-A50285BI --nanocul --report report_ftdi_nanocul.md
+   python esp_usb_feasibility_standalone.py /dev/tty.usbserial-A50285BI --nanocul --report report_ftdi_nanocul2.md
    ```
 
-   This runs three new diagnostic tests:
-   - **`!V` version command** — confirms the device is running evofw3
-     and the host serial path works (no RF involved)
-   - **Paced _PUZZ probe** — sends the 82-byte signature frame with 1ms
-     inter-byte delay, avoiding the 32-byte RX buffer overflow
-   - **Paced RF write** — sends a normal RF command with pacing
+   The new "Boot banner capture" and "Version command (!V + V)" tests
+   will tell us:
+   - Which firmware is running (culfw vs evofw3)
+   - Whether the serial RX path (host → device) works at all
+   - What the 17 bytes actually contain
 
-   If the paced probe gets an echo where the immediate probe didn't,
-   the root cause is buffer overflow and the fix is byte-pacing in
-   ramses_rf for nanoCUL devices.
+2. **Which firmware is on the nanoCUL?** The nanoCUL ships with a choice
+   of six firmwares (culfw, WMBus, LaCrosse, evofw3, SIGNALduino,
+   AskSin). If it is running culfw, it can listen to EvoHome RF traffic
+   but cannot send/echo RAMSES packets — the no-echo result would be
+   expected. Reflashing with evofw3 would add TX support.
 
-2. **If paced probe still fails:** Try increasing the delay:
-
-   ```
-   python esp_usb_feasibility_standalone.py /dev/tty.usbserial-A50285BI --nanocul --pace-ms 5.0
-   ```
-
-   If 5ms/byte still produces no echo, the nanoCUL's RF TX path is
-   likely broken (known ATmega328p limitation) and the device can only
-   be receive-only in the pool.
-
-3. **Share the output:** Please attach the markdown report (or paste the
-   console output) so we can see the exact byte counts and response
-   strings from each test.
-
-2. **HGI80 test setup:** The HGI80 was tested via `/dev/ttys001`, a
+3. **HGI80 test setup:** The HGI80 was tested via `/dev/ttys001`, a
    pseudo-terminal — not a USB device. The test showed 0 bytes, DTR/RTS
    ioctl errors, and no unplug detection, all of which are pty artifacts.
    Can you re-run the feasibility test via the HGI80's real USB device
    path (e.g. `/dev/cu.usbserial-*` on macOS, or `/dev/ttyUSB*` on Linux)?
 
-3. **Container/USB forwarding:** Where does your HA instance run (HA OS,
+4. **Container/USB forwarding:** Where does your HA instance run (HA OS,
    Docker on Linux, Docker on Mac, etc.)? If HA is in a container on a
    separate server, how are USB devices forwarded to it (socat, ser2net,
    direct `--device` passthrough, USB-over-IP)? The `/dev/ttys001` pty

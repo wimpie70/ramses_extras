@@ -35,8 +35,12 @@ SIGNATURE_FRAME = (
 PING_FRAME = " R --- 18:000730 00:000730 --:------ 10E0 001 00"
 
 # evofw3 debug command: "!V\r" → "# evofw3 0.7.3\r\n"
-# Used to confirm the device is running evofw3 and the host serial path works.
+# culfw  debug command: "V\r"  → "V 1.67 nanoCUL868\r\n"
+# The nanoCUL ships with culfw by default; evofw3 must be flashed
+# separately.  culfw uses bare single-letter commands (no "!" prefix),
+# while evofw3 uses "!" as the command prefix.
 EVOFW3_VERSION_CMD = b"!V\r"
+CULFW_VERSION_CMD = b"V\r"
 
 
 @dataclass
@@ -248,40 +252,111 @@ def test_ordinary_write(port: str) -> TestResult:
         )
 
 
-def test_version_command(port: str) -> TestResult:
-    """Send the evofw3 '!V' command and check for a version string.
+def test_boot_banner(port: str) -> TestResult:
+    """Capture the raw boot banner bytes to identify the firmware.
 
-    This tests the host serial path in both directions without involving
-    RF TX.  evofw3's 'V' command (cmd.c) responds with:
-        # evofw3 0.7.3\\r\\n
-    If we get this response, the device is running evofw3 and the host
-    serial path works.  If not, either the device is not running evofw3,
-    the baud rate is wrong, or the serial path is broken.
+    evofw3 prints "# evofw3 0.7.3\\r\\n" on boot (gateway_init).
+    culfw does NOT print a boot banner by default — any bytes seen on
+    open are likely received RF traffic.
+
+    This test captures whatever the device sends in the first 2 seconds
+    after port open and prints it raw, so we can identify the firmware
+    from the actual output.
+    """
+    start = time.perf_counter()
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=0.1)
+        data = read_for_duration(ser, 2.0)
+        ser.close()
+        duration = time.perf_counter() - start
+        raw = data.decode(errors="replace").strip()
+        is_evofw3 = "evofw3" in raw
+        is_culfw = raw.startswith("V ") and "CUL" in raw
+        if is_evofw3:
+            notes = f"evofw3 banner: {raw!r}"
+        elif is_culfw:
+            notes = f"culfw banner: {raw!r}"
+        elif raw:
+            notes = f"Unknown: {raw!r}"
+        else:
+            notes = "No banner (0 bytes)"
+        return TestResult(
+            name="Boot banner capture",
+            success=True,  # informational, always "passes"
+            duration=duration,
+            bytes_received=len(data),
+            notes=notes,
+            received_data=data,
+        )
+    except Exception as e:
+        return TestResult(
+            "Boot banner capture", False, time.perf_counter() - start, notes=str(e)
+        )
+
+
+def test_version_command(port: str) -> TestResult:
+    """Send version commands for both evofw3 and culfw.
+
+    evofw3 uses "!V\\r" -> "# evofw3 0.7.3\\r\\n"
+    culfw  uses "V\\r"  -> "V 1.67 nanoCUL868\\r\\n"
+
+    The nanoCUL ships with culfw by default.  evofw3 must be flashed
+    separately and uses a different command syntax ("!" prefix).
+
+    This test sends both commands and reports which (if any) responded,
+    so we can identify the firmware regardless of which is installed.
     """
     start = time.perf_counter()
     try:
         ser = serial.Serial(port, baudrate=115200, timeout=0.1)
         time.sleep(0.5)  # let any boot banner drain
         ser.reset_input_buffer()
+
+        # Try culfw first (bare "V\r")
+        ser.write(CULFW_VERSION_CMD)
+        ser.flush()
+        culfw_data = read_for_duration(ser, 1.0)
+        ser.reset_input_buffer()
+
+        # Try evofw3 ("!V\r")
         ser.write(EVOFW3_VERSION_CMD)
         ser.flush()
-        data = read_for_duration(ser, 1.0)
+        evofw3_data = read_for_duration(ser, 1.0)
+
         ser.close()
         duration = time.perf_counter() - start
-        got_version = b"evofw3" in data
+
+        culfw_resp = culfw_data.decode(errors="replace").strip()
+        evofw3_resp = evofw3_data.decode(errors="replace").strip()
+
+        got_culfw = "CUL" in culfw_resp or culfw_resp.startswith("V ")
+        got_evofw3 = "evofw3" in evofw3_resp
+
+        if got_evofw3:
+            notes = f"evofw3: {evofw3_resp!r}"
+            success = True
+        elif got_culfw:
+            notes = f"culfw: {culfw_resp!r}"
+            success = True
+        elif culfw_resp or evofw3_resp:
+            notes = f"culfw_resp={culfw_resp!r} evofw3_resp={evofw3_resp!r}"
+            success = False
+        else:
+            notes = "No response to either !V or V"
+            success = False
+
+        total_bytes = len(culfw_data) + len(evofw3_data)
         return TestResult(
-            name="evofw3 version command (!V)",
-            success=got_version,
+            name="Version command (!V + V)",
+            success=success,
             duration=duration,
-            bytes_received=len(data),
-            notes=f"Got: {data.decode(errors='replace').strip()!r}"
-            if data
-            else "No response",
-            received_data=data,
+            bytes_received=total_bytes,
+            notes=notes,
+            received_data=culfw_data + evofw3_data,
         )
     except Exception as e:
         return TestResult(
-            "evofw3 version command (!V)",
+            "Version command (!V + V)",
             False,
             time.perf_counter() - start,
             notes=str(e),
@@ -561,6 +636,7 @@ def run_feasibility_gate(
         report.add(test_close_reopen(port))
         if i == 0 and include_nanocul:
             print("\n--- nanoCUL / ATmega328p diagnostic tests ---")
+            report.add(test_boot_banner(port))
             report.add(test_version_command(port))
             report.add(test_paced_probe(port, nanocul_pace_ms))
             report.add(test_paced_write(port, nanocul_pace_ms))
