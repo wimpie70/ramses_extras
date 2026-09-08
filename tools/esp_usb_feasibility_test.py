@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import sys
 import time
@@ -355,6 +356,91 @@ async def test_close_reopen(port: str) -> TestResult:
         )
 
 
+async def test_unplug_reconnect(port: str, timeout: float = 30.0) -> TestResult:
+    """Test 7: Physical unplug/reconnect cycle.
+
+    Opens the port, waits for the user to unplug and reconnect the USB cable,
+    then verifies the port can be reopened and the ESP responds.
+    """
+    import os
+    start = time.perf_counter()
+    try:
+        ser = serialx.AsyncSerial(port, baudrate=115200)
+        await ser.open()
+        print(f"  >>> UNPLUG {port} now, then plug it back in <<<")
+        # Wait for the port to disappear (unplug) by checking the file
+        unplugged = False
+        deadline_unplug = time.perf_counter() + timeout
+        while time.perf_counter() < deadline_unplug:
+            if not os.path.exists(port):
+                unplugged = True
+                print(f"  >>> Unplug detected, waiting for reconnect... <<<")
+                break
+            await asyncio.sleep(0.3)
+        if not unplugged:
+            await ser.close()
+            return TestResult(
+                name="Unplug/reconnect",
+                success=False,
+                duration=time.perf_counter() - start,
+                notes="Unplug not detected within timeout",
+            )
+        # Close the broken port
+        with contextlib.suppress(Exception):
+            await ser.close()
+
+        # Wait for the port to reappear (reconnect)
+        reconnected = False
+        deadline_reconnect = time.perf_counter() + timeout
+        while time.perf_counter() < deadline_reconnect:
+            if os.path.exists(port):
+                try:
+                    ser2 = serialx.AsyncSerial(port, baudrate=115200)
+                    await ser2.open()
+                    # Wait for ESP to boot
+                    boot_data = await read_for_duration(ser2, 3.0)
+                    # Send a signature probe
+                    ts = int(time.time() * 1000)
+                    frame = (SIGNATURE_FRAME.format(ts=ts) + "\r\n").encode()
+                    ser2.write_nowait(frame)
+                    data = await read_for_duration(ser2, 1.0)
+                    await ser2.close()
+                    reconnected = True
+                    break
+                except Exception:
+                    await asyncio.sleep(0.5)
+            else:
+                await asyncio.sleep(0.3)
+
+        duration = time.perf_counter() - start
+        if not reconnected:
+            return TestResult(
+                name="Unplug/reconnect",
+                success=False,
+                duration=duration,
+                notes="Reconnect not detected within timeout",
+            )
+        all_data = boot_data + data
+        reset_detected = detect_reset(all_data)
+        got_echo = b"7FFF" in data or b"I ---" in data
+        return TestResult(
+            name="Unplug/reconnect",
+            success=got_echo,
+            duration=duration,
+            bytes_received=len(all_data),
+            reset_detected=reset_detected,
+            notes="Reconnected, echo received" if got_echo else "Reconnected, no echo",
+            received_data=all_data,
+        )
+    except Exception as e:
+        return TestResult(
+            name="Unplug/reconnect",
+            success=False,
+            duration=time.perf_counter() - start,
+            notes=str(e),
+        )
+
+
 async def run_feasibility_gate(
     port: str, repeats: int = 1, delay: float = 2.0
 ) -> FeasibilityReport:
@@ -376,6 +462,8 @@ async def run_feasibility_gate(
         report.add(await test_delayed_probe(port, delay))
         report.add(await test_ordinary_write(port))
         report.add(await test_close_reopen(port))
+        if i == 0:  # Only run unplug test on first iteration
+            report.add(await test_unplug_reconnect(port))
 
     print(report.summary())
     return report
@@ -521,6 +609,10 @@ def main() -> None:
         help="Test DTR/RTS open modes to find reset-preventing settings",
     )
     parser.add_argument(
+        "--unplug-test", action="store_true",
+        help="Test physical unplug/reconnect (interactive)",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true", help="Verbose logging"
     )
     args = parser.parse_args()
@@ -545,6 +637,19 @@ def main() -> None:
         resets = sum(1 for r in results if r.reset_detected)
         print(f"\n{len(results)} modes tested, {resets} reset(s) detected")
         sys.exit(0 if resets == 0 else 1)
+
+    if args.unplug_test:
+        print(f"\nUnplug/Reconnect Test")
+        print(f"Port: {args.port}")
+        print("-" * 60)
+        result = asyncio.run(test_unplug_reconnect(args.port))
+        status = "PASS" if result.success else "FAIL"
+        reset = " [RESET]" if result.reset_detected else ""
+        print(
+            f"  [{status}] {result.name}: {result.duration:.3f}s, "
+            f"{result.bytes_received} bytes{reset} — {result.notes}"
+        )
+        sys.exit(0 if result.success else 1)
 
     if args.port2:
         reports = asyncio.run(
