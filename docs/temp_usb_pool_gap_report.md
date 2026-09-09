@@ -853,19 +853,136 @@ with ESP32 children in a mixed pool.
 
 ---
 
-## 5. Recommended implementation order
+## 5. Updated implementation plan — what we need for a secure multi-HGI pool
 
-1. **Gap D (per-child config overrides)** — structural prerequisite, unblocks
-   the rest. ramses_rf `factory.py` + `pooled.py`.
-2. **Gap A (DELAYED for pooled ESP32)** — small, ramses_cc only. Unblocks
-   ESP32 pool use immediately.
-3. **Gap C (auto-SKIP for HGI80)** — small, ramses_rf `port.py` only. Uses
-   the already-computed `_is_hgi80`.
-4. **Gap B (`configured_hgi_id`)** — ramses_rf `base.py` + `port.py`, plus
-   ramses_cc config plumbing. Unblocks FTDI (pending firmware confirmation).
+Based on the findings above, the original gap analysis needs updating.
+The `_PUZZ` echo is NOT a valid identity mechanism for most evofw3
+hardware. The `!I` command is the reliable alternative. This changes
+the implementation plan significantly.
 
-Each gap maps to a Phase 2 regression test in the follow-up doc's "PR 3 —
-Regression tests required" section (`multi-hgi-phase2-3-followup-issue.md:216-237`).
+### What we now know
+
+| Device type | Identity mechanism | _PUZZ echo | !I command | DTR reset | RF TX |
+|-------------|-------------------|------------|------------|-----------|-------|
+| ESP32-S3 (evofw3) | _PUZZ echo OR !I | YES | YES | YES (auto-reset) | YES |
+| ATmega32U4 (evofw3) | !I only | NO | YES | NO | YES |
+| nanoCUL/FTDI (evofw3) | !I only (needs 3s wait) | NO | YES (delayed) | YES | YES |
+| HGI80 | configured_hgi_id | NO | NO (not evofw3) | unknown | YES |
+| MQTT HGI | topic-based | n/a | n/a | n/a | YES |
+
+### Gap E (NEW) — `!I`-based identity discovery in ramses_rf
+
+**This is the most important new gap.** ramses_rf's
+`connect_with_signature()` uses `_PUZZ` echo to discover the HGI ID.
+This only works on the ESP32-S3. All ATmega-based evofw3 devices
+(nanoCUL, ATmega32U4) can send RF but cannot echo `_PUZZ` (no RF
+loopback).
+
+evofw3's `!I\r` command returns the HGI ID directly over serial
+(`# 18:000730\r\n`) without any RF involvement. This works on ALL
+evofw3 hardware.
+
+**Fix:**
+1. Add a new `connect_with_id_command()` method in `PortTransport`
+   that sends `!I\r` and parses the `# CC:IIIIII\r\n` response
+2. Add `SignaturePolicy.ID_COMMAND` (or reuse a new enum value)
+3. Filter evofw3 debug responses (lines starting with `#`) in the
+   packet reader so they don't get logged as `PacketInvalid`
+4. Fall back to `configured_hgi_id` if `!I` fails (HGI80, non-evofw3)
+
+### Gap F (NEW) — Filter evofw3 debug responses in ramses_tx
+
+ramses_tx currently logs evofw3 debug responses as
+`PacketInvalid(Null packet)`:
+
+```
+# evofw3 0.7.1 < PacketInvalid(Null packet)
+```
+
+These are valid evofw3 responses (version, ID, config), not invalid
+packets. They should be filtered before the packet parser.
+
+**Fix:** In the serial reader, check if a line starts with `#` and
+handle it as an evofw3 debug response (log at debug level, or pass
+to a callback) instead of feeding it to the packet parser.
+
+### Gap A — DELAYED for pooled serial children (unchanged)
+
+ramses_cc does not set `signature_policy=DELAYED` for pooled serial
+children. The nanoCUL/FTDI needs a 3s boot wait after DTR reset.
+
+**Fix:** Set `signature_policy=DELAYED` + `startup_grace=3.0` for
+serial children in the hybrid pool constructor.
+
+### Gap B — `configured_hgi_id` (still needed, but as fallback)
+
+Still needed for HGI80 (not evofw3, can't respond to `!I`) and as a
+fallback if `!I` fails.
+
+**Fix:** Add `configured_hgi_id: str | None` to `TransportConfig`,
+use in `connect_sans_signature()` and as fallback after `!I` failure.
+
+### Gap C — auto-SKIP for HGI80 (unchanged)
+
+HGI80 doesn't respond to `!I` (not evofw3) or `_PUZZ` (not evofw3).
+Auto-detect via `_is_hgi80` and use `configured_hgi_id`.
+
+**Fix:** Force `SKIP` + `configured_hgi_id` when `_is_hgi80 is True`.
+
+### Gap D — per-child config overrides (unchanged, structural prerequisite)
+
+Still the core structural blocker. Each child needs its own
+`signature_policy`, `startup_grace`, and `configured_hgi_id`.
+
+**Fix:** `pooled_transport_factory` accepts per-child overrides.
+
+### Disconnect and error detection
+
+The pool needs to handle:
+- **Serial disconnect:** port disappears (`os.path.exists()` check,
+  write failure). Already partially implemented (write-failure
+  propagation, bounded reconnect with backoff).
+- **MQTT disconnect:** broker connection lost. HA-native MQTT
+  integration handles reconnection.
+- **Child health monitoring:** is each child still receiving packets?
+  If a child goes silent, mark it unhealthy and route through others.
+- **Pool failover:** if one child fails, outbound commands route
+  through other healthy children. Already partially implemented
+  (pool child error state).
+
+### What we do NOT need from the HGI80
+
+The HGI80 test is not blocking. We know:
+- It's a real Honeywell HGI (not evofw3)
+- It works on Linux with `ti_usb_3410_5052` driver
+- It needs `signature_policy=SKIP` + `configured_hgi_id` (Gap B + C)
+- ramses_rf already has `_is_hgi80` detection
+- silverailscolo is setting it up on HA (Linux) — confirmation will
+  come naturally
+
+### Recommended implementation order (updated)
+
+1. **Gap D (per-child config overrides)** — structural prerequisite.
+   ramses_rf `factory.py` + `pooled.py`.
+2. **Gap E (`!I`-based identity)** — the key new mechanism. ramses_rf
+   `port.py` + `base.py`. Replaces `_PUZZ` echo for ATmega devices.
+3. **Gap F (filter evofw3 debug responses)** — ramses_tx packet
+   reader. Prevents `PacketInvalid` spam.
+4. **Gap A (DELAYED for FTDI/nanoCUL)** — ramses_cc config. 3s boot
+   wait for DTR reset.
+5. **Gap C (auto-SKIP for HGI80)** — ramses_rf `port.py`. Uses
+   already-computed `_is_hgi80`.
+6. **Gap B (`configured_hgi_id`)** — ramses_rf `base.py` + ramses_cc
+   config. Fallback for HGI80 and `!I` failures.
+
+After all gaps are fixed, the pool supports:
+- ESP32-S3 (evofw3): `_PUZZ` echo or `!I` (both work)
+- ATmega32U4 (evofw3): `!I` command (no `_PUZZ` echo)
+- nanoCUL/FTDI (evofw3): `!I` command with 3s boot wait
+- HGI80: `configured_hgi_id` + auto-SKIP
+- MQTT HGI: topic-based identity (already works)
+- Disconnect/error detection: serial + MQTT
+- Pool failover: route through healthy children
 
 ---
 
