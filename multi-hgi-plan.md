@@ -1541,3 +1541,57 @@ The serial and hybrid pool feature is complete only when all of the following ar
 ### Phase 3 — Zigbee pool
 
 Zigbee is complete and may be advertised only after its separate identity/lifecycle automated checks and physical release evidence also pass. The Zigbee transport type is un-gated in the config flow only at this point.
+
+## Phase 2 live hardware verification (2026-09-09)
+
+Tested on hass with 2 ESP32 HGIs (`18:130236` + `18:149488`), MQTT broker at `192.168.40.11:1883`, topic `RAMSES/GATEWAY`. Serial via `/dev/ttyACM0` and `/dev/ttyACM1`.
+
+All scenarios verified with real hardware:
+
+| Scenario | Description                              | Result | Notes                                                                                                                       |
+| -------- | ---------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------- |
+| A        | Clean start (no ESPs)                    | PASS   | Sentinel `18:000730` filtered from discovery/entities; real HGI learned from `_PUZZ` response                               |
+| B        | 1 USB only (discovery from empty schema) | PASS   | HGI `18:130236` discovered via serial probe, appeared in Review Discovered Devices, accepted as USB                         |
+| C        | 2 USB only                               | PASS   | Both HGIs registered, both serial children connected (2/2), dedup working, fan card operational                             |
+| D        | Remove 1 USB (failover)                  | PASS   | `child 0 disconnected (Errno 5)`, pool continued with remaining child, packets flowing, entities re-registered after reload |
+| E        | 1 USB + 1 MQTT (hybrid)                  | PASS   | `18:149488` via serial, `18:130236` via MQTT LWT, dedup suppresses cross-transport duplicates, TX via MQTT                  |
+| F        | 2 MQTT only                              | PASS   | Both HGIs via MQTT callback children (2/2 connected), `!V` handshake to both, dedup working, fan responding                 |
+
+### Key fixes applied during Phase 2 verification
+
+1. **MQTT capability detection for USB-preferred HGIs** (commit `4d5ddd09`): USB-preferred HGIs were excluded from the MQTT bridge, so their MQTT capability could not be detected via LWT. Now all HGIs (including USB-preferred) are included in the MQTT bridge. The pool's deduplication filter handles duplicate packets from both transports.
+
+2. **Primary HGI included in MQTT bridge** (commit `6cb8b768`): The primary HGI was excluded from the MQTT bridge entirely, so if it was moved from USB to a power adapter (MQTT-only), its packets could not be received. Now the primary HGI is included for LWT detection and packet reception.
+
+3. **`_preferred_type` not overridden by SerialProbe** (commit `a2e71f9e`): The SerialProbe was forcing `_preferred_type: usb` on the primary HGI even when the user had set it to `mqtt` (e.g. when the HGI is on a power adapter). Now `_preferred_type: usb` is only set if not already set — respecting the user's choice.
+
+4. **Sentinel `18:000730` filtered from user-facing paths**: The ramses_rf default gateway placeholder no longer appears in Review Discovered Devices or generates HA entities. Filtered in coordinator `current_devices`, discovery/review lists, and ramses_extras entity-registry fallback.
+
+5. **Clean-start HGI discovery**: Real HGI ID learned from `_PUZZ` serial probe response and cached packets before client initialization. HGI added to schema before `_create_client()` runs, so it passes the enforced known-list filter.
+
+6. **Review flow `UnboundLocalError` fixed**: The HGI `_preferred_type` selector tried to use `config_schema` before it was defined. Fixed by defining a local copy of the current schema before building review form fields.
+
+### Current schema state (verified)
+
+Both HGIs accepted with transport capability detection:
+
+```yaml
+18:130236:
+  _class: HGI
+  _comment: Supports: usb, mqtt
+  _owner: me
+  _preferred_type: mqtt  # on power adapter
+
+18:149488:
+  _class: HGI
+  _comment: Supports: usb, mqtt
+  _owner: me
+  _preferred_type: usb  # on USB port
+```
+
+### Remaining Phase 2 items
+
+- [ ] Move `glob.glob("/dev/ttyACM*")` off HA's event loop (blocking call warning).
+- [ ] Consider auto-populating `additional_ports` when multiple accepted USB HGIs are detected.
+- [ ] Run full `ha_sim_test` suite after final changes.
+- [ ] Run ramses_rf, ramses_cc, ramses_extras full test suites for regression.
