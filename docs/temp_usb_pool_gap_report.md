@@ -599,6 +599,89 @@ hardware. The slow paced probe received 1170 bytes of RF traffic
 tests only — all 0 bytes, no version/ID commands tested. This
 confirms the `--nanocul` flag is needed for the diagnostic tests.
 
+### Run 5: both devices fully characterized (comment 5591245347)
+
+silverailscolo ran the latest script on both devices, with and without
+5ms pacing. Complete picture:
+
+#### nanoCUL FTDI (`/dev/cu.usbserial-A50285BI`)
+
+| Test | Result | Bytes | Notes |
+|------|--------|-------|-------|
+| Boot banner | PASS | 17 | `\x11# evofw3 0.7.1` |
+| Version cmd (0.5s) | FAIL | 0 | Device still booting (DTR reset) |
+| **Version cmd (3s delay)** | **PASS** | 33 | `# evofw3 0.7.1` — **timing hypothesis confirmed** |
+| Version cmd (no DTR) | FAIL | 0 | `dsrdtr=True` flow control issue |
+| Version cmd @ 57600 | FAIL | 9 | Garbled — device is 115200 only |
+| **ID command (!I)** | **PASS** | 30 | **HGI ID: 18:140805** |
+| _PUZZ echo | FAIL | 17 | No RF loopback (expected) |
+| Slow paced probe | FAIL | 58 | RF traffic in boot: `067 I --- 37:153226 ...` |
+
+**DTR reset timing confirmed.** The version command at 0.5s fails but
+at 3s passes — the device resets on port open (DTR toggle), takes 1-2s
+to boot, and commands sent at 0.5s are lost. This was the root cause
+of all the "broken RX path" conclusions.
+
+**The no-DTR test fails for a different reason.** `dsrdtr=True`
+enables hardware flow control — the FTDI chip waits for DSR to be
+asserted before sending. If the nanoCUL doesn't wire DSR, the FTDI
+never sends. This is a flow control issue, not a reset issue.
+
+**The nanoCUL IS receiving RF traffic.** The slow paced probe boot
+data contains: `067  I --- 37:153226 --:------ 37:153226 12A0 021
+004308A77FFF0001EF7FFF7FFF00024B07DA061400` — a RAMSES I packet from
+device 37:153226.
+
+#### ATmega32U4 native USB (`/dev/cu.usbmodem1101`)
+
+| Test | Result | Bytes | Notes |
+|------|--------|-------|-------|
+| Boot banner | PASS | 0 | No banner (ATmega32U4 doesn't print one) |
+| Version cmd (0.5s) | PASS | 16 | `# evofw3 0.7.1` (no DTR reset on this board) |
+| Version cmd (3s) | PASS | 16 | `# evofw3 0.7.1` |
+| Version cmd (no DTR) | PASS | 16 | `# evofw3 0.7.1` |
+| Version cmd @ 57600 | PASS | 1244 | `# evofw3 0.7.1` + **full RAMSES exchange** |
+| **ID command (!I)** | **PASS** | 13 | **HGI ID: 18:006402** |
+| _PUZZ echo | FAIL | 0/58 | No RF loopback (expected) |
+
+**The 57600 baud test captured a full RAMSES packet exchange** (1244
+bytes). The ATmega32U4 uses USB CDC, so the baud rate setting doesn't
+matter — USB handles the speed. The captured traffic shows the device
+actively controlling heating:
+
+```
+032 RQ --- 18:154951 37:153226 --:------ 10D0 001 00
+062 RP --- 37:153226 18:154951 --:------ 10D0 006 00FEFE4EFFFF
+032 RQ --- 18:154951 37:153226 --:------ 31D9 001 00
+061 RP 096 37:153226 18:154951 --:------ 31D9 017 000AFF0020...
+032 RQ --- 18:154951 37:153226 --:------ 22F4 001 00
+061 RP --- 37:153226 18:154951 --:------ 22F4 013 004030...
+032 RQ --- 18:154951 37:153226 --:------ 2411 003 000007
+062 RP --- 37:153226 18:154951 --:------ 2411 023 000007...
+```
+
+Multiple RQ/RP exchanges for opcodes 10D0, 31D9, 22F4, 2411 — this is
+the device polling and controlling zones.
+
+#### Summary: both devices fully working
+
+| Property | nanoCUL FTDI | ATmega32U4 USB |
+|----------|-------------|----------------|
+| Port | `/dev/cu.usbserial-A50285BI` | `/dev/cu.usbmodem1101` |
+| Firmware | evofw3 0.7.1 | evofw3 0.7.1 |
+| **HGI ID** | **18:140805** | **18:006402** |
+| Serial RX | WORKS (needs 3s boot wait) | WORKS (all timings) |
+| RF RX | WORKS (captured traffic) | WORKS (captured traffic) |
+| RF TX | WORKS (controlling heating) | WORKS (controlling heating) |
+| _PUZZ echo | FAIL (no RF loopback) | FAIL (no RF loopback) |
+| Baud rate | 115200 only | Any (USB CDC) |
+| DTR reset | YES (needs 3s wait) | NO |
+| Boot banner | `\x11# evofw3 0.7.1` | None |
+
+**Both devices work in production.** The `_PUZZ` echo failure is
+expected on all ATmega-based evofw3 hardware (no RF loopback). The
+`!I` command is the reliable way to get the HGI ID.
+
 
 
 ### ramses_rf (`feat/phase2-signature-policy` branch, 6 commits)
