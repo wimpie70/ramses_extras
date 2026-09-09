@@ -204,6 +204,47 @@ port, no DTR timing, no signature probing, no firmware flashing. Just
 flash ramses_esp, configure WiFi + MQTT, and add the MQTT topic to the
 pool config.
 
+### Elecram board on Zigbee — Phase 3
+
+The Elecram board also supports Zigbee (ESP32-C6 has WiFi 6 + Zigbee +
+Thread + BLE). The ramses_esp firmware has a full Zigbee implementation
+(`components/ramses-network/zigbee.c`):
+
+- Custom clusters: `0xFC00` (RX, ESP → ZHA) and `0xFC01` (TX, ZHA → ESP)
+- Chunked text transmission (Zigbee APS messages are small, so RAMSES
+  packets are split into chunks with seq/total headers)
+- Application-level ACK tracking
+- ESP32-C6 acts as a Zigbee End Device (ZED)
+- Manufacturer: `ELECRAM`, Model: `Ramses_esp32c6`
+
+**However, Zigbee pool support is Phase 3 and currently parked.** The
+existing `ZigbeeTransport` code in ramses_rf is in place but gated in
+the config flow with "(not yet supported)" and `TODO: re-enable when
+Phase 3` remarks. Phase 3 needs:
+
+1. IEEE address vs. RAMSES HGI ID separation (store Zigbee IEEE
+   transport address separately from the `18:` HGI ID)
+2. ZHA device availability mapping into `PoolChild` state
+3. Identity-unknown Zigbee children stay receive-only
+4. `zigpy` dependency handling (already done —
+   `ZigbeeTransport._async_init` raises `TransportZigbeeError` with
+   installation guidance if `zigpy` is absent)
+5. Physical Zigbee hardware for testing
+
+**The Elecram board IS the physical Zigbee hardware that Phase 3 has
+been waiting for.** It could unblock Phase 3 development and testing.
+
+The key question for Phase 3: does the ramses_esp Zigbee protocol
+(custom clusters 0xFC00/0xFC01 with chunked text) match what
+ramses_rf's `ZigbeeTransport` expects? This needs to be verified
+before Phase 3 can proceed. The ramses_esp firmware uses a text-based
+protocol over custom clusters, not standard ZHA clusters — so
+ramses_rf's `ZigbeeTransport` may need adaptation.
+
+**Summary:**
+- WiFi/MQTT mode: works NOW (Phase 1, already shipped, no new code)
+- Zigbee mode: needs Phase 3 (parked, but hardware now available)
+
 This matters because HA/ramses_cc almost certainly runs elsewhere — a
 Linux server, HA OS, or a Docker container. The USB devices on the Mac
 are not directly visible to HA unless they are forwarded via a network
