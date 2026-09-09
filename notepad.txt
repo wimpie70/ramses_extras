@@ -1,0 +1,1 @@
+mqtt://slimmemeter:j@diebla@@192.168.40.11:1883
