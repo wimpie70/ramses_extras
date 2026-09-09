@@ -153,6 +153,57 @@ On Linux (where HA Docker containers run), the equivalent paths would be
 macOS means silverailscolo ran `esp_usb_feasibility_standalone.py` on a
 **Mac**, not inside the HA container.
 
+### Additional hardware: Elecram ESP32-C6 Sub-GHz Bridge
+
+A new hardware option has been identified: the
+[Elecram Sub-GHz 855-925 MHz Bridge](https://elecram.com/) (EUR 30).
+
+This is a purpose-built board for Ramses II, designed by Marcel
+Welleweerd (IMMRMKW on GitHub). It is fundamentally different from
+the nanoCUL/evofw3 devices:
+
+| Property | Elecram ESP32-C6 | nanoCUL/FTDI | ATmega32U4 | HGI80 |
+|----------|-----------------|-------------|------------|-------|
+| MCU | ESP32-C6 | ATmega328p | ATmega32U4 | TUSB3410+MCU |
+| Radio | CC1101 (same) | CC1101 (same) | CC1101 (same) | proprietary |
+| Host interface | WiFi (MQTT) | USB serial (FTDI) | USB serial (CDC) | USB serial (TUSB3410) |
+| Firmware | ramses_esp | evofw3 | evofw3 | Honeywell |
+| Identity | MQTT topic | `!I` command | `!I` command | configured_hgi_id |
+| _PUZZ echo | unknown (likely no) | no (no loopback) | no (no loopback) | no |
+| Price | EUR 30 | ~EUR 40 | ~EUR 40 | discontinued |
+
+Key features of the Elecram board:
+- **ESP32-C6** with WiFi 6, Zigbee, Thread, and BLE
+- **CC1101** sub-GHz radio (same chip as nanoCUL/evofw3)
+- **MQTT interface** — publishes RX messages to `<topic>/rx`, subscribes
+  to `<topic>/tx` for outbound commands
+- **Open-source firmware**: https://github.com/IMMRMKW/ramses_esp
+  (fork of IndaloTech/ramses_esp, adapted for ESP32-C6)
+- **ESPHome support**: https://github.com/IMMRMKW/ESPHome_ESP32-C6
+- **3D-printable housing** available
+- **!V handshake over MQTT**: the firmware responds to `!V` on the
+  `<topic>/cmd/cmd` MQTT topic with `# evofw3 <version>` (see
+  `ramses-mqtt.c:310-316`)
+
+The ramses_esp firmware uses the same gateway architecture as evofw3
+(`device_get_id()`, `msg_scan()`, `msg_change_addr()`) but exposes it
+over MQTT instead of serial. This means:
+- No DTR reset issues (no USB serial)
+- No baud rate issues (WiFi)
+- No `_PUZZ` echo needed (HGI ID from MQTT topic)
+- No `!I` command needed (HGI ID from MQTT topic)
+- Already supported by ramses_cc's MQTT pool bridge
+
+**Pool compatibility:** The Elecram board works as an MQTT HGI in the
+pool. ramses_cc's hybrid pool constructor already supports MQTT
+children via `RamsesMqttPoolBridge`. The HGI ID comes from the MQTT
+topic (e.g. `ramses/gateway/18:006402`), not from `!I` or `_PUZZ`.
+
+This is the simplest path to adding a new HGI to the pool — no serial
+port, no DTR timing, no signature probing, no firmware flashing. Just
+flash ramses_esp, configure WiFi + MQTT, and add the MQTT topic to the
+pool config.
+
 This matters because HA/ramses_cc almost certainly runs elsewhere — a
 Linux server, HA OS, or a Docker container. The USB devices on the Mac
 are not directly visible to HA unless they are forwarded via a network
@@ -868,7 +919,8 @@ the implementation plan significantly.
 | ATmega32U4 (evofw3) | !I only | NO | YES | NO | YES |
 | nanoCUL/FTDI (evofw3) | !I only (needs 3s wait) | NO | YES (delayed) | YES | YES |
 | HGI80 | configured_hgi_id | NO | NO (not evofw3) | unknown | YES |
-| MQTT HGI | topic-based | n/a | n/a | n/a | YES |
+| MQTT HGI (evofw3) | topic-based | n/a | n/a | n/a | YES |
+| Elecram ESP32-C6 (ramses_esp) | MQTT topic | n/a | n/a (MQTT !V) | n/a | YES |
 
 ### Gap E (NEW) — `!I`-based identity discovery in ramses_rf
 
@@ -980,7 +1032,9 @@ After all gaps are fixed, the pool supports:
 - ATmega32U4 (evofw3): `!I` command (no `_PUZZ` echo)
 - nanoCUL/FTDI (evofw3): `!I` command with 3s boot wait
 - HGI80: `configured_hgi_id` + auto-SKIP
-- MQTT HGI: topic-based identity (already works)
+- MQTT HGI (evofw3): topic-based identity (already works)
+- Elecram ESP32-C6 (ramses_esp): MQTT topic-based identity (already
+  works via `RamsesMqttPoolBridge`, no serial needed)
 - Disconnect/error detection: serial + MQTT
 - Pool failover: route through healthy children
 
