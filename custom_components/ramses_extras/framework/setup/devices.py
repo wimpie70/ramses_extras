@@ -419,6 +419,7 @@ async def _discover_devices_from_entity_registry(hass: HomeAssistant) -> list[st
                     isinstance(device_id, str)
                     and device_id
                     and device_id not in device_ids
+                    and device_id != "18:000730"  # ramses_rf sentinel
                 ):
                     device_ids.append(device_id)
 

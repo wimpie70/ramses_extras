@@ -1,1 +1,11 @@
 mqtt://slimmemeter:j@diebla@@192.168.40.11:1883
+
+- sentinel is listed when discovering 1st usb hgi (18:000730) — pre-existing ramses_rf issue, engine gateway device placeholder
+
+C:
+- hgi's are not going through the review discovery (and setting/detecting preferred types) — FIXED: serial probe now runs in serial/hybrid path, sets _preferred_type=usb for primary
+- we only have the 130 esp in the pool and is listed as mqtt — FIXED: _preferred_type=usb now set, shows as (USB)
+- the 2nd hgi is listed as mqtt — expected: 2nd USB child uses signature_policy=SKIP, HGI ID learned from RF traffic only
+
+D:
+-
