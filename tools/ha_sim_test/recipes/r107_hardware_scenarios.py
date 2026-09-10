@@ -113,12 +113,83 @@ async def run_tests():
         )
 
     # ---------------------------------------------------------------------------
-    # Test 2: HGI via serial — !I response parsing (no pty needed)
+    # Test 2: HGI via serial — full pty transport handshake
     # ---------------------------------------------------------------------------
-    # The pty-based test is unreliable because PortTransport needs a
-    # real serial port handshake.  Instead, verify that the !I response
-    # parsing works correctly — this is the same regex the transport
-    # uses to parse the HGI ID from the serial response.
+    # Create a pty pair.  A background thread listens for !I on the
+    # master end and responds with "# 18:130236\\r\\n" — simulating
+    # an evofw3 HGI dongle.  The PortTransport should learn the HGI
+    # ID via the ID_COMMAND signature policy.
+    # ---------------------------------------------------------------------------
+    try:
+        master_fd2, slave_fd2 = pty.openpty()
+        slave_path2 = os.ttyname(slave_fd2)
+
+        # Disable echo on the slave (otherwise transport sees its
+        # own !I echoed back)
+        import termios
+        attrs2 = termios.tcgetattr(slave_fd2)
+        attrs2[3] = attrs2[3] & ~termios.ECHO
+        termios.tcsetattr(slave_fd2, termios.TCSANOW, attrs2)
+
+        stop2 = threading.Event()
+        def hgi_responder():
+            # Simulate an evofw3 HGI that responds to !I.
+            buf = b""
+            while not stop2.is_set():
+                try:
+                    data = os.read(master_fd2, 1)
+                    if not data:
+                        break
+                    buf += data
+                    if b"!I" in buf and buf.endswith(b"\\r"):
+                        os.write(master_fd2, b"# 18:130236\\r\\n")
+                        buf = b""
+                    elif len(buf) > 256:
+                        buf = buf[-128:]
+                except OSError:
+                    break
+        t2 = threading.Thread(target=hgi_responder, daemon=True)
+        t2.start()
+
+        try:
+            from ramses_tx.transport.port import PortTransport
+            from ramses_tx.transport.base import TransportConfig, SignaturePolicy
+
+            config2 = TransportConfig(
+                signature_policy=SignaturePolicy.ID_COMMAND,
+                startup_grace=0.0,
+            )
+            transport2 = PortTransport(
+                slave_path2, MagicMock(), config=config2
+            )
+            try:
+                await asyncio.wait_for(
+                    transport2._init_fut, timeout=5.0
+                )
+            except (asyncio.TimeoutError, Exception):
+                pass
+
+            # Use 'active_gwy' (SZ_ACTIVE_HGI) not 'active_hgi'
+            hgi_id2 = transport2.get_extra_info("active_gwy")
+            check(
+                "HGI: full pty transport learns HGI ID from !I",
+                hgi_id2 is not None and "18:130236" in str(hgi_id2),
+                f"hgi_id={hgi_id2}",
+            )
+            transport2.close()
+        finally:
+            stop2.set()
+            os.close(master_fd2)
+            os.close(slave_fd2)
+    except Exception as e:
+        check(
+            "HGI: full pty transport learns HGI ID from !I",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+
+    # ---------------------------------------------------------------------------
+    # Test 2b: HGI !I response regex parsing (multiple HGI IDs)
     # ---------------------------------------------------------------------------
     try:
         from ramses_tx.transport.port import _EVOFW3_ID_RE
