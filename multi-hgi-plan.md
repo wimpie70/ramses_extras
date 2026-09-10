@@ -792,6 +792,41 @@ For the initial release, schema `_owner` membership is the canonical MQTT trust 
 
 An optional private-namespace auto-accept mode is deferred. `CONF_ACCEPTED_HGIS` must be migrated or removed as an independent authority so acceptance cannot diverge from schema ownership. Explicit serial-port configuration remains the canonical transport inventory for local serial children; identity validation and `send_ready` still gate transmission.
 
+#### Unified review flow for USB and MQTT HGIs (Phase 2)
+
+Both USB and MQTT HGIs follow the same review flow — neither is auto-added
+to the pool as a send-ready member. The difference is **when** the HGI ID
+becomes known, not whether review is required:
+
+|          | Primary HGI ID known from                            | Additional HGI IDs known from                               |
+| -------- | ---------------------------------------------------- | ----------------------------------------------------------- |
+| **MQTT** | Config (URL path or `CONF_MQTT_HGI_ID`) — at startup | `_MqttHgiDiscoveryCallback.on_unknown_hgi` (wildcard topic) |
+| **USB**  | Transport probe (`!I`) — after connect               | `pool_hgi_ids` from pool transport (after connect)          |
+
+- **MQTT HGIs** announce themselves on the wildcard topic. The primary
+  HGI ID is in the config URL. Additional HGIs are discovered via
+  `_MqttHgiDiscoveryCallback.on_unknown_hgi`, which adds them to the
+  schema as discovery candidates (no `_owner`).
+- **USB HGIs** are silent until probed. The user manually adds a serial
+  port via Manage Pool. The transport opens it and probes with `!I`. If
+  it responds, the HGI ID is learned and added to the schema as a
+  discovery candidate (no `_owner`). If it doesn't respond (e.g. a modbus
+  bridge), the child fails to connect and the user removes the port.
+- USB ports are **not** auto-added to `additional_ports` because USB
+  serial ports cannot be distinguished from non-HGI devices (e.g. modbus
+  bridges) by VID/PID alone — they use the same chipsets (FTDI, CP2102,
+  CH340). Checking firmware before adding would prevent own-build cases
+  from working. Instead, the `!I` probe is the identity check: if the
+  device responds, it's an HGI; if not, it's not.
+- The primary/additional code split in `_register_pool_hgis` exists
+  because the primary HGI must be in the schema early for
+  `enforce_known_list` to not block commands — it can't wait for the
+  30-min `sync_learned_topology` cycle. Pool children are not critical
+  for command routing, so they can be added when the pool transport
+  reports them.
+- Own-build cases work as long as they run evofw3 (responds to `!I`).
+  HGI80 uses `SKIP` signature policy but is a known device type.
+
 ### 10. Membership updates
 
 For the first production version:

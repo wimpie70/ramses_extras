@@ -963,6 +963,34 @@ the implementation plan significantly.
 | MQTT HGI (evofw3) | topic-based | n/a | n/a | n/a | YES |
 | Elecram ESP32-C6 (ramses_esp) | MQTT topic | n/a | n/a (MQTT !V) | n/a | YES |
 
+### Unified review flow — USB and MQTT HGIs (Phase 2 update)
+
+Both USB and MQTT HGIs follow the same review flow. Neither is auto-added
+to the pool as a send-ready member. The user must review and accept
+discovered HGIs before they become pool members with `_owner`.
+
+**Why USB ports are not auto-added:** USB serial ports cannot be
+distinguished from non-HGI devices (e.g. modbus bridges) by VID/PID
+alone — they use the same chipsets (FTDI, CP2102, CH340). The `!I` probe
+is the identity check: if the device responds, it's an HGI and its ID
+is added to the schema as a discovery candidate (no `_owner`); if not,
+the child fails and the user removes the port.
+
+**Why MQTT doesn't need the same probe:** MQTT HGI IDs are known from
+the config URL or `CONF_MQTT_HGI_ID` at startup. Additional MQTT HGIs
+announce themselves on the wildcard topic via
+`_MqttHgiDiscoveryCallback.on_unknown_hgi`.
+
+**Primary vs additional — timing, not transport:** The primary HGI must
+be in the schema early for `enforce_known_list` to not block commands.
+Pool children are not critical for command routing, so they can be
+added when the pool transport reports them. This split exists for both
+USB and MQTT — it's about when the HGI ID becomes known, not about the
+transport type.
+
+**Own-build cases:** work as long as they run evofw3 (responds to `!I`).
+HGI80 uses `SKIP` signature policy but is a known device type.
+
 ### Gap E (NEW) — `!I`-based identity discovery in ramses_rf
 
 **This is the most important new gap.** ramses_rf's
