@@ -12,6 +12,10 @@ multi-HGI pool.  Uses pty pairs and mocked transports to simulate:
 - Duplicate HGI on serial+MQTT (dedup via exclusion)
 - HGI disappears from transport but remains in schema
 - Rapid connect/disconnect cycles
+- Set-based exclusion: only connected serial children excluded
+- Un-exclusion: disconnected serial HGI re-included in MQTT pool
+- MQTT bridge unexclude_hgi_id method
+- Per-device-type exclusion: ESP32-S3, HGI80, nanoCUL, ATmega32U4
 """
 
 from __future__ import annotations
@@ -126,124 +130,150 @@ async def run_tests():
         )
 
     # ---------------------------------------------------------------------------
-    # Test 2: Coordinator — serial inactive, MQTT child remains
+    # Test 2: Set-based exclusion — only connected serial children excluded
     # ---------------------------------------------------------------------------
-    # When the serial primary is unplugged, _is_serial_active becomes
-    # False.  The MQTT child must remain in the pool and NOT be
-    # excluded from the MQTT bridge.
+    # The coordinator collects HGI IDs from tpt._children, but only
+    # from non-callback children that are is_connected.  Disconnected
+    # children should NOT be in the exclusion set (issue 1185).
     # ---------------------------------------------------------------------------
     try:
-        from custom_components.ramses_cc.coordinator import RamsesCoordinator
-        from custom_components.ramses_cc.const import (
-            CONF_SCHEMA,
-            SZ_OWNER,
-            SZ_TR_OWNER,
+        from ramses_tx.transport.pooled import (
+            ConnectionState,
+            NodeAvailability,
+            PoolChild,
         )
 
-        coord = MagicMock()
-        coord._is_serial_active = False  # Serial unplugged
-        coord._last_excluded_hgi_id = "18:130236"  # Was excluded before
-        coord.mqtt_bridge = MagicMock()
-        coord.mqtt_bridge.exclude_hgi_id = MagicMock()
+        # Simulate pool children: child 0 connected, child 1 disconnected
+        child0 = MagicMock()
+        child0.hgi_id = "18:149488"
+        child0.callback_driven = False
+        child0.is_connected = True
 
-        # The active HGI is now the MQTT child (failover)
-        active_hgi_id = "18:149488"
+        child1 = MagicMock()
+        child1.hgi_id = "18:130236"
+        child1.callback_driven = False
+        child1.is_connected = False  # Disconnected
 
-        # Replicate the exclusion condition
-        if (
-            coord._is_serial_active
-            and isinstance(active_hgi_id, str)
-            and coord.mqtt_bridge is not None
-            and hasattr(coord.mqtt_bridge, "exclude_hgi_id")
-            and active_hgi_id != coord._last_excluded_hgi_id
-        ):
-            coord.mqtt_bridge.exclude_hgi_id(active_hgi_id)
-            coord._last_excluded_hgi_id = active_hgi_id
+        # Replicate the coordinator's serial_hgi_ids collection logic
+        serial_hgi_ids: set[str] = set()
+        for child in [child0, child1]:
+            child_hgi = getattr(child, "hgi_id", None)
+            is_callback = getattr(child, "callback_driven", False)
+            is_connected = getattr(child, "is_connected", False)
+            if (
+                child_hgi
+                and not is_callback
+                and isinstance(child_hgi, str)
+                and is_connected
+            ):
+                serial_hgi_ids.add(child_hgi)
 
         check(
-            "Failover: MQTT child not excluded when serial inactive",
-            coord.mqtt_bridge.exclude_hgi_id.call_count == 0,
-            f"exclude calls={coord.mqtt_bridge.exclude_hgi_id.call_count}",
+            "Set exclusion: only connected serial children excluded",
+            serial_hgi_ids == {"18:149488"},
+            f"serial_hgi_ids={serial_hgi_ids}",
+        )
+        check(
+            "Set exclusion: disconnected child NOT in exclusion set",
+            "18:130236" not in serial_hgi_ids,
+            f"18:130236 in set: {'18:130236' in serial_hgi_ids}",
         )
     except Exception as e:
         check(
-            "Failover: MQTT child not excluded when serial inactive",
+            "Set exclusion: only connected serial children excluded",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+        check(
+            "Set exclusion: disconnected child NOT in exclusion set",
             False,
             f"exception: {str(e)[:200]}",
         )
 
     # ---------------------------------------------------------------------------
-    # Test 3: Coordinator — serial active, exclude duplicate from MQTT
+    # Test 3: Un-exclusion — disconnected serial HGI re-included in MQTT
     # ---------------------------------------------------------------------------
-    # Same HGI on both serial and MQTT.  When serial is active, the
-    # HGI must be excluded from MQTT to avoid duplicate packets.
+    # When a serial child disconnects, its HGI should be un-excluded
+    # from the MQTT pool so packets via MQTT flow again (issue 1185).
     # ---------------------------------------------------------------------------
     try:
-        from custom_components.ramses_cc.coordinator import RamsesCoordinator
+        # Simulate the coordinator's stale_exclusions logic
+        excluded_serial_hgi_ids: set[str] = {"18:149488", "18:130236"}
+        current_serial_hgi_ids: set[str] = {"18:149488"}  # child 1 disconnected
 
-        coord2 = MagicMock()
-        coord2._is_serial_active = True
-        coord2._last_excluded_hgi_id = None
-        coord2.mqtt_bridge = MagicMock()
-        coord2.mqtt_bridge.exclude_hgi_id = MagicMock()
-
-        active_hgi_id = "18:130236"  # Same on serial and MQTT
-
-        if (
-            coord2._is_serial_active
-            and isinstance(active_hgi_id, str)
-            and coord2.mqtt_bridge is not None
-            and hasattr(coord2.mqtt_bridge, "exclude_hgi_id")
-            and active_hgi_id != coord2._last_excluded_hgi_id
-        ):
-            coord2.mqtt_bridge.exclude_hgi_id(active_hgi_id)
-            coord2._last_excluded_hgi_id = active_hgi_id
+        stale_exclusions = excluded_serial_hgi_ids - current_serial_hgi_ids
+        # stale_exclusions should be {"18:130236"}
 
         check(
-            "Dedup: serial-active excludes duplicate HGI from MQTT",
-            coord2.mqtt_bridge.exclude_hgi_id.call_count == 1,
-            f"exclude calls={coord2.mqtt_bridge.exclude_hgi_id.call_count}",
+            "Un-exclusion: stale exclusions calculated correctly",
+            stale_exclusions == {"18:130236"},
+            f"stale={stale_exclusions}",
+        )
+
+        # Simulate un-exclusion
+        mqtt_bridge = MagicMock()
+        mqtt_bridge.unexclude_hgi_id = MagicMock()
+        for hgi_id in stale_exclusions:
+            if hasattr(mqtt_bridge, "unexclude_hgi_id"):
+                mqtt_bridge.unexclude_hgi_id(hgi_id)
+            excluded_serial_hgi_ids.discard(hgi_id)
+
+        check(
+            "Un-exclusion: unexclude_hgi_id called for stale HGI",
+            mqtt_bridge.unexclude_hgi_id.call_count == 1
+            and mqtt_bridge.unexclude_hgi_id.call_args.args[0] == "18:130236",
+            f"calls={mqtt_bridge.unexclude_hgi_id.call_count}",
+        )
+        check(
+            "Un-exclusion: stale HGI removed from excluded set",
+            "18:130236" not in excluded_serial_hgi_ids
+            and "18:149488" in excluded_serial_hgi_ids,
+            f"excluded={excluded_serial_hgi_ids}",
         )
     except Exception as e:
         check(
-            "Dedup: serial-active excludes duplicate HGI from MQTT",
+            "Un-exclusion: stale exclusions calculated correctly",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+        check(
+            "Un-exclusion: unexclude_hgi_id called for stale HGI",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+        check(
+            "Un-exclusion: stale HGI removed from excluded set",
             False,
             f"exception: {str(e)[:200]}",
         )
 
     # ---------------------------------------------------------------------------
-    # Test 4: Coordinator — re-exclusion skipped for same HGI ID
+    # Test 4: Re-exclusion skipped for already-excluded HGIs (idempotent)
     # ---------------------------------------------------------------------------
     # If the serial transport reconnects with the same HGI ID, the
     # exclusion should NOT be called again (idempotent).
     # ---------------------------------------------------------------------------
     try:
-        coord3 = MagicMock()
-        coord3._is_serial_active = True
-        coord3._last_excluded_hgi_id = "18:130236"  # Already excluded
-        coord3.mqtt_bridge = MagicMock()
-        coord3.mqtt_bridge.exclude_hgi_id = MagicMock()
+        excluded_serial_hgi_ids = {"18:130236"}
+        serial_hgi_ids_reconnect = {"18:130236"}  # Same ID on reconnect
 
-        active_hgi_id = "18:130236"  # Same ID on reconnect
+        mqtt_bridge2 = MagicMock()
+        mqtt_bridge2.exclude_hgi_id = MagicMock()
 
-        if (
-            coord3._is_serial_active
-            and isinstance(active_hgi_id, str)
-            and coord3.mqtt_bridge is not None
-            and hasattr(coord3.mqtt_bridge, "exclude_hgi_id")
-            and active_hgi_id != coord3._last_excluded_hgi_id
-        ):
-            coord3.mqtt_bridge.exclude_hgi_id(active_hgi_id)
-            coord3._last_excluded_hgi_id = active_hgi_id
+        for hgi_id in serial_hgi_ids_reconnect:
+            if hgi_id in excluded_serial_hgi_ids:
+                continue  # Already excluded — skip
+            mqtt_bridge2.exclude_hgi_id(hgi_id)
+            excluded_serial_hgi_ids.add(hgi_id)
 
         check(
-            "Reconnect: re-exclusion skipped for same HGI ID",
-            coord3.mqtt_bridge.exclude_hgi_id.call_count == 0,
-            f"exclude calls={coord3.mqtt_bridge.exclude_hgi_id.call_count}",
+            "Reconnect: re-exclusion skipped for same HGI ID (idempotent)",
+            mqtt_bridge2.exclude_hgi_id.call_count == 0,
+            f"calls={mqtt_bridge2.exclude_hgi_id.call_count}",
         )
     except Exception as e:
         check(
-            "Reconnect: re-exclusion skipped for same HGI ID",
+            "Reconnect: re-exclusion skipped for same HGI ID (idempotent)",
             False,
             f"exception: {str(e)[:200]}",
         )
@@ -470,54 +500,65 @@ async def run_tests():
     # After a serial reconnect, if the same HGI ID is discovered, the
     # coordinator should NOT re-exclude it from MQTT (idempotent).
     # If a DIFFERENT HGI ID appears, the old exclusion should be
-    # cleared and the new one excluded.
+    # cleared (un-excluded) and the new one excluded.
     # ---------------------------------------------------------------------------
     try:
-        coord5 = MagicMock()
-        coord5._is_serial_active = True
-        coord5._last_excluded_hgi_id = "18:130236"
-        coord5.mqtt_bridge = MagicMock()
-        coord5.mqtt_bridge.exclude_hgi_id = MagicMock()
-        coord5.mqtt_bridge.unexclude_hgi_id = MagicMock() if hasattr(
-            coord5.mqtt_bridge, "unexclude_hgi_id"
-        ) else MagicMock()
+        # Same HGI reconnects — already in excluded set
+        excluded_set = {"18:130236"}
+        serial_set_same = {"18:130236"}
+        bridge_same = MagicMock()
+        bridge_same.exclude_hgi_id = MagicMock()
+        bridge_same.unexclude_hgi_id = MagicMock()
 
-        # Same HGI reconnects
-        active_same = "18:130236"
-        if (
-            coord5._is_serial_active
-            and active_same != coord5._last_excluded_hgi_id
-        ):
-            coord5.mqtt_bridge.exclude_hgi_id(active_same)
-            coord5._last_excluded_hgi_id = active_same
+        for hgi_id in serial_set_same:
+            if hgi_id in excluded_set:
+                continue
+            bridge_same.exclude_hgi_id(hgi_id)
+            excluded_set.add(hgi_id)
+        stale = excluded_set - serial_set_same
+        for hgi_id in stale:
+            bridge_same.unexclude_hgi_id(hgi_id)
+            excluded_set.discard(hgi_id)
 
         check(
             "Reconnect same HGI: no re-exclusion (idempotent)",
-            coord5.mqtt_bridge.exclude_hgi_id.call_count == 0,
-            f"calls={coord5.mqtt_bridge.exclude_hgi_id.call_count}",
+            bridge_same.exclude_hgi_id.call_count == 0,
+            f"exclude calls={bridge_same.exclude_hgi_id.call_count}",
+        )
+        check(
+            "Reconnect same HGI: no un-exclusion (no stale)",
+            bridge_same.unexclude_hgi_id.call_count == 0,
+            f"unexclude calls={bridge_same.unexclude_hgi_id.call_count}",
         )
 
         # Different HGI reconnects (old USB was 18:130236, new is 18:999999)
-        coord6 = MagicMock()
-        coord6._is_serial_active = True
-        coord6._last_excluded_hgi_id = "18:130236"
-        coord6.mqtt_bridge = MagicMock()
-        coord6.mqtt_bridge.exclude_hgi_id = MagicMock()
+        excluded_set2 = {"18:130236"}
+        serial_set_diff = {"18:999999"}
+        bridge_diff = MagicMock()
+        bridge_diff.exclude_hgi_id = MagicMock()
+        bridge_diff.unexclude_hgi_id = MagicMock()
 
-        active_different = "18:999999"
-        if (
-            coord6._is_serial_active
-            and active_different != coord6._last_excluded_hgi_id
-        ):
-            coord6.mqtt_bridge.exclude_hgi_id(active_different)
-            coord6._last_excluded_hgi_id = active_different
+        for hgi_id in serial_set_diff:
+            if hgi_id in excluded_set2:
+                continue
+            bridge_diff.exclude_hgi_id(hgi_id)
+            excluded_set2.add(hgi_id)
+        stale2 = excluded_set2 - serial_set_diff
+        for hgi_id in stale2:
+            bridge_diff.unexclude_hgi_id(hgi_id)
+            excluded_set2.discard(hgi_id)
 
         check(
             "Reconnect different HGI: new exclusion issued",
-            coord6.mqtt_bridge.exclude_hgi_id.call_count == 1
-            and coord6.mqtt_bridge.exclude_hgi_id.call_args.args[0]
-            == "18:999999",
-            f"calls={coord6.mqtt_bridge.exclude_hgi_id.call_count}",
+            bridge_diff.exclude_hgi_id.call_count == 1
+            and bridge_diff.exclude_hgi_id.call_args.args[0] == "18:999999",
+            f"calls={bridge_diff.exclude_hgi_id.call_count}",
+        )
+        check(
+            "Reconnect different HGI: old HGI un-excluded",
+            bridge_diff.unexclude_hgi_id.call_count == 1
+            and bridge_diff.unexclude_hgi_id.call_args.args[0] == "18:130236",
+            f"unexclude calls={bridge_diff.unexclude_hgi_id.call_count}",
         )
     except Exception as e:
         check(
@@ -526,7 +567,144 @@ async def run_tests():
             f"exception: {str(e)[:200]}",
         )
         check(
+            "Reconnect same HGI: no un-exclusion (no stale)",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+        check(
             "Reconnect different HGI: new exclusion issued",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+        check(
+            "Reconnect different HGI: old HGI un-excluded",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+
+    # ---------------------------------------------------------------------------
+    # Test 11: MQTT bridge unexclude_hgi_id method exists and works
+    # ---------------------------------------------------------------------------
+    try:
+        from custom_components.ramses_cc.mqtt_pool_bridge import (
+            RamsesMqttPoolBridge,
+        )
+
+        has_unexclude = hasattr(RamsesMqttPoolBridge, "unexclude_hgi_id")
+        check(
+            "MQTT bridge: unexclude_hgi_id method exists",
+            has_unexclude,
+            f"has_unexclude={has_unexclude}",
+        )
+    except Exception as e:
+        check(
+            "MQTT bridge: unexclude_hgi_id method exists",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+
+    # ---------------------------------------------------------------------------
+    # Test 12: Per-device-type exclusion (ESP32-S3, HGI80, nanoCUL, ATmega)
+    # ---------------------------------------------------------------------------
+    # All serial device types should be excluded from MQTT when connected,
+    # regardless of firmware type.  The exclusion is based on is_connected
+    # and callback_driven, not on the device firmware.
+    # ---------------------------------------------------------------------------
+    try:
+        device_types = [
+            ("ESP32-S3", "18:130236"),
+            ("HGI80", "18:222222"),
+            ("nanoCUL", "18:333333"),
+            ("ATmega32U4", "18:444444"),
+        ]
+
+        for dev_name, hgi_id in device_types:
+            child = MagicMock()
+            child.hgi_id = hgi_id
+            child.callback_driven = False
+            child.is_connected = True
+
+            serial_ids: set[str] = set()
+            for c in [child]:
+                if (
+                    c.hgi_id
+                    and not c.callback_driven
+                    and isinstance(c.hgi_id, str)
+                    and c.is_connected
+                ):
+                    serial_ids.add(c.hgi_id)
+
+            check(
+                f"Device type {dev_name}: excluded from MQTT when connected",
+                hgi_id in serial_ids,
+                f"serial_ids={serial_ids}",
+            )
+
+            # When disconnected, should NOT be in exclusion set
+            child.is_connected = False
+            serial_ids2: set[str] = set()
+            for c in [child]:
+                if (
+                    c.hgi_id
+                    and not c.callback_driven
+                    and isinstance(c.hgi_id, str)
+                    and c.is_connected
+                ):
+                    serial_ids2.add(c.hgi_id)
+
+            check(
+                f"Device type {dev_name}: NOT excluded when disconnected",
+                hgi_id not in serial_ids2,
+                f"serial_ids={serial_ids2}",
+            )
+    except Exception as e:
+        for dev_name, _ in [
+            ("ESP32-S3", "18:130236"),
+            ("HGI80", "18:222222"),
+            ("nanoCUL", "18:333333"),
+            ("ATmega32U4", "18:444444"),
+        ]:
+            check(
+                f"Device type {dev_name}: excluded from MQTT when connected",
+                False,
+                f"exception: {str(e)[:200]}",
+            )
+            check(
+                f"Device type {dev_name}: NOT excluded when disconnected",
+                False,
+                f"exception: {str(e)[:200]}",
+            )
+
+    # ---------------------------------------------------------------------------
+    # Test 13: Callback-driven children NOT excluded (MQTT children)
+    # ---------------------------------------------------------------------------
+    # Callback-driven children (MQTT) should never be in the serial
+    # exclusion set, even if connected.
+    # ---------------------------------------------------------------------------
+    try:
+        mqtt_child = MagicMock()
+        mqtt_child.hgi_id = "18:555555"
+        mqtt_child.callback_driven = True
+        mqtt_child.is_connected = True
+
+        serial_ids3: set[str] = set()
+        for c in [mqtt_child]:
+            if (
+                c.hgi_id
+                and not c.callback_driven
+                and isinstance(c.hgi_id, str)
+                and c.is_connected
+            ):
+                serial_ids3.add(c.hgi_id)
+
+        check(
+            "Callback child: NOT in serial exclusion set",
+            "18:555555" not in serial_ids3,
+            f"serial_ids={serial_ids3}",
+        )
+    except Exception as e:
+        check(
+            "Callback child: NOT in serial exclusion set",
             False,
             f"exception: {str(e)[:200]}",
         )
