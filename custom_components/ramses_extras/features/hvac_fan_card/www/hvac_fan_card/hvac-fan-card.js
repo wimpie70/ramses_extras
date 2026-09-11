@@ -252,12 +252,15 @@ class HvacFanCard extends RamsesBaseCard {
       || this.getEntityState(legacyTransportStateEntity);
     let transportAvailable = transportState?.state === 'on';
 
-    // Fallback: if no transport_state binary sensor exists, check if the
-    // climate entity is available (not 'unavailable'). This handles the case
-    // where the transport state sensor was never created (e.g. fan device
-    // discovered after startup) or the pool transport is working but the
-    // sensor is stale.
-    if (!transportAvailable) {
+    // Fallback: if no transport_state binary sensor exists (entity is
+    // null/undefined), check if the climate entity is available (not
+    // 'unavailable'). This handles the case where the transport state
+    // sensor was never created (e.g. fan device discovered after startup).
+    // Do NOT fall back when the sensor exists and says 'off' — that
+    // means the transport monitor has deliberately marked the device
+    // offline, and the climate entity being 'auto' does not mean the
+    // device is actually reachable.
+    if (!transportState) {
       const climateEntity = this.getEntityState(`climate.${config.device_id.replace(/:/g, '_')}`);
       if (climateEntity && climateEntity.state !== 'unavailable' && climateEntity.state !== 'unknown') {
         transportAvailable = true;
@@ -1349,12 +1352,15 @@ class HvacFanCard extends RamsesBaseCard {
       || this.getEntityState(legacyTransportStateEntity);
     let transportAvailable = transportState?.state === 'on';
 
-    // Fallback: if no transport_state binary sensor exists, check if the
-    // climate entity is available (not 'unavailable'). This handles the case
-    // where the transport state sensor was never created (e.g. fan device
-    // discovered after startup) or the pool transport is working but the
-    // sensor is stale.
-    if (!transportAvailable) {
+    // Fallback: if no transport_state binary sensor exists (entity is
+    // null/undefined), check if the climate entity is available (not
+    // 'unavailable'). This handles the case where the transport state
+    // sensor was never created (e.g. fan device discovered after startup).
+    // Do NOT fall back when the sensor exists and says 'off' — that
+    // means the transport monitor has deliberately marked the device
+    // offline, and the climate entity being 'auto' does not mean the
+    // device is actually reachable.
+    if (!transportState) {
       const climateEntity = this.getEntityState(`climate.${config.device_id.replace(/:/g, '_')}`);
       if (climateEntity && climateEntity.state !== 'unavailable' && climateEntity.state !== 'unknown') {
         transportAvailable = true;
