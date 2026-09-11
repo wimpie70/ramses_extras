@@ -244,6 +244,16 @@ EXPECTED_WARNINGS: list[str] = [
     # is offline during failover testing.  HA wraps the
     # ProtocolTimeoutError in a HomeAssistantError.
     "HomeAssistantError exception in shielded future",
+    # ramses_cc: "Cannot bind device ... of type HVC to FAN" — expected
+    # in recipes that test invalid device binding (HVC is not REM/DIS).
+    "Cannot bind device",
+    # ramses_cc: "Gateway appears offline: no packets received for ..."
+    # — expected in recipes with long waits (R16/R18/R25/R60) where no
+    # packets are injected for 10+ minutes.
+    "Gateway appears offline",
+    # ramses_tx: "packet from unknown child" — expected in R99 which
+    # tests unknown HGI handling by publishing from 18:009999.
+    "packet from unknown child",
 ]
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
