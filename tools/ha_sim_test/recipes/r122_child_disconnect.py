@@ -37,6 +37,7 @@ class R122ChildDisconnect(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         """Verify live MQTT child disconnect and reconnect."""
         ctx.log_section("Recipe 122: Live MQTT child disconnect and reconnect")
+        failed_at_start = ctx.failed
         ctx.wait_for_ramses_cc_loaded(timeout=20)
         ctx.refresh_token()
 
@@ -183,4 +184,7 @@ class R122ChildDisconnect(Recipe):
             detail=f"Errors: {error_logs[:200] if error_logs else 'none'}",
         )
 
-        ctx.check("All child disconnect/reconnect checks passed", ctx.failed == 0)
+        ctx.check(
+            "All child disconnect/reconnect checks passed",
+            ctx.failed == failed_at_start,
+        )

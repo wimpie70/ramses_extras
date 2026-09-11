@@ -38,6 +38,7 @@ class R118TxRxAfterSwitch(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         """Verify TX/RX for all verbs after transport type switch."""
         ctx.log_section("Recipe 118: TX/RX after transport type switch")
+        failed_at_start = ctx.failed
         ctx.wait_for_ramses_cc_loaded(timeout=20)
         ctx.refresh_token()
 
@@ -155,4 +156,4 @@ class R118TxRxAfterSwitch(Recipe):
             detail=f"Final timeouts: {timeouts[:200] if timeouts else 'none'}",
         )
 
-        ctx.check("All TX/RX after switch checks passed", ctx.failed == 0)
+        ctx.check("All TX/RX after switch checks passed", ctx.failed == failed_at_start)

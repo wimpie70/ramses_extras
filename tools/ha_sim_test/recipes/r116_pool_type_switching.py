@@ -39,6 +39,7 @@ class R116PoolTypeSwitching(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         """Verify live pool type switching."""
         ctx.log_section("Recipe 116: Live pool type switching")
+        failed_at_start = ctx.failed
         ctx.wait_for_ramses_cc_loaded(timeout=20)
         ctx.refresh_token()
 
@@ -199,5 +200,5 @@ class R116PoolTypeSwitching(Recipe):
 
         ctx.check(
             "All pool type switching checks passed",
-            ctx.failed == 0,
+            ctx.failed == failed_at_start,
         )

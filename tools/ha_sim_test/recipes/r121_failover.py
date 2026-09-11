@@ -36,6 +36,7 @@ class R121Failover(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         """Verify live failover when primary disconnects."""
         ctx.log_section("Recipe 121: Live failover")
+        failed_at_start = ctx.failed
         ctx.wait_for_ramses_cc_loaded(timeout=20)
         ctx.refresh_token()
 
@@ -195,4 +196,4 @@ class R121Failover(Recipe):
             detail=f"Errors: {error_logs[:200] if error_logs else 'none'}",
         )
 
-        ctx.check("All failover checks passed", ctx.failed == 0)
+        ctx.check("All failover checks passed", ctx.failed == failed_at_start)

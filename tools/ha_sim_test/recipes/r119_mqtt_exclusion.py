@@ -34,6 +34,7 @@ class R119MqttExclusion(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         """Verify live MQTT exclusion and un-exclusion."""
         ctx.log_section("Recipe 119: Live MQTT exclusion and un-exclusion")
+        failed_at_start = ctx.failed
         ctx.wait_for_ramses_cc_loaded(timeout=20)
         ctx.refresh_token()
 
@@ -141,4 +142,4 @@ class R119MqttExclusion(Recipe):
             detail=f"Errors: {error_logs[:200] if error_logs else 'none'}",
         )
 
-        ctx.check("All MQTT exclusion checks passed", ctx.failed == 0)
+        ctx.check("All MQTT exclusion checks passed", ctx.failed == failed_at_start)

@@ -37,6 +37,7 @@ class R120PrimarySwitch(Recipe):
     async def run(self, ctx: RecipeContext) -> None:
         """Verify live primary HGI switch and TX routing."""
         ctx.log_section("Recipe 120: Live primary HGI switch and TX routing")
+        failed_at_start = ctx.failed
         ctx.wait_for_ramses_cc_loaded(timeout=20)
         ctx.refresh_token()
 
@@ -148,4 +149,4 @@ class R120PrimarySwitch(Recipe):
             detail=f"Errors: {error_logs[:200] if error_logs else 'none'}",
         )
 
-        ctx.check("All primary HGI switch checks passed", ctx.failed == 0)
+        ctx.check("All primary HGI switch checks passed", ctx.failed == failed_at_start)
