@@ -1531,10 +1531,10 @@ After PRs 1, 2, 4A, 4B, and 5 are complete, run the Phase 1 release gate:
 
 After PR 3 is complete and the hardware feasibility gate has passed, run the Phase 2 release gate:
 
-- All Phase 1 gate items still pass.
-- Record physical two-USB and USB-plus-MQTT results.
-- Verify USB unplug/reconnect and ESP restart/LWT against the integrated stack.
-- Verify serial transport is un-gated in the config flow.
+- [x] All Phase 1 gate items still pass.
+- [x] Record physical two-USB and USB-plus-MQTT results. — **2026-09-09, scenarios C+E PASS**
+- [x] Verify USB unplug/reconnect and ESP restart/LWT against the integrated stack. — **2026-09-09, scenario D PASS**
+- [x] Verify serial transport is un-gated in the config flow. — **Serial selectable as "USB (serial)", only Zigbee remains gated**
 
 ### Phase 3 release gate (Zigbee)
 
@@ -1567,11 +1567,11 @@ The MQTT pool feature is complete only when all of the following are true:
 
 The serial and hybrid pool feature is complete only when all of the following are additionally true:
 
-1. Serial transport is un-gated in the config flow (the "(not yet supported)" marker and `TODO:` remarks are removed).
-2. `PortTransport` is a fully send-capable pool child without ESP startup reset loops.
-3. Serial and HA-native MQTT adapters pass equivalent routing/lifecycle tests.
-4. Full repository suites, complete `ha_sim_test`, diagnostics review, and mandatory physical two-USB and USB-plus-MQTT release evidence pass.
-5. USB unplug/reconnect and ESP restart/LWT behavior verified against the integrated stack.
+1. [x] Serial transport is un-gated in the config flow (the "(not yet supported)" marker and `TODO:` remarks are removed).
+2. [x] `PortTransport` is a fully send-capable pool child without ESP startup reset loops. — **`SignaturePolicy` (IMMEDIATE/DELAYED/SKIP/ID_COMMAND), `startup_grace`, `configured_hgi_id` implemented in `ramses_tx`; `pooled_transport_factory` supports per-child config overrides**
+3. [x] Serial and HA-native MQTT adapters pass equivalent routing/lifecycle tests.
+4. [x] Full repository suites, complete `ha_sim_test`, diagnostics review, and mandatory physical two-USB and USB-plus-MQTT release evidence pass.
+5. [x] USB unplug/reconnect and ESP restart/LWT behavior verified against the integrated stack.
 
 ### Phase 3 — Zigbee pool
 
