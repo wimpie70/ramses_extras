@@ -50,6 +50,7 @@ from ..helpers import (
     wait_for,
     wait_for_discovered_device,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 from ..profile import MIXED_KL, MIXED_SCHEMA, get_mixed_kl
@@ -157,6 +158,14 @@ class R37BdrHotwaterValveMisclassifiedAsApplianceControlIssue834(Recipe):
         except RuntimeError:
             pass
         wait_for_schema_populated(timeout=15)
+
+        # Wait for the MQTT transport to be ready before injecting —
+        # the profile reload disconnects/reconnects the MQTT bridge,
+        # and packets injected before the bridge is subscribed are
+        # silently dropped (the OTB's 3B00/3EF0 were lost in a prior
+        # run because they were injected during the reconnect window).
+        wait_for_transport_ready(timeout=30)
+        ctx.wait(2, "for MQTT bridge to settle after reconnect")
 
         # --- Step 1: Both OTB and BDR broadcast 3B00 I (TPI loop) ---
         # In peternash's system, both relays broadcast 3B00/3EF0 as I.
