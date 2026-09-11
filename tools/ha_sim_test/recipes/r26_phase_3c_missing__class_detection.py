@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import urllib.request
 
 from ..base import Recipe, RecipeContext
@@ -10,6 +9,7 @@ from ..const import CTL
 from ..helpers import (
     call_service,
     get_current_instance,
+    get_docker_logs,
     get_schema_retry,
     load_profile_yaml,
     wait_for,
@@ -155,11 +155,7 @@ class R26Phase3cMissingClassDetection(Recipe):
         log_text = urllib.request.urlopen(req).read().decode()
 
         # Also check docker logs for scan engine state
-        docker_logs = subprocess.run(
-            ["docker", "logs", get_current_instance().name, "--since", "60s"],
-            capture_output=True,
-            text=True,
-        ).stdout
+        docker_logs = get_docker_logs(since="60s")
         scan_has_device = test_device in docker_logs
         print(f"  {test_device} in docker logs: {scan_has_device}")
 

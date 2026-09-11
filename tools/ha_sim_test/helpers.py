@@ -103,6 +103,44 @@ def get_current_instance() -> InstanceConfig:
     return inst
 
 
+def get_docker_logs(
+    since: str | None = None,
+    *,
+    timeout: int = 30,
+    tail: int | None = 5000,
+) -> str:
+    """Fetch docker logs for the current HA instance, with timeout safety.
+
+    Uses ``--tail`` to limit output size (default 5000 lines) which prevents
+    the ``docker logs`` command from timing out on containers with large
+    log buffers (issue: R31/R33 TimeoutExpired after 10s in full suite).
+
+    :param since: ISO timestamp (local time) for ``--since`` filter, or None.
+    :param timeout: subprocess timeout in seconds (default 30).
+    :param tail: number of recent lines to fetch (default 5000), or None
+                 for all lines (not recommended for long-running containers).
+    :returns: combined stderr+stdout log text, or empty string on error.
+    """
+    cmd: list[str] = ["docker", "logs"]
+    if since:
+        cmd.extend(["--since", since])
+    if tail is not None:
+        cmd.extend(["--tail", str(tail)])
+    cmd.append(get_current_instance().name)
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return result.stderr or result.stdout or ""
+    except subprocess.TimeoutExpired:
+        return ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def log_section(title: str) -> None:
     print(f"\n{'=' * 60}")
     print(f"  {title}")

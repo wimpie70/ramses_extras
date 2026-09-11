@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 import urllib.request
 from datetime import datetime as dt
@@ -18,6 +17,7 @@ from ..helpers import (
     find_entity_for_device,
     get_cached_schema,
     get_current_instance,
+    get_docker_logs,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -92,15 +92,8 @@ class R10InvalidMainTcsSafetyNet(Recipe):
 
         # Check logs for sanitisation warning.
         sanitised = False
-        log_result = subprocess.run(
-            ["docker", "logs", get_current_instance().name, "--since", "120s"],
-            capture_output=True,
-            text=True,
-        )
-        if (
-            "Sanitising invalid main_tcs" in log_result.stdout
-            or "Sanitising invalid main_tcs" in log_result.stderr
-        ):
+        log_result = get_docker_logs(since="120s")
+        if "Sanitising invalid main_tcs" in log_result:
             sanitised = True
         ctx.check(
             "Coordinator sanitises invalid main_tcs",

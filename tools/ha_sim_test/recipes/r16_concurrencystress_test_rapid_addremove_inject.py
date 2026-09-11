@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 import urllib.request
 from datetime import datetime as dt
@@ -17,6 +16,7 @@ from ..helpers import (
     find_entity_for_device,
     get_cached_schema,
     get_current_instance,
+    get_docker_logs,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -149,11 +149,7 @@ class R16ConcurrencystressTestRapidAddremoveInject(Recipe):
         )
 
         # Check logs for errors during stress test
-        log_result = subprocess.run(
-            ["docker", "logs", get_current_instance().name, "--since", "60s"],
-            capture_output=True,
-            text=True,
-        )
+        log_result = get_docker_logs(since="60s")
         # Filter out expected/cosmetic patterns (same list as log_monitor.py)
         from ..log_monitor import EXPECTED_WARNINGS
 
@@ -161,7 +157,7 @@ class R16ConcurrencystressTestRapidAddremoveInject(Recipe):
             return any(pat in line for pat in EXPECTED_WARNINGS)
 
         real_errors = False
-        for line in log_result.stderr.splitlines():
+        for line in log_result.splitlines():
             if "ERROR" not in line:
                 continue
             if "ramses_cc" not in line and "ramses_rf" not in line:

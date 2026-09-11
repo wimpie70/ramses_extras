@@ -10,6 +10,7 @@ from ..const import CTL, DHW, FAN, HGI, REM
 from ..helpers import (
     call_service,
     get_current_instance,
+    get_docker_logs,
     get_entities,
     get_schema_retry,
     is_ramses_cc_loaded,
@@ -190,21 +191,7 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
         baseline_utc = _dt2.fromisoformat(_log_baseline)
         baseline_local = baseline_utc + _td2(hours=tz_hours, minutes=tz_mins)
         baseline_docker = baseline_local.strftime("%Y-%m-%dT%H:%M:%S")
-        gw_log = (
-            subprocess.run(
-                [
-                    "docker",
-                    "logs",
-                    "--since",
-                    baseline_docker,
-                    get_current_instance().name,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            ).stderr
-            or ""
-        )
+        gw_log = get_docker_logs(since=baseline_docker)
         # Filter for "Schema passed to ramses_rf" lines
         all_gw_lines = [
             line for line in gw_log.splitlines() if "Schema passed to ramses_rf" in line
@@ -305,21 +292,7 @@ class R33Phase3d3bConsolidatedStripperValidationMa(Recipe):
         # Exclude BIND EXCEPTION errors (expected when BDR devices are
         # in the schema but not in the known_list — they use "unwanted
         # or invalid" which matches the "invalid" keyword).
-        schema_log = (
-            subprocess.run(
-                [
-                    "docker",
-                    "logs",
-                    "--since",
-                    baseline_docker,
-                    get_current_instance().name,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            ).stderr
-            or ""
-        )
+        schema_log = get_docker_logs(since=baseline_docker)
         schema_errors = [
             line
             for line in schema_log.splitlines()

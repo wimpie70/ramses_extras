@@ -27,13 +27,13 @@ See:
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 from datetime import datetime as dt
 
 from ..base import Recipe, RecipeContext
 from ..helpers import (
     call_service,
+    get_docker_logs,
     get_schema_retry,
     grep_ha_log,
     wait_for,
@@ -82,14 +82,7 @@ class R62TopologyEventDrivenSchemaSyncStep5(Recipe):
         # Wait for DiscoveryManager to start (count-based to avoid stale
         # log matches from previous recipes — same pattern as R11).
         def _count_discovery_starts() -> int:
-            inst_name = _get_container_name()
-            result = subprocess.run(
-                ["docker", "logs", inst_name],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            logs = (result.stderr or "") + (result.stdout or "")
+            logs = get_docker_logs()
             return logs.count("DiscoveryManager: started (passive scan running)")
 
         _discovery_count_before = _count_discovery_starts()

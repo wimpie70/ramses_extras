@@ -17,6 +17,7 @@ from ..helpers import (
     find_entity_for_device,
     get_cached_schema,
     get_current_instance,
+    get_docker_logs,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -202,19 +203,7 @@ class R31Phase3d6CommandsOverridePrecedenceE2e(Recipe):
             baseline_docker_r31 = _dt.datetime.fromisoformat(
                 _log_baseline_r31
             ).strftime("%Y-%m-%dT%H:%M:%S")
-            raw_log_result = subprocess.run(
-                [
-                    "docker",
-                    "logs",
-                    "--since",
-                    baseline_docker_r31,
-                    get_current_instance().name,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            raw_log_r31 = raw_log_result.stderr or raw_log_result.stdout
+            raw_log_r31 = get_docker_logs(since=baseline_docker_r31)
             intercepted = "Intercepted fan_mode" in raw_log_r31
             ctx.check(
                 "Log shows 'Intercepted fan_mode' (override path taken)",

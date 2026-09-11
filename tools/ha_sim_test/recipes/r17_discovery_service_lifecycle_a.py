@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 import urllib.request
 from datetime import datetime as dt
@@ -17,6 +16,7 @@ from ..helpers import (
     find_entity_for_device,
     get_cached_schema,
     get_current_instance,
+    get_docker_logs,
     get_entities,
     get_entity_attributes,
     get_known_list,
@@ -89,14 +89,7 @@ class R17DiscoveryServiceLifecycleA(Recipe):
         # count to increase — otherwise the wait_for would match stale
         # "started" lines from previous recipes in the docker logs.
         def _count_discovery_starts() -> int:
-            inst = get_current_instance()
-            result = subprocess.run(
-                ["docker", "logs", inst.name],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            logs = (result.stderr or "") + (result.stdout or "")
+            logs = get_docker_logs()
             return logs.count("DiscoveryManager: started (passive scan running)")
 
         _discovery_count_before = _count_discovery_starts()

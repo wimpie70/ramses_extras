@@ -36,6 +36,7 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL
 from ..helpers import (
     call_service,
+    get_docker_logs,
     get_schema_retry,
     load_profile_yaml,
     wait_for,
@@ -241,18 +242,8 @@ class R76ZoneName0004PollingIssue947(Recipe):
         ctx.wait(3, "for mismatch check to run")
 
         # Check the HA log for the name mismatch warning
-        import subprocess
-
-        container_name = ctx.instance.name
-
         def _log_has_name_mismatch() -> bool:
-            result = subprocess.run(
-                ["docker", "logs", "--since", "10s", container_name],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            logs = result.stderr or ""
+            logs = get_docker_logs(since="10s")
             return "name mismatch" in logs.lower()
 
         wait_for(

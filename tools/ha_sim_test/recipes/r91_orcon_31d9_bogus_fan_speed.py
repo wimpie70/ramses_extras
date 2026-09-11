@@ -36,6 +36,7 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL, FAN
 from ..helpers import (
     call_service,
+    get_docker_logs,
     get_entities,
     load_profile_yaml,
     wait_for,
@@ -260,15 +261,7 @@ class R91Orcon31d9BogusFanSpeed(Recipe):
         #    a) no "Null packet" errors (PR 1132 regression)
         #    b) the unknown mode 0x08 was decoded as raw hex "08" by the
         #       parser (visible in the handle_event log payload)
-        import subprocess
-
-        raw_log = subprocess.run(
-            ["docker", "logs", "--since", "120s", get_current_instance().name],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        log_text = raw_log.stderr or raw_log.stdout
+        log_text = get_docker_logs(since="120s")
         has_null_packet = any(
             "31D9" in line and "Null packet" in line for line in log_text.splitlines()
         )
