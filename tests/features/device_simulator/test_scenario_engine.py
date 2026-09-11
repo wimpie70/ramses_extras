@@ -2107,7 +2107,13 @@ class TestScenarioEngineHandleInboundFrame:
 
     @pytest.mark.asyncio
     async def test_handle_inbound_frame_auto_answer_disabled(self) -> None:
-        """Test handling RQ frame with auto_answer disabled."""
+        """Test handling RQ frame with auto_answer disabled.
+
+        The RQ echo (hardware loopback simulation) still happens even
+        when auto_answer is disabled — it is a transport-level behavior,
+        not an auto-answer response.  Only the RP response should be
+        suppressed.
+        """
         hass = MagicMock()
         endpoint = MagicMock()
         endpoint.send_packet = AsyncMock()
@@ -2119,7 +2125,12 @@ class TestScenarioEngineHandleInboundFrame:
         frame = "000 RQ --- 32:150000 37:168270 --:------ 31DA 003 000000"
         await engine._handle_inbound_frame(frame)
 
-        endpoint.send_packet.assert_not_called()
+        # Exactly 1 call: the RQ echo (hardware loopback).
+        # No RP response should be sent when auto_answer is disabled.
+        assert endpoint.send_packet.call_count == 1
+        call_args = endpoint.send_packet.call_args[0][0]
+        assert "RQ" in call_args
+        assert "31DA" in call_args
 
     @pytest.mark.asyncio
     async def test_handle_inbound_frame_non_rq(self) -> None:
