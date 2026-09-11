@@ -1,7 +1,7 @@
 # Follow-up issue: multi-HGI pool — Phase 2 (serial/hybrid) and Phase 3 (Zigbee)
 
 **Source plan:** [`multi-hgi-plan.md`](../multi-hgi-plan.md) (repo root)
-**version:** Sep 8 2026 11:14
+**version:** Sep 11 2026 17:50
 **Scope:** Continue the phased rollout of transport-neutral HGI pooling after
 Phase 1 (MQTT-only pool) ships. Phase 2 adds serial and hybrid USB+MQTT pools;
 Phase 3 adds Zigbee pools once physical hardware is available.
@@ -38,6 +38,28 @@ issue 1171 config bugs are fixed:
   complete, draft PR open.
 - PR 1178 (ramses_cc, this branch): issue 1171 config bug fixes — pool
   removal, re-add, display, healing, sentinel filtering, CI coverage.
+- **Issue 1171 follow-up (2026-09-11, branch `fix/issue-1171-pool-config-bugs`):**
+  three additional fixes for the pool management UI:
+  - **Broker URL step for non-primary HGI USB→MQTT switch** (commit
+    `615726d3`): when a non-primary HGI switches from USB to MQTT via
+    the pool management UI, the config flow now redirects to the
+    broker URL step (`async_step_manage_pool_mqtt_url`), pre-filled
+    from the HA MQTT integration. Previously it only changed
+    `_preferred_type` and removed the serial port without collecting a
+    broker URL.
+  - **MQTT bridge creation for non-primary `_preferred_type: mqtt`**
+    (commit `68a455cc`): the coordinator's MQTT activation gate now
+    includes schema HGIs with `_preferred_type: "mqtt"`, so the MQTT
+    pool bridge is created even when the primary is serial.
+  - **HGI comment warning migration** (commit `61b45209`): HGI
+    `_comment` fields now include the warning suffix
+    ` (don't edit here — adapt with the Pool Management config)`.
+    A migration in `coordinator.async_setup` appends the warning to
+    existing comments on startup. The warning text avoids the words
+    `usb`, `mqtt`, and `zigbee` so comment-based transport detection
+    is not broken.
+  - **Regression test R123** added to `ha_sim_test` covering all three
+    fixes (20 checks, all pass).
 
 Live hardware test results (2026-09-05, hass, 2 ESP32 MQTT HGIs): 11/11 test
 scenarios pass (dual-MQTT, hybrid serial+MQTT receive, LWT failover, broker
@@ -548,12 +570,26 @@ during Phase 2/3 work if they become relevant:
   in Phase 1. A heartbeat timeout may be added if real-world testing shows
   this is needed.
 - **Gateway status binary sensor does not reflect per-HGI offline state**
-  (issue 1171 comment by silverailscolo). The `RamsesGatewayBinarySensor`
+  (issue 1171 comment by silverrailscolo). The `RamsesGatewayBinarySensor`
   tracks the ramses_rf gateway's `is_active`, which in a pool setup reflects
   the overall pool bridge state, not individual HGI connectivity. If the
   primary HGI is unplugged but cached packets are loaded or other HGIs are
   still online, the sensor stays "OK". Per-HGI online/offline sensors and
-  proper last-packet expiry are Phase 2 items.
+  proper last-packet expiry are Phase 2 items. **Note (2026-09-11):** the
+  current `binary_sensor.hgi_18_*_gateway_status` entities use
+  `device_class: problem` with inverted logic (`state=off` means "no
+  problem" = OK). Both HGI status entities show `off` (OK) in the current
+  hybrid pool. A per-HGI online/offline sensor that tracks MQTT LWT and
+  serial connection state separately is still needed — see PR 1183
+  comments by silverrailscolo.
+- **HGI `_comment` warning** — **Fixed (2026-09-11, commit `61b45209`).**
+  HGI `_comment` fields now include the warning suffix
+  ` (don't edit here — adapt with the Pool Management config)`. A
+  migration in `coordinator.async_setup` appends the warning to existing
+  comments on startup. `build_hgi_comment()` and
+  `ensure_hgi_comment_warning()` helpers in `const.py` ensure the warning
+  is always present and idempotent. The warning text avoids `usb`, `mqtt`,
+  and `zigbee` so comment-based transport detection is not broken.
 - **Diagnostics/config UI display** of transport kind, address, HGI ID,
   broker/topic, availability, acceptance, and send readiness — not addressed
   in PR 5.
@@ -598,6 +634,8 @@ during Phase 2/3 work if they become relevant:
 - Hardware feasibility gate report: `docs/serial_hw_gate_report.md`
 - Hardware test tools: `tools/serial_hw_gate.py`, `tools/hybrid_usb_mqtt_test.py`
 - Hardware test logs: `logs/serial_hw_gate_20260906_*.log`
+- Regression test: `tools/ha_sim_test/recipes/r123_non_primary_usb_to_mqtt.py`
+  (R123 — non-primary HGI USB→MQTT switch, comment warning migration)
 - Related issues:
   - https://github.com/ramses-rf/ramses_rf/issues/1119 (original multi-HGI
     discussion)

@@ -1,6 +1,6 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 6, 7:30
+updated: sep 11, 17:50
 
 ## Terminology
 
@@ -1630,3 +1630,133 @@ Both HGIs accepted with transport capability detection:
 - [ ] Consider auto-populating `additional_ports` when multiple accepted USB HGIs are detected.
 - [ ] Run full `ha_sim_test` suite after final changes.
 - [ ] Run ramses_rf, ramses_cc, ramses_extras full test suites for regression.
+
+## Issue 1171 follow-up: pool config-flow fixes (2026-09-11)
+
+Branch: `fix/issue-1171-pool-config-bugs` (pushed to `wimpie70/ramses_cc`).
+
+Three fixes for the pool management UI, all verified on real hardware
+(hass, 2 ESP32 HGIs `18:130236` + `18:149488`, MQTT broker at
+`192.168.40.11:1883`, serial via `/dev/ttyACM0`):
+
+### 1. Broker URL step for non-primary HGI USB→MQTT switch
+
+**Problem:** When a non-primary HGI switched from USB to MQTT via the
+pool management UI, the config flow only changed `_preferred_type` and
+removed the serial port from `additional_ports` — it did not redirect to
+the broker URL step. The user expected the same broker URL step that the
+primary HGI switch already gets.
+
+**Fix (commit `615726d3`):** The config flow now sets a
+`_switching_secondary_to_mqtt` flag and redirects to
+`async_step_manage_pool_mqtt_url()`, just like the primary HGI switch.
+The broker URL is pre-filled from the HA MQTT integration's broker
+(host, port, topic prefix, HGI ID). The user can confirm or edit it
+before saving. The URL is stored in `additional_ports` as a `mqtt://`
+URL so the coordinator's MQTT pool bridge can extract the HGI ID and
+create a callback-driven MQTT child for it.
+
+The serial port is removed from `additional_ports` before redirecting,
+so the HGI becomes an MQTT-only child (not both serial and MQTT).
+
+### 2. MQTT bridge creation for non-primary `_preferred_type: mqtt`
+
+**Problem:** The coordinator only considered MQTT active when the
+primary was MQTT, an `mqtt://` additional URL existed, or `mqtt_hgi_id`
+was configured. A non-primary HGI with `_preferred_type: "mqtt"` did
+not satisfy those conditions, so the MQTT pool bridge was not created.
+
+**Fix (commit `68a455cc`):** The coordinator's MQTT activation gate now
+includes schema HGIs with `_preferred_type: "mqtt"` (via
+`_schema_mqtt_preferred`). The bridge creates callback children for
+all schema HGIs that prefer MQTT, even when the primary is serial.
+
+### 3. HGI comment warning migration
+
+**Problem:** HGI `_comment` fields like `Supports: usb, mqtt` gave no
+indication that `_preferred_type` should not be edited directly in the
+schema. Users were changing it manually, bypassing the pool management
+UI.
+
+**Fix (commit `61b45209`):**
+
+- `HGI_COMMENT_WARNING` constant in `const.py`:
+  ` (don't edit here — adapt with the Pool Management config)`
+- `build_hgi_comment(transports)` helper appends the warning to new
+  comments.
+- `ensure_hgi_comment_warning(comment)` helper appends the warning to
+  existing comments that lack it (idempotent — safe to call repeatedly).
+- Migration in `coordinator.async_setup` iterates the schema on
+  startup and appends the warning suffix to any HGI `_comment` that
+  doesn't already have it. This is a one-time migration — after the
+  first run, all comments have the suffix.
+- The warning text deliberately avoids the words `usb`, `mqtt`, and
+  `zigbee` because the config flow parses `_comment` for detected
+  transport types.
+- All comment-building sites in `config_flow.py` now use
+  `build_hgi_comment()` to ensure the warning is always present.
+
+### Verification (2026-09-11, hass)
+
+All three fixes verified on real hardware through the actual UI:
+
+- **Hybrid pool:** `1 serial child + 2 MQTT callback children:
+serial=['/dev/ttyACM0'], mqtt=['18:130236', '18:149488']`
+- **Both HGIs online:** `MqttPoolBridge: HGI 18:130236 online (LWT)`,
+  `MqttPoolBridge: HGI 18:149488 online (LWT)`
+- **RX:** Active from both serial and MQTT, deduplication working
+  (`deduped packet from child 0` / `child 1`)
+- **TX:** `send_packet` service succeeded, `Patching command with
+active HGI ID: swapped 18:000730 -> 18:149488`, echo detected from
+  both children, `MqttPoolBridge: TX -> ... on RAMSES/GATEWAY/18:130236/tx`
+- **Serial-primary exclusion:** `MqttPoolBridge: excluded HGI
+18:149488 from MQTT pool (serial primary)` — correct, since it's the
+  serial primary
+- **Comment warning:** Both HGIs show `Supports: usb, mqtt (don't edit
+here — adapt with the Pool Management config)`
+- **Status entities:** Both `binary_sensor.hgi_18_*_gateway_status`
+  show `state=off` (off = no problem = OK, `device_class: problem`)
+- **No errors, no tracebacks, no credential leaks** (MQTT URLs
+  redacted as `mqtt://***:***@192.168.40.11:1883/...` in runtime logs)
+
+### Regression test: R123
+
+Recipe R123 (`tools/ha_sim_test/recipes/r123_non_primary_usb_to_mqtt.py`)
+verifies all three fixes against regressions:
+
+- `HGI_COMMENT_WARNING` and `build_hgi_comment()` / `ensure_hgi_comment_warning()`
+  work correctly
+- The warning text doesn't contain `usb`, `mqtt`, or `zigbee`
+- The coordinator has the `_schema_mqtt_preferred` check
+- The config flow has the `_switching_secondary_to_mqtt` flag
+- The config flow removes the serial port on non-primary USB→MQTT switch
+- The config flow uses `build_hgi_comment()` for all comment construction
+- The comment warning migration runs in `async_setup`
+- Live config HGI comments with text have the warning suffix
+
+All 20 checks pass (18 recipe checks + 2 log cleanliness checks).
+
+### Current schema state (verified 2026-09-11)
+
+```yaml
+18:130236:
+  _class: HGI
+  _comment: "Supports: usb, mqtt (don't edit here — adapt with the Pool Management config)"
+  _owner: me
+  _preferred_type: mqtt # MQTT callback child
+
+18:149488:
+  _class: HGI
+  _comment: "Supports: usb, mqtt (don't edit here — adapt with the Pool Management config)"
+  _owner: me
+  _preferred_type: usb # serial primary
+```
+
+### Commits on `fix/issue-1171-pool-config-bugs`
+
+| Commit     | Description                                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `68a455cc` | Fixed reload suppression, MQTT bridge creation for non-primary `_preferred_type: mqtt`, serial-port removal on non-primary USB→MQTT switch |
+| `81dbe168` | Added `_comment` warning suffix about not editing `_preferred_type`                                                                        |
+| `615726d3` | Added broker URL step for non-primary HGI USB→MQTT switch                                                                                  |
+| `61b45209` | Comment warning migration + updated warning text                                                                                           |
