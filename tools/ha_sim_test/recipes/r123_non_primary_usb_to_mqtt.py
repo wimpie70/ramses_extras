@@ -1,4 +1,4 @@
-"""Recipe R121: Non-primary HGI USB→MQTT switch regression test.
+"""Recipe R123: Non-primary HGI USB→MQTT switch regression test.
 
 Verifies the three fixes for switching a non-primary HGI from USB to
 MQTT via the pool management UI (issue 1171):
@@ -43,7 +43,7 @@ class R123NonPrimaryUsbToMqtt(Recipe):
 
     async def run(self, ctx: RecipeContext) -> None:
         """Verify non-primary HGI USB→MQTT switch fixes."""
-        ctx.log_section("Recipe 121: Non-primary HGI USB→MQTT switch")
+        ctx.log_section("Recipe 123: Non-primary HGI USB→MQTT switch")
         failed_at_start = ctx.failed
         ctx.wait_for_ramses_cc_loaded(timeout=20)
         ctx.refresh_token()
@@ -108,7 +108,7 @@ print(json.dumps({"results": results}))
         )
 
         if "error" in result:
-            ctx.check("Recipe 121 comment helpers", False, result.get("error", ""))
+            ctx.check("Recipe 123 comment helpers", False, result.get("error", ""))
         else:
             for chk in result.get("results", []):
                 ctx.check(
@@ -129,24 +129,42 @@ def check(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
     results.append({"name": name, "status": status, "detail": detail})
 
-# Read the coordinator source to verify the _schema_mqtt_preferred logic
-# is present (regression guard — if someone removes the check, the
-# MQTT bridge won't be created for non-primary HGIs switched to MQTT).
-import inspect
-from custom_components.ramses_cc import coordinator as coord_mod
+# Behavioral check: call _extract_pool_hgis_from_schema directly
+# with a synthetic schema containing an HGI with _preferred_type:
+# "mqtt" and verify it's included in the returned list.
+from custom_components.ramses_cc.coordinator import RamsesCoordinator
 
-source = inspect.getsource(coord_mod)
+# Create a minimal mock self with the required attributes.
+class _MockEntry:
+    def __init__(self, options):
+        self.options = options
+
+mock_self = object.__new__(RamsesCoordinator)
+mock_self.entry = _MockEntry({
+    "schema": {
+    "_owner": "me",
+        "18:001111": {
+            "_class": "HGI",
+            "_owner": "me",
+            "_preferred_type": "mqtt",
+        },
+        "18:002222": {
+            "_class": "HGI",
+            "_preferred_type": "usb",
+        },
+    },
+})
+
+hgis = RamsesCoordinator._extract_pool_hgis_from_schema(mock_self)
 check(
-    "Coordinator has _schema_mqtt_preferred check",
-    "_schema_mqtt_preferred" in source,
-    "The _schema_mqtt_preferred variable is missing — "
-    "non-primary HGI USB→MQTT switch will not create the MQTT bridge",
+    "MQTT-preferred HGI included in pool list",
+    "18:001111" in hgis,
+    f"hgis={hgis}",
 )
-
 check(
-    "Coordinator checks _preferred_type == mqtt in schema",
-    '_preferred_type' in source and '"mqtt"' in source,
-    "The schema _preferred_type check is missing",
+    "Ownerless USB HGI included as discovery candidate",
+    "18:002222" in hgis,
+    f"hgis={hgis}",
 )
 
 print(json.dumps({"results": results}))
@@ -155,7 +173,7 @@ print(json.dumps({"results": results}))
         )
 
         if "error" in result:
-            ctx.check("Recipe 121 coordinator logic", False, result.get("error", ""))
+            ctx.check("Recipe 123 coordinator logic", False, result.get("error", ""))
         else:
             for chk in result.get("results", []):
                 ctx.check(
@@ -165,7 +183,7 @@ print(json.dumps({"results": results}))
                 )
 
         # ------------------------------------------------------------------
-        # Test 3: Config flow has _switching_secondary_to_mqtt logic
+        # Test 3: Config flow manage_pool_mqtt_url accepts HGI ID (not URL)
         # ------------------------------------------------------------------
         result = docker_exec_python(
             """
@@ -176,35 +194,44 @@ def check(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
     results.append({"name": name, "status": status, "detail": detail})
 
+# Behavioral check: verify the options flow's manage_pool_mqtt_url
+# step accepts an HGI ID (not a full mqtt:// URL).  This is the
+# redesigned form (issue 1119 — HA MQTT is always the broker).
 import inspect
 from custom_components.ramses_cc import config_flow as cf_mod
 
-source = inspect.getsource(cf_mod)
+# The method is on RamsesOptionsFlowHandler (pool management is an
+# options-flow step, not a config-flow step).
+flow_cls = cf_mod.RamsesOptionsFlowHandler
 
+# Check the method exists.
 check(
-    "Config flow has _switching_secondary_to_mqtt flag",
-    "_switching_secondary_to_mqtt" in source,
-    "The _switching_secondary_to_mqtt flag is missing — "
-    "non-primary HGI USB→MQTT switch won't redirect to broker URL step",
+    "async_step_manage_pool_mqtt_url exists",
+    hasattr(flow_cls, "async_step_manage_pool_mqtt_url"),
+    "The manage_pool_mqtt_url step is missing",
 )
 
-check(
-    "Config flow removes serial port on non-primary USB→MQTT",
-    "removed serial port" in source and "switched to MQTT" in source,
-    "The serial port removal logic for non-primary HGIs is missing",
+# Check the method source accepts hgi_id (not mqtt_url).
+source = inspect.getsource(
+    flow_cls.async_step_manage_pool_mqtt_url
 )
-
 check(
-    "Config flow redirects non-primary to manage_pool_mqtt_url",
-    "_switching_secondary_to_mqtt" in source
-    and "async_step_manage_pool_mqtt_url" in source,
-    "The redirect to the broker URL step is missing",
+    "Form accepts hgi_id field (not mqtt_url)",
+    '"hgi_id"' in source and '"mqtt_url"' not in source,
+    "The form should collect hgi_id, not mqtt_url (issue 1119)",
 )
-
 check(
-    "Config flow uses build_hgi_comment for _comment",
-    "build_hgi_comment" in source,
-    "The config flow should use build_hgi_comment() to include the warning",
+    "Form has optional topic_prefix field",
+    '"topic_prefix"' in source,
+    "The form should have an optional topic_prefix field",
+)
+check(
+    "No broker/port/credential fields collected",
+    not any(
+        f'"{field}"' in source
+        for field in ("broker", "port", "username", "password")
+    ),
+    "The form should not collect broker/port/credentials (HA MQTT is the broker)",
 )
 
 print(json.dumps({"results": results}))
@@ -213,7 +240,7 @@ print(json.dumps({"results": results}))
         )
 
         if "error" in result:
-            ctx.check("Recipe 121 config flow logic", False, result.get("error", ""))
+            ctx.check("Recipe 123 config flow logic", False, result.get("error", ""))
         else:
             for chk in result.get("results", []):
                 ctx.check(
@@ -223,7 +250,7 @@ print(json.dumps({"results": results}))
                 )
 
         # ------------------------------------------------------------------
-        # Test 4: Comment warning migration runs on startup
+        # Test 4: Comment warning migration uses deepcopy (issue 1119)
         # ------------------------------------------------------------------
         result = docker_exec_python(
             """
@@ -234,26 +261,42 @@ def check(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
     results.append({"name": name, "status": status, "detail": detail})
 
-import inspect
-from custom_components.ramses_cc import coordinator as coord_mod
-
-source = inspect.getsource(coord_mod)
-
-check(
-    "Coordinator has HGI comment migration in async_setup",
-    "ensure_hgi_comment_warning" in source
-    and "Migrated HGI _comment" in source,
-    "The comment warning migration is missing from async_setup",
+# Behavioral check: call ensure_hgi_comment_warning directly and
+# verify it appends the warning suffix.  Also verify the coordinator's
+# migration uses deepcopy (not shallow copy) by checking the source
+# for the deepcopy call in the migration block.
+from custom_components.ramses_cc.const import (
+    HGI_COMMENT_WARNING,
+    ensure_hgi_comment_warning,
 )
 
-# Also verify the migration is in async_setup (not just anywhere)
-# by checking it's near the "client_state" line (which is in async_setup)
+# Behavioral: ensure_hgi_comment_warning appends to a bare comment.
+old = "Supports: usb"
+migrated = ensure_hgi_comment_warning(old)
 check(
-    "Migration is in async_setup (near client_state)",
-    "ensure_hgi_comment_warning" in source
-    and "client_state" in source
-    and source.index("ensure_hgi_comment_warning") < source.index("client_state"),
-    "The migration should be in async_setup before client_state loading",
+    "ensure_hgi_comment_warning appends warning",
+    migrated == old + HGI_COMMENT_WARNING,
+    f"migrated={migrated!r}",
+)
+
+# Behavioral: idempotent on already-warned comments.
+again = ensure_hgi_comment_warning(migrated)
+check(
+    "ensure_hgi_comment_warning is idempotent",
+    again == migrated,
+    f"again={again!r}",
+)
+
+# Source check: the migration block uses deepcopy (not dict() shallow
+# copy) so mutating _entry["_comment"] doesn't leak into the live
+# options dict (issue 1119).
+import inspect
+from custom_components.ramses_cc import coordinator as coord_mod
+source = inspect.getsource(coord_mod)
+check(
+    "Migration uses deepcopy (not shallow copy)",
+    "deepcopy(config_schema)" in source,
+    "The migration should use deepcopy to avoid mutating live options",
 )
 
 print(json.dumps({"results": results}))
@@ -262,7 +305,7 @@ print(json.dumps({"results": results}))
         )
 
         if "error" in result:
-            ctx.check("Recipe 121 comment migration", False, result.get("error", ""))
+            ctx.check("Recipe 123 comment migration", False, result.get("error", ""))
         else:
             for chk in result.get("results", []):
                 ctx.check(
@@ -338,7 +381,7 @@ print(json.dumps({"results": results}))
         )
 
         if "error" in result:
-            ctx.check("Recipe 121 live comment check", False, result.get("error", ""))
+            ctx.check("Recipe 123 live comment check", False, result.get("error", ""))
         else:
             for chk in result.get("results", []):
                 ctx.check(

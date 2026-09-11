@@ -116,12 +116,12 @@ Implemented on `ramses_cc`:
 
 - Config flow `manage_pool` step: serial ports and Zigbee labeled "(not yet supported)".
 - Selecting a gated option returns `pool_serial_not_supported` / `pool_zigbee_not_supported` error.
-- Config flow `manage_pool_mqtt` step: add MQTT broker as pool child (host, port, auth, topic_path).
+- Config flow `manage_pool_mqtt` step: ask for HGI ID only; the HA MQTT broker is always used (no host, port, credentials, or topic path). The `manage_pool_mqtt_url` step (used for USB→MQTT switching) additionally collects an optional topic prefix.
 - Config flow `manage_pool_zigbee` step: select Zigbee device (gated, shows form but cannot save in Phase 1).
 - Coordinator: `_create_pool_transport_constructor()` wires `pooled_transport_factory` from `ramses_tx` with lazy import guard for older published versions.
-- Coordinator: defensive filter — only `mqtt://` ports pass to `PooledTransport`; serial and Zigbee are filtered out.
+- Coordinator: hybrid pool constructor wires serial ports (primary + additional) and MQTT callback children into `pooled_transport_factory` from `ramses_tx` with lazy import guard for older published versions.
 - Coordinator: `_extract_pool_hgis_from_schema()` discovers accepted HGIs from schema (18: devices with `_owner == root_owner` and `_class: HGI`).
-- Coordinator: `_build_explicit_mqtt_url()` constructs per-HGI MQTT URLs from wildcard broker URL.
+- Coordinator: `_build_explicit_mqtt_url()` constructs per-HGI MQTT URLs for legacy/auto-promoted primary URL display. Pool callback children use `mqtt_ha://<hgi_id>` with the configured topic prefix.
 - Coordinator: `_get_primary_hgi_id()` resolves primary HGI from `CONF_MQTT_HGI_ID`, URL path, or schema fallback.
 - Coordinator: `_register_pool_hgis()` registers pool HGIs in discovery scan and clears `_suppress_not_seen` for connected HGIs.
 - Discovery: `sync_with_schema()` accepts optional schema dict and populates `_schema_no_owner_ids` for all schema devices without `_owner` (not just HGIs — any ownerless device is tracked for review).
@@ -163,7 +163,7 @@ Implemented on `ramses_rf`:
   - `RoutedCommand`: immutable result with pinned `child_id` + final DTO.
   - `WriteOutcome`: conservative classification (`SUBMITTED`, `NOT_SUBMITTED`, `AMBIGUOUS`) for safe failover decisions.
 - `TransportInterface` gains default `prepare_command()` and `write_routed()` methods that non-pooled transports inherit as pass-through.
-- `PooledTransport.prepare_command()`: extracts target from `addr2`, selects best child via RSSI/cold-start fallback, patches source address based on `SourcePolicy` and selected child's HGI ID.
+- `PooledTransport.prepare_command()`: extracts target via authoritative `packet_addrs()` helper (not hardcoded `addr2`), selects best child via RSSI/stable-first fallback, patches source address based on `SourcePolicy` and selected child's HGI ID.
 - `PooledTransport.write_routed()`: dispatches to pinned child, returns `WriteOutcome` (handles missing child, TypeError fallback for `disable_tx_limits`).
 - `PortProtocol._process_tx_item()`: wraps each QoS attempt in `prepare_command()` + `write_routed()`, sets `_pending_cmd` from final routed DTO so QoS echo matching uses the actual source-patched command.
 - `SourcePolicy` determined in `send_cmd()`: `GATEWAY` when `addr1` is the gateway placeholder or active HGI ID, `PRESERVE` for intentional non-gateway sources (faked-device commands).
@@ -222,7 +222,7 @@ A full release-readiness audit was performed across all active Phase 1 branches.
 
 3. **MQTT topic parser accepted non-HGI IDs** — `_extract_hgi_from_topic()` now requires the `18:` prefix and six digits. Non-HGI device IDs (e.g. `32:153289`) are rejected.
 
-4. **MQTT broker/topic form did not match runtime behavior** — `manage_pool_mqtt` simplified to HGI ID only. No host, port, credentials, or topic path requested (HA MQTT broker/topic is reused). Adding MQTT pool members gated on primary transport being MQTT. Serial-primary + MQTT hybrid paho path blocked.
+4. **MQTT broker/topic form did not match runtime behavior** — `manage_pool_mqtt` redesigned to HGI ID plus an optional topic prefix. No host, port, or credentials requested (HA MQTT broker is always used). Adding MQTT pool members gated on primary transport being MQTT. Serial-primary + MQTT hybrid paho path blocked.
 
 5. **Outbound publish outcome was premature** — `publish_frame()`, `_publish_tx()`, and `_publish_command()` are now async and await `mqtt.async_publish()`. Exceptions propagate to `PooledTransport.write_routed()` as `WriteOutcome.AMBIGUOUS`.
 
@@ -270,7 +270,7 @@ Full parallel run across 3 containers (ha-sim, ha-sim-2, ha-sim-3) with 87 recip
 - The existing non-pooled single-serial path remains unchanged.
 - Pool configuration changes use the Home Assistant config-entry reload lifecycle rather than runtime `add_child()`/`remove_child()` calls (runtime API removed).
 - Serial and Zigbee transport types are gated in the config flow with "(not yet supported)" markers.
-- Config flow supports adding MQTT pool children via HGI ID only (`18:NNNNNN`). The HA MQTT broker/topic is reused — no separate host, port, credentials, or topic path are requested. Adding MQTT pool members is gated on the primary transport being MQTT (serial-primary configurations cannot add MQTT pool children in Phase 1).
+- Config flow supports adding MQTT pool children via HGI ID (and an optional topic prefix for USB→MQTT switching via `manage_pool_mqtt_url`). The HA MQTT broker is always used — no host, port, or credentials are requested. Adding MQTT pool members is gated on the primary transport being MQTT.
 - Coordinator wires `pooled_transport_factory` from `ramses_tx` with a lazy import guard for older published versions.
 - Coordinator filters non-MQTT ports from pool construction (defensive serial/Zigbee exclusion).
 - Coordinator extracts accepted HGIs from schema, builds per-HGI MQTT URLs, and registers pool HGIs in discovery.
@@ -291,14 +291,16 @@ Full parallel run across 3 containers (ha-sim, ha-sim-2, ha-sim-3) with 87 recip
 
 #### 1. Pooled serial transmission is not supported
 
-Serial pool children are gated in the config flow with "(not yet supported)" and filtered by the coordinator (`coordinator.py` only passes `mqtt://` ports to `PooledTransport`). The underlying serial-send safety issue (ESP32 USB reset on startup signature exchange) remains uncharacterized. This is a Phase 2 prerequisite, not a runtime `disable_sending` flag.
+~~Serial pool children are gated in the config flow with "(not yet supported)" and filtered by the coordinator (`coordinator.py` only passes `mqtt://` ports to `PooledTransport`). The underlying serial-send safety issue (ESP32 USB reset on startup signature exchange) remains uncharacterized. This is a Phase 2 prerequisite, not a runtime `disable_sending` flag.~~
 
-Effects:
+~~Effects:~~
 
-- Two-USB pools cannot transmit at all.
-- In a serial-plus-MQTT pool, only MQTT children can transmit.
-- The router can select a serial child and then fail with `TransportError`.
-- The primary serial gateway is also read-only once it is placed inside a pool.
+~~- Two-USB pools cannot transmit at all.~~
+~~- In a serial-plus-MQTT pool, only MQTT children can transmit.~~
+~~- The router can select a serial child and then fail with `TransportError`.~~
+~~- The primary serial gateway is also read-only once it is placed inside a pool.~~
+
+**Resolved in Phase 2:** serial pool children are now supported via the hybrid pool constructor. `configured_hgi_id` and `enable_reconnect` are passed in per-child overrides, and `SignaturePolicy.ID_COMMAND` handles the startup signature exchange.
 
 #### 2. Serial identity is unavailable when the signature is skipped
 
@@ -382,7 +384,7 @@ The pool unit tests and simulation recipe use mock child transports. They verify
 
 #### 17. Cold-start routing is underspecified
 
-Some target devices may have no fresh RSSI evidence after startup. Aggregate fallback and round-robin exist, but the deterministic primary fallback and prohibition on simultaneous multicast are not stated as hard rules. Multiple radios must never transmit one command concurrently because their RF frames can collide.
+Some target devices may have no fresh RSSI evidence after startup. Cold-start routing is now stable-first (first eligible child in stable configuration order). Round-robin is no longer used. Multiple radios must never transmit one command concurrently because their RF frames can collide.
 
 #### 18. Firmware-management commands need a separate route
 
@@ -482,7 +484,7 @@ Before the pool PRs merge to `ramses_rf` and `ramses_cc`, reconcile the dependen
 ### Decisions that must be recorded before their dependent PR
 
 1. **Membership:** schema ownership is canonical for MQTT HGI authorization. Classification requires an explicit non-empty root owner (migration uses the existing value or the established `"me"` default). A child `_owner` equal to that root means accepted; no child `_owner` means configured receive-only; foreign, rejected, or disabled means excluded. Config migration seeds an owned schema HGI for an existing primary `CONF_MQTT_HGI_ID`/explicit MQTT URL and converts legacy `CONF_ACCEPTED_HGIS` entries before that independent authority is removed. Explicitly configured local serial ports define transport inventory and are locally trusted, but remain non-send-ready until identity and startup validation.
-2. **Cold-start primary:** the first configured eligible child in stable config order is primary. Round-robin is not the default and is used only if explicitly configured as policy.
+2. **Cold-start primary:** the first configured eligible child in stable configuration order is always selected. Round-robin is not available.
 3. **RSSI:** use the strongest (highest) fresh RSSI from a five-sample window per child. At least one fresh sample is sufficient; equal scores use stable config order. The maximum sample age is a named, documented setting chosen from captured traffic before PR 2, not an implicit forever-valid value. **Resolved from fixtures:** 5 minutes (see "Captured-fixture evidence" below). **Implementation note:** the code uses `max()` (best RSSI), not an arithmetic mean — this is the correct behavior for spatial diversity where the strongest signal should win.
 4. **Deduplication:** capture paired local-echo and over-air/USB/MQTT copies and decide whether their transport-assigned sequence fields are stable. Freeze the canonical key before PR 1 implementation and document why sequence is included or normalized. RSSI, timestamp, ingress child, and `is_tx` are never part of the content key. **Resolved from fixtures:** sequence is sender-assigned and stable across HGIs (50/50 paired packets); include sequence when present, fall back to `(verb, addr1, addr2, addr3, code, length, payload)` when absent (see "Captured-fixture evidence" below).
 5. **Source intent:** source substitution must be driven by an explicit `GATEWAY` versus `PRESERVE` policy in the immutable outbound request, not by an `addr1.startswith("18:")` heuristic. Existing callers may default to `GATEWAY` only for the exact gateway placeholder/current active HGI; faked-device call paths must pass `PRESERVE`, including for an intentional `18:` source.
@@ -708,6 +710,7 @@ disable_sending: bool
 signature_policy: Literal["immediate", "delayed", "skip"]
 startup_grace: float | None
 configured_hgi_id: str | None
+enable_reconnect: bool
 ```
 
 Proposed ESP-aware startup:
@@ -868,8 +871,7 @@ Fallback order is explicit:
 1. Fresh per-device RSSI among eligible children.
 2. Fresh aggregate RSSI among eligible children, excluding samples whose RF source is an active pool HGI.
 3. First eligible child in stable configuration order.
-4. Round-robin only if explicitly configured as policy.
-5. Fail clearly if no child is send-ready.
+4. Fail clearly if no child is send-ready.
 
 Cold-start selection always chooses exactly one child. The router never multicasts one transmission attempt through multiple HGIs because unsynchronised RF transmissions can collide.
 
@@ -1141,7 +1143,7 @@ Introduce the transport-neutral outbound router and make it the only path that s
 - Select only children whose connection is connected, node is online, and that are accepted and send-ready.
 - Use the fixed five-sample fresh arithmetic-mean RSSI policy, with the recorded TTL and stable config-order tie-breaking. Implement it as pool-route scoring or an explicitly configured tracker so unrelated communication-quality behavior is not silently changed.
 - Exclude active pool-HGI sources from aggregate route evidence and clear/quarantine route evidence when a child is offline, failed, or recreated.
-- Define cold-start selection as fresh target RSSI → fresh aggregate RSSI → first eligible child in stable config order; use round-robin only if explicitly configured.
+- Define cold-start selection as fresh target RSSI → fresh aggregate RSSI → first eligible child in stable config order. Round-robin is not used.
 - Prohibit simultaneous multicast of one attempt through multiple radios.
 - Classify outcomes as proven-not-submitted, ambiguous/accepted locally, confirmed echo, or QoS timeout.
 - Reroute immediately only after a driver-proven not-submitted outcome; treat generic write exceptions as ambiguous.
@@ -1415,7 +1417,7 @@ Branch: `pr5/membership-config-flow-pool-assembly` (pushed to `wimpie70/ramses_c
 **Implemented:**
 
 - `CONF_WAIT_ONLINE_TIMEOUT` constant (default 30s) exposed in `manage_pool` options form via `NumberSelector` (1-300s). Wired through to `RamsesMqttPoolBridge` in the HA MQTT multi-HGI path.
-- `manage_pool_mqtt` step now requires only an HGI device ID (`18:NNNNNN`) and creates a schema entry with `_class: HGI` and `_owner: root_owner` so `_extract_pool_hgis_from_schema()` includes it as an accepted pool member on reload. No host, port, credentials, or topic path are requested — the HA MQTT broker and topic prefix are reused. Adding MQTT pool members is gated on the primary transport being MQTT (`pool_mqtt_requires_mqtt_primary` error if serial-primary).
+- `manage_pool_mqtt` step requires an HGI device ID (`18:NNNNNN`) only, and creates a schema entry with `_class: HGI` and `_owner: root_owner` so `_extract_pool_hgis_from_schema()` includes it as an accepted pool member on reload. The `manage_pool_mqtt_url` step (used for USB→MQTT switching) additionally collects an optional topic prefix. No host, port, or credentials are requested — the HA MQTT broker is always used. Adding MQTT pool members is gated on the primary transport being MQTT (`pool_mqtt_requires_mqtt_primary` error if serial-primary).
 - `_MqttHgiDiscoveryCallback.on_unknown_hgi()` inserts unknown HGIs into the schema as discovery candidates (`_class: HGI`, no `_owner`) so `sync_with_schema` → `check_for_new_devices` can prompt the user. Does not overwrite existing entries.
 - `sync_learned_topology()` no longer backfills `_owner` onto `18:` HGI discovery candidates — prevents silent promotion to accepted pool member without explicit user action.
 - v3→v4 config-entry migration: **not needed** — `CONF_ACCEPTED_HGIS` was never released (only existed on the `feat/pool-all-1119` draft branch). Dropped entirely; the schema is the canonical membership source. Config entry version stays at 3.
@@ -1425,7 +1427,7 @@ Branch: `pr5/membership-config-flow-pool-assembly` (pushed to `wimpie70/ramses_c
 
 **Fact-check findings (addressed):**
 
-- `manage_pool_mqtt` now creates schema HGI entries with `_owner` — the canonical membership source is the schema, not `CONF_ADDITIONAL_PORTS`. The form asks for HGI ID only (no host/port/credentials/topic path); the HA MQTT broker and topic prefix are reused. Adding MQTT pool members is gated on primary transport being MQTT.
+- `manage_pool_mqtt` now creates schema HGI entries with `_owner` — the canonical membership source is the schema, not `CONF_ADDITIONAL_PORTS`. The form asks for HGI ID only (no host/port/credentials/topic path); the HA MQTT broker is always used. The `manage_pool_mqtt_url` step (for USB→MQTT switching) additionally collects an optional topic prefix. Adding MQTT pool members is gated on primary transport being MQTT.
 - Unknown HGIs from the wildcard topic are inserted as discovery candidates (no `_owner`) — they cannot send commands until the user accepts them and the config entry reloads.
 - `wait_online_timeout` is now configurable and wired through.
 
@@ -1639,25 +1641,23 @@ Three fixes for the pool management UI, all verified on real hardware
 (hass, 2 ESP32 HGIs `18:130236` + `18:149488`, MQTT broker at
 `192.168.40.11:1883`, serial via `/dev/ttyACM0`):
 
-### 1. Broker URL step for non-primary HGI USB→MQTT switch
+### 1. Simplified USB→MQTT switch step for non-primary HGI
 
 **Problem:** When a non-primary HGI switched from USB to MQTT via the
 pool management UI, the config flow only changed `_preferred_type` and
 removed the serial port from `additional_ports` — it did not redirect to
-the broker URL step. The user expected the same broker URL step that the
+the MQTT step. The user expected the same MQTT step that the
 primary HGI switch already gets.
 
 **Fix (commit `615726d3`):** The config flow now sets a
 `_switching_secondary_to_mqtt` flag and redirects to
 `async_step_manage_pool_mqtt_url()`, just like the primary HGI switch.
-The broker URL is pre-filled from the HA MQTT integration's broker
-(host, port, topic prefix, HGI ID). The user can confirm or edit it
-before saving. The URL is stored in `additional_ports` as a `mqtt://`
-URL so the coordinator's MQTT pool bridge can extract the HGI ID and
-create a callback-driven MQTT child for it.
-
-The serial port is removed from `additional_ports` before redirecting,
-so the HGI becomes an MQTT-only child (not both serial and MQTT).
+The step asks only for the HGI ID and an optional topic prefix — no
+host, port, or credentials are collected (HA MQTT is always the
+broker). The HGI ID is validated against the switching target to
+prevent typos. The serial port is removed from `additional_ports`
+and `_preferred_type` is set to `mqtt` so the coordinator's MQTT pool
+bridge includes it as a callback-driven MQTT child.
 
 ### 2. MQTT bridge creation for non-primary `_preferred_type: mqtt`
 
@@ -1714,8 +1714,10 @@ active HGI ID: swapped 18:000730 -> 18:149488`, echo detected from
   serial primary
 - **Comment warning:** Both HGIs show `Supports: usb, mqtt (don't edit
 here — adapt with the Pool Management config)`
-- **Status entities:** Both `binary_sensor.hgi_18_*_gateway_status`
-  show `state=off` (off = no problem = OK, `device_class: problem`)
+- **Status entities:** Per-HGI online/offline binary sensors and an
+  aggregate pool status sensor are implemented; the legacy
+  `binary_sensor.hgi_18_*_gateway_status` entities remain as a
+  secondary surface.
 - **No errors, no tracebacks, no credential leaks** (MQTT URLs
   redacted as `mqtt://***:***@192.168.40.11:1883/...` in runtime logs)
 
@@ -1758,5 +1760,5 @@ All 20 checks pass (18 recipe checks + 2 log cleanliness checks).
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `68a455cc` | Fixed reload suppression, MQTT bridge creation for non-primary `_preferred_type: mqtt`, serial-port removal on non-primary USB→MQTT switch |
 | `81dbe168` | Added `_comment` warning suffix about not editing `_preferred_type`                                                                        |
-| `615726d3` | Added broker URL step for non-primary HGI USB→MQTT switch                                                                                  |
+| `615726d3` | Added simplified USB→MQTT switch step (HGI ID + optional topic prefix, no broker URL collection)                                           |
 | `61b45209` | Comment warning migration + updated warning text                                                                                           |

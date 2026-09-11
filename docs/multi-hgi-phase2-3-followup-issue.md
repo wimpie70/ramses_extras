@@ -40,13 +40,14 @@ issue 1171 config bugs are fixed:
   removal, re-add, display, healing, sentinel filtering, CI coverage.
 - **Issue 1171 follow-up (2026-09-11, branch `fix/issue-1171-pool-config-bugs`):**
   three additional fixes for the pool management UI:
-  - **Broker URL step for non-primary HGI USB→MQTT switch** (commit
+  - **Simplified USB→MQTT switch step** (commit
     `615726d3`): when a non-primary HGI switches from USB to MQTT via
-    the pool management UI, the config flow now redirects to the
-    broker URL step (`async_step_manage_pool_mqtt_url`), pre-filled
-    from the HA MQTT integration. Previously it only changed
-    `_preferred_type` and removed the serial port without collecting a
-    broker URL.
+    the pool management UI, the config flow now redirects to
+    `manage_pool_mqtt_url` and only asks for HGI ID and an optional
+    topic prefix (HA MQTT broker is always used; no
+    host/port/credentials are collected). Previously it only changed
+    `_preferred_type` and removed the serial port without collecting
+    any MQTT info.
   - **MQTT bridge creation for non-primary `_preferred_type: mqtt`**
     (commit `68a455cc`): the coordinator's MQTT activation gate now
     includes schema HGIs with `_preferred_type: "mqtt"`, so the MQTT
@@ -482,6 +483,7 @@ disable_sending: bool
 signature_policy: Literal["immediate", "delayed", "skip"]
 startup_grace: float | None
 configured_hgi_id: str | None
+enable_reconnect: bool
 ```
 
 Proposed ESP-aware startup (validated by hardware feasibility gate, 2026-09-06):
@@ -571,19 +573,11 @@ during Phase 2/3 work if they become relevant:
   marked online. LWT is the sole source-of-truth for MQTT child availability
   in Phase 1. A heartbeat timeout may be added if real-world testing shows
   this is needed.
-- **Gateway status binary sensor does not reflect per-HGI offline state**
-  (issue 1171 comment by silverrailscolo). The `RamsesGatewayBinarySensor`
-  tracks the ramses_rf gateway's `is_active`, which in a pool setup reflects
-  the overall pool bridge state, not individual HGI connectivity. If the
-  primary HGI is unplugged but cached packets are loaded or other HGIs are
-  still online, the sensor stays "OK". Per-HGI online/offline sensors and
-  proper last-packet expiry are Phase 2 items. **Note (2026-09-11):** the
-  current `binary_sensor.hgi_18_*_gateway_status` entities use
-  `device_class: problem` with inverted logic (`state=off` means "no
-  problem" = OK). Both HGI status entities show `off` (OK) in the current
-  hybrid pool. A per-HGI online/offline sensor that tracks MQTT LWT and
-  serial connection state separately is still needed — see PR 1183
-  comments by silverrailscolo.
+- **Per-HGI status sensors implemented** (issue 1171 comment by
+  silverrailscolo). Per-HGI online/offline binary sensors and an
+  aggregate pool status sensor now track MQTT LWT and serial connection
+  state separately. The legacy `binary_sensor.hgi_18_*_gateway_status`
+  entities remain as a secondary surface.
 - **HGI `_comment` warning** — **Fixed (2026-09-11, commit `61b45209`).**
   HGI `_comment` fields now include the warning suffix
   ` (don't edit here — adapt with the Pool Management config)`. A
