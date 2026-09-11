@@ -17,6 +17,7 @@ from ..helpers import (
     wait_for,
     wait_for_discovered_device,
     wait_for_schema_populated,
+    wait_for_transport_ready,
     ws_send,
 )
 from ..profile import MIXED_SCHEMA, get_mixed_kl
@@ -103,6 +104,13 @@ class R73AuthoritativeDomainIdFrom000CIssue931(Recipe):
         except RuntimeError:
             pass
         wait_for_schema_populated(timeout=20)
+
+        # Wait for the MQTT transport to be ready before injecting —
+        # the profile reload disconnects/reconnects the MQTT bridge,
+        # and packets injected before the bridge is subscribed are
+        # silently dropped (same issue as R37).
+        wait_for_transport_ready(timeout=30)
+        ctx.wait(2, "for MQTT bridge to settle after reconnect")
 
         # --- Inject 3B00/3EF0 from all 3 BDRs (discover them) ---
         # No dst parameter — defaults to broadcast (--:------), like R29.
