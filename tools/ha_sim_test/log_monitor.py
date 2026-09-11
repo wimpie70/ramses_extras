@@ -230,6 +230,20 @@ EXPECTED_WARNINGS: list[str] = [
     # generates synthetic RSSI values (e.g. -82 dBm) that trigger the
     # weak-signal heuristic.  Not a real RF issue, just a sim artifact.
     "weak signal for",
+    # R121/R122: LWT offline/online warnings are expected during
+    # failover and disconnect/reconnect testing — the recipes
+    # deliberately publish retained "offline" LWT to simulate gateway
+    # loss.  The bridge correctly logs these as warnings.
+    "offline (LWT)",
+    # R121: PooledTransport marks a child stale when no packets are
+    # received for 180s — expected when the primary HGI is deliberately
+    # taken offline during failover testing.
+    "marked stale",
+    # R121: HomeAssistantError in shielded future — the send_packet
+    # service call fails with ProtocolTimeoutError when the primary HGI
+    # is offline during failover testing.  HA wraps the
+    # ProtocolTimeoutError in a HomeAssistantError.
+    "HomeAssistantError exception in shielded future",
 ]
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")

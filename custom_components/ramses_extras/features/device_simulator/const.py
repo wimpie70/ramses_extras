@@ -19,6 +19,11 @@ FEATURE_ID = "device_simulator"
 # (each container needs a unique HGI ID to isolate its MQTT topic namespace).
 SIMULATOR_HGI_ID = os.environ.get("RAMSES_SIM_HGI_ID", "18:001234")
 
+# Second simulator HGI for multi-HGI pool testing (issue 1185).
+# This HGI is always created alongside the primary, allowing live
+# testing of multi-MQTT-HGI pools, failover, and primary switching.
+SIMULATOR_HGI_ID_2 = os.environ.get("RAMSES_SIM_HGI_ID_2", "18:149488")
+
 # Simulator topic namespace for MQTT isolation
 SIMULATOR_TOPIC_NS = "RAMSES/GATEWAY_SIM"
 

@@ -1093,7 +1093,12 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
         # no "MQTT disconnected" appears after it.  This ensures the
         # transport is stably connected, not in a transient reconnect
         # during the double-disconnect cycle of a profile reload.
+        # The multi-HGI pool uses MqttCallbackPool (issue 1185),
+        # which logs "MqttCallbackPool: child ... online" instead of
+        # "Subscribed to status topic".  Check for either message.
         sub_idx = logs.rfind("Subscribed to status topic")
+        if sub_idx == -1:
+            sub_idx = logs.rfind("MqttCallbackPool: child")
         if sub_idx == -1:
             return False
         after_sub = logs[sub_idx:]

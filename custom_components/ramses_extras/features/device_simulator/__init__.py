@@ -30,6 +30,7 @@ from .const import (
     FEATURE_DEFINITION,
     LOGGER,
     SIMULATOR_HGI_ID,
+    SIMULATOR_HGI_ID_2,
     SIMULATOR_TOPIC_NS,
 )
 from .entity_helpers import get_device_entities, normalize_ramses_id
@@ -633,6 +634,24 @@ async def create_device_simulator_feature(
         "Created MqttEndpoint instance: %s", id(registry["device_simulator_endpoint"])
     )
 
+    # Second MQTT HGI for multi-HGI pool testing (issue 1185).
+    # This endpoint shares the same ResponseEngine/ScenarioEngine
+    # but uses a different gateway_id and topic namespace.
+    if "device_simulator_endpoint_2" in registry:
+        old_ep2 = registry["device_simulator_endpoint_2"]
+        if old_ep2.is_connected:
+            await old_ep2.async_disconnect()
+        del registry["device_simulator_endpoint_2"]
+
+    _LOGGER.info("Creating second MqttEndpoint (HGI=%s)...", SIMULATOR_HGI_ID_2)
+    registry["device_simulator_endpoint_2"] = MqttEndpoint(
+        hass, gateway_id=SIMULATOR_HGI_ID_2, topic_base=SIMULATOR_TOPIC_NS
+    )
+    _LOGGER.info(
+        "Created second MqttEndpoint instance: %s",
+        id(registry["device_simulator_endpoint_2"]),
+    )
+
     # Create and wire up ResponseEngine BEFORE connecting endpoint
     # This ensures no messages are lost during initialization
     # Always create fresh to avoid stale handler issues
@@ -686,6 +705,22 @@ async def create_device_simulator_feature(
 
     _LOGGER.info("Connecting endpoint with new handler...")
     await registry["device_simulator_endpoint"].async_connect()
+
+    # Wire up and connect the second endpoint (issue 1185).
+    # It shares the same ResponseEngine and ScenarioEngine handlers.
+    endpoint2 = registry["device_simulator_endpoint_2"]
+    endpoint2.clear_inbound_handlers()
+    endpoint2.add_inbound_handler(
+        registry["device_simulator_response_engine"].handle_inbound_frame
+    )
+    if "device_simulator_engine" in registry:
+        endpoint2.add_inbound_handler(
+            registry["device_simulator_engine"]._handle_inbound_frame
+        )
+    if endpoint2.is_connected:
+        await endpoint2.async_disconnect()
+    _LOGGER.info("Connecting second endpoint (HGI=%s)...", SIMULATOR_HGI_ID_2)
+    await endpoint2.async_connect()
 
     def _profile_has_hvac_devices(store: Any | None) -> bool:
         if not store:

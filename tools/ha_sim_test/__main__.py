@@ -102,6 +102,13 @@ def main() -> None:
         "takes the max with this.",
     )
     parser.add_argument(
+        "--pool",
+        action="store_true",
+        help="Run only the multi-HGI pool recipes (R116, R118-R122). "
+        "These recipes require both simulator HGIs and cannot run in "
+        "parallel mode (they share a single MQTT namespace).",
+    )
+    parser.add_argument(
         "--reports-dir",
         type=Path,
         default=None,
@@ -133,7 +140,22 @@ def main() -> None:
 
     recipe_ids = args.recipes or None
 
-    if args.parallel <= 1:
+    if args.pool:
+        recipe_ids = [
+            "R116",
+            "R118",
+            "R119",
+            "R120",
+            "R121",
+            "R122",
+        ]
+        if args.parallel > 1:
+            print(
+                "  WARNING: pool recipes cannot run in parallel mode "
+                "(shared MQTT namespace). Running sequentially."
+            )
+
+    if args.parallel <= 1 or (args.pool and args.parallel > 1):
         from .runner import run
 
         asyncio.run(run(recipe_ids))

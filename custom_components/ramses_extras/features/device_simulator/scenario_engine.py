@@ -1130,6 +1130,25 @@ class ScenarioEngine:
             await self._echo_inform(src, dst, code, payload)
             return
 
+        # Echo RQ frames back on /rx so ramses_tx FSM WantEcho state is
+        # satisfied.  In serial mode, the HGI80 hardware echoes every
+        # transmitted frame (including RQ) — this is a hardware loopback,
+        # not a device response.  In MQTT mode, the simulator must
+        # publish the echo back on the RX topic.  Without this echo the
+        # FSM times out after DEFAULT_SEND_TIMEOUT (20 s) for every RQ
+        # send (issue 1185).  The RP response is sent separately via
+        # _respond_to_rq below.
+        if verb == VERB_RQ:
+            LOGGER.debug(
+                "Simulator received RQ frame: %s -> %s, code=%s", src, dst, code
+            )
+            await self._echo_request(src, dst, code, payload)
+            if not self._auto_answer_enabled:
+                LOGGER.debug("Auto-answer disabled, dropping RQ %s from %s", code, src)
+                return
+            await self._respond_to_rq(src, dst, code, payload)
+            return
+
         if verb != VERB_RQ:
             LOGGER.debug("Simulator: ignoring non-RQ, non-W frame: verb=%s", verb)
             return
@@ -1232,11 +1251,33 @@ class ScenarioEngine:
         For I frames the source is the faked device itself (not the HGI),
         so we check that ``src`` is an active simulated device.
 
-        :param src: Source device ID (the faked device).
+        However, when the HGI itself sends an I frame (e.g. 1F09 sync
+        cycle), the source is the HGI ID (18:...).  The HGI is not a
+        simulated device, so the active-device check would skip the
+        echo.  In serial mode, the HGI80 hardware echoes its own
+        transmissions unconditionally (hardware loopback), so we echo
+        HGI-sourced I frames without the active-device check (issue 1185).
+
+        :param src: Source device ID (the faked device or HGI).
         :param dst: Destination (usually ``--:------`` for broadcasts).
         :param code: RAMSES code.
         :param payload: Hex payload.
         """
+        # HGI-sourced I frames: echo unconditionally (hardware loopback).
+        if str(src).startswith("18:"):
+            packet = self._build_packet(src, dst, VERB_I, code, payload)
+            try:
+                await self._endpoint.send_packet(packet)
+                LOGGER.debug(
+                    "Echoed I frame %s/%s for %s (HGI loopback)",
+                    code,
+                    src,
+                    dst,
+                )
+            except Exception as err:  # noqa: BLE001
+                LOGGER.warning("Failed to echo I for %s/%s: %s", src, code, err)
+            return
+
         device = self._active_devices.get(src)
         if not device:
             LOGGER.debug("Echo I: device %s not active, skipping", src)
@@ -1254,6 +1295,32 @@ class ScenarioEngine:
             LOGGER.debug("Echoed I frame %s/%s for %s", code, src, dst)
         except Exception as err:  # noqa: BLE001
             LOGGER.warning("Failed to echo I for %s/%s: %s", src, code, err)
+
+    async def _echo_request(self, src: str, dst: str, code: str, payload: str) -> None:
+        """Echo an RQ frame back so the FSM WantEcho state is satisfied.
+
+        In serial mode, the HGI80 hardware echoes every transmitted
+        frame (including RQ) — this is a hardware loopback, not a
+        device response.  In MQTT mode, the simulator must publish the
+        echo back on the RX topic.  Without this echo the FSM times
+        out after DEFAULT_SEND_TIMEOUT (20 s) for every RQ send
+        (issue 1185).
+
+        Unlike ``_echo_write`` and ``_echo_inform``, this does NOT
+        check if the target device is active — the echo is from the
+        HGI's own RF loopback, not from the target device.
+
+        :param src: Original sender (HGI).
+        :param dst: Target simulated device.
+        :param code: RAMSES code.
+        :param payload: Hex payload.
+        """
+        packet = self._build_packet(src, dst, VERB_RQ, code, payload)
+        try:
+            await self._endpoint.send_packet(packet)
+            LOGGER.debug("Echoed RQ frame %s/%s for %s", code, dst, src)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Failed to echo RQ for %s/%s: %s", dst, code, err)
 
     async def _respond_to_rq(
         self,

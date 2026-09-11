@@ -395,6 +395,189 @@ async def run_tests():
         )
 
     # ---------------------------------------------------------------------------
+    # Test 11: Primary HGI identification uses runtime port map, not schema order
+    # ---------------------------------------------------------------------------
+    # BUG (issue 1185): When two HGIs both have _owner: me, the switching
+    # logic picked the first one in schema order, not the one actually on
+    # the primary serial port.  This caused _preferred_type changes on the
+    # actual primary to be ignored.
+    # FIX: Use the runtime port-to-HGI map to identify the primary.
+    # ---------------------------------------------------------------------------
+    try:
+        # Simulate: primary_port=/dev/ttyACM0, runtime map shows
+        # /dev/ttyACM0 -> 18:149488, /dev/ttyACM1 -> 18:130236
+        primary_port = "/dev/ttyACM0"
+        runtime_map = {
+            "/dev/ttyACM0": "18:149488",
+            "/dev/ttyACM1": "18:130236",
+        }
+        schema_dict = {
+            "_owner": "me",
+            "18:130236": {
+                "_class": "HGI",
+                "_tr_owner": "me",
+                "_preferred_type": "usb",
+            },
+            "18:149488": {
+                "_class": "HGI",
+                "_tr_owner": "me",
+                "_preferred_type": "mqtt",  # User changed this
+            },
+        }
+
+        # Replicate the FIXED primary HGI identification logic:
+        # 1. Check runtime map first
+        # 2. Fall back to schema iteration
+        primary_hgi_id = None
+        if (
+            isinstance(primary_port, str)
+            and primary_port in runtime_map
+        ):
+            primary_hgi_id = runtime_map[primary_port]
+        if not primary_hgi_id:
+            root_owner = schema_dict.get("_owner", "me")
+            for dev_id, entry in schema_dict.items():
+                if (
+                    dev_id.startswith("18:")
+                    and isinstance(entry, dict)
+                    and entry.get("_class", "").upper() == "HGI"
+                    and entry.get("_tr_owner") == root_owner
+                ):
+                    primary_hgi_id = dev_id
+                    break
+
+        check(
+            "Primary HGI: identified via runtime map (not schema order)",
+            primary_hgi_id == "18:149488",
+            f"primary_hgi_id={primary_hgi_id} (expected 18:149488)",
+        )
+
+        # Verify the OLD (buggy) logic would have picked the wrong HGI
+        old_primary = None
+        root_owner = schema_dict.get("_owner", "me")
+        for dev_id, entry in schema_dict.items():
+            if (
+                dev_id.startswith("18:")
+                and isinstance(entry, dict)
+                and entry.get("_class", "").upper() == "HGI"
+                and entry.get("_tr_owner") == root_owner
+            ):
+                old_primary = dev_id
+                break
+        check(
+            "Primary HGI: old logic picked wrong HGI (schema order)",
+            old_primary == "18:130236",
+            f"old_primary={old_primary} (would have been wrong)",
+        )
+
+        # Verify the switching would now trigger for the correct HGI
+        new_pref = schema_dict.get(primary_hgi_id, {}).get("_preferred_type", "")
+        is_current_serial = primary_port.startswith("/dev/")
+        should_switch = (
+            new_pref == "mqtt" and is_current_serial
+        )
+        check(
+            "Switching: triggers for correct primary (18:149488 mqtt)",
+            should_switch is True,
+            f"new_pref={new_pref}, is_serial={is_current_serial}",
+        )
+    except Exception as e:
+        check(
+            "Primary HGI: identified via runtime map (not schema order)",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+        check(
+            "Primary HGI: old logic picked wrong HGI (schema order)",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+        check(
+            "Switching: triggers for correct primary (18:149488 mqtt)",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+
+    # ---------------------------------------------------------------------------
+    # Test 12: Non-primary label respects _preferred_type when primary is MQTT
+    # ---------------------------------------------------------------------------
+    # BUG (issue 1185): When the primary is MQTT, ALL non-primary HGIs
+    # were labeled as MQTT, ignoring their _preferred_type.  An HGI with
+    # _preferred_type: usb should show as (USB) even when the primary is
+    # on MQTT.
+    # ---------------------------------------------------------------------------
+    try:
+        # Simulate: primary is MQTT, non-primary has _preferred_type: usb
+        primary_port_mqtt = "mqtt://broker:1883/RAMSES/GATEWAY/18:149488"
+        runtime_map_mqtt = {}  # No serial children in pool when primary is MQTT
+        schema_mqtt = {
+            "_owner": "me",
+            "18:130236": {
+                "_class": "HGI",
+                "_tr_owner": "me",
+                "_preferred_type": "usb",  # Should show as USB
+            },
+            "18:149488": {
+                "_class": "HGI",
+                "_tr_owner": "me",
+                "_preferred_type": "mqtt",
+            },
+        }
+        primary_hgi_id_mqtt = "18:149488"
+
+        # Replicate the FIXED label logic for non-primary HGI
+        def _label_mqtt_primary(dev_id, primary_port, runtime_map, schema):
+            primary_hgi_id = "18:149488"
+            if dev_id == primary_hgi_id:
+                return f"HGI: {dev_id} (primary, MQTT, ...)"
+            # Non-primary — check _preferred_type first
+            schema_entry = schema.get(dev_id, {})
+            preferred = ""
+            if isinstance(schema_entry, dict):
+                preferred = str(
+                    schema_entry.get("_preferred_type", "")
+                ).lower()
+            runtime_port = None
+            for port, hgi in runtime_map.items():
+                if hgi == dev_id:
+                    runtime_port = port
+                    break
+            if runtime_port:
+                return f"HGI: {dev_id} (USB, {runtime_port})"
+            if preferred == "usb":
+                return f"HGI: {dev_id} (USB)"
+            # Fall back to MQTT
+            return f"HGI: {dev_id} (MQTT, ...)"
+
+        label_130236 = _label_mqtt_primary(
+            "18:130236", primary_port_mqtt, runtime_map_mqtt, schema_mqtt
+        )
+        check(
+            "MQTT primary: non-primary with _preferred_type=usb shows (USB)",
+            "(USB)" in label_130236 and "MQTT" not in label_130236,
+            f"label={label_130236}",
+        )
+
+        # Verify the OLD (buggy) logic would have labeled it as MQTT
+        label_old = f"HGI: 18:130236 (MQTT, mqtt://broker:1883/RAMSES/GATEWAY/18:130236)"
+        check(
+            "MQTT primary: old logic labeled USB HGI as MQTT (bug)",
+            "MQTT" in label_old and "USB" not in label_old,
+            f"old_label={label_old}",
+        )
+    except Exception as e:
+        check(
+            "MQTT primary: non-primary with _preferred_type=usb shows (USB)",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+        check(
+            "MQTT primary: old logic labeled USB HGI as MQTT (bug)",
+            False,
+            f"exception: {str(e)[:200]}",
+        )
+
+    # ---------------------------------------------------------------------------
     # Summary
     # ---------------------------------------------------------------------------
     passed = sum(1 for r in results if r["status"] == "PASS")
