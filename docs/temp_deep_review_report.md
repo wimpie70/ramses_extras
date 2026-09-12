@@ -281,7 +281,7 @@ MqttCallbackPool: child 18:149488 online (HGI=18:149488), 2/3 connected
 - `binary_sensor.gateway_18_130236_status`: initialized
 - `binary_sensor.gateway_18_149488_status`: initialized
 
-### Issues found
+### Issues found on hass
 
 1. **Second USB HGI (/dev/ttyACM1) not in pool config** — configuration
    issue, not a code issue. The user should add it to `additional_ports`
@@ -291,31 +291,23 @@ MqttCallbackPool: child 18:149488 online (HGI=18:149488), 2/3 connected
    pre-existing issue (FAN's indoor_temp sensor is unavailable), not
    related to the pool PRs.
 
-### Issues found
-
-1. **Second USB HGI (/dev/ttyACM1) not in pool config** — configuration
-   issue, not a code issue. The user should add it to `additional_ports`
-   if they want to use it as a pool member.
-
-2. **"Temp_control for 32:153289: required sensor unavailable" warning** —
-   pre-existing issue (FAN's indoor_temp sensor is unavailable), not
-   related to the pool PRs.
+### Issue found on silverailscolo's system (PR 1183 comment)
 
 3. **`!I` command timeout warning on ESP32 running older ramses_esp**
-   (PR 1183 comment by silverailscolo) — the ESP32 doesn't support the
-   `!I` command, so it times out after 2s and falls back to
-   `configured_hgi_id`. This is expected behavior, but the WARNING
-   level was confusing users.
+   (reported by silverailscolo on PR 1183, on egbert's system — NOT on
+   the user's `hass`).  The ESP32 doesn't support the `!I` command, so
+   it times out after 2s and falls back to `configured_hgi_id`.  This is
+   expected behavior, but the WARNING level was confusing users.
 
    **Fix**: Downgraded to INFO when `configured_hgi_id` is available as
-   fallback (the timeout is expected for older firmware). WARNING is
+   fallback (the timeout is expected for older firmware).  WARNING is
    kept when no fallback is available (genuine problem).
 
    Commit: `b43733c3` on `feat/phase2-signature-policy`.
 
-### No other code issues found
+### No other code issues found on hass
 
-The pool is working correctly on the hardware:
+The pool is working correctly on the user's `hass`:
 - Serial + MQTT hybrid pool: working
 - TX routing through both HGIs: working
 - LWT-based online detection: working
