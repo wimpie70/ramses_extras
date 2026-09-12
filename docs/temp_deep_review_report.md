@@ -339,3 +339,82 @@ All pool-specific recipes pass. Hardware test shows no code issues.
 - Kept at WARNING level (reverted the INFO downgrade) to gather user
   feedback logs from users with debug logging enabled.
 - Commit: `dca76b57` (revert) on `feat/phase2-signature-policy`
+
+## 9. Final Release-Gate Review
+
+### PR status
+
+- ramses_rf PR 1208: OPEN, draft, approved, mergeable, merge state CLEAN.
+  All GitHub checks pass at `dca76b57`.
+- ramses_cc PR 1183: OPEN, draft, mergeable, but review required and CI
+  blocked at `6fe47f80`.
+
+### Publication dependency blocker
+
+PR 1183 installs the released `ramses-rf==0.60.5` in CI but imports APIs
+introduced by PR 1208. Test and coverage jobs fail during collection with
+34 import errors, beginning with missing `ramses_tx.transport.helpers.redact_url`.
+
+Required release order:
+
+1. Merge ramses_rf PR 1208.
+2. Publish ramses-rf 0.60.6.
+3. Update the ramses_cc manifest and development requirement to 0.60.6.
+4. Update PR 1183 with upstream master and rerun all CI.
+5. Mark PR 1183 ready only after CI and review pass.
+
+### Branch currency
+
+The ramses_cc branch is 13 commits behind upstream master. A merge-tree
+check found no textual conflicts, but the branch must be updated before the
+final CI/review decision.
+
+### Simulator order-dependence found and fixed
+
+A focused sequence beginning with clean-schema R102 exposed 24 failures:
+R115 inherited an enforced known list without its TX targets, and stale HGI
+candidates produced three pool children where later recipes expected two.
+This was recipe state contamination, confirmed by the device-ID filter
+rejecting the commands before transport routing.
+
+Fixes:
+
+- `ensure_multi_hgi_config()` now removes stale HGI candidates and builds
+  exactly the intended two-HGI MQTT pool.
+- R115 now loads a known mixed schema and sets up its own multi-HGI pool.
+- R110 now verifies the implemented removal policy: preserve `_owner` and
+  set `_removed_from_pool`.
+
+Verification after the fixes:
+
+- R102, R110, R115, R116, R118, R119, R121, R122, R123:
+  104 passed, 0 failed in 394.5 seconds.
+- No unexpected ramses_cc/ramses_rf ERROR or WARNING logs.
+
+### Review consistency fixes
+
+- Updated stale pooled-transport documentation to describe the controlled
+  stale-child TX fallback.
+- Updated stale config-flow and test wording to state that pool removal
+  preserves `_owner` and sets `_removed_from_pool`.
+- Updated dependency diagnostics to require ramses-rf 0.60.6 rather than
+  incorrectly claiming the pending APIs are in 0.60.5.
+
+### Failover timing and assertion fix
+
+R121 previously swallowed every TX exception, asserted `True`, and waited
+through three 30-second HTTP attempts while the primary simulator endpoint
+was deliberately offline. It took 112.5 seconds without proving that TX
+actually used the secondary HGI.
+
+Fixes:
+
+- `call_service()` now accepts optional `timeout` and `retries` parameters
+  while preserving its existing defaults.
+- The failover send uses one five-second attempt because the simulator cannot
+  return its loopback echo through the deliberately offline primary endpoint.
+- R121 now checks the logs for routing through HGI 18:149488 instead of
+  unconditionally passing.
+
+Verification: R121 passed all 10 recipe checks plus both log checks in 44.7
+seconds total; the recipe itself fell from 112.5 to 31.2 seconds.

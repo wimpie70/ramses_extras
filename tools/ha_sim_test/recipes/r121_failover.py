@@ -49,6 +49,7 @@ class R121Failover(Recipe):
 
         inst = get_current_instance()
         hgi_primary = "18:001234"
+        hgi_secondary = "18:149488"
 
         def grep_log(pattern: str, tail: int = 5) -> str:
             r = subprocess.run(
@@ -122,7 +123,10 @@ class R121Failover(Recipe):
             detail=f"No offline log for {hgi_primary}",
         )
 
-        # TX attempted after failover (no crash)
+        # TX must route through the secondary after failover.  The
+        # simulator publishes loopback echoes on the primary endpoint,
+        # which is deliberately offline here, so don't wait through the
+        # normal three 30s HTTP attempts for an echo that cannot arrive.
         try:
             call_service(
                 ctx.token,
@@ -134,14 +138,21 @@ class R121Failover(Recipe):
                     "code": "3150",
                     "payload": "00",
                 },
+                timeout=5,
+                retries=1,
             )
-        except Exception:
-            pass
+        except RuntimeError as err:
+            if "timed out" not in str(err).lower():
+                raise
         ctx.wait(3, "for TX after failover", floor=2)
+        failover_logs = grep_log(
+            rf"{hgi_secondary}/tx|selected child.*hgi={hgi_secondary}",
+            tail=5,
+        )
         ctx.check(
-            "TX attempted after failover (no crash)",
-            True,
-            detail=f"TX logs: {grep_log('TX.*3150|3150.*TX', tail=3)[:200]}",
+            "TX routes through secondary after primary fails",
+            bool(failover_logs),
+            detail=f"TX logs: {failover_logs[:200]}",
         )
 
         # Reconnect primary

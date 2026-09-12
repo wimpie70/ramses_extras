@@ -194,18 +194,29 @@ def get_token() -> str:
 
 
 def call_service(
-    token: str, domain: str, service: str, data: dict | None = None
+    token: str,
+    domain: str,
+    service: str,
+    data: dict | None = None,
+    *,
+    timeout: float = 30,
+    retries: int = 3,
 ) -> dict:
     """Call a HA service and return the response.
 
-    Retries up to 3 times with 2s backoff for transient connection errors
-    (HA may be restarting after a profile reload).  Before the first
-    attempt, does a fast HTTP ping to check if HA is reachable — if not,
-    waits up to 15s for it to come back (avoids wasting a 30s HTTP
-    timeout on a container that's still restarting).
+    Retries with 2s backoff for transient connection errors (HA may be
+    restarting after a profile reload).  Before the first attempt, does
+    a fast HTTP ping to check if HA is reachable — if not, waits up to
+    15s for it to come back.  On 401 Unauthorized, automatically
+    refreshes the token.
 
-    On 401 Unauthorized, automatically refreshes the token (the old
-    token may be stale after a container restart).
+    :param token: HA access token.
+    :param domain: Service domain.
+    :param service: Service name.
+    :param data: Optional service data.
+    :param timeout: HTTP timeout for each attempt.
+    :param retries: Maximum number of attempts.
+    :return: Decoded service response, or an empty dict.
     """
     ha_url = get_current_instance().ha_url
     url = f"{ha_url}/api/services/{domain}/{service}"
@@ -218,7 +229,7 @@ def call_service(
         wait_for(is_ha_ready, timeout=15, interval=1, msg="for HA before call_service")
 
     current_token = token
-    for attempt in range(3):
+    for attempt in range(retries):
         req = urllib.request.Request(
             url,
             data=body,
@@ -229,30 +240,37 @@ def call_service(
             },
         )
         try:
-            resp = urllib.request.urlopen(req, timeout=30)
+            resp = urllib.request.urlopen(req, timeout=timeout)
             content = resp.read()
             return json.loads(content) if content else {}
         except urllib.error.HTTPError as e:
-            if e.code == 401 and attempt < 2:
+            if e.code == 401 and attempt < retries - 1:
                 current_token = get_token()
                 print("  call_service: refreshed token after 401")
                 continue
             err_body = e.read().decode()
             raise RuntimeError(f"HTTP {e.code}: {err_body}") from e
         except urllib.error.URLError as e:
-            if attempt < 2:
-                print(f"  call_service: retry {attempt + 1}/3 (connection refused)")
+            if attempt < retries - 1:
+                print(
+                    f"  call_service: retry {attempt + 1}/{retries} "
+                    "(connection refused)"
+                )
                 time.sleep(2)
                 continue
-            raise RuntimeError(f"Connection failed after 3 retries: {e}") from e
+            raise RuntimeError(
+                f"Connection failed after {retries} attempt(s): {e}"
+            ) from e
         except TimeoutError as e:
             # socket.timeout (== TimeoutError) can be raised directly by
             # urlopen during the read phase, not wrapped in URLError.
-            if attempt < 2:
-                print(f"  call_service: retry {attempt + 1}/3 (timeout)")
+            if attempt < retries - 1:
+                print(f"  call_service: retry {attempt + 1}/{retries} (timeout)")
                 time.sleep(2)
                 continue
-            raise RuntimeError(f"Service call timed out after 3 retries: {e}") from e
+            raise RuntimeError(
+                f"Service call timed out after {retries} attempt(s): {e}"
+            ) from e
     return {}  # unreachable
 
 

@@ -55,9 +55,11 @@ for e in d['data']['entries']:
     if e['domain'] != 'ramses_cc':
         continue
     ap = e['options'].get('additional_ports', [])
-    if '{mqtt_url}' not in ap:
-        ap.append('{mqtt_url}')
-        e['options']['additional_ports'] = ap
+    # Keep this simulator helper deterministic: stale MQTT pool ports from
+    # earlier recipes must not create unexpected third/fourth children.
+    desired_ap = ['{mqtt_url}']
+    if ap != desired_ap:
+        e['options']['additional_ports'] = desired_ap
         changed = True
     # Also ensure serial_port points to the primary HGI's MQTT URL
     sp = e['options'].get('serial_port', {{}})
@@ -96,20 +98,27 @@ for e in d['data']['entries']:
     if e['domain'] != 'ramses_cc':
         continue
     schema = dict(e['options'].get('schema', {{}}))
+    # Remove HGI candidates left by earlier recipes.  This helper promises
+    # a two-HGI pool, so retaining them creates 2/3 or 2/4 state and makes
+    # the live failover recipes order-dependent.
+    desired_hgis = {{'{hgi_primary}', '{hgi_secondary}'}}
+    for dev_id in list(schema):
+        if dev_id.startswith('18:') and dev_id not in desired_hgis:
+            schema.pop(dev_id)
     # Set root _owner (required by _extract_pool_hgis_from_schema)
     schema['_owner'] = 'me'
-    # Add the second HGI with _owner and _preferred_type
+    # Add both HGIs with _owner and _preferred_type, even after a
+    # clean-schema recipe removed the primary entry.
+    schema['{hgi_primary}'] = {{
+        '_class': 'HGI',
+        '_owner': 'me',
+        '_preferred_type': 'mqtt',
+    }}
     schema['{hgi_secondary}'] = {{
         '_class': 'HGI',
         '_owner': 'me',
         '_preferred_type': 'mqtt',
     }}
-    # Ensure the primary HGI has _owner and _preferred_type
-    if '{hgi_primary}' in schema and isinstance(schema['{hgi_primary}'], dict):
-        schema['{hgi_primary}']['_owner'] = 'me'
-        schema['{hgi_primary}']['_preferred_type'] = 'mqtt'
-        if '_class' not in schema['{hgi_primary}']:
-            schema['{hgi_primary}']['_class'] = 'HGI'
     # Build a known_list from the schema (HGI devices)
     known_list = {{}}
     for dev_id, cfg in schema.items():

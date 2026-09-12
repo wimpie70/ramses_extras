@@ -47,10 +47,10 @@ async def run_tests():
     from unittest.mock import MagicMock, patch, AsyncMock
 
     # ---------------------------------------------------------------------------
-    # Test 1: Demote HGI — remove _owner, set _removed_from_pool
+    # Test 1: Demote HGI — preserve _owner, set _removed_from_pool
     # ---------------------------------------------------------------------------
-    # User unchecks an HGI in Manage Pool.  The config flow should
-    # remove _owner and set _removed_from_pool: true.
+    # User unchecks an HGI in Manage Pool.  The config flow preserves
+    # _owner and sets _removed_from_pool: true so re-adding is easy.
     # ---------------------------------------------------------------------------
     try:
         from custom_components.ramses_cc.const import (
@@ -92,15 +92,14 @@ async def run_tests():
         for dev_id in to_demote:
             entry = schema_dict.get(dev_id, {})
             if isinstance(entry, dict):
-                entry.pop(SZ_TR_OWNER, None)
                 entry["_removed_from_pool"] = True
                 schema_dict[dev_id] = entry
 
         check(
-            "Demote HGI: _owner removed, _removed_from_pool set",
+            "Demote HGI: _owner preserved, _removed_from_pool set",
             (
                 "18:130236" in schema_dict
-                and SZ_TR_OWNER not in schema_dict["18:130236"]
+                and schema_dict["18:130236"].get(SZ_TR_OWNER) == "me"
                 and schema_dict["18:130236"].get("_removed_from_pool") is True
                 and schema_dict["18:149488"].get(SZ_TR_OWNER) == "me"
                 and "18:149488" not in to_demote

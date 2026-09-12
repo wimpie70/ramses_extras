@@ -26,7 +26,10 @@ from ..helpers import (
     call_service,
     docker_exec_python,
     get_current_instance,
+    load_profile_yaml,
 )
+from ..multi_hgi_helpers import ensure_multi_hgi_config
+from ..profile import mixed_yaml
 
 
 class R115EndToEndTxRx(Recipe):
@@ -49,6 +52,18 @@ class R115EndToEndTxRx(Recipe):
         ctx.log_section("Recipe 115: End-to-end TX/RX through MQTT")
 
         ctx.wait_for_ramses_cc_loaded(timeout=20)
+        ctx.refresh_token()
+
+        # Make this recipe independent of earlier clean-schema/discovery
+        # recipes.  TX targets must be present in the enforced known_list,
+        # and the pool must contain exactly the two intended MQTT HGIs.
+        await load_profile_yaml(ctx.token, mixed_yaml(), speed=0.01)
+        ctx.wait_for_ramses_cc_reload(timeout=20)
+        await ensure_multi_hgi_config(
+            token=ctx.token,
+            ha_url=get_current_instance().ha_url,
+        )
+        ctx.wait_for_ramses_cc_loaded(timeout=30)
         ctx.refresh_token()
 
         inst = get_current_instance()
