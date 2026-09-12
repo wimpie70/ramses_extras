@@ -1,10 +1,24 @@
 # Follow-up issue: multi-HGI pool — Phase 2 (serial/hybrid) and Phase 3 (Zigbee)
 
 **Source plan:** [`multi-hgi-plan.md`](../multi-hgi-plan.md) (repo root)
-**version:** Sep 11 2026 17:50
+**version:** Sep 12 2026 18:30
 **Scope:** Continue the phased rollout of transport-neutral HGI pooling after
 Phase 1 (MQTT-only pool) ships. Phase 2 adds serial and hybrid USB+MQTT pools;
 Phase 3 adds Zigbee pools once physical hardware is available.
+
+## Current status (2026-09-12)
+
+### Phase 2 — COMPLETE
+
+Phase 2 (serial and hybrid pool) is **complete and verified on real hardware**:
+
+- **ramses_rf PR 1208** (`feat/phase2-signature-policy`): **MERGED** (2026-09-12). Head `6fb694e7`. Includes all pool work: `PoolChild` state model, typed routing contract, MQTT callback contract, serial/hybrid pool support, callback-driven `mark_online()`, stale child fallback.
+- **ramses_cc PR 1183** (`fix/issue-1171-pool-config-bugs`): **OPEN**, not draft, awaiting review. Head `333988ff`. Includes pool health entities, config flow improvements, test alignment. CI: lint/type/hassfest/HACS pass; test/coverage blocked only by `ramses-rf==0.60.5` pin (needs 0.60.6 publish).
+- **ramses_extras** (commit `2059b77`): dynamic default sensor creation for newly discovered devices + pool health entity integration in `TransportMonitor`.
+
+### Phase 3 — BLOCKED (hardware)
+
+Phase 3 (Zigbee pool) remains blocked on physical Zigbee hardware availability.
 
 ## Background
 
@@ -97,6 +111,8 @@ only shown when the primary transport is MQTT or empty (not serial).
 
 ## Phase 2 — Serial and hybrid pool
 
+**Status: COMPLETE (2026-09-12).** Verified on real hardware (hass, 2 ESP32 MQTT HGIs + 1 USB ESP).
+
 **Goal:** make `PortTransport` a fully send-capable pool child alongside MQTT
 children, without reintroducing ESP32 USB startup reset loops. Un-gate serial
 transport in the config flow.
@@ -105,7 +121,7 @@ transport in the config flow.
 PR 3 starts~~ **PASSED 2026-09-06** (see below).
 
 **Delivery PR:** PR 3 — Full pooled serial transmission and reconnect
-(`ramses_rf`, new focused PR stacked on PR 2 / PR 1194).
+(`ramses_rf`, merged into PR 1208). **MERGED 2026-09-12.**
 
 ### Hardware feasibility gate (Phase 2 prerequisite) — PASSED 2026-09-06
 

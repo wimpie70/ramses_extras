@@ -13,11 +13,13 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
 from homeassistant.helpers import entity_registry
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from ....const import DOMAIN, register_feature_platform
+from ....const import DOMAIN, EVENT_DEVICES_UPDATED, register_feature_platform
 from ....framework.base_classes.platform_entities import ExtrasBinarySensorEntity
 from ....framework.helpers.device.core import (
     extract_device_id_as_string,
@@ -193,7 +195,15 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up transport state binary sensors."""
+    """Set up transport state binary sensors.
+
+    Also listens for newly discovered devices and creates binary sensors
+    for them without requiring a restart.
+
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :param async_add_entities: Callback to add entities to Home Assistant
+    """
     try:
         devices_data = hass.data.get(DOMAIN, {}).get("devices", [])
         # Ensure devices_data is a list, not an async generator
@@ -202,39 +212,102 @@ async def async_setup_entry(
         elif not isinstance(devices_data, list):
             devices_data = list(devices_data)
 
-        devices = []
-        for device in devices_data:
+        # Track which devices we've already created binary sensors for
+        created_device_ids: set[str] = set()
+
+        async def _create_for_device(device: Any) -> str | None:
+            """Check if a device has fan capability and return its ID.
+
+            :param device: Device object or ID string
+            :return: device_id_str if fan device, None otherwise
+            """
             try:
-                device_id = extract_device_id_as_string(device)
+                device_id: str = extract_device_id_as_string(device)
                 _LOGGER.debug("Checking device %s for fan capability", device_id)
                 if await _device_has_fan(hass, device_id):
-                    devices.append(device_id)
                     _LOGGER.debug("Device %s has fan capability", device_id)
-                else:
-                    _LOGGER.debug("Device %s does not have fan capability", device_id)
+                    return device_id
+                _LOGGER.debug("Device %s does not have fan capability", device_id)
             except Exception as err:
                 _LOGGER.debug(
                     "Error checking device %s for fan: %s", device, err, exc_info=True
                 )
-                continue
+            return None
 
-        if not devices:
+        devices: list[str] = []
+        for device in devices_data:
+            device_id = await _create_for_device(device)
+            if device_id:
+                devices.append(device_id)
+                created_device_ids.add(device_id)
+
+        if devices:
+            for device_id in devices:
+                _migrate_legacy_transport_entity_id(hass, device_id)
+
+            await _start_transport_monitoring(hass)
+
+            # Create binary sensors for each device
+            entities = [
+                TransportStateBinarySensor(hass, device_id) for device_id in devices
+            ]
+
+            if entities:
+                async_add_entities(entities, True)
+                _LOGGER.info("Added %d transport state binary sensors", len(entities))
+        else:
             _LOGGER.debug("No fan devices found for transport state sensors")
-            return
+            # Still start transport monitoring so newly discovered devices
+            # can be tracked.
+            await _start_transport_monitoring(hass)
 
-        for device_id in devices:
+        # Listen for newly discovered devices and create binary sensors
+        # for them without requiring a restart.
+        @ha_callback  # type: ignore[untyped-decorator]
+        def _on_devices_updated() -> None:
+            """Handle EVENT_DEVICES_UPDATED: add binary sensors for new fans."""
+            current_devices = hass.data.get(DOMAIN, {}).get("devices", [])
+            for device in current_devices:
+                device_id_str = extract_device_id_as_string(device)
+                if device_id_str in created_device_ids:
+                    continue
+                hass.async_create_task(
+                    _async_create_and_add_binary(
+                        device,
+                        device_id_str,
+                        async_add_entities,
+                        created_device_ids,
+                    )
+                )
+
+        async def _async_create_and_add_binary(
+            device: Any,
+            device_id_str: str,
+            add_cb: AddEntitiesCallback,
+            created_ids: set[str],
+        ) -> None:
+            """Create a binary sensor for a newly discovered fan device.
+
+            :param device: Device object or ID string
+            :param device_id_str: Normalized device ID string
+            :param add_cb: async_add_entities callback from setup
+            :param created_ids: Set of already-created device IDs (mutated)
+            """
+            device_id = await _create_for_device(device)
+            if not device_id:
+                return
             _migrate_legacy_transport_entity_id(hass, device_id)
+            entity = TransportStateBinarySensor(hass, device_id)
+            add_cb([entity], True)
+            created_ids.add(device_id_str)
+            _LOGGER.info(
+                "Created transport state binary sensor for newly discovered device %s",
+                device_id_str,
+            )
 
-        await _start_transport_monitoring(hass)
-
-        # Create binary sensors for each device
-        entities = [
-            TransportStateBinarySensor(hass, device_id) for device_id in devices
-        ]
-
-        if entities:
-            async_add_entities(entities, True)
-            _LOGGER.info("Added %d transport state binary sensors", len(entities))
+        config_entry.async_on_unload(
+            async_dispatcher_connect(hass, EVENT_DEVICES_UPDATED, _on_devices_updated)
+        )
 
     except Exception as err:
         _LOGGER.error("Error setting up transport state binary sensors: %s", err)

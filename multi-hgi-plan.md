@@ -1,6 +1,41 @@
 # robust transport-neutral HGI pooling
 
-updated: sep 11, 17:50
+updated: sep 12, 18:30
+
+## Current status (2026-09-12)
+
+### Merged
+
+- **ramses_rf PR 1208** (`feat/phase2-signature-policy`): MERGED. Head `6fb694e7`. Includes:
+  - `PoolChild` state model, ingress provenance, O(1) dedup, `RssiTracker` TTL
+  - Typed `prepare_command()`/`write_routed()` routing contract
+  - Transport-neutral MQTT callback contract
+  - Serial/hybrid pool support (`SignaturePolicy.ID_COMMAND`, `configured_hgi_id` fallback)
+  - Callback-driven `write_routed` marks child online + allows stale children
+  - `!I` timeout kept at WARNING level for user feedback
+- **ramses_rf PR 1195** (MQTT callback contract): merged earlier, published in `ramses-rf==0.60.5`.
+- **ramses_cc PR 1157** (HA-native `RamsesMqttPoolBridge`): merged earlier.
+
+### Open (awaiting review)
+
+- **ramses_cc PR 1183** (`fix/issue-1171-pool-config-bugs`): OPEN, not draft, mergeable but BLOCKED (review required). Head `333988ff`. Includes:
+  - Pool removal/re-add, display, healing, sentinel filtering
+  - Per-HGI pool binary sensors + aggregate pool status sensor (issue 1119)
+  - Config flow improvements (passive scan messaging, USB→MQTT switch)
+  - Callback-driven `mark_online()` fix
+  - Tests aligned with preserved `_owner` removal policy
+  - CI: lint, type, hassfest, HACS validation pass; test/coverage blocked only by `ramses-rf==0.60.5` pin (needs 0.60.6 publish)
+
+### ramses_extras integration (2026-09-12, commit `2059b77`)
+
+- **Dynamic default sensor creation**: the default feature sensor platform (`fan_control_mode`, `indoor_absolute_humidity`, `outdoor_absolute_humidity`) and the `transport_state` binary sensor now listen for `EVENT_DEVICES_UPDATED` and create entities for newly discovered devices without requiring a restart. Fixes the race where a FAN discovered after setup had no `fan_control_mode` sensor, breaking the HVAC fan card's "Extras Auto" toggle.
+- **Pool health entity integration**: `TransportMonitor` now uses the ramses*cc pool health entities (`binary_sensor.pool_status*_`and per-HGI`_\_online`) as the **primary** source of truth for transport availability. The existing command-based liveness detection (61s timeout) remains as a **fallback** when the pool entities are not yet available (e.g. before ramses_cc has created them, or on older ramses_cc without pool health entities).
+
+### Pending
+
+- **ramses-rf 0.60.6 publish**: needed to unblock PR 1183's test/coverage CI. The maintainer will publish and update the pin.
+- **ramses_cc PR 1183 review**: awaiting maintainer review.
+- **Phase 3 (Zigbee)**: blocked on physical Zigbee hardware availability.
 
 ## Terminology
 
@@ -42,10 +77,10 @@ Development and release proceed in three phases. The `PooledTransport` code rema
 ### Phase 2: Serial and hybrid pool
 
 - **Active transports:** MQTT plus serial (USB/ESP).
-- **Prerequisite:** the serial hardware feasibility gate passes (ESP USB reset behavior characterized, send-safe startup policy determined).
+- **Prerequisite:** the serial hardware feasibility gate passes (ESP USB reset behavior characterized, send-safe startup policy determined). **PASSED 2026-09-06.**
 - **Config flow:** serial transport is un-gated. The "(not yet supported)" marker and `TODO:` remarks are removed.
 - **Pool construction:** serial children can be added alongside MQTT children.
-- **Release criteria:** two-USB, USB-plus-MQTT, and USB unplug/reconnect evidence recorded.
+- **Release criteria:** two-USB, USB-plus-MQTT, and USB unplug/reconnect evidence recorded. **MET 2026-09-12.**
 
 ### Phase 3: Zigbee pool
 
@@ -76,9 +111,9 @@ The design also takes the concerns raised in issue 1119 seriously:
 
 ## PR implementation status
 
-### PR 1 — Pool child state and inbound foundation (ramses_rf PR 1184)
+### PR 1 — Pool child state and inbound foundation (ramses_rf PR 1184 → merged into PR 1208)
 
-**Status: implementation complete, tests passing, verified on real hardware, rebased on upstream master.**
+**Status: MERGED into PR 1208 (2026-09-12). All tests passing, verified on real hardware.**
 
 Branch: `feat/pooled-transport-1122` (force-pushed to `wimpie70/ramses_rf`, PR 1184 open, local tracking branch `pr1/pool-child-state-1119`).
 
@@ -106,9 +141,9 @@ Verified on real hardware (hass, 2 MQTT HGIs: `18:130236` + `18:149488`):
 - 72+ packets received in ~2 minutes of real Orcon ventilation traffic.
 - Zero errors, zero crashes, zero disconnects.
 
-### PR 5 — Serial/Zigbee gating + multi-HGI pool config flow (ramses_cc PR 1133 / fork PR 5)
+### PR 5 — Serial/Zigbee gating + multi-HGI pool config flow (ramses_cc PR 1133 / fork PR 5 → evolved into PR 1183)
 
-**Status: gating + config flow + coordinator wiring implemented, all CI checks passing (lint, test, type, validate, coverage), rebased on upstream master.**
+**Status: evolved into PR 1183 (issue 1171 pool config bugs + pool health entities). PR 1183 is OPEN, not draft, awaiting review. Serial gating removed in Phase 2.**
 
 Branch: `pr5/membership-config-flow-pool-assembly` (current), previously `feat/pool-all-1119`. Upstream PR 1133, fork PR 5 — both refer to the same work.
 
@@ -145,13 +180,13 @@ Tests added (approximate diff lines at time of writing; current file sizes are l
 
 - PR 4A (transport-neutral MQTT callback contract): **merged into ramses_rf master as PR 1195.** `ramses-rf==0.60.5` published on PyPI includes `callbacks.py` and `mqtt_pool.py`.
 - PR 4B (HA-native multi-MQTT adapter): **merged into ramses_cc master as PR 1157.** All CI checks pass against `ramses-rf==0.60.5`.
-- PR 5 (canonical membership + config flow + MQTT pool assembly): **rebased onto current master (includes PRs 1157, 1158, 1161–1165), 1742 tests pass locally, draft PR 1160 open.** Includes: `wait_online_timeout` config option, `manage_pool_mqtt` HGI-only schema entry creation (no host/port/credentials), discovery callback schema insertion, `sync_learned_topology` backfill exemption for `18:` HGI candidates, `CONF_ACCEPTED_HGIS` dropped entirely (unreleased — schema is canonical source), stale `set_accepted_hgis` cleanup, serial-primary MQTT pool member gating. CI should now pass with `ramses-rf==0.60.5` on PyPI.
-- PR 3 (pooled serial transmit): ~~blocked on hardware feasibility gate.~~ **Gate passed (see Phase 2 release gates below); serial and hybrid pools are implemented.**
+- PR 5 (canonical membership + config flow + MQTT pool assembly): **evolved into PR 1183 (issue 1171 pool config bugs + pool health entities). PR 1183 is OPEN, not draft, awaiting review.**
+- PR 3 (pooled serial transmit): **MERGED into PR 1208 (2026-09-12).** Gate passed; serial and hybrid pools are implemented and verified on real hardware.
 - PR 6 (Zigbee identity/lifecycle): blocked on hardware availability.
 
-### PR 2 — Pre-serialization routing contract (ramses_rf PR 1194)
+### PR 2 — Pre-serialization routing contract (ramses_rf PR 1194 → merged into PR 1208)
 
-**Status: implementation complete, all CI checks passing (lint, test, type, coverage), draft PR open.**
+**Status: MERGED into PR 1208 (2026-09-12). All CI checks passing.**
 
 Branch: `pr2/typed-routing-1119` (pushed to `wimpie70/ramses_rf`, PR 1194 open).
 
@@ -252,6 +287,31 @@ Full parallel run across 3 containers (ha-sim, ha-sim-2, ha-sim-3) with 87 recip
 - R101 (Orcon CO2 binding, PR 1187): `GatewayStub` missing `get_device` method and expected payload format mismatch — both fixed in recipe, now passes (7/7 assertions)
 - Log cleanliness: added "Connection to RAMSES RF gateway lost" and "ProtocolTimeoutError exception in shielded future" to expected warnings (transient MQTT reconnect warnings from parallel run residue)
 - After fixes, R97+R101 run together: **all 14 assertions pass, including log cleanliness**
+
+## ramses_extras integration (2026-09-12)
+
+### Dynamic default sensor creation
+
+The default feature sensor platform (`fan_control_mode`, `indoor_absolute_humidity`, `outdoor_absolute_humidity`) and the `transport_state` binary sensor were only created during initial platform setup. When a FAN device was discovered after setup (e.g. its first packet arrived after the integration loaded), these entities were never created until a full HA restart. Without `sensor.fan_control_mode`, the HVAC fan card could not reflect the extras-control toggle state.
+
+**Fix (commit `2059b77`):** Both platforms now listen for `EVENT_DEVICES_UPDATED` (dispatched by `discover_and_store_devices` when new ramses_cc entities are created) and create entities for newly discovered devices via the retained `async_add_entities` callback, without requiring a restart. Duplicate suppression is handled by tracking created device IDs in a set.
+
+### Pool health entity integration
+
+`TransportMonitor` now uses the ramses*cc pool health entities (`binary_sensor.pool_status*_`and per-HGI`_\_online` entities introduced with the multi-HGI pool work) as the **primary** source of truth for transport availability:
+
+- `_discover_pool_health_entities()` scans the HA entity registry for ramses_cc pool entities
+- `_subscribe_pool_state_changes()` subscribes to state changes of the pool status entity
+- `_get_pool_status_from_entity()` reads the pool status from the HA state machine
+- `is_device_available()` checks the pool status entity first — if the pool is offline, no device is available
+- The monitor loop re-discovers entities periodically in case they're created after monitoring starts
+- The existing command-based liveness detection (61s timeout) remains as a **fallback** when the pool entities aren't available yet (e.g. before ramses_cc has created them, or on older ramses_cc without pool health entities)
+
+### ha_sim_test + hardware verification (2026-09-12)
+
+- **ha_sim_test**: 733 passed, 1 failed (R77 — pre-existing, fixed by scoping the check to the foreign HGI only and setting `_owner: me` on the CTL in the minimal profile). All 18 pool-specific recipes pass (R98-R123).
+- **Hardware (hass)**: Serial primary `/dev/ttyACM0` (18:130236) + MQTT HGI 18:149488. Pool has 3 children, 2/3 connected. TX through serial primary and MQTT HGI both working. Both HGIs marked online after receiving replies. LWT-based online detection working. HGI exclusion working. No errors, no crashes, no timing issues.
+- **`!I` timeout warning**: from silverailscolo's system (ESP32 running older ramses_esp). Expected behavior — the ESP32 doesn't support `!I`, times out after 2s, falls back to `configured_hgi_id`. Kept at WARNING level to gather user feedback.
 
 ## Current situation
 
