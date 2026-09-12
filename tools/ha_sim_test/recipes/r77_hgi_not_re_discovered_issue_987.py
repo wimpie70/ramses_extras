@@ -82,8 +82,15 @@ class R77HgiNotRediscoveredIssue987(Recipe):
         # device.  The bug would cause it to be stripped from
         # schema_device_ids, marked as REMOVED, and re-notified.
         print("  Loading minimal profile (CTL + foreign HGI)...")
+        # NOTE: set _owner: me on the CTL so it's not flagged as a
+        # discovery candidate by the issue 1119 logic (devices in
+        # schema without _owner are re-flagged for review every
+        # checkpoint).  The test's intent is to verify the foreign
+        # HGI is not re-notified, not to test the no-owner review
+        # path.
         yaml_profile = minimal_ctl_yaml(
             schema_override={
+                CTL: {"_owner": "me"},
                 _FOREIGN_HGI: {"_class": "HGI", "_owner": "not-me"},
             },
             extra_kl={
@@ -174,7 +181,12 @@ class R77HgiNotRediscoveredIssue987(Recipe):
         notif_after = len(notifs_after)
         print(f"  Discovery notifications after wait: {notif_after}")
 
-        # Check that no notification mentions the foreign HGI device ID
+        # Check that no notification mentions the foreign HGI device ID.
+        # The original bug (issue 987) caused the foreign HGI to be
+        # stripped from schema_device_ids and re-notified every cycle.
+        # Other devices may legitimately be notified (e.g. ownerless
+        # devices from previous tests flagged by issue 1119), so we
+        # only check that the foreign HGI is NOT in any notification.
         hgi_in_notif = False
         for n in notifs_after:
             msg = n.get("message", "")
@@ -188,11 +200,18 @@ class R77HgiNotRediscoveredIssue987(Recipe):
             f"hgi_in_notif={hgi_in_notif}",
         )
 
+        # Check that no NEW notification mentions the foreign HGI.
+        # This is the precise regression guard for issue 987: the
+        # foreign HGI was stripped from schema_device_ids and
+        # re-notified every checkpoint.  Other devices being notified
+        # is not a regression of issue 987.
+        new_notifs = notifs_after[len(notifs_before) :]
+        hgi_in_new_notif = any(_FOREIGN_HGI in n.get("message", "") for n in new_notifs)
         ctx.check(
-            "no new discovery notifications after checkpoint",
-            notif_after <= notif_before,
-            f"notifications before={notif_before}, after={notif_after} "
-            f"(increase = bug: HGI was stripped from schema_device_ids)",
+            "no new discovery notification for foreign HGI after checkpoint",
+            not hgi_in_new_notif,
+            f"foreign HGI {_FOREIGN_HGI} was re-notified "
+            f"(bug: HGI was stripped from schema_device_ids)",
         )
 
         # ── 7. Verify foreign HGI metadata is not REMOVED ─────────────
