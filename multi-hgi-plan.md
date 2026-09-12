@@ -32,9 +32,9 @@ Development and release proceed in three phases. The `PooledTransport` code rema
 - **Active transports:** MQTT only (HA-native MQTT service via `homeassistant.components.mqtt`).
 - **Single MQTT HGI:** uses `RamsesMqttPoolBridge` (the old `RamsesMqttBridge` class is no longer instantiated) — no pool, no paho.
 - **Multiple MQTT HGIs:** `RamsesMqttPoolBridge` drives the pool through the PR 4A callback contract — still no paho, one HA-managed MQTT connection. Config flow asks for HGI ID only (`18:NNNNNN`); the HA MQTT broker and topic prefix are reused.
-- **No paho inside HA:** `MqttTransport` (direct paho) is not instantiated for pooled MQTT inside Home Assistant. It remains in `ramses_tx` for standalone CLI use only. Serial-primary configurations cannot add MQTT pool members in Phase 1 (gated in config flow).
-- **Config flow:** only MQTT transport is selectable when adding a pool child. Serial and Zigbee options show "(not yet supported)" with `TODO:` remarks.
-- **Pool construction:** only MQTT children are instantiated via the callback contract. No serial or Zigbee children are added to the pool.
+- **No paho inside HA:** `MqttTransport` (direct paho) is not instantiated for pooled MQTT inside Home Assistant. It remains in `ramses_tx` for standalone CLI use only. ~~Serial-primary configurations cannot add MQTT pool members in Phase 1 (gated in config flow).~~ **Superseded in Phase 2:** serial-primary + MQTT hybrid pools are now supported.
+- ~~**Config flow:** only MQTT transport is selectable when adding a pool child. Serial and Zigbee options show "(not yet supported)" with `TODO:` remarks.~~ **Superseded in Phase 2:** serial transport is un-gated (see below).
+- ~~**Pool construction:** only MQTT children are instantiated via the callback contract. No serial or Zigbee children are added to the pool.~~ **Superseded in Phase 2:** serial and hybrid pools are now supported (see below).
 - **Code preservation:** existing serial (`PortTransport`) and Zigbee (`ZigbeeTransport`) transport code stays in place and remains transport-neutral at the `PooledTransport` level. It is gated at the config-flow/membership layer, not removed.
 - **Release criteria:** dual-MQTT pool works end-to-end with real hardware (dedup, RSSI routing, QoS, failover, LWT-based pruning).
 - **Rationale (from issue 1119 discussion):** MQTT provides a clean testbench with native HA integration, LWT for node-offline detection, no USB pass-through or port re-enumeration issues in Docker, and two MQTT HGIs are already available for testing. Building the core foundations (dedup, RSSI routing, QoS) on MQTT first reduces the number of interacting variables during initial development.
@@ -146,7 +146,7 @@ Tests added (approximate diff lines at time of writing; current file sizes are l
 - PR 4A (transport-neutral MQTT callback contract): **merged into ramses_rf master as PR 1195.** `ramses-rf==0.60.5` published on PyPI includes `callbacks.py` and `mqtt_pool.py`.
 - PR 4B (HA-native multi-MQTT adapter): **merged into ramses_cc master as PR 1157.** All CI checks pass against `ramses-rf==0.60.5`.
 - PR 5 (canonical membership + config flow + MQTT pool assembly): **rebased onto current master (includes PRs 1157, 1158, 1161–1165), 1742 tests pass locally, draft PR 1160 open.** Includes: `wait_online_timeout` config option, `manage_pool_mqtt` HGI-only schema entry creation (no host/port/credentials), discovery callback schema insertion, `sync_learned_topology` backfill exemption for `18:` HGI candidates, `CONF_ACCEPTED_HGIS` dropped entirely (unreleased — schema is canonical source), stale `set_accepted_hgis` cleanup, serial-primary MQTT pool member gating. CI should now pass with `ramses-rf==0.60.5` on PyPI.
-- PR 3 (pooled serial transmit): blocked on hardware feasibility gate.
+- PR 3 (pooled serial transmit): ~~blocked on hardware feasibility gate.~~ **Gate passed (see Phase 2 release gates below); serial and hybrid pools are implemented.**
 - PR 6 (Zigbee identity/lifecycle): blocked on hardware availability.
 
 ### PR 2 — Pre-serialization routing contract (ramses_rf PR 1194)
@@ -440,7 +440,7 @@ Tests run (8 tests, tool: `tools/serial_hw_gate.py`):
 
 **Recommended Phase 2 defaults:**
 
-- `signature_policy = "delayed"` with `startup_grace = 3.0s` for pooled serial children.
+- `signature_policy = "id_command"` with `startup_grace = 3.0s` for pooled serial children (the `ID_COMMAND` policy sends `!I` to query the HGI ID after the grace period; `DELAYED` was the original recommendation but `ID_COMMAND` is the implemented policy).
 - `signature_policy = "immediate"` for non-pooled single-USB (backward compatible).
 - Do NOT change DTR/RTS after open — any transition resets the ESP32.
 - `disable_sending` remains a permanent send permission flag, not a startup workaround.
@@ -1736,7 +1736,7 @@ verifies all three fixes against regressions:
 - The comment warning migration runs in `async_setup`
 - Live config HGI comments with text have the warning suffix
 
-All 20 checks pass (18 recipe checks + 2 log cleanliness checks).
+All 21 checks pass (18 recipe checks + 1 summary check + 2 log cleanliness checks).
 
 ### Current schema state (verified 2026-09-11)
 

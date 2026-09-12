@@ -60,7 +60,7 @@ issue 1171 config bugs are fixed:
     `usb`, `mqtt`, and `zigbee` so comment-based transport detection
     is not broken.
   - **Regression test R123** added to `ha_sim_test` covering all three
-    fixes (20 checks, all pass).
+    fixes (21 checks, all pass).
 
 Live hardware test results (2026-09-05, hass, 2 ESP32 MQTT HGIs): 11/11 test
 scenarios pass (dual-MQTT, hybrid serial+MQTT receive, LWT failover, broker
@@ -158,8 +158,10 @@ hardware. The Phase 2 plan (PR 3) splits this into `signature_policy:
 delayed probe after the ESP stabilizes.
 
 **Recommended Phase 2 defaults:**
-- `signature_policy = "delayed"` with `startup_grace = 3.0s` for pooled serial
-  children (grace period is once per port open, not per message).
+- `signature_policy = "id_command"` with `startup_grace = 3.0s` for pooled serial
+  children (grace period is once per port open, not per message). `ID_COMMAND`
+  sends `!I` to query the HGI ID after the grace period; this is the implemented
+  policy (the original recommendation was `delayed`).
 - `signature_policy = "immediate"` for non-pooled single-USB (backward
   compatible).
 - Do NOT change DTR/RTS after open — any transition resets the ESP32.
@@ -203,8 +205,8 @@ enables serial children in pool construction.
 - Add new `TransportConfig` fields with backward-compatible defaults and
   coordinate any `ramses_cc` configuration plumbing without requiring existing
   callers to change.
-- Obtain the RAMSES HGI ID through delayed signature, firmware announcement, or
-  validated configured identity.
+- Obtain the RAMSES HGI ID through `ID_COMMAND` (`!I` query), firmware
+  announcement, or validated configured identity.
 - Keep identity-unknown serial children receive-only and not send-ready.
 - Mark the child send-ready only after identity and startup safety are
   established.
@@ -566,19 +568,20 @@ separate final phases.
 ## Open items deferred from Phase 1 (candidates for Phase 2/3 follow-up)
 
 These were noted as limitations or deferred during Phase 1 and may be addressed
-during Phase 2/3 work if they become relevant:
+during Phase 2/3 work if they become relevant. Items already resolved are
+marked **[DONE]** and retained for historical context.
 
 - **Heartbeat/last-packet expiry for MQTT children** is not implemented. An
   ESP that silently stops sending but never sends LWT `offline` will stay
   marked online. LWT is the sole source-of-truth for MQTT child availability
   in Phase 1. A heartbeat timeout may be added if real-world testing shows
   this is needed.
-- **Per-HGI status sensors implemented** (issue 1171 comment by
+- **[DONE] Per-HGI status sensors** (issue 1171 comment by
   silverrailscolo). Per-HGI online/offline binary sensors and an
   aggregate pool status sensor now track MQTT LWT and serial connection
   state separately. The legacy `binary_sensor.hgi_18_*_gateway_status`
   entities remain as a secondary surface.
-- **HGI `_comment` warning** — **Fixed (2026-09-11, commit `61b45209`).**
+- **[DONE] HGI `_comment` warning** — **Fixed (2026-09-11, commit `61b45209`).**
   HGI `_comment` fields now include the warning suffix
   ` (don't edit here — adapt with the Pool Management config)`. A
   migration in `coordinator.async_setup` appends the warning to existing
@@ -587,8 +590,11 @@ during Phase 2/3 work if they become relevant:
   is always present and idempotent. The warning text avoids `usb`, `mqtt`,
   and `zigbee` so comment-based transport detection is not broken.
 - **Diagnostics/config UI display** of transport kind, address, HGI ID,
-  broker/topic, availability, acceptance, and send readiness — not addressed
-  in PR 5.
+  broker/topic, availability, acceptance, and send readiness — partially
+  addressed: per-child state, identity, route evidence, failures, and
+  reconnects are visible in diagnostics; the config-flow UI for transport
+  kind selection is implemented via `_preferred_type`. Full diagnostics
+  review confirmed no credentials are exposed.
 - **HA USB consumer listing (issue 1143)**: HA 2026.9's `usb/consumers.py`
   cannot detect ramses_cc as a serial port consumer because the port is stored
   at `options["serial_port"]["port_name"]` (nested dict) but HA only checks
@@ -598,7 +604,7 @@ during Phase 2/3 work if they become relevant:
   `CONF_ADDITIONAL_PORTS` and the "port in use" indicator in HA 2026.9+.
 - **Optional private-namespace auto-accept mode** for wildcard MQTT HGIs is
   deferred.
-- **ramses_esp firmware crash (MQTT disconnect + USB serial)**: ramses_esp
+- **[DONE] ramses_esp firmware crash (MQTT disconnect + USB serial)**: ramses_esp
   0.4.9 and 0.5.2 crash with `RTC_SW_CPU_RST` when the MQTT connection
   disconnects (e.g. when the USB serial port is opened and the DTR/RTS
   reset drops the MQTT connection). Both ESP32s crash when either port is

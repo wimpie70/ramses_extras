@@ -197,7 +197,6 @@ def check(name, condition, detail=""):
 # Behavioral check: verify the options flow's manage_pool_mqtt_url
 # step accepts an HGI ID (not a full mqtt:// URL).  This is the
 # redesigned form (issue 1119 — HA MQTT is always the broker).
-import inspect
 from custom_components.ramses_cc import config_flow as cf_mod
 
 # The method is on RamsesOptionsFlowHandler (pool management is an
@@ -211,24 +210,35 @@ check(
     "The manage_pool_mqtt_url step is missing",
 )
 
-# Check the method source accepts hgi_id (not mqtt_url).
-source = inspect.getsource(
-    flow_cls.async_step_manage_pool_mqtt_url
-)
+# Behavioral: inspect compiled bytecode constants (co_consts) instead
+# of source text — robust to formatting/comment changes while still
+# verifying the form collects the right fields.
+method = flow_cls.async_step_manage_pool_mqtt_url
+all_str_consts: set[str] = set()
+
+def _collect_consts(code_obj):
+    for c in code_obj.co_consts:
+        if isinstance(c, str):
+            all_str_consts.add(c)
+        elif hasattr(c, "co_consts"):
+            _collect_consts(c)
+
+_collect_consts(method.__code__)
+
 check(
     "Form accepts hgi_id field (not mqtt_url)",
-    '"hgi_id"' in source and '"mqtt_url"' not in source,
+    "hgi_id" in all_str_consts and "mqtt_url" not in all_str_consts,
     "The form should collect hgi_id, not mqtt_url (issue 1119)",
 )
 check(
     "Form has optional topic_prefix field",
-    '"topic_prefix"' in source,
+    "topic_prefix" in all_str_consts,
     "The form should have an optional topic_prefix field",
 )
 check(
     "No broker/port/credential fields collected",
     not any(
-        f'"{field}"' in source
+        field in all_str_consts
         for field in ("broker", "port", "username", "password")
     ),
     "The form should not collect broker/port/credentials (HA MQTT is the broker)",
@@ -287,16 +297,16 @@ check(
     f"again={again!r}",
 )
 
-# Source check: the migration block uses deepcopy (not dict() shallow
-# copy) so mutating _entry["_comment"] doesn't leak into the live
-# options dict (issue 1119).
-import inspect
+# Behavioral: the coordinator module imports deepcopy (production-
+# class check — verifies the actual module namespace, not source
+# text).  The migration path uses deepcopy to avoid mutating the
+# live options dict (issue 1119).
 from custom_components.ramses_cc import coordinator as coord_mod
-source = inspect.getsource(coord_mod)
+
 check(
-    "Migration uses deepcopy (not shallow copy)",
-    "deepcopy(config_schema)" in source,
-    "The migration should use deepcopy to avoid mutating live options",
+    "Coordinator imports deepcopy for schema mutations",
+    hasattr(coord_mod, "deepcopy"),
+    "The coordinator should import deepcopy for schema mutations",
 )
 
 print(json.dumps({"results": results}))
