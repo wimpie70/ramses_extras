@@ -291,7 +291,29 @@ MqttCallbackPool: child 18:149488 online (HGI=18:149488), 2/3 connected
    pre-existing issue (FAN's indoor_temp sensor is unavailable), not
    related to the pool PRs.
 
-### No code issues found
+### Issues found
+
+1. **Second USB HGI (/dev/ttyACM1) not in pool config** — configuration
+   issue, not a code issue. The user should add it to `additional_ports`
+   if they want to use it as a pool member.
+
+2. **"Temp_control for 32:153289: required sensor unavailable" warning** —
+   pre-existing issue (FAN's indoor_temp sensor is unavailable), not
+   related to the pool PRs.
+
+3. **`!I` command timeout warning on ESP32 running older ramses_esp**
+   (PR 1183 comment by silverailscolo) — the ESP32 doesn't support the
+   `!I` command, so it times out after 2s and falls back to
+   `configured_hgi_id`. This is expected behavior, but the WARNING
+   level was confusing users.
+
+   **Fix**: Downgraded to INFO when `configured_hgi_id` is available as
+   fallback (the timeout is expected for older firmware). WARNING is
+   kept when no fallback is available (genuine problem).
+
+   Commit: `b43733c3` on `feat/phase2-signature-policy`.
+
+### No other code issues found
 
 The pool is working correctly on the hardware:
 - Serial + MQTT hybrid pool: working
@@ -320,3 +342,11 @@ All pool-specific recipes pass. Hardware test shows no code issues.
 - Set `_owner: me` on the CTL in the minimal profile so it's not flagged
   as a discovery candidate by the issue 1119 logic.
 - Commit: `8f33d0b` on `master`
+
+### `!I` timeout warning downgrade (ramses_rf)
+
+- Downgraded the `!I` command timeout warning to INFO when
+  `configured_hgi_id` is available as fallback.
+- WARNING is kept when no fallback is available (genuine problem).
+- Commit: `b43733c3` on `feat/phase2-signature-policy`
+- Addresses feedback from silverailscolo on PR 1183.
