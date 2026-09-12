@@ -296,14 +296,13 @@ MqttCallbackPool: child 18:149488 online (HGI=18:149488), 2/3 connected
 3. **`!I` command timeout warning on ESP32 running older ramses_esp**
    (reported by silverailscolo on PR 1183, on egbert's system — NOT on
    the user's `hass`).  The ESP32 doesn't support the `!I` command, so
-   it times out after 2s and falls back to `configured_hgi_id`.  This is
-   expected behavior, but the WARNING level was confusing users.
+   it times out after 2s and falls back to `configured_hgi_id`.  This
+   is expected behavior for older firmware, but the WARNING level is
+   kept for now to gather feedback logs from users with debug logging
+   enabled.  Can be downgraded to INFO later once we have enough data
+   on how common this case is.
 
-   **Fix**: Downgraded to INFO when `configured_hgi_id` is available as
-   fallback (the timeout is expected for older firmware).  WARNING is
-   kept when no fallback is available (genuine problem).
-
-   Commit: `b43733c3` on `feat/phase2-signature-policy`.
+   (No code change — keeping WARNING level for now.)
 
 ### No other code issues found on hass
 
@@ -335,10 +334,8 @@ All pool-specific recipes pass. Hardware test shows no code issues.
   as a discovery candidate by the issue 1119 logic.
 - Commit: `8f33d0b` on `master`
 
-### `!I` timeout warning downgrade (ramses_rf)
+### `!I` timeout warning level (ramses_rf)
 
-- Downgraded the `!I` command timeout warning to INFO when
-  `configured_hgi_id` is available as fallback.
-- WARNING is kept when no fallback is available (genuine problem).
-- Commit: `b43733c3` on `feat/phase2-signature-policy`
-- Addresses feedback from silverailscolo on PR 1183.
+- Kept at WARNING level (reverted the INFO downgrade) to gather user
+  feedback logs from users with debug logging enabled.
+- Commit: `dca76b57` (revert) on `feat/phase2-signature-policy`
