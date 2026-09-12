@@ -358,7 +358,15 @@ async def test_async_setup_entry_no_devices():
     config_entry = MagicMock()
     async_add_entities = MagicMock()
 
-    await async_setup_entry(hass, config_entry, async_add_entities)
+    with patch(
+        "custom_components.ramses_extras.features.default.platforms.binary_sensor.async_dispatcher_connect",  # noqa: E501
+        return_value=MagicMock(),
+    ):
+        with patch(
+            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",  # noqa: E501
+            new_callable=AsyncMock,
+        ):
+            await async_setup_entry(hass, config_entry, async_add_entities)
     # Should return early without adding entities
 
 
@@ -377,14 +385,18 @@ async def test_async_setup_entry_with_devices():
         return_value=True,
     ):
         with patch(
-            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",
+            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",  # noqa: E501
             new_callable=AsyncMock,
         ):
             with patch(
-                "custom_components.ramses_extras.features.default.platforms.binary_sensor._migrate_legacy_transport_entity_id",
+                "custom_components.ramses_extras.features.default.platforms.binary_sensor._migrate_legacy_transport_entity_id",  # noqa: E501
             ):
-                await async_setup_entry(hass, config_entry, async_add_entities)
-                async_add_entities.assert_called_once()
+                with patch(
+                    "custom_components.ramses_extras.features.default.platforms.binary_sensor.async_dispatcher_connect",  # noqa: E501
+                    return_value=MagicMock(),
+                ):
+                    await async_setup_entry(hass, config_entry, async_add_entities)
+                    async_add_entities.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -401,11 +413,15 @@ async def test_async_setup_entry_no_fan_devices():
         return_value=False,
     ):
         with patch(
-            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",
+            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",  # noqa: E501
             new_callable=AsyncMock,
         ):
-            await async_setup_entry(hass, config_entry, async_add_entities)
-            # Should not add any entities since no devices have fan
+            with patch(
+                "custom_components.ramses_extras.features.default.platforms.binary_sensor.async_dispatcher_connect",  # noqa: E501
+                return_value=MagicMock(),
+            ):
+                await async_setup_entry(hass, config_entry, async_add_entities)
+                # Should not add any entities since no devices have fan
 
 
 @pytest.mark.asyncio
@@ -427,14 +443,18 @@ async def test_async_setup_entry_async_generator():
         return_value=True,
     ):
         with patch(
-            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",
+            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",  # noqa: E501
             new_callable=AsyncMock,
         ):
             with patch(
-                "custom_components.ramses_extras.features.default.platforms.binary_sensor._migrate_legacy_transport_entity_id",
+                "custom_components.ramses_extras.features.default.platforms.binary_sensor._migrate_legacy_transport_entity_id",  # noqa: E501
             ):
-                await async_setup_entry(hass, config_entry, async_add_entities)
-                async_add_entities.assert_called_once()
+                with patch(
+                    "custom_components.ramses_extras.features.default.platforms.binary_sensor.async_dispatcher_connect",  # noqa: E501
+                    return_value=MagicMock(),
+                ):
+                    await async_setup_entry(hass, config_entry, async_add_entities)
+                    async_add_entities.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -452,14 +472,18 @@ async def test_async_setup_entry_device_not_list():
         return_value=True,
     ):
         with patch(
-            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",
+            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",  # noqa: E501
             new_callable=AsyncMock,
         ):
             with patch(
-                "custom_components.ramses_extras.features.default.platforms.binary_sensor._migrate_legacy_transport_entity_id",
+                "custom_components.ramses_extras.features.default.platforms.binary_sensor._migrate_legacy_transport_entity_id",  # noqa: E501
             ):
-                await async_setup_entry(hass, config_entry, async_add_entities)
-                async_add_entities.assert_called_once()
+                with patch(
+                    "custom_components.ramses_extras.features.default.platforms.binary_sensor.async_dispatcher_connect",  # noqa: E501
+                    return_value=MagicMock(),
+                ):
+                    await async_setup_entry(hass, config_entry, async_add_entities)
+                    async_add_entities.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -476,11 +500,15 @@ async def test_async_setup_entry_device_exception():
         side_effect=Exception("test error"),
     ):
         with patch(
-            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",
+            "custom_components.ramses_extras.features.default.platforms.binary_sensor._start_transport_monitoring",  # noqa: E501
             new_callable=AsyncMock,
         ):
-            await async_setup_entry(hass, config_entry, async_add_entities)
-            # Should handle exception and continue
+            with patch(
+                "custom_components.ramses_extras.features.default.platforms.binary_sensor.async_dispatcher_connect",  # noqa: E501
+                return_value=MagicMock(),
+            ):
+                await async_setup_entry(hass, config_entry, async_add_entities)
+                # Should handle exception and continue
 
 
 @pytest.mark.asyncio

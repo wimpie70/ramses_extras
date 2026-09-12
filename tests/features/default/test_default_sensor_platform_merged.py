@@ -24,6 +24,15 @@ from custom_components.ramses_extras.features.default.platforms.sensor import (
 class TestDefaultSensorPlatform:
     """Test cases for default feature sensor platform integration."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_dispatcher(self):
+        """Patch async_dispatcher_connect for all tests in this class."""
+        with patch(
+            "custom_components.ramses_extras.features.default.platforms.sensor.async_dispatcher_connect",  # noqa: E501
+            return_value=MagicMock(),
+        ):
+            yield
+
     @pytest.fixture
     def hass(self):
         """Create a mock Home Assistant instance."""
@@ -35,6 +44,7 @@ class TestDefaultSensorPlatform:
             }
         }
         hass.states = MagicMock()
+        hass.async_create_task = MagicMock()
         return hass
 
     @pytest.fixture
@@ -48,6 +58,7 @@ class TestDefaultSensorPlatform:
             }
         }
         config_entry.options = {}
+        config_entry.async_on_unload = MagicMock()
         return config_entry
 
     @pytest.fixture

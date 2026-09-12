@@ -2,6 +2,12 @@
 
 This module provides monitoring of the Ramses RF transport state and
 implements graceful degradation when the transport is unavailable.
+
+The primary source of transport availability is the ramses_cc pool health
+entities (``binary_sensor.pool_status_*`` and per-HGI ``*_online``
+entities introduced with the multi-HGI pool work).  When those entities
+are not yet available (e.g. before ramses_cc has created them), the
+monitor falls back to its own command-based liveness detection.
 """
 
 import asyncio
@@ -10,11 +16,19 @@ import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
 
 if TYPE_CHECKING:
     from custom_components.ramses_cc.coordinator import RamsesCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# Entity ID patterns for ramses_cc pool health entities.
+# The unique_id format is ``{entry_id}_pool_status_online`` and
+# ``{entry_id}_pool_child_{hgi_id}_online``; the resulting entity_id
+# is ``binary_sensor.pool_status_N`` and ``binary_sensor.hgi_{hgi}_online_N``.
+_POOL_STATUS_ENTITY_PREFIX = "binary_sensor.pool_status_"
+_HGI_ONLINE_ENTITY_PREFIX = "binary_sensor.hgi_"
 
 
 class TransportMonitor:
@@ -46,6 +60,11 @@ class TransportMonitor:
         self._command_timeout: float = 61.0  # Wait 61s for reply after sending command
         self._hass: HomeAssistant | None = None
         self._msg_handler_unsub: Callable[[], None] | None = None
+        # Pool health entity integration (primary source of truth).
+        self._pool_status_entity_id: str | None = None
+        self._hgi_online_entity_ids: dict[str, str] = {}  # hgi_id -> entity_id
+        self._pool_state_unsub: Callable[[], None] | None = None
+        self._pool_entity_available: bool = False  # Have we seen the entity?
 
     def register_callback(
         self,
@@ -274,6 +293,79 @@ class TransportMonitor:
                 self._mark_device_online(normalized_device_id),
             )
 
+    def _discover_pool_health_entities(self) -> None:
+        """Discover ramses_cc pool health entity IDs from the entity registry.
+
+        Populates ``_pool_status_entity_id`` and ``_hgi_online_entity_ids``
+        by scanning the HA entity registry for ramses_cc pool entities.
+        """
+        if not self._hass:
+            return
+        try:
+            from homeassistant.helpers import entity_registry as er
+
+            reg = er.async_get(self._hass)
+            pool_entity_id: str | None = None
+            hgi_entities: dict[str, str] = {}
+            for entity in reg.entities.values():
+                if entity.platform != "ramses_cc":
+                    continue
+                eid = entity.entity_id
+                uid = entity.unique_id
+                if eid.startswith(_POOL_STATUS_ENTITY_PREFIX):
+                    # Prefer the pool_status entity (aggregate).
+                    pool_entity_id = eid
+                elif uid.endswith("_online") and "_pool_child_" in uid:
+                    # Per-HGI: unique_id = {entry_id}_pool_child_{hgi_id}_online
+                    # Extract hgi_id from the unique_id.
+                    parts = uid.split("_pool_child_")
+                    if len(parts) == 2:
+                        hgi_id = parts[1].removesuffix("_online")
+                        hgi_entities[hgi_id] = eid
+            self._pool_status_entity_id = pool_entity_id
+            self._hgi_online_entity_ids = hgi_entities
+            if pool_entity_id or hgi_entities:
+                _LOGGER.info(
+                    "Transport monitor: discovered pool health entities: "
+                    "pool_status=%s, hgi_online=%s",
+                    pool_entity_id,
+                    hgi_entities,
+                )
+        except Exception as e:
+            _LOGGER.debug(
+                "Could not discover pool health entities: %s", e, exc_info=True
+            )
+
+    def _get_pool_status_from_entity(self) -> bool | None:
+        """Read the pool status from the ramses_cc entity.
+
+        :return: True if pool is online, False if offline, None if entity
+                 not available or state unknown.
+        """
+        if not self._hass or not self._pool_status_entity_id:
+            return None
+        state = self._hass.states.get(self._pool_status_entity_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        return bool(state.state == "on")
+
+    def _get_hgi_online_from_entity(self, hgi_id: str) -> bool | None:
+        """Read a specific HGI's online status from the ramses_cc entity.
+
+        :param hgi_id: HGI device ID (e.g. ``18:130236``)
+        :return: True if online, False if offline, None if entity not
+                 available or state unknown.
+        """
+        if not self._hass:
+            return None
+        entity_id = self._hgi_online_entity_ids.get(hgi_id)
+        if not entity_id:
+            return None
+        state = self._hass.states.get(entity_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        return bool(state.state == "on")
+
     async def start_monitoring(
         self, coordinator: RamsesCoordinator, hass: HomeAssistant
     ) -> None:
@@ -301,6 +393,72 @@ class TransportMonitor:
             self._monitor_task = asyncio.create_task(self._monitor_loop())
             _LOGGER.info("Started transport state monitoring")
 
+            # Discover ramses_cc pool health entities and subscribe to
+            # their state changes.  These are the primary source of truth
+            # for transport availability; the internal command-based
+            # detection remains as a fallback.
+            self._discover_pool_health_entities()
+            self._subscribe_pool_state_changes()
+
+    def _subscribe_pool_state_changes(self) -> None:
+        """Subscribe to pool health entity state changes.
+
+        Re-discovers entities on each state change so that entities
+        created after monitoring starts are picked up.
+        """
+        if not self._hass:
+            return
+        from homeassistant.helpers.event import async_track_state_change_event
+
+        # Re-discover on each state change to catch entities created
+        # after monitoring starts.
+        self._discover_pool_health_entities()
+
+        target_entities: list[str] = []
+        if self._pool_status_entity_id:
+            target_entities.append(self._pool_status_entity_id)
+        target_entities.extend(self._hgi_online_entity_ids.values())
+
+        if not target_entities:
+            _LOGGER.debug(
+                "Transport monitor: no pool health entities found yet, "
+                "will retry on next discovery cycle"
+            )
+            return
+
+        @ha_callback  # type: ignore[untyped-decorator]
+        def _on_pool_state_changed(event: Any) -> None:
+            """Handle pool health entity state change."""
+            entity_id = event.data.get("entity_id")
+            new_state = event.data.get("new_state")
+            if new_state is None:
+                return
+            is_on = new_state.state == "on"
+            _LOGGER.debug(
+                "Transport monitor: pool entity %s -> %s",
+                entity_id,
+                new_state.state,
+            )
+            # Update global transport availability from the pool
+            # status entity (aggregate: any HGI online).
+            if entity_id == self._pool_status_entity_id:
+                self._pool_entity_available = True
+                self._transport_available = is_on
+                if not is_on:
+                    self._hass.async_create_task(  # type: ignore[union-attr]
+                        self._mark_all_tracked_devices_offline()
+                    )
+
+        # Subscribe to all pool health entities.  We use a single
+        # subscription for all of them.
+        self._pool_state_unsub = async_track_state_change_event(
+            self._hass, target_entities, _on_pool_state_changed
+        )
+        _LOGGER.info(
+            "Transport monitor: subscribed to %d pool health entities",
+            len(target_entities),
+        )
+
     async def stop_monitoring(self) -> None:
         """Stop monitoring the transport state."""
         async with self._lock:
@@ -317,6 +475,11 @@ class TransportMonitor:
                 self._msg_handler_unsub = None
                 _LOGGER.debug("Stopped listening via ramses_cc client message handler")
 
+            if self._pool_state_unsub:
+                self._pool_state_unsub()
+                self._pool_state_unsub = None
+                _LOGGER.debug("Stopped listening to pool health entities")
+
             # Cancel any per-device timeout timers still pending
             for task in self._device_timeout_tasks.values():
                 if not task.done():
@@ -324,16 +487,42 @@ class TransportMonitor:
             self._device_timeout_tasks.clear()
 
     async def _monitor_loop(self) -> None:
-        """Main monitoring loop - just keeps transport state updated."""
+        """Main monitoring loop - just keeps transport state updated.
+
+        Uses the ramses_cc pool health entity as the primary source of
+        truth for transport availability.  Falls back to the internal
+        ``_is_transport_active()`` check when the entity is not yet
+        available.
+        """
         _LOGGER.debug("Transport monitor loop started")
         last_transport_state = None
 
         while True:
             try:
                 await asyncio.sleep(self._check_interval)
-                # Just update global transport state
-                self._refresh_coordinator()
-                transport_active = self._is_transport_active()
+
+                # Re-discover pool health entities periodically in case
+                # they were created after monitoring started.
+                if not self._pool_status_entity_id:
+                    self._discover_pool_health_entities()
+                    # _discover_pool_health_entities may set
+                    # _pool_status_entity_id; re-check and subscribe if
+                    # newly found and not yet subscribed.
+                    if (
+                        self._pool_status_entity_id is not None
+                        and self._pool_state_unsub is None
+                    ):
+                        self._subscribe_pool_state_changes()
+
+                # Primary: read from the pool health entity.
+                pool_state = self._get_pool_status_from_entity()
+                if pool_state is not None:
+                    self._pool_entity_available = True
+                    transport_active = pool_state
+                else:
+                    # Fallback: internal transport check.
+                    self._refresh_coordinator()
+                    transport_active = self._is_transport_active()
                 self._transport_available = transport_active
 
                 # Only log when state changes
@@ -412,12 +601,35 @@ class TransportMonitor:
     def is_device_available(self, device_id: str) -> bool:
         """Return whether a specific device is currently online.
 
+        Uses the ramses_cc pool health entity as the primary source of
+        truth for transport availability.  Falls back to the internal
+        command-based liveness detection when the entity is not yet
+        available.
+
         A device is online if:
-        - We haven't sent a command yet (assume online)
-        - We sent a command and got a reply before timeout
+        - The pool status entity says the pool is online (primary), OR
+        - We haven't sent a command yet (assume online), OR
+        - We sent a command and got a reply before timeout, OR
         - We sent a command and timeout hasn't expired yet
+
+        :param device_id: Device ID (with or without underscores)
+        :return: True if the device is considered online
         """
         normalized_device_id = device_id.replace("_", ":")
+
+        # Primary: check the pool status entity.  If the pool is offline,
+        # no device can be available.
+        pool_state = self._get_pool_status_from_entity()
+        if pool_state is not None:
+            if not pool_state:
+                return False
+            # Pool is online — fall through to per-device check below.
+            # The pool entity tells us the transport is up, but the
+            # device may still be offline (e.g. no RF response).
+            return self._device_states.get(normalized_device_id, True)
+
+        # Fallback: when the pool entity is not available, use the
+        # internal command-based liveness detection.
         return self._device_states.get(normalized_device_id, True)
 
     @property

@@ -13,10 +13,12 @@ from typing import Any, cast
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
-from custom_components.ramses_extras.const import DOMAIN
+from custom_components.ramses_extras.const import DOMAIN, EVENT_DEVICES_UPDATED
 from custom_components.ramses_extras.framework.base_classes.base_entity import (
     ExtrasBaseEntity,
 )
@@ -71,6 +73,62 @@ def _get_area_sensors_config(
     return [item for item in area_sensors if isinstance(item, dict)]
 
 
+def _get_entity_manager(hass: HomeAssistant, config_entry: ConfigEntry) -> Any:
+    """Get or create the entity manager for device feature matrix checks.
+
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry for matrix state restore
+    :return: Entity manager instance
+    """
+    entity_manager = hass.data.get("ramses_extras", {}).get("entity_manager")
+    if entity_manager is None:
+        # Create a temporary entity manager for device enablement checking
+        # This ensures we respect the device_feature_matrix even during startup
+        from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+            SimpleEntityManager,
+        )
+
+        entity_manager = SimpleEntityManager(hass)
+
+        # Restore matrix state from config entry if available
+        matrix_state = config_entry.data.get("device_feature_matrix", {})
+        if matrix_state:
+            entity_manager.restore_device_feature_matrix_state(matrix_state)
+            _LOGGER.debug("Restored matrix state with %s devices", len(matrix_state))
+    return entity_manager
+
+
+def _clear_stale_deleted_entities(hass: HomeAssistant, devices: list[Any]) -> None:
+    """Clear stale deleted-entity entries for abs humidity sensors.
+
+    The SimpleEntityManager removes these entities on every restart (because
+    their entity_id didn't match the expected template), which puts them in
+    HA's deleted_entities cache.  When the entity is re-created, HA restores
+    the old (long, device-name-prefixed) entity_id from the cache instead of
+    generating the correct short one.  Clearing the cache ensures the new
+    entity_id is generated correctly.
+
+    :param hass: Home Assistant instance
+    :param devices: List of device objects/IDs to clear cache for
+    """
+    try:
+        from homeassistant.helpers import entity_registry as er
+
+        reg = er.async_get(hass)
+        device_ids = [extract_device_id_as_string(d).replace(":", "_") for d in devices]
+        for unique_id_suffix in (
+            "indoor_absolute_humidity",
+            "outdoor_absolute_humidity",
+        ):
+            for did in device_ids:
+                key = ("sensor", "ramses_extras", f"{unique_id_suffix}_{did}")
+                if key in reg.deleted_entities:
+                    reg.deleted_entities.pop(key)
+                    _LOGGER.debug("Cleared deleted_entities cache for %s", key[2])
+    except Exception:
+        _LOGGER.debug("Could not clear deleted_entities cache", exc_info=True)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -80,7 +138,8 @@ async def async_setup_entry(
 
     This function is called by Home Assistant when the sensor platform
     is initialized. It creates sensor entities for all devices that have
-    the default feature enabled.
+    the default feature enabled.  It also listens for newly discovered
+    devices and creates sensors for them without requiring a restart.
 
     :param hass: Home Assistant instance
     :type hass: HomeAssistant
@@ -103,50 +162,20 @@ async def async_setup_entry(
         devices,
     )
 
-    # Clear stale deleted-entity entries for abs humidity sensors.
-    # The SimpleEntityManager removes these entities on every restart (because
-    # their entity_id didn't match the expected template), which puts them in
-    # HA's deleted_entities cache.  When the entity is re-created, HA restores
-    # the old (long, device-name-prefixed) entity_id from the cache instead of
-    # generating the correct short one.  Clearing the cache ensures the new
-    # entity_id is generated correctly.
-    try:
-        from homeassistant.helpers import entity_registry as er
+    _clear_stale_deleted_entities(hass, devices)
 
-        reg = er.async_get(hass)
-        device_ids = [extract_device_id_as_string(d).replace(":", "_") for d in devices]
-        for unique_id_suffix in (
-            "indoor_absolute_humidity",
-            "outdoor_absolute_humidity",
-        ):
-            for did in device_ids:
-                key = ("sensor", "ramses_extras", f"{unique_id_suffix}_{did}")
-                if key in reg.deleted_entities:
-                    reg.deleted_entities.pop(key)
-                    _LOGGER.debug("Cleared deleted_entities cache for %s", key[2])
-    except Exception:
-        _LOGGER.debug("Could not clear deleted_entities cache", exc_info=True)
+    entity_manager = _get_entity_manager(hass, config_entry)
 
-    # Get entity manager to check device_feature_matrix
-    entity_manager = hass.data.get("ramses_extras", {}).get("entity_manager")
-    if entity_manager is None:
-        # Create a temporary entity manager for device enablement checking
-        # This ensures we respect the device_feature_matrix even during startup
-        from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
-            SimpleEntityManager,
-        )
+    # Track which devices we've already created sensors for, so the
+    # EVENT_DEVICES_UPDATED listener only creates sensors for NEW devices.
+    created_device_ids: set[str] = set()
 
-        entity_manager = SimpleEntityManager(hass)
+    async def _create_for_device(device_id: Any) -> list[SensorEntity]:
+        """Create sensors for a single device if enabled for default feature.
 
-        # Restore matrix state from config entry if available
-        matrix_state = config_entry.data.get("device_feature_matrix", {})
-        if matrix_state:
-            entity_manager.restore_device_feature_matrix_state(matrix_state)
-            _LOGGER.debug("Restored matrix state with %s devices", len(matrix_state))
-
-    sensor: list[SensorEntity] = []
-    for device_id in devices:
-        # Check if device is enabled for the default feature
+        :param device_id: Device object or ID string
+        :return: List of created sensor entities (empty if skipped)
+        """
         device_id_str = extract_device_id_as_string(device_id)
         if not entity_manager.device_feature_matrix.is_device_enabled_for_feature(
             device_id_str, "default"
@@ -155,19 +184,76 @@ async def async_setup_entry(
                 "Skipping disabled device for default feature: %s",
                 device_id_str,
             )
-            continue
-
-        # Create default sensor for this device
+            return []
         device_sensor = await create_default_sensor(hass, device_id, config_entry)
-        sensor.extend(device_sensor)
         _LOGGER.debug(
             "Created %s default sensor for device %s",
             len(device_sensor),
             device_id,
         )
+        return device_sensor
+
+    # Initial creation for all currently-known devices
+    sensor: list[SensorEntity] = []
+    for device_id in devices:
+        device_id_str = extract_device_id_as_string(device_id)
+        device_sensor = await _create_for_device(device_id)
+        sensor.extend(device_sensor)
+        if device_sensor:
+            created_device_ids.add(device_id_str)
 
     _LOGGER.debug("Total default sensor created: %s", len(sensor))
     async_add_entities(sensor, True)
+
+    # Listen for newly discovered devices and create sensors for them
+    # without requiring a restart.  This fixes the race where a FAN is
+    # discovered after the platform setup runs (e.g. first packet arrives
+    # after integration load).
+    @ha_callback  # type: ignore[untyped-decorator]
+    def _on_devices_updated() -> None:
+        """Handle EVENT_DEVICES_UPDATED: add sensors for new devices."""
+        current_devices = hass.data.get("ramses_extras", {}).get("devices", [])
+        for device_id in current_devices:
+            device_id_str = extract_device_id_as_string(device_id)
+            if device_id_str in created_device_ids:
+                continue
+            # Schedule the creation as a task to avoid blocking the
+            # dispatcher.
+            hass.async_create_task(
+                _async_create_and_add(
+                    device_id,
+                    device_id_str,
+                    async_add_entities,
+                    created_device_ids,
+                )
+            )
+
+    async def _async_create_and_add(
+        device_id: Any,
+        device_id_str: str,
+        add_cb: AddEntitiesCallback,
+        created_ids: set[str],
+    ) -> None:
+        """Create sensors for a device and add them via the callback.
+
+        :param device_id: Device object or ID string
+        :param device_id_str: Normalized device ID string
+        :param add_cb: async_add_entities callback from setup
+        :param created_ids: Set of already-created device IDs (mutated)
+        """
+        device_sensor = await _create_for_device(device_id)
+        if device_sensor:
+            add_cb(device_sensor, True)
+            created_ids.add(device_id_str)
+            _LOGGER.info(
+                "Created %d default sensors for newly discovered device %s",
+                len(device_sensor),
+                device_id_str,
+            )
+
+    config_entry.async_on_unload(
+        async_dispatcher_connect(hass, EVENT_DEVICES_UPDATED, _on_devices_updated)
+    )
 
 
 async def create_default_sensor(
