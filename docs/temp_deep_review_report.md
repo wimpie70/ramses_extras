@@ -199,16 +199,124 @@ override mypy's narrowing.
 
 ## 5. HA Sim Test Results
 
-_Pending — running full suite._
+**Full suite**: 733 passed, 1 failed (pre-existing), 734 total
+**Wall time**: 76.3 min
+**Log report**: No unexpected ERROR/WARNING logs
+
+### R77 failure (pre-existing, not caused by pool PRs)
+
+**Recipe**: R77 — HGI not re-discovered every cycle (issue 987)
+**Symptom**: "no new discovery notifications after checkpoint" failed because
+other devices (ownerless HGIs from previous tests) were being re-notified by
+the issue 1119 logic, not the foreign HGI under test.
+
+**Root cause**: The test's check was too broad — it checked that NO new
+notifications appeared, but ownerless devices from previous tests (e.g.
+18:149488) were legitimately being re-flagged by the issue 1119 logic
+(devices in schema without `_owner` are re-flagged for review every
+checkpoint).
+
+**Fix**: Scoped the check to the foreign HGI only — "no new discovery
+notification for foreign HGI after checkpoint". Also set `_owner: me` on
+the CTL in the minimal profile so it's not flagged as a discovery
+candidate.
+
+**Verified**: R77 now passes (3/3 checks).
+
+### Pool-specific recipes (all pass)
+
+- R98: PooledTransport dedup & routing (14 checks)
+- R99: MQTT HGI auto-discovery (2 checks)
+- R100: RSSI best-across-HGIs (12 checks)
+- R102: Clean-schema startup bind (5 checks)
+- R109: Connection loss detection (9 checks)
+- R110: Schema mutation and pool type changes (13 checks)
+- R111: HGI80 + MQTT source patching (11 checks)
+- R112: mqtt_hgi_id with serial primary (6 checks)
+- R113: MQTT exclusion reconciliation (19 checks)
+- R114: Pool display labels and switching (19 checks)
+- R115: End-to-end TX/RX through MQTT broker (15 checks)
+- R116: Live pool type switching (10 checks)
+- R118: TX/RX after transport type switch (14 checks)
+- R119: Live MQTT exclusion and un-exclusion (7 checks)
+- R120: Live primary HGI switch and TX routing (10 checks)
+- R121: Live failover: primary disconnects, TX fails over (10 checks)
+- R122: Live MQTT child disconnect and reconnect (10 checks)
+- R123: Non-primary HGI USB→MQTT switch (19 checks)
 
 ## 6. Hardware Test Results (hass — 2 USB/MQTT ESPs)
 
-_Pending — running._
+### Setup
+
+- **Serial primary**: `/dev/ttyACM0` (HGI 18:130236, USB)
+- **MQTT additional port**: `mqtt://***:***@192.168.40.11:1883/RAMSES/GATEWAY/18:130236`
+- **MQTT HGI**: 18:149488 (callback-driven child)
+- **Second USB HGI**: `/dev/ttyACM1` — NOT in pool config (not in `additional_ports`)
+- **Pool**: 3 children (1 serial + 2 MQTT callback-driven), 2/3 connected
+
+### Pool status after restart
+
+```
+PooledTransport: child 0 connected (HGI=18:130236), 1/3 connected
+MqttPoolBridge: excluding HGI 18:130236 from MQTT pool (serial primary)
+MqttCallbackPool: child 18:130236 offline (definitive=True)
+MqttPoolBridge: HGI 18:130236 online (LWT)
+MqttPoolBridge: HGI 18:149488 online (LWT)
+MqttCallbackPool: child 18:149488 online (HGI=18:149488), 2/3 connected
+```
+
+### TX/RX verification
+
+- TX through serial primary (18:130236): working
+  - `RQ --- 18:130236 32:153289 --:------ 2411 003 000001`
+  - `RQ --- 18:130236 32:153289 --:------ 10D0 001 00`
+  - `RQ --- 18:130236 32:153289 --:------ 3150 001 00`
+- TX through MQTT HGI (18:149488): working
+  - `18:149488 | 32:153289 | RQ | unknown_3150 | 00`
+- Both HGIs marked online after receiving replies
+- No errors in logs
+
+### Entity initialization
+
+- `binary_sensor.gateway_18_130236_status`: initialized
+- `binary_sensor.gateway_18_149488_status`: initialized
+
+### Issues found
+
+1. **Second USB HGI (/dev/ttyACM1) not in pool config** — configuration
+   issue, not a code issue. The user should add it to `additional_ports`
+   if they want to use it as a pool member.
+
+2. **"Temp_control for 32:153289: required sensor unavailable" warning** —
+   pre-existing issue (FAN's indoor_temp sensor is unavailable), not
+   related to the pool PRs.
+
+### No code issues found
+
+The pool is working correctly on the hardware:
+- Serial + MQTT hybrid pool: working
+- TX routing through both HGIs: working
+- LWT-based online detection: working
+- HGI exclusion (serial primary excluded from MQTT): working
+- No errors, no crashes, no timing issues
 
 ## 7. Issues Found During Testing
 
-_Pending — will be filled after tests complete._
+### R77 — HGI not re-discovered every cycle (pre-existing)
+
+**Status**: Fixed (test fix, not code fix)
+**Details**: See section 5 above.
+
+### No other issues found
+
+All pool-specific recipes pass. Hardware test shows no code issues.
 
 ## 8. Fixes Applied After Testing
 
-_Pending — will be filled after tests complete._
+### R77 test fix (ramses_extras)
+
+- Scoped the "no new discovery notifications" check to the foreign HGI
+  only, instead of checking for any new notifications.
+- Set `_owner: me` on the CTL in the minimal profile so it's not flagged
+  as a discovery candidate by the issue 1119 logic.
+- Commit: `8f33d0b` on `master`
