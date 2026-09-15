@@ -35,7 +35,7 @@ updated: sep 12, 18:30
 
 - **ramses-rf 0.60.6 publish**: needed to unblock PR 1183's test/coverage CI. The maintainer will publish and update the pin.
 - **ramses_cc PR 1183 review**: awaiting maintainer review.
-- **Phase 3 (Zigbee)**: blocked on physical Zigbee hardware availability.
+- **Phase 3 (Zigbee)**: in progress — hardware verified 2026-09-15 (Elecram ESP32-C6 / ramses_esp via ZHA; RX + TX + echo + dedup proven); PRs to be opened. See `docs/multi-hgi-phase2-3-followup-issue.md`.
 
 ## Terminology
 
@@ -85,10 +85,10 @@ Development and release proceed in three phases. The `PooledTransport` code rema
 ### Phase 3: Zigbee pool
 
 - **Active transports:** MQTT, serial, and Zigbee.
-- **Prerequisite:** physical Zigbee hardware is available for testing, and the RAMSES HGI identity / IEEE address separation is correct.
-- **Config flow:** Zigbee transport is un-gated.
-- **Pool construction:** Zigbee children can be added.
-- **Release criteria:** Zigbee identity/lifecycle automated checks and physical release evidence pass.
+- **Prerequisite:** physical Zigbee hardware is available for testing, and the RAMSES HGI identity / IEEE address separation is correct. **MET 2026-09-15** (Elecram ESP32-C6 / ramses_esp via ZHA).
+- **Config flow:** Zigbee transport is un-gated. **DONE 2026-09-15.**
+- **Pool construction:** Zigbee children can be added. **DONE** — including MQTT-primary hybrid pools.
+- **Release criteria:** Zigbee identity/lifecycle automated checks and physical release evidence pass. **MET 2026-09-15** (tests + `ha_sim_test` R126 + live TX/RX/echo evidence).
 
 ### What "gating" means concretely
 
