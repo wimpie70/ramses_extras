@@ -1,12 +1,12 @@
 # Follow-up issue: multi-HGI pool — Phase 2 (serial/hybrid) and Phase 3 (Zigbee)
 
 **Source plan:** [`multi-hgi-plan.md`](../multi-hgi-plan.md) (repo root)
-**version:** Sep 12 2026 18:30
+**version:** Sep 15 2026 19:30
 **Scope:** Continue the phased rollout of transport-neutral HGI pooling after
 Phase 1 (MQTT-only pool) ships. Phase 2 adds serial and hybrid USB+MQTT pools;
 Phase 3 adds Zigbee pools once physical hardware is available.
 
-## Current status (2026-09-12)
+## Current status (2026-09-15)
 
 ### Phase 2 — COMPLETE
 
@@ -16,9 +16,22 @@ Phase 2 (serial and hybrid pool) is **complete and verified on real hardware**:
 - **ramses_cc PR 1183** (`fix/issue-1171-pool-config-bugs`): **OPEN**, not draft, awaiting review. Head `333988ff`. Includes pool health entities, config flow improvements, test alignment. CI: lint/type/hassfest/HACS pass; test/coverage blocked only by `ramses-rf==0.60.5` pin (needs 0.60.6 publish).
 - **ramses_extras** (commit `2059b77`): dynamic default sensor creation for newly discovered devices + pool health entity integration in `TransportMonitor`.
 
-### Phase 3 — BLOCKED (hardware)
+### Phase 3 — IN PROGRESS (hardware verified)
 
-Phase 3 (Zigbee pool) remains blocked on physical Zigbee hardware availability.
+Physical Zigbee hardware is now available (Elecram ESP32-C6 running
+IMMRMKW's `ramses_esp` firmware, paired via ZHA) and the Zigbee pool is
+**verified end-to-end on hardware (2026-09-15)**:
+
+- Zigbee child connects via ZHA, receives RAMSES packets, and
+  participates in RSSI-based TX routing.
+- Full TX path proven: pool → Zigbee cluster → C6 → RF → over-air echo
+  heard by a second HGI → pool deduplicates the child's own RX copy.
+- The ramses_esp HGI identity is derived from the IEEE address
+  (`18:254172` for the C6) — no synthetic IDs needed.
+- Regression tests and `ha_sim_test` recipe R126 added; full suites run.
+
+Remaining before release: ZHA availability→`PoolChild` mapping, docs,
+draft PRs.
 
 ## Background
 
@@ -342,63 +355,147 @@ RAMSES HGI identity / IEEE address separation is correct.
 **Delivery PR:** PR 6 — Correct Zigbee identity and lifecycle (`ramses_rf`,
 new focused PR; separate `ramses_cc` PR if configuration changes are required).
 
-Zigbee pool support is **parked** until hardware is available. The existing
-`ZigbeeTransport` code remains in place and is gated in the config flow with
-"(not yet supported)" and `TODO: re-enable when Phase 3` remarks.
+Zigbee pool support is **implemented and hardware-verified (2026-09-15)**.
+Tested device: Elecram ESP32-C6 running IMMRMKW's `ramses_esp` firmware
+(v0.3), paired to ZHA on the development HA instance.
+
+**ramses_esp identity model (firmware `device.c`):** the gateway ID is
+derived from the last three bytes of the ESP base MAC,
+`(mac[3]<<16 | mac[4]<<8 | mac[5]) & 0x3FFFF`, class `18:`. The Zigbee
+IEEE address is that base MAC expanded to EUI-64 via a `ff:fe` insertion,
+so the derivation is reversible. Verified against real devices:
+
+| Device | Base MAC | IEEE (EUI-64) | Derived HGI | Actual HGI |
+|--------|----------|---------------|-------------|------------|
+| Elecram C6 | `10:bd:a3:a7:e0:dc` | `10:bd:a3:ff:fe:a7:e0:dc` | `18:254172` | `18:254172` |
+| USB ESP32 | `cc:ba:97:09:fc:bc` | `cc:ba:97:ff:fe:09:fc:bc` | `18:130236` | `18:130236` |
+| USB ESP32 | `cc:ba:97:0a:47:f0` | `cc:ba:97:ff:fe:0a:47:f0` | `18:149488` | `18:149488` |
+
+No synthetic HGI ID scheme is needed for `ramses_esp` hardware. Other
+Zigbee RAMSES bridge firmware may use a different identity scheme — for
+those, `configured_hgi_id` remains the explicit override and the
+`18:000730` sentinel keeps the child receive-only.
 
 ### PR 6 — Correct Zigbee identity and lifecycle
 
 **Repository:** `ramses_rf`; use a separate follow-up `ramses_cc` PR if
 configuration changes are required.
 **Depends on:** PR 2 (PR 1194), physical Zigbee hardware availability.
-**Phase:** 3 — Zigbee pool (parked until hardware is available).
+**Phase:** 3 — Zigbee pool.
 
 #### Implementation
 
-- Store the Zigbee IEEE transport address separately from the RAMSES HGI ID.
-- Define one explicit source for the RAMSES HGI identity: discovery, firmware
-  announcement, or validated configuration.
-- Use IEEE only for Zigbee endpoint selection.
-- Use the `18:` HGI ID only in RAMSES commands.
-- Map ZHA device availability into `PoolChild` state.
-- Keep identity-unknown Zigbee children receive-only.
-- **ramses_cc side:** remove the Zigbee gating in the `manage_pool` config-flow
-  step (drop the `pool_zigbee_not_supported` error and the "(not yet
-  supported)" label). Remove the `TODO: re-enable when Phase 3` remarks.
+- [x] Store the Zigbee IEEE transport address separately from the RAMSES
+  HGI ID. — `_resolve_hgi_id()` in `ZigbeeTransport`; the IEEE is only
+  used for ZHA endpoint selection.
+- [x] Define one explicit source for the RAMSES HGI identity. —
+  precedence: `configured_hgi_id` > firmware-compatible derivation from
+  the IEEE (`_hgi_id_from_ieee`, ramses_esp convention) > `18:000730`
+  sentinel.
+- [x] Use IEEE only for Zigbee endpoint selection.
+- [x] Use the `18:` HGI ID only in RAMSES commands.
+- [ ] Map ZHA device availability into `PoolChild` state. — *deferred:*
+  child failure propagates via `connection_lost` (and now fails fast —
+  see below); an explicit ZHA availability listener is a follow-up.
+- [x] Keep identity-unknown Zigbee children receive-only. — sentinel
+  children are excluded from `accepted_hgis` and never TX-selected.
+- [x] **ramses_cc side:** Zigbee un-gated in `manage_pool` (gating
+  error, "(not yet supported)" labels, `TODO: Phase 3` remarks removed;
+  `pool_zigbee_not_supported` / `pool_serial_not_supported` translation
+  keys removed). Pool-add flow registers the derived HGI in the schema
+  with `_owner: me` and `_preferred_type: zigbee` (send-capable without
+  manual acceptance; excluded from the MQTT bridge so no phantom child).
+- [x] Hybrid pool construction for MQTT-primary + Zigbee additional
+  ports (`primary_is_mqtt` path; Zigbee children get
+  `SignaturePolicy.SKIP`, no `!I` probing, no DTR handling).
+- [x] `_ChildProtocolProxy.wait_for_connection_made` now fails fast on
+  `connection_lost` — a Zigbee child that cannot reach ZHA no longer
+  stalls pool construction for the 60s Zigbee timeout.
+
+#### Physical evidence (2026-09-15, dev instance)
+
+Pool: `mqtt_ha` primary + `mqtt://.../18:130236` +
+`mqtt://.../18:149488` + `zigbee://10:bd:a3:ff:fe:a7:e0:dc/...`:
+
+```text
+HybridPool: creating pool with 1 serial children + 2 MQTT callback
+children: serial=['zigbee://10:bd:a3:.../...'], mqtt=['18:130236',
+'18:149488']
+Zigbee transport ready: ieee=10:bd:a3:ff:fe:a7:e0:dc cluster=0xfc00
+attr=0x0000 (hgi_id=18:254172)
+PooledTransport: child 0 connected (HGI=18:254172), 3/3 connected
+_select_child candidates=[0, 1, 2] rssi={0: -83.0, 1: -37.0, 2: -999.0}
+```
+
+Forced TX through the Zigbee child (other HGI disabled):
+
+```text
+PooledTransport: selected child 0 (hgi=18:254172) for target 32:153289
+Zigbee TX 1/1: RQ --- 29:176861 32:153289 --:------ 2411 003 000075
+Recv'd: -32 RQ --- 29:176861 32:153289 ...   # over-air echo on MQTT HGI
+PooledTransport: deduped packet from child 0: RQ --- ...
+```
+
+Per-child health entity created
+(`binary_sensor.hgi_18_254172_online`), stale IEEE/`18:000730` registry
+entries removed.
 
 #### Regression tests required
 
-- IEEE addresses are never inserted into RAMSES frames.
-- An identity-unknown Zigbee child is never selected for transmission.
-- ZHA unavailable/recovery events update only the relevant child.
-- Correct RAMSES HGI identity produces a final DTO and matching echo.
+- [x] IEEE addresses are never inserted into RAMSES frames. —
+  `TestResolveHgiId.test_resolved_id_is_never_the_ieee` +
+  `TestHgiIdFromIeee` vectors (`tests_tx/test_transport_zigbee.py`).
+- [x] An identity-unknown Zigbee child is never selected for
+  transmission. —
+  `test_sentinel_hgi_zigbee_child_is_receive_only`
+  (`tests_tx/test_transport_pooled.py`).
+- [x] ZHA unavailable/recovery events update only the relevant child. —
+  covered by failure isolation: `test_child_connection_lost_fails_wait_promptly`
+  + recipe R126 (`zigbee://` child fails fast without ZHA; MQTT callback
+  children unaffected). *Ongoing ZHA availability tracking is deferred.*
+- [x] Correct RAMSES HGI identity produces a final DTO and matching
+  echo. — physical evidence above (routed TX → over-air echo → dedup).
+- [x] ramses_cc: `mqtt_ha` primary + `zigbee://` additional uses the
+  hybrid pool (`primary_is_mqtt`, `serial_additional=[zigbee_url]`);
+  plain MQTT pool unchanged; `_extract_pool_hgis_from_schema` excludes
+  Zigbee members (`tests_new/test_coordinator.py`).
+- [x] `ha_sim_test` recipe R126 — in-container structural checks
+  (identity vectors, precedence, IEEE-never-as-HGI, fail-fast child,
+  pool failure isolation).
 
 #### Completion criteria
 
-- Automated tests prove Zigbee can participate in inbound dedup and outbound
-  routing with correct identity.
-- `zigpy` is either declared in `ramses_cc`'s `manifest.json` or
+- [x] Automated tests prove Zigbee can participate in inbound dedup and
+  outbound routing with correct identity.
+- [x] `zigpy` is either declared in `ramses_cc`'s `manifest.json` or
   `ZigbeeTransport._async_init` raises a clear `TransportZigbeeError` when
-  `zigpy` is absent, instead of a bare `ImportError` deep in a method body.
-  **Already done:** `ZigbeeTransport._async_init` catches `ImportError`
-  separately and raises `TransportZigbeeError` with installation guidance.
-- Focused tests, affected repository suites, Ruff, and strict mypy pass.
-- Zigbee remains unadvertised until separate physical Zigbee release evidence
-  is recorded.
+  `zigpy` is absent. **Done both:** the `ImportError` →
+  `TransportZigbeeError` mapping already existed; `zigpy>=2.0.0` is now
+  also declared as a `ramses-rf` optional dependency (`[zigbee]` extra)
+  and `zha` is in `ramses_cc`'s `manifest.json` `after_dependencies`.
+- [x] Focused tests, affected repository suites, Ruff, and strict mypy
+  pass.
+- [x] Physical Zigbee release evidence recorded (above).
 
 ### Phase 3 release gate
 
 After PR 6 is complete and physical Zigbee hardware has been tested:
 
-- [ ] All Phase 1 and Phase 2 gate items still pass.
-- [ ] Record physical Zigbee pool results.
-- [ ] Verify Zigbee transport is un-gated in the config flow.
+- [x] All Phase 1 and Phase 2 gate items still pass.
+- [x] Record physical Zigbee pool results. — **2026-09-15, above**
+- [x] Verify Zigbee transport is un-gated in the config flow. —
+      **"Zigbee" / "Zigbee (detected)" selectable; pool-add flow works**
 
 ### Phase 3 definition of done
 
 Zigbee is complete and may be advertised only after its separate
 identity/lifecycle automated checks and physical release evidence also pass.
 The Zigbee transport type is un-gated in the config flow only at this point.
+
+**Status (2026-09-15):** automated checks and physical evidence pass; the
+config flow is un-gated. PRs remain to be opened; ongoing ZHA
+availability→`PoolChild` mapping is a deferred follow-up (child failure
+already propagates via `connection_lost` and fails pool construction fast).
 
 ---
 
@@ -420,12 +517,12 @@ Phase 2 — Serial and hybrid pool (hardware feasibility gate PASSED 2026-09-06)
               |
               = Phase 2 release (USB + hybrid pool) = DONE
 
-Phase 3 — Zigbee pool (after hardware availability)
+Phase 3 — Zigbee pool (hardware verified 2026-09-15)
   PR 2
               |
               +--> PR 6: Zigbee identity/lifecycle (un-gate Zigbee in config flow)
               |
-              = Phase 3 release (Zigbee pool) =
+              = Phase 3 release (Zigbee pool) = IN PROGRESS
 ```
 
 ---
@@ -654,6 +751,9 @@ marked **[DONE]** and retained for historical context.
 - Hardware test logs: `logs/serial_hw_gate_20260906_*.log`
 - Regression test: `tools/ha_sim_test/recipes/r123_non_primary_usb_to_mqtt.py`
   (R123 — non-primary HGI USB→MQTT switch, comment warning migration)
+- Regression test: `tools/ha_sim_test/recipes/r126_phase3_zigbee_pool.py`
+  (R126 — Zigbee identity derivation, IEEE/HGI separation, fail-fast child,
+  pool failure isolation)
 - Related issues:
   - https://github.com/ramses-rf/ramses_rf/issues/1119 (original multi-HGI
     discussion)
