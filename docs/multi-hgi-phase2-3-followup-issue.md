@@ -394,9 +394,11 @@ configuration changes are required.
   sentinel.
 - [x] Use IEEE only for Zigbee endpoint selection.
 - [x] Use the `18:` HGI ID only in RAMSES commands.
-- [ ] Map ZHA device availability into `PoolChild` state. — *deferred:*
-  child failure propagates via `connection_lost` (and now fails fast —
-  see below); an explicit ZHA availability listener is a follow-up.
+- [x] Map ZHA device availability into `PoolChild` state. — *partially
+  addressed:* a Zigbee child that fails at setup because ZHA is down is
+  now recovered by a coordinator watcher that reloads the entry once the
+  ZHA gateway appears (capped attempts; see degraded-boot fixes below).
+  Per-device online/offline tracking inside ZHA remains a follow-up.
 - [x] Keep identity-unknown Zigbee children receive-only. — sentinel
   children are excluded from `accepted_hgis` and never TX-selected.
 - [x] **ramses_cc side:** Zigbee un-gated in `manage_pool` (gating
@@ -440,6 +442,29 @@ Per-child health entity created
 (`binary_sensor.hgi_18_254172_online`), stale IEEE/`18:000730` registry
 entries removed.
 
+#### Degraded-boot fixes (2026-09-16, SLZB offline at startup)
+
+A boot with the Zigbee coordinator down exposed three stacked issues,
+all fixed and covered:
+
+- `pooled_transport_factory` waited for a connected child *before* the
+  MQTT bridge could attach — a pool whose transport children all failed
+  could never satisfy it. Now skipped when callback children are
+  reserved (ramses_rf PR 1223).
+- `entry.runtime_data` was assigned before `async_setup()` and never
+  cleared on failure — HA's retry hit the "already set up" guard,
+  leaving a zombie integration. Now assigned only after setup succeeds.
+- `async_attach_to_pool` never bound the gateway protocol when no
+  transport child connected — `client.start()` would still time out.
+  It now binds like `create_pool` does.
+- New: `_schedule_zigbee_rejoin` watches for the ZHA gateway and
+  reloads the entry once it appears (max 3 attempts) so a failed
+  Zigbee child rejoins without a manual restart.
+
+Verified live: SLZB powered off → pool up with both MQTT HGIs online
+via LWT and live traffic flowing, Zigbee child entity correctly
+unavailable.
+
 #### Regression tests required
 
 - [x] IEEE addresses are never inserted into RAMSES frames. —
@@ -452,7 +477,9 @@ entries removed.
 - [x] ZHA unavailable/recovery events update only the relevant child. —
   covered by failure isolation: `test_child_connection_lost_fails_wait_promptly`
   + recipe R126 (`zigbee://` child fails fast without ZHA; MQTT callback
-  children unaffected). *Ongoing ZHA availability tracking is deferred.*
+  children unaffected). Late ZHA availability recovers the child via
+  `_schedule_zigbee_rejoin` (entry reload, capped); per-device ZHA
+  online/offline tracking remains a follow-up.
 - [x] Correct RAMSES HGI identity produces a final DTO and matching
   echo. — physical evidence above (routed TX → over-air echo → dedup).
 - [x] ramses_cc: `mqtt_ha` primary + `zigbee://` additional uses the
