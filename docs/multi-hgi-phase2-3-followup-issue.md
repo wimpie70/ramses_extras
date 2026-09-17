@@ -535,6 +535,17 @@ implemented in two layers: entry-reload rejoin for setup-time failures
 (`_schedule_zigbee_rejoin`, ramses_cc PR 1206) and a runtime per-device
 availability monitor (ramses_rf PR 1224, recipe R127).
 
+Also fixed (ramses_cc PR 1206): the per-HGI `*_online` and
+`pool_status` entities were gated on `is_pool_enabled`, which only
+recognised option-driven pools (`additional_ports`, `mqtt_hgi_id`,
+`mqtt_use_ha`) or ≥2 *accepted* schema HGIs.  Schema-driven pools —
+ownerless HGIs are receive-only pool children — never got health
+entities.  `is_pool_enabled` now mirrors actual pool construction
+(schema pool HGIs + MQTT in play), and `_extract_pool_hgis_from_schema`
+no longer early-returns when the root `_owner` key is absent (profile
+loads that rebuild the schema can transiently drop it); ownerless HGIs
+stay receive-only candidates, foreign-owned HGIs remain excluded.
+
 ---
 
 ## PR dependency order
