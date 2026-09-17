@@ -393,24 +393,30 @@ class R90FanSensorUpdateDegradationIssue1040(Recipe):
         since_str = (baseline_utc - _dt.timedelta(minutes=2)).strftime(
             "%Y-%m-%dT%H:%M:%S"
         )
-        try:
-            log_result = subprocess.run(
-                [
-                    "docker",
-                    "logs",
-                    ctx.instance.name,
-                    "--since",
-                    since_str,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            log_text = log_result.stdout + log_result.stderr
-            drop_count = log_text.count("Dropped")
-        except Exception as e:
-            print(f"    Log check error: {e}")
-            drop_count = -1  # unknown
+        # `docker logs --since` streams through dockerd and can stall
+        # under parallel load — allow a generous timeout and one retry
+        # before reporting the check as unknown.
+        drop_count = -1  # unknown
+        for attempt in range(3):
+            try:
+                log_result = subprocess.run(
+                    [
+                        "docker",
+                        "logs",
+                        ctx.instance.name,
+                        "--since",
+                        since_str,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                )
+                log_text = log_result.stdout + log_result.stderr
+                drop_count = log_text.count("Dropped")
+                break
+            except Exception as e:
+                print(f"    Log check error (attempt {attempt + 1}/3): {e}")
+                ctx.wait(3, "before log-check retry", floor=2)
         print(f"  Found {drop_count} 'Dropped' warnings in log")
 
         ctx.check(
