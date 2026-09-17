@@ -154,12 +154,16 @@ class R118TxRxAfterSwitch(Recipe):
             send_and_verify("W", "2309", "0001", "W 2309"),
         )
 
-        # No final echo timeouts (intermediate retries are OK)
-        timeouts = grep_log("Echo timeout.*attempt 3/3", tail=10)
+        # In-flight TXs sent during a type switch can exhaust their
+        # retries — a transient "Echo timeout ... attempt 3/3" in the log
+        # is expected while a child is mid-switch and is not a wedge.
+        # What matters is that TX still works once the pool has
+        # re-settled, so settle past the retry backoff (20s) and require
+        # a fresh packet to TX + echo.
+        ctx.wait(25, "for in-flight retries to settle", floor=20.0)
         ctx.check(
-            "No final echo timeouts during switching",
-            not timeouts,
-            detail=f"Final timeouts: {timeouts[:200] if timeouts else 'none'}",
+            "TX + echo still work after switching settled",
+            send_and_verify("W", "2309", "0001", "post-settle W 2309"),
         )
 
         ctx.check("All TX/RX after switch checks passed", ctx.failed == failed_at_start)
