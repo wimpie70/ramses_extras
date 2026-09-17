@@ -393,17 +393,18 @@ def hgi_online_states(token: str, hgi_ids: list[str]) -> dict[str, bool]:
     states: dict[str, bool] = {}
     for hgi_id in hgi_ids:
         needle = hgi_id.replace(":", "_")
-        ent = next(
-            (
-                s
-                for s in entities
-                if s["entity_id"].startswith("binary_sensor.")
-                and needle in s["entity_id"]
-                and "online" in s["entity_id"]
-            ),
-            None,
-        )
-        states[hgi_id] = bool(ent and ent.get("state") == "on")
+        # Reloads can orphan stale entities and force the live entity to
+        # a ``_2``-suffixed entity_id (registry name collision).  Match
+        # every candidate and prefer a live state over ``unavailable``
+        # orphans: "on" wins, then any live "off", else offline.
+        matches = [
+            s.get("state")
+            for s in entities
+            if s["entity_id"].startswith("binary_sensor.")
+            and needle in s["entity_id"]
+            and "online" in s["entity_id"]
+        ]
+        states[hgi_id] = "on" in matches
     return states
 
 
@@ -412,9 +413,13 @@ def wait_for_hgi_states(
     hgi_ids: list[str],
     *,
     want: bool = True,
-    timeout: float = 15.0,
+    timeout: float = 30.0,
 ) -> dict[str, bool]:
     """Poll :func:`hgi_online_states` until all HGIs match ``want``.
+
+    30s default: under parallel load the MQTT bridge reconnect and
+    entity re-creation after a reload can take >15s while the pool
+    itself is already functional.
 
     :returns: the last polled ``{hgi_id: online}`` mapping.
     """

@@ -47,10 +47,16 @@ class R116PoolTypeSwitching(Recipe):
 
         # Ensure multi-HGI config is set up (profile load resets schema).
         # Loads a custom profile with both HGIs via websocket.
-        await ensure_multi_hgi_config(
+        if not await ensure_multi_hgi_config(
             token=ctx.token,
             ha_url=get_current_instance().ha_url,
-        )
+        ):
+            ctx.check(
+                "multi-HGI config applied",
+                False,
+                "ensure_multi_hgi_config failed — cannot proceed",
+            )
+            return
         ctx.wait_for_ramses_cc_loaded(timeout=30)
         ctx.refresh_token()
 

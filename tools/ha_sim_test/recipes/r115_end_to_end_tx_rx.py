@@ -59,10 +59,16 @@ class R115EndToEndTxRx(Recipe):
         # and the pool must contain exactly the two intended MQTT HGIs.
         await load_profile_yaml(ctx.token, mixed_yaml(), speed=0.01)
         ctx.wait_for_ramses_cc_reload(timeout=20)
-        await ensure_multi_hgi_config(
+        if not await ensure_multi_hgi_config(
             token=ctx.token,
             ha_url=get_current_instance().ha_url,
-        )
+        ):
+            ctx.check(
+                "multi-HGI config applied",
+                False,
+                "ensure_multi_hgi_config failed — cannot proceed",
+            )
+            return
         ctx.wait_for_ramses_cc_loaded(timeout=30)
         ctx.refresh_token()
 
