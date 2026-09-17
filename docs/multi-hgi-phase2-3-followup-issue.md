@@ -394,11 +394,15 @@ configuration changes are required.
   sentinel.
 - [x] Use IEEE only for Zigbee endpoint selection.
 - [x] Use the `18:` HGI ID only in RAMSES commands.
-- [x] Map ZHA device availability into `PoolChild` state. — *partially
-  addressed:* a Zigbee child that fails at setup because ZHA is down is
-  now recovered by a coordinator watcher that reloads the entry once the
-  ZHA gateway appears (capped attempts; see degraded-boot fixes below).
-  Per-device online/offline tracking inside ZHA remains a follow-up.
+- [x] Map ZHA device availability into `PoolChild` state. — two
+  mechanisms: (a) a coordinator watcher reloads the entry once the ZHA
+  gateway appears when a child failed at setup (capped attempts; see
+  degraded-boot fixes below); (b) a per-device availability monitor in
+  the Zigbee transport (ramses_rf PR 1224) subscribes to the device's
+  `zha_event` offline signal, polls `available`/`on_network`/`last_seen`
+  freshness with a Basic-cluster ping fallback, drops the child from
+  routing via `connection_lost`, and reconnects via `connection_made`
+  on signs of life.
 - [x] Keep identity-unknown Zigbee children receive-only. — sentinel
   children are excluded from `accepted_hgis` and never TX-selected.
 - [x] **ramses_cc side:** Zigbee un-gated in `manage_pool` (gating
@@ -460,6 +464,11 @@ all fixed and covered:
 - New: `_schedule_zigbee_rejoin` watches for the ZHA gateway and
   reloads the entry once it appears (max 3 attempts) so a failed
   Zigbee child rejoins without a manual restart.
+- New (ramses_rf PR 1224): per-device availability monitor covers the
+  *runtime* case — the C6 dropping off the Zigbee network while the
+  pool is running. `connection_lost` drops the child from routing;
+  fresh `last_seen`/ping triggers reconnect. Also fixes
+  `mark_connected()` to restore `child.transport` on reconnect.
 
 Verified live: SLZB powered off → pool up with both MQTT HGIs online
 via LWT and live traffic flowing, Zigbee child entity correctly
@@ -478,8 +487,9 @@ unavailable.
   covered by failure isolation: `test_child_connection_lost_fails_wait_promptly`
   + recipe R126 (`zigbee://` child fails fast without ZHA; MQTT callback
   children unaffected). Late ZHA availability recovers the child via
-  `_schedule_zigbee_rejoin` (entry reload, capped); per-device ZHA
-  online/offline tracking remains a follow-up.
+  `_schedule_zigbee_rejoin` (entry reload, capped); runtime per-device
+  online/offline tracking is covered by the transport availability
+  monitor + recipe R127 (ramses_rf PR 1224).
 - [x] Correct RAMSES HGI identity produces a final DTO and matching
   echo. — physical evidence above (routed TX → over-air echo → dedup).
 - [x] ramses_cc: `mqtt_ha` primary + `zigbee://` additional uses the
@@ -519,10 +529,11 @@ Zigbee is complete and may be advertised only after its separate
 identity/lifecycle automated checks and physical release evidence also pass.
 The Zigbee transport type is un-gated in the config flow only at this point.
 
-**Status (2026-09-15):** automated checks and physical evidence pass; the
-config flow is un-gated. PRs remain to be opened; ongoing ZHA
-availability→`PoolChild` mapping is a deferred follow-up (child failure
-already propagates via `connection_lost` and fails pool construction fast).
+**Status (2026-09-17):** automated checks and physical evidence pass; the
+config flow is un-gated. ZHA availability→`PoolChild` mapping is
+implemented in two layers: entry-reload rejoin for setup-time failures
+(`_schedule_zigbee_rejoin`, ramses_cc PR 1206) and a runtime per-device
+availability monitor (ramses_rf PR 1224, recipe R127).
 
 ---
 
