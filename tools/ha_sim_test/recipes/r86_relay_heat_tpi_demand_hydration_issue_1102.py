@@ -79,90 +79,39 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
             msg="for schema to be populated",
         )
 
-        # 2. Inject 0008 (relay demand) from CTL with FC domain
-        #    0008 I payload: domain_idx(2) + relay_demand(2)
-        #    FC = 0xFC, demand = 0xC8 (100%)
-        print(f"  Injecting 0008 from CTL {ctl} (FC domain, 100% demand)...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": ctl,
-                    "code": "0008",
-                    "payload": "FCC8",
-                    "verb": "I",
-                },
-            )
-            print("    0008 injected (FC=100%)")
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
+        def _inject_demands() -> None:
+            """Inject the four demand/TPI packets (idempotent I broadcasts).
 
-        ctx.wait(2, "between injects")
+            Under parallel load the MQTT transport can still be mid-reconnect
+            when this runs — packets published during the gap are dropped —
+            so callers re-inject until the attributes land.
+            """
+            injects = [
+                ("0008", "FCC8", "FC=100%"),  # relay demand, FC domain
+                ("0008", "FA64", "FA=50%"),  # relay demand, FA (DHW) domain
+                ("3150", "FC96", "FC=75%"),  # heat demand
+                ("1100", "FC180404007FFF00", "TPI params"),  # 6cph, 1/1min
+            ]
+            for code, payload, label in injects:
+                try:
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": ctl,
+                            "code": code,
+                            "payload": payload,
+                            "verb": "I",
+                        },
+                    )
+                    print(f"    {code} injected ({label})")
+                except RuntimeError as e:
+                    print(f"    Inject failed: {str(e)[:80]}")
+                ctx.wait(2, "between injects")
 
-        # 3. Inject 0008 with FA domain (DHW relay)
-        print(f"  Injecting 0008 from CTL {ctl} (FA domain, 50% demand)...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": ctl,
-                    "code": "0008",
-                    "payload": "FA64",
-                    "verb": "I",
-                },
-            )
-            print("    0008 injected (FA=50%)")
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
-
-        ctx.wait(2, "between injects")
-
-        # 4. Inject 3150 (heat demand) from CTL with FC domain
-        #    3150 I payload: domain_idx(2) + heat_demand(2)
-        #    FC = 0xFC, demand = 0x96 (75%)
-        print(f"  Injecting 3150 from CTL {ctl} (FC domain, 75% demand)...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": ctl,
-                    "code": "3150",
-                    "payload": "FC96",
-                    "verb": "I",
-                },
-            )
-            print("    3150 injected (FC=75%)")
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
-
-        ctx.wait(2, "between injects")
-
-        # 5. Inject 1100 (TPI params) from CTL with FC domain
-        #    1100 I payload (8-byte): domain(2) + cycle_rate(2) +
-        #    min_on(2) + min_off(2) + flags(2) + prop_band(4) + trailing(2)
-        #    FC 18 04 04 00 7FFF 00 = FC, 6cph, 1min on, 1min off
-        print(f"  Injecting 1100 from CTL {ctl} (FC domain, TPI params)...")
-        try:
-            call_service(
-                ctx.token,
-                "ramses_extras",
-                "device_simulator_inject_message",
-                {
-                    "source_id": ctl,
-                    "code": "1100",
-                    "payload": "FC180404007FFF00",
-                    "verb": "I",
-                },
-            )
-            print("    1100 injected (TPI params)")
-        except RuntimeError as e:
-            print(f"    Inject failed: {str(e)[:80]}")
+        print(f"  Injecting demand/TPI packets from CTL {ctl}...")
+        _inject_demands()
 
         # 6. Find the controller climate entity
         #    Prefer the exact match (climate.ctl_01_150000) over duplicates
@@ -210,8 +159,9 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
             pass
         ctx.wait(10, "for force_update to refresh entity state", floor=5.0)
 
-        def _poll_for_attrs(timeout_s: int = 60) -> dict:
+        def _poll_for_attrs(timeout_s: int = 90) -> dict:
             deadline = time.monotonic() + timeout_s
+            last_inject = time.monotonic()
             while time.monotonic() < deadline:
                 entity = _find_ctl_climate()
                 if entity is not None:
@@ -222,6 +172,16 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
                         and attrs.get("tpi_params") is not None
                     ):
                         return attrs
+                # Re-inject if nothing landed — the first round may have
+                # been published while the transport was mid-reconnect.
+                if time.monotonic() - last_inject > 15:
+                    print("    Attributes still null — re-injecting...")
+                    _inject_demands()
+                    try:
+                        call_service(ctx.token, "ramses_cc", "force_update")
+                    except RuntimeError:
+                        pass
+                    last_inject = time.monotonic()
                 time.sleep(2)
             # Return whatever we have
             entity = _find_ctl_climate()
