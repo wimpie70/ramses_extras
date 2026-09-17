@@ -18,6 +18,7 @@ See: https://github.com/ramses-rf/ramses_cc/issues/917
 from __future__ import annotations
 
 import json
+import re as _re
 import subprocess
 import time
 
@@ -206,11 +207,27 @@ class R64NoRepeatedDiscoveryNotificationsIssue917(Recipe):
             msg = n.get("message", "")[:120]
             print(f"    [{nid}] {title}: {msg}")
 
+        # The regression under test (issue 917) is that devices nested
+        # inside TCS structures — here the DHW stored_hotwater.sensor —
+        # lose their discovery metadata on unload and are re-notified.
+        # An aggregate notification-count comparison is not parallel-safe:
+        # on the shared GATEWAY_SIM broker, foreign HGIs and foreign
+        # device packets legitimately produce a notification after a
+        # restart.  Check the notification content instead: the nested
+        # DHW must not be re-reported as new.
+        notified_ids = set()
+        for n in notifs_after:
+            notified_ids.update(_re.findall(r"`(\d{2}:\d{6})`", n.get("message", "")))
+        # The nested DHW is not a top-level schema key, so it can never
+        # be in ``_schema_no_owner_ids`` — with the issue-917 fix it is
+        # always suppressed (or auto-ACCEPTED) and can only be re-notified
+        # if the nested-device extraction bug regressed.
         ctx.check(
-            "no new discovery notifications after restart",
-            notif_after <= notif_before,
-            f"notifications before={notif_before}, after={notif_after} "
-            f"(increase = bug: nested device metadata was filtered out)",
+            "no new discovery notifications for nested DHW after restart",
+            _DHW_ID not in notified_ids,
+            f"notifications before={notif_before}, after={notif_after}, "
+            f"notified_ids={sorted(notified_ids)} "
+            f"(nested DHW re-notified = bug: metadata was filtered out)",
         )
 
         # ── 6. Verify DHW discovery metadata survived the restart ──────
