@@ -87,13 +87,12 @@ if changed:
     json.dump(d, open(p, 'w'), indent=2)
 print(json.dumps({{'changed': changed}}))
 """
-    result = subprocess.run(
-        ["docker", "exec", container, "python3", "-c", code],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if result.returncode != 0:
+    result = _docker_exec_retry(container, code)
+    if result is None or result.returncode != 0:
+        print(
+            "  ensure_multi_hgi_config: storage write failed"
+            + (f" — {result.stderr.strip()[:200]}" if result else "")
+        )
         return False
 
     # Step 2: Load a custom profile via websocket that includes both HGIs.
@@ -149,19 +148,19 @@ for e in d['data']['entries']:
     print(json.dumps({{'schema': schema, 'known_list': known_list}}))
     break
 """
-    result = subprocess.run(
-        ["docker", "exec", container, "python3", "-c", read_schema_code],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if result.returncode != 0:
+    result = _docker_exec_retry(container, read_schema_code)
+    if result is None or result.returncode != 0:
+        print(
+            "  ensure_multi_hgi_config: schema read failed"
+            + (f" — {result.stderr.strip()[:200]}" if result else "")
+        )
         return False
     try:
         data = json.loads(result.stdout.strip().splitlines()[-1])
         schema = data["schema"]
         known_list = data["known_list"]
-    except json.JSONDecodeError, IndexError, KeyError:
+    except (json.JSONDecodeError, IndexError, KeyError) as err:
+        print(f"  ensure_multi_hgi_config: schema parse failed — {err}")
         return False
 
     _seed_sim_devices(schema, known_list)
@@ -179,31 +178,74 @@ for e in d['data']['entries']:
         default_flow_style=False,
         sort_keys=False,
     )
-    try:
-        await ws_send(
-            token,
-            {
-                "type": "ramses_extras/device_simulator/start_scenario",
-                "scenario": "load_profile_yaml",
-                "params": {
-                    "profile_yaml": profile_yaml,
-                    "profile_name": f"multi_hgi_{int(__import__('time').time())}",
-                    "speed": 0.01,
-                    "preload_schema": True,
-                    "reload_ramses": True,
-                    "enable_eavesdrop": False,
+    # The device_simulator may not be initialized yet when a preceding
+    # recipe restarted the container ("Simulator not initialized"), so
+    # retry the profile load a few times.
+    last_err: Exception | None = None
+    for _attempt in range(4):
+        try:
+            await ws_send(
+                token,
+                {
+                    "type": "ramses_extras/device_simulator/start_scenario",
+                    "scenario": "load_profile_yaml",
+                    "params": {
+                        "profile_yaml": profile_yaml,
+                        "profile_name": f"multi_hgi_{int(__import__('time').time())}",
+                        "speed": 0.01,
+                        "preload_schema": True,
+                        "reload_ramses": True,
+                        "enable_eavesdrop": False,
+                    },
                 },
-            },
-        )
-        # Wait for the MQTT pool to connect both children.
-        # The profile load triggers a ramses_cc reload, which takes
-        # ~1-2s for the MQTT pool to connect both HGIs.
-        import asyncio as _asyncio
+            )
+            break
+        except Exception as err:
+            last_err = err
+            import asyncio as _asyncio
 
-        await _asyncio.sleep(3)
-        return True
-    except Exception:
+            await _asyncio.sleep(2)
+    else:
+        print(f"  ensure_multi_hgi_config: profile load failed — {last_err}")
         return False
+
+    # The profile load triggers a ramses_cc reload, which takes
+    # ~1-2s for the MQTT pool to connect both HGIs.
+    import asyncio as _asyncio
+
+    await _asyncio.sleep(3)
+    return True
+
+
+def _docker_exec_retry(
+    container: str, code: str, *, attempts: int = 4, timeout: int = 20
+) -> subprocess.CompletedProcess | None:
+    """Run ``docker exec`` with retries.
+
+    ``core.config_entries`` is rewritten by HA during startup — reading
+    it mid-write raises ``json.JSONDecodeError`` in the container, and
+    dockerd itself can stall under parallel load.  Retrying keeps
+    ``ensure_multi_hgi_config`` deterministic when a preceding recipe
+    just restarted the container.
+    """
+    import time as _time
+
+    result: subprocess.CompletedProcess | None = None
+    for attempt in range(attempts):
+        try:
+            result = subprocess.run(
+                ["docker", "exec", container, "python3", "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            result = None
+        if result is not None and result.returncode == 0:
+            return result
+        if attempt < attempts - 1:
+            _time.sleep(2)
+    return result
 
 
 def publish_mqtt_lwt(
@@ -304,19 +346,19 @@ for e in d['data']['entries']:
     print(json.dumps({{'schema': schema, 'known_list': known_list}}))
     break
 """
-    result = subprocess.run(
-        ["docker", "exec", container, "python3", "-c", read_code],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if result.returncode != 0:
+    result = _docker_exec_retry(container, read_code)
+    if result is None or result.returncode != 0:
+        print(
+            "  set_preferred_type_via_profile: schema read failed"
+            + (f" — {result.stderr.strip()[:200]}" if result else "")
+        )
         return False
     try:
         data = json.loads(result.stdout.strip().splitlines()[-1])
         schema = data["schema"]
         known_list = data["known_list"]
-    except json.JSONDecodeError, IndexError, KeyError:
+    except (json.JSONDecodeError, IndexError, KeyError) as err:
+        print(f"  set_preferred_type_via_profile: parse failed — {err}")
         return False
 
     _seed_sim_devices(schema, known_list)
@@ -334,29 +376,39 @@ for e in d['data']['entries']:
         sort_keys=False,
     )
 
-    try:
-        await ws_send(
-            token,
-            {
-                "type": "ramses_extras/device_simulator/start_scenario",
-                "scenario": "load_profile_yaml",
-                "params": {
-                    "profile_yaml": profile_yaml,
-                    "profile_name": f"switch_{int(__import__('time').time())}",
-                    "speed": 0.01,
-                    "preload_schema": True,
-                    "reload_ramses": True,
-                    "enable_eavesdrop": False,
+    last_err: Exception | None = None
+    for _attempt in range(4):
+        try:
+            await ws_send(
+                token,
+                {
+                    "type": "ramses_extras/device_simulator/start_scenario",
+                    "scenario": "load_profile_yaml",
+                    "params": {
+                        "profile_yaml": profile_yaml,
+                        "profile_name": f"switch_{int(__import__('time').time())}",
+                        "speed": 0.01,
+                        "preload_schema": True,
+                        "reload_ramses": True,
+                        "enable_eavesdrop": False,
+                    },
                 },
-            },
-        )
-        # Wait for the MQTT pool to reconnect after the reload.
-        import asyncio as _asyncio
+            )
+            break
+        except Exception as err:
+            last_err = err
+            import asyncio as _asyncio
 
-        await _asyncio.sleep(3)
-        return True
-    except Exception:
+            await _asyncio.sleep(2)
+    else:
+        print(f"  set_preferred_type_via_profile: profile load failed — {last_err}")
         return False
+
+    # Wait for the MQTT pool to reconnect after the reload.
+    import asyncio as _asyncio
+
+    await _asyncio.sleep(3)
+    return True
 
 
 def _seed_sim_devices(schema: dict, known_list: dict) -> None:
