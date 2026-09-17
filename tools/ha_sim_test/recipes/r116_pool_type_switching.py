@@ -18,7 +18,9 @@ from ..helpers import (
 )
 from ..multi_hgi_helpers import (
     ensure_multi_hgi_config,
+    hgi_online_states,
     set_preferred_type_via_profile,
+    wait_for_hgi_states,
 )
 
 
@@ -53,8 +55,8 @@ class R116PoolTypeSwitching(Recipe):
         ctx.refresh_token()
 
         inst = get_current_instance()
-        hgi_primary = "18:001234"
-        hgi_secondary = "18:149488"
+        hgi_primary = inst.hgi_id
+        hgi_secondary = inst.hgi_id_2
 
         def grep_log(pattern: str, tail: int = 5) -> str:
             r = subprocess.run(
@@ -112,11 +114,11 @@ class R116PoolTypeSwitching(Recipe):
         # ---------------------------------------------------------------------------
         # Test 1: Verify initial state — two MQTT HGIs in pool
         # ---------------------------------------------------------------------------
-        logs = grep_log("MqttCallbackPool.*child.*connected", tail=3)
+        states = wait_for_hgi_states(ctx.token, [hgi_primary, hgi_secondary])
         ctx.check(
-            "Initial: 2/2 MQTT children connected",
-            "2/2 connected" in logs,
-            detail=f"logs: {logs[:200]}",
+            "Initial: both configured MQTT children online",
+            all(states.values()),
+            detail=f"states: {states}",
         )
 
         # ---------------------------------------------------------------------------
@@ -130,11 +132,11 @@ class R116PoolTypeSwitching(Recipe):
         # ---------------------------------------------------------------------------
         # Test 3: Pool still has connected children after switch
         # ---------------------------------------------------------------------------
-        logs = grep_log("MqttCallbackPool.*child.*connected", tail=3)
+        states = hgi_online_states(ctx.token, [hgi_primary, hgi_secondary])
         ctx.check(
             "After switch: pool still has connected children",
-            "connected" in logs,
-            detail=f"logs: {logs[:200]}",
+            any(states.values()),
+            detail=f"states: {states}",
         )
 
         # ---------------------------------------------------------------------------

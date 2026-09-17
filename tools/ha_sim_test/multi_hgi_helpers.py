@@ -16,10 +16,10 @@ import urllib.request
 
 
 async def ensure_multi_hgi_config(
-    container: str = "ha-sim",
-    hgi_primary: str = "18:001234",
-    hgi_secondary: str = "18:149488",
-    mqtt_url: str = "mqtt://localhost:1884/RAMSES/GATEWAY_SIM/18:149488",
+    container: str = "",
+    hgi_primary: str = "",
+    hgi_secondary: str = "",
+    mqtt_url: str = "",
     *,
     token: str = "",
     ha_url: str = "http://localhost:8124",
@@ -35,6 +35,11 @@ async def ensure_multi_hgi_config(
     by writing to the storage file before the profile load (the profile
     loader preserves existing additional_ports).
 
+    Empty ``container``/``hgi_*``/``mqtt_url`` values default to the
+    current instance's values — this keeps the helper correct on
+    parallel clone containers whose gateway IDs differ from the base
+    ``ha-sim`` instance.
+
     :param container: Docker container name.
     :param hgi_primary: Primary HGI device ID.
     :param hgi_secondary: Secondary HGI device ID.
@@ -43,6 +48,16 @@ async def ensure_multi_hgi_config(
     :param ha_url: HA URL.
     :return: True if the config was updated successfully.
     """
+    from .helpers import get_current_instance
+
+    inst = get_current_instance()
+    container = container or inst.name
+    hgi_primary = hgi_primary or inst.hgi_id
+    hgi_secondary = hgi_secondary or inst.hgi_id_2
+    # The callback-driven child only uses the trailing HGI segment, but
+    # keep the broker host correct per instance network mode anyway.
+    mqtt_url = mqtt_url or f"{inst.mqtt_url.rsplit('/', 1)[0]}/{hgi_secondary}"
+
     # Step 1: Ensure additional_ports includes the secondary MQTT URL.
     # The profile loader preserves existing additional_ports, so we
     # write to the storage file before the profile load.
@@ -64,7 +79,7 @@ for e in d['data']['entries']:
     # Also ensure serial_port points to the primary HGI's MQTT URL
     sp = e['options'].get('serial_port', {{}})
     if not sp.get('port_name', '').startswith('mqtt://'):
-        sp['port_name'] = 'mqtt://localhost:1884/RAMSES/GATEWAY_SIM/{hgi_primary}'
+        sp['port_name'] = '{inst.mqtt_url}'
         e['options']['serial_port'] = sp
         changed = True
     break
@@ -148,6 +163,8 @@ for e in d['data']['entries']:
         known_list = data["known_list"]
     except json.JSONDecodeError, IndexError, KeyError:
         return False
+
+    _seed_sim_devices(schema, known_list)
 
     # Build the YAML profile
     import yaml as _yaml
@@ -237,7 +254,7 @@ def publish_mqtt_lwt(
 
 
 async def set_preferred_type_via_profile(
-    container: str = "ha-sim",
+    container: str = "",
     hgi_id: str = "",
     ptype: str = "mqtt",
     *,
@@ -259,7 +276,9 @@ async def set_preferred_type_via_profile(
     :param ha_url: HA URL.
     :return: True if the profile was loaded successfully.
     """
-    from .helpers import ws_send
+    from .helpers import get_current_instance, ws_send
+
+    container = container or get_current_instance().name
 
     # Read the current schema from the config entry and update the
     # _preferred_type for the specified HGI.
@@ -300,6 +319,8 @@ for e in d['data']['entries']:
     except json.JSONDecodeError, IndexError, KeyError:
         return False
 
+    _seed_sim_devices(schema, known_list)
+
     import yaml as _yaml
 
     profile_dict = {
@@ -336,3 +357,74 @@ for e in d['data']['entries']:
         return True
     except Exception:
         return False
+
+
+def _seed_sim_devices(schema: dict, known_list: dict) -> None:
+    """Seed the standard sim devices into ``schema`` and ``known_list``.
+
+    A clean-schema recipe (or a ``preload_schema`` wipe) can leave the
+    stored schema with only HGI entries.  Since the multi-HGI profile
+    stops device broadcasts, ``enforce_known_list`` would then reject
+    every ``send_packet`` to e.g. the CTL with HTTP 500 — and nothing
+    would ever re-learn the device.  Seeding keeps the environment
+    deterministic regardless of which recipe ran before.
+    """
+    from .profile import get_mixed_kl
+
+    for dev_id, cfg in get_mixed_kl().items():
+        if dev_id.startswith("18:"):
+            continue  # HGIs are handled explicitly by the caller
+        known_list.setdefault(dev_id, dict(cfg))
+        if isinstance(cfg, dict) and cfg.get("class"):
+            schema.setdefault(dev_id, {"_class": cfg["class"]})
+
+
+def hgi_online_states(token: str, hgi_ids: list[str]) -> dict[str, bool]:
+    """Return ``{hgi_id: online}`` from the pool's per-HGI binary sensors.
+
+    Reads entity states instead of grepping "N/M connected" log lines —
+    foreign HGIs discovered via the shared MQTT broker appear as
+    receive-only pool children, so the M count is nondeterministic under
+    parallel runs while the per-HGI sensor is not.
+    """
+    from .helpers import get_entities
+
+    entities = get_entities(token)
+    states: dict[str, bool] = {}
+    for hgi_id in hgi_ids:
+        needle = hgi_id.replace(":", "_")
+        ent = next(
+            (
+                s
+                for s in entities
+                if s["entity_id"].startswith("binary_sensor.")
+                and needle in s["entity_id"]
+                and "online" in s["entity_id"]
+            ),
+            None,
+        )
+        states[hgi_id] = bool(ent and ent.get("state") == "on")
+    return states
+
+
+def wait_for_hgi_states(
+    token: str,
+    hgi_ids: list[str],
+    *,
+    want: bool = True,
+    timeout: float = 15.0,
+) -> dict[str, bool]:
+    """Poll :func:`hgi_online_states` until all HGIs match ``want``.
+
+    :returns: the last polled ``{hgi_id: online}`` mapping.
+    """
+    import time as _time
+
+    deadline = _time.monotonic() + timeout
+    states = hgi_online_states(token, hgi_ids)
+    while _time.monotonic() < deadline and any(
+        states.get(hgi) is not want for hgi in hgi_ids
+    ):
+        _time.sleep(1)
+        states = hgi_online_states(token, hgi_ids)
+    return states

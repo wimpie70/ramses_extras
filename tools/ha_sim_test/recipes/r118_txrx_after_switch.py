@@ -50,7 +50,7 @@ class R118TxRxAfterSwitch(Recipe):
         ctx.refresh_token()
 
         inst = get_current_instance()
-        hgi_secondary = "18:149488"
+        hgi_secondary = inst.hgi_id_2
 
         def grep_log(pattern: str, tail: int = 5) -> str:
             r = subprocess.run(

@@ -16,6 +16,7 @@ from ..helpers import (
 from ..multi_hgi_helpers import (
     ensure_multi_hgi_config,
     publish_mqtt_lwt,
+    wait_for_hgi_states,
 )
 
 
@@ -48,8 +49,8 @@ class R121Failover(Recipe):
         ctx.refresh_token()
 
         inst = get_current_instance()
-        hgi_primary = "18:001234"
-        hgi_secondary = "18:149488"
+        hgi_primary = inst.hgi_id
+        hgi_secondary = inst.hgi_id_2
 
         def grep_log(pattern: str, tail: int = 5) -> str:
             r = subprocess.run(
@@ -67,12 +68,15 @@ class R121Failover(Recipe):
             )
             return r.stdout
 
-        # Both HGIs connected
-        logs = grep_log("MqttCallbackPool.*child.*connected", tail=3)
+        # Both configured HGIs connected — check per-HGI online sensors
+        # rather than "N/M connected" log lines: foreign HGIs discovered
+        # via the shared MQTT broker add receive-only pool children, so
+        # the M count is nondeterministic under parallel runs.
+        states = wait_for_hgi_states(ctx.token, [hgi_primary, hgi_secondary])
         ctx.check(
-            "Initial: 2/2 MQTT children connected",
-            "2/2 connected" in logs,
-            detail=f"logs: {logs[:200]}",
+            "Initial: both configured MQTT children online",
+            all(states.values()),
+            detail=f"states: {states}",
         )
 
         # TX works before failover
@@ -112,7 +116,11 @@ class R121Failover(Recipe):
         )
         ctx.wait(5, "for pool to detect primary offline", floor=3)
 
-        # Pool detects primary offline
+        # Pool detects primary offline — the bridge logs the LWT
+        # transition.  (A sustained OFF sensor state can't be asserted:
+        # the sim endpoint keeps publishing RX frames for this HGI, so
+        # "inferred from RX" legitimately re-marks it online — issue
+        # 1185.)
         offline_logs = grep_log(
             f"HGI.*{hgi_primary}.*offline|child.*{hgi_primary}.*offline|LWT.*{hgi_primary}",
             tail=5,
@@ -170,11 +178,12 @@ class R121Failover(Recipe):
         )
         ctx.wait(8, "for pool to detect primary online", floor=5)
 
-        # Pool recovers
+        # Pool recovers — the primary's per-HGI sensor is back on
+        states = wait_for_hgi_states(ctx.token, [hgi_primary])
         ctx.check(
             "Pool recovers after primary reconnects",
-            True,
-            detail=f"logs: {grep_log('MqttCallbackPool.*connected', tail=3)[:200]}",
+            states[hgi_primary],
+            detail=f"states: {states}",
         )
 
         # TX works after reconnect

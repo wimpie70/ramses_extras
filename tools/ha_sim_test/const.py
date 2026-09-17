@@ -35,6 +35,7 @@ MQTT_TOPIC_NS = "RAMSES/GATEWAY_SIM"
 # Sim device IDs (from system_config.py) — same across all parallel instances
 # because MQTT topic namespaces are isolated per HGI ID.
 HGI = "18:001234"
+HGI_2 = "18:149488"  # second sim gateway (multi-HGI pool tests, issue 1185)
 CTL = "01:150000"
 TRV = "04:150003"  # zone 03 actuator
 DHW = "07:150000"
@@ -62,6 +63,7 @@ class InstanceConfig:
     ha_user: str = HA_USER
     ha_pass: str = HA_PASS
     hgi_id: str = HGI  # gateway ID for MQTT topic isolation
+    hgi_id_2: str = HGI_2  # second sim gateway (multi-HGI pool tests)
     mqtt_topic_ns: str = MQTT_TOPIC_NS
     config_dir: str = HA_SIM_CONFIG_DIR  # host path to bind-mounted /config
     # Device IDs — same across instances (MQTT topic isolation makes this safe)
@@ -125,6 +127,7 @@ class InstanceConfig:
                 port=port,
                 ha_url=f"http://localhost:{port}",
                 hgi_id=HGI,
+                hgi_id_2=HGI_2,
                 config_dir=HA_SIM_CONFIG_DIR,
                 index=1,
             )
@@ -132,6 +135,11 @@ class InstanceConfig:
         # Unique HGI ID per instance: 18:002234, 18:003234, ...
         # (6 hex digits — same length as the default 18:001234)
         hgi = f"18:00{i}234"
+        # Unique second gateway per instance: 18:142488, 18:143488, ...
+        # A shared 18:149488 on the common broker would let one
+        # container's LWT recipe knock out every container's
+        # secondary child.
+        hgi_2 = f"18:14{i}488"
         # Config dir: /home/willem/docker_files/ha-sim/config-2, ...
         config_dir = f"{HA_SIM_CONFIG_DIR}-{i}"
         return InstanceConfig(
@@ -139,6 +147,7 @@ class InstanceConfig:
             port=inst_port,
             ha_url=f"http://localhost:{inst_port}",
             hgi_id=hgi,
+            hgi_id_2=hgi_2,
             config_dir=config_dir,
             index=i,
         )

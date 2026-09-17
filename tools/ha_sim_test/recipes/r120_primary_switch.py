@@ -16,6 +16,7 @@ from ..helpers import (
 )
 from ..multi_hgi_helpers import (
     ensure_multi_hgi_config,
+    hgi_online_states,
     set_preferred_type_via_profile,
 )
 
@@ -49,7 +50,7 @@ class R120PrimarySwitch(Recipe):
         ctx.refresh_token()
 
         inst = get_current_instance()
-        hgi_primary = "18:001234"
+        hgi_primary = inst.hgi_id
 
         def grep_log(pattern: str, tail: int = 5) -> str:
             r = subprocess.run(
@@ -100,14 +101,16 @@ class R120PrimarySwitch(Recipe):
         # Initial primary is active
         logs = grep_log("active_gwy|primary.*HGI|_active_hgi", tail=5)
         ctx.check(
-            "Initial: primary HGI 18:001234 is active",
-            "18:001234" in logs or True,
+            f"Initial: primary HGI {hgi_primary} is active",
+            hgi_primary in logs or True,
             detail=f"logs: {logs[:200]}",
         )
 
         # TX routes through primary
         ctx.check(
-            "TX routes through primary 18:001234", check_tx(), detail="No 3150 TX found"
+            f"TX routes through primary {hgi_primary}",
+            check_tx(),
+            detail="No 3150 TX found",
         )
 
         # Switch primary to usb, secondary stays mqtt
@@ -116,12 +119,12 @@ class R120PrimarySwitch(Recipe):
             await switch_and_wait(hgi_primary, "usb"),
         )
 
-        # Pool still connected
-        logs = grep_log("MqttCallbackPool.*child.*connected", tail=3)
+        # Pool still connected — per-HGI sensor, not "N/M" log counts
+        states = hgi_online_states(ctx.token, [hgi_primary, inst.hgi_id_2])
         ctx.check(
             "Pool still connected after primary switch",
-            "connected" in logs,
-            detail=f"logs: {logs[:200]}",
+            any(states.values()),
+            detail=f"states: {states}",
         )
 
         # TX still works

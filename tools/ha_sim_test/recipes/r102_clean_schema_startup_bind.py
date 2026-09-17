@@ -31,6 +31,7 @@ from ..base import Recipe, RecipeContext
 from ..const import MQTT_BROKER_URL, MQTT_TOPIC_NS
 from ..helpers import (
     clear_cached_state,
+    get_current_instance,
     get_schema_retry,
     grep_ha_log,
     wait_for_ramses_cc_reload,
@@ -106,7 +107,12 @@ class R102CleanSchemaStartupBind(Recipe):
         )
 
         # --- Step 4: Check primary HGI is registered ---
+        # Check the *configured* primary (this instance's own gateway
+        # ID), not the first HGI key — under parallel runs the shared
+        # MQTT broker exposes other containers' HGIs, which appear as
+        # ownerless candidates and can sort first.
         schema_after = get_schema_retry(max_tries=5, delay=3)
+        primary_hgi = get_current_instance().hgi_id
         hgi_keys = [
             k
             for k in schema_after
@@ -115,12 +121,12 @@ class R102CleanSchemaStartupBind(Recipe):
         ]
         ctx.check(
             "primary HGI registered in clean schema",
-            len(hgi_keys) >= 1,
-            f"HGI keys={hgi_keys}, schema keys={list(schema_after.keys())[:10]}",
+            primary_hgi in hgi_keys,
+            f"primary={primary_hgi}, HGI keys={hgi_keys}, "
+            f"schema keys={list(schema_after.keys())[:10]}",
         )
 
-        if hgi_keys:
-            primary_hgi = hgi_keys[0]
+        if primary_hgi in schema_after:
             entry = schema_after[primary_hgi]
             ctx.check(
                 f"primary HGI {primary_hgi} has _owner: me",

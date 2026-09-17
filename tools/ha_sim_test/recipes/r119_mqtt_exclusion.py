@@ -14,7 +14,7 @@ from ..helpers import (
     call_service,
     get_current_instance,
 )
-from ..multi_hgi_helpers import ensure_multi_hgi_config
+from ..multi_hgi_helpers import ensure_multi_hgi_config, wait_for_hgi_states
 
 
 class R119MqttExclusion(Recipe):
@@ -46,6 +46,7 @@ class R119MqttExclusion(Recipe):
         ctx.refresh_token()
 
         inst = get_current_instance()
+        hgi_ids = [inst.hgi_id, inst.hgi_id_2]
 
         def grep_log(pattern: str, tail: int = 5) -> str:
             r = subprocess.run(
@@ -63,12 +64,13 @@ class R119MqttExclusion(Recipe):
             )
             return r.stdout
 
-        # Both HGIs connected
-        logs = grep_log("MqttCallbackPool.*child.*connected", tail=3)
+        # Both configured HGIs connected — per-HGI sensors, not "N/M"
+        # log counts (foreign HGIs add receive-only children in parallel).
+        states = wait_for_hgi_states(ctx.token, hgi_ids)
         ctx.check(
-            "Initial: 2/2 MQTT children connected",
-            "2/2 connected" in logs,
-            detail=f"logs: {logs[:200]}",
+            "Initial: both configured MQTT children online",
+            all(states.values()),
+            detail=f"states: {states}",
         )
 
         # Check bridge has exclude/unexclude methods via source inspection

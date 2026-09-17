@@ -74,6 +74,7 @@ SERVICE_TEMPLATE = """\
       - HASSIO_PORT={port}
       - PYTHONPATH=/config/ramses_rf/src
       - RAMSES_SIM_HGI_ID={hgi_id}
+      - RAMSES_SIM_HGI_ID_2={hgi_id_2}
     volumes:
       - {config_dir}:/config
       - /home/willem/dev/ramses_rf:/config/ramses_rf
@@ -253,6 +254,7 @@ def generate_compose_file(instances: list[InstanceConfig]) -> str:
                 name=inst.name,
                 port=inst.port,
                 hgi_id=inst.hgi_id,
+                hgi_id_2=inst.hgi_id_2,
                 config_dir=inst.config_dir,
                 ramses_cc_path=_RAMSES_CC_PATH,
                 ramses_extras_path=_RAMSES_EXTRAS_PATH,
@@ -380,7 +382,9 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
     # Publish retained "online" messages to the MQTT broker for each HGI
     # topic.  ramses_rf's MQTT transport requires this to set _topic_pub
     # (the publish topic).  Without it, the first publish fails.
-    hgi_ids = [inst.hgi_id for inst in instances]
+    hgi_ids = [inst.hgi_id for inst in instances] + [
+        inst.hgi_id_2 for inst in instances
+    ]
     try:
         publish_retained_online_messages(hgi_ids)
         print(f"  Published retained 'online' messages for {len(hgi_ids)} HGI(s)")
