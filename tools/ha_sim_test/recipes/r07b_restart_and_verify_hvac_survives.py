@@ -135,11 +135,19 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             f"schema keys={list(schema_after_restart.keys())}",
         )
 
-        storage_after = get_ramses_storage()
-        # Step 8: hvac_schema cache key removed — FAN structure is in schema
-        client_state_after = storage_after.get("client_state", {})
-        schema_stored_after = client_state_after.get("schema", {})
-        fan_stored_after = schema_stored_after.get(FAN, {})
+        # Step 8: hvac_schema cache key removed — FAN structure is in schema.
+        # The stored client_state lags the live schema — saves are
+        # event-driven (SAVE_STATE_INTERVAL is 30 min), so under parallel
+        # load the FAN topology may not be persisted yet.  Poll until the
+        # stored FAN entry carries its remotes.
+        fan_stored_after: dict = {}
+        for _ in range(15):
+            storage_after = get_ramses_storage()
+            client_state_after = storage_after.get("client_state", {})
+            fan_stored_after = client_state_after.get("schema", {}).get(FAN, {})
+            if isinstance(fan_stored_after, dict) and fan_stored_after.get("remotes"):
+                break
+            time.sleep(2)
         ctx.check(
             "FAN with remotes preserved in schema after restart (Step 8)",
             bool(fan_stored_after) and "remotes" in fan_stored_after,
@@ -197,12 +205,22 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
             "FAN entity not found during loss",
         )
 
-        # Check HVAC schema preserved during loss (use schema from .storage)
-        storage_loss = get_ramses_storage()
-        client_state_loss = storage_loss.get("client_state", {})
-        schema_loss = client_state_loss.get("schema", {})
-        fan_schema_loss = schema_loss.get(FAN, {})
-        remotes_during = fan_schema_loss.get("remotes", [])
+        # Check HVAC schema preserved during loss (use schema from
+        # .storage — same poll as above, the stored client_state can lag
+        # the live schema under parallel load).
+        remotes_during: list = []
+        for _ in range(10):
+            storage_loss = get_ramses_storage()
+            client_state_loss = storage_loss.get("client_state", {})
+            fan_schema_loss = client_state_loss.get("schema", {}).get(FAN, {})
+            remotes_during = (
+                fan_schema_loss.get("remotes", [])
+                if isinstance(fan_schema_loss, dict)
+                else []
+            )
+            if REM in remotes_during:
+                break
+            time.sleep(2)
         ctx.check(
             "HVAC schema preserved during REM loss (in schema, Step 8)",
             REM in remotes_during,
