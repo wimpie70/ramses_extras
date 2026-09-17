@@ -522,6 +522,15 @@ async def _update_known_list_and_reload(
         else:
             new_options[CONF_SCHEMA] = _build_minimal_schema_from_known_list(known_list)
 
+    # ramses_cc pool logic (_extract_pool_hgis_from_schema, accepted-HGI
+    # counting) keys off the schema's root ``_owner``.  Profile schemas
+    # routinely omit it, which would silently wipe pool membership state
+    # that a previous load established.  Default it to "me" — the same
+    # fallback ramses_cc itself uses — unless the profile sets it.
+    _final = new_options.get(CONF_SCHEMA)
+    if isinstance(_final, dict) and "_owner" not in _final:
+        _final["_owner"] = "me"
+
     object.__setattr__(entry, "options", MappingProxyType(new_options))
 
     # Update the running coordinator's self.options to match, so its
