@@ -502,7 +502,9 @@ class TestRamsesExtrasOptionsFlowHandler:
         """Test orphaned device removal logic."""
         config_entry = SimpleNamespace(
             entry_id="ramses_extras_cleanup_entry",
+            domain=DOMAIN,
             disabled_by=None,
+            subentries={},
         )
         options_flow = RamsesExtrasOptionsFlowHandler(config_entry)
         options_flow.hass = hass
@@ -514,7 +516,9 @@ class TestRamsesExtrasOptionsFlowHandler:
             "async_get_entry",
             return_value=SimpleNamespace(
                 entry_id=config_entry.entry_id,
+                domain=DOMAIN,
                 disabled_by=None,
+                subentries={},
             ),
         ):
             device_entry = device_registry.async_get_or_create(

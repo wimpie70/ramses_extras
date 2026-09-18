@@ -10,11 +10,16 @@ import pytest
 sys.path.insert(0, "custom_components")
 
 # Mock Home Assistant modules
-sys.modules["homeassistant"] = MagicMock()
-sys.modules["homeassistant.core"] = MagicMock()
-sys.modules["homeassistant.config_entries"] = MagicMock()
-sys.modules["homeassistant.helpers"] = MagicMock()
-sys.modules["homeassistant.exceptions"] = MagicMock()
+_HA_MODULE_NAMES = (
+    "homeassistant",
+    "homeassistant.core",
+    "homeassistant.config_entries",
+    "homeassistant.helpers",
+    "homeassistant.exceptions",
+)
+_orig_ha_modules = {name: sys.modules.get(name) for name in _HA_MODULE_NAMES}
+for _name in _HA_MODULE_NAMES:
+    sys.modules[_name] = MagicMock()
 
 # Mock ramses_cc modules
 sys.modules["ramses_cc"] = MagicMock()
@@ -33,6 +38,16 @@ except ImportError as e:
         f"Integration not properly installed for testing: {e}",
         allow_module_level=True,
     )
+finally:
+    # Restore the real homeassistant modules so later tests in the same
+    # pytest process still resolve genuine submodules on deferred imports
+    # (e.g. `from homeassistant.helpers import entity_registry`). The
+    # ramses_cc mocks are kept because ramses_cc may not be importable here.
+    for _name, _orig in _orig_ha_modules.items():
+        if _orig is None:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _orig
 
 
 class MockRamsesBroker:
