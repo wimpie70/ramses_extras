@@ -1,26 +1,27 @@
 # Follow-up issue: multi-HGI pool — Phase 2 (serial/hybrid) and Phase 3 (Zigbee)
 
 **Source plan:** [`multi-hgi-plan.md`](../multi-hgi-plan.md) (repo root)
-**version:** Sep 15 2026 19:30
+**version:** Sep 18 2026 23:59
 **Scope:** Continue the phased rollout of transport-neutral HGI pooling after
 Phase 1 (MQTT-only pool) ships. Phase 2 adds serial and hybrid USB+MQTT pools;
 Phase 3 adds Zigbee pools once physical hardware is available.
 
-## Current status (2026-09-15)
+## Current status (2026-09-18)
 
 ### Phase 2 — COMPLETE
 
 Phase 2 (serial and hybrid pool) is **complete and verified on real hardware**:
 
-- **ramses_rf PR 1208** (`feat/phase2-signature-policy`): **MERGED** (2026-09-12). Head `6fb694e7`. Includes all pool work: `PoolChild` state model, typed routing contract, MQTT callback contract, serial/hybrid pool support, callback-driven `mark_online()`, stale child fallback.
-- **ramses_cc PR 1183** (`fix/issue-1171-pool-config-bugs`): **OPEN**, not draft, awaiting review. Head `333988ff`. Includes pool health entities, config flow improvements, test alignment. CI: lint/type/hassfest/HACS pass; test/coverage blocked only by `ramses-rf==0.60.5` pin (needs 0.60.6 publish).
+- **ramses_rf PR 1208** (`feat/phase2-signature-policy`): **MERGED** (2026-09-12). Includes all pool work: `PoolChild` state model, typed routing contract, MQTT callback contract, serial/hybrid pool support, callback-driven `mark_online()`, stale child fallback.
+- **ramses_cc PR 1183** (`fix/issue-1171-pool-config-bugs`): **MERGED** (head `5cf926a9`). Includes pool health entities, config flow improvements, test alignment.
 - **ramses_extras** (commit `2059b77`): dynamic default sensor creation for newly discovered devices + pool health entity integration in `TransportMonitor`.
 
-### Phase 3 — IN PROGRESS (hardware verified)
+### Phase 3 — IN PROGRESS (hardware verified, PRs open)
 
-Physical Zigbee hardware is now available (Elecram ESP32-C6 running
+Physical Zigbee hardware is available (Elecram ESP32-C6 running
 IMMRMKW's `ramses_esp` firmware, paired via ZHA) and the Zigbee pool is
-**verified end-to-end on hardware (2026-09-15)**:
+**verified end-to-end on hardware**, including degraded boot and live
+disconnect/reconnect cycles (2026-09-18):
 
 - Zigbee child connects via ZHA, receives RAMSES packets, and
   participates in RSSI-based TX routing.
@@ -28,10 +29,24 @@ IMMRMKW's `ramses_esp` firmware, paired via ZHA) and the Zigbee pool is
   heard by a second HGI → pool deduplicates the child's own RX copy.
 - The ramses_esp HGI identity is derived from the IEEE address
   (`18:254172` for the C6) — no synthetic IDs needed.
-- Regression tests and `ha_sim_test` recipe R126 added; full suites run.
+- Device loss, coordinator (SLZB) loss, and recovery without reload or
+  restart verified live (see "Live disconnect/reconnect evidence").
+- Regression tests and `ha_sim_test` recipes R126–R128 added; full
+  suites run.
 
-Remaining before release: ZHA availability→`PoolChild` mapping, docs,
-draft PRs.
+**Open Phase-3 PRs (2026-09-18):**
+
+| PR | Repo | State | CI |
+|----|------|-------|----|
+| 1223 | ramses_rf | draft | green |
+| 1224 | ramses_rf | draft | green |
+| 1206 | ramses_cc | open (ready) | test/coverage red — needs ramses-rf release > 0.60.6 |
+| 225 | ramses_extras | draft | green |
+
+Remaining before release: land the ramses_rf PRs, publish a ramses-rf
+release containing them, bump the `ramses-rf==0.60.6` pin in ramses_cc
+(manifest + requirements_dev) so PR 1206's tests run against the Zigbee
+transport code they exercise, then land 1206 and 225.
 
 ## Background
 
@@ -446,6 +461,36 @@ Per-child health entity created
 (`binary_sensor.hgi_18_254172_online`), stale IEEE/`18:000730` registry
 entries removed.
 
+#### Live disconnect/reconnect evidence (2026-09-18, dev instance)
+
+Both failure modes exercised end-to-end on the live pool (MQTT primary
++ 2 MQTT HGIs + Zigbee C6):
+
+```text
+# ELECRAM C6 powered off (device loss)
+ZHA reports device unavailable → child 0 disconnected, 2/3 connected
+binary_sensor.hgi_18_254172_online → off
+C6 power-cycled → availability-loop ping answers → clusters re-attached
+PooledTransport: child 0 connected (HGI=18:254172), 3/3 connected
+binary_sensor.hgi_18_254172_online → on   (~40 s, no reload)
+
+# SLZB coordinator unplugged (gateway loss)
+ZHA: Connect call failed (192.168.0.143:6638) — retrying 5s→80s backoff
+Zigbee device unavailable (ZHA gateway not available) → child offline
+MQTT children unaffected; pool_status stays on (degraded 2/3)
+SLZB replugged → ZHA reconnects → monitor ping → child reconnected
+PooledTransport: child 0 connected (HGI=18:254172), 3/3 connected
+```
+
+No HA reload or restart was needed in either direction; a stale
+incomplete frame buffer was dropped on reconnect as designed. The
+`deduped packet from child 0` lines afterwards confirm the Zigbee HGI
+hears the same RF traffic and dedup suppresses its copies.
+
+Expected external noise during a coordinator outage (not pool bugs):
+ZHA config-entry "Retrying" backoff, HA `smlight` integration poll
+errors against the dead SLZB, `zhaquirks` load warnings.
+
 #### Degraded-boot fixes (2026-09-16, SLZB offline at startup)
 
 A boot with the Zigbee coordinator down exposed three stacked issues,
@@ -499,11 +544,11 @@ never finished:
 
 All are now `async_create_background_task` (still cancelled on entry
 unload / HA stop), so they cannot delay startup wrap-up. The rejoin
-watcher additionally unregisters its own unload-cancellation before
-calling `async_reload` (self-cancellation guard) and is deduplicated
-against a pending watcher. Verified live: SLZB powered off → HA
-reaches `state: RUNNING` in ~70 s, `get_cards_enabled` returns true,
-no bootstrap-block warnings.
+watcher is deduplicated against a pending watcher. Verified live: SLZB
+powered off → HA reaches `state: RUNNING` in ~60 s,
+`get_cards_enabled` returns true, no bootstrap-block warnings.
+Regression recipe: R128 (`r128_startup_running_state.py`) restarts the
+container and polls `/api/config` until `state == "RUNNING"`.
 
 Companion fixes in ramses_rf (`fix(protocol): quiet expected pool
 lifecycle noise`):
@@ -519,11 +564,45 @@ lifecycle noise`):
   `connection_lost`) no longer re-runs active-HGI detection and no
   longer logs `Active gateway already set ... overwriting`.
 
+#### Unload-callback crash (2026-09-18, ramses_cc PR 1206)
+
+`TypeError: a coroutine was expected, got True` in
+`_async_process_on_unload` when the rejoin watcher reloaded the entry:
+
+- `entry.async_on_unload(task.cancel)` — `Task.cancel()` returns
+  `True` when it cancels a pending task; HA then tries
+  `async_create_task(True)`.
+- The earlier "unregister my own unload callback before reloading"
+  approach could not work in this HA version:
+  `ConfigEntry.async_on_unload()` returns `None`, not an unsubscribe
+  remover, so the guard never fired.
+- Fix: a `_cancel_watcher` closure that returns `None` and skips
+  `task.cancel()` when the unload runs inside the watcher task itself
+  (`task is not asyncio.current_task()`). Regression tests cover both
+  the truthy-return and self-cancel paths.
+
+#### Startup wait_for_gateway fail-fast (ramses_rf `9a309e87`)
+
+`wait_for_gateway` no longer polls blindly for 30 s. Each iteration
+checks ZHA config-entry state: `not_loaded`/`setup_in_progress`/
+`loaded` → keep polling; no ZHA entry or all entries in
+`setup_retry`/`setup_error` → raise `TransportZigbeeError`
+immediately (~37 ms live vs 30 s). The rejoin watcher still handles
+recovery in the background.
+
+#### Transient unacked-send error (ramses_rf `538cc251`)
+
+A `zigpy DeliveryError` (`Device has re-joined the network`) during an
+in-flight cluster command was logged twice at ERROR with full
+tracebacks — once at the inner `cluster.command` site and again at the
+outer `_send_unacked` handler. Expected transport churn now logs once
+as a warning; genuinely unexpected failures keep `_LOGGER.exception`.
+
 Design note: mid-operation coordinator/device failure does **not**
 block HA — the Zigbee transport's own availability loop (not an
 HA-tracked task) marks the child offline and retries; only the
-startup-phase `wait_for_gateway` poll (30 s, bounded) is on the
-connection path.
+startup-phase `wait_for_gateway` poll (state-aware fail-fast, ~37 ms
+when ZHA cannot appear; bounded otherwise) is on the connection path.
 
 #### Regression tests required
 
@@ -597,6 +676,31 @@ no longer early-returns when the root `_owner` key is absent (profile
 loads that rebuild the schema can transiently drop it); ownerless HGIs
 stay receive-only candidates, foreign-owned HGIs remain excluded.
 
+#### Entity-registry collisions and discovery (2026-09-18)
+
+Three related issues found while cleaning stale `_2`-suffixed pool
+entities from the live registry:
+
+- **Ventura 2411 param naming collision** (ramses_rf `5abaf87e`, PR
+  1224): parameters `4C` and `DA` both described as
+  "Unknown (ClimaRad Ventura)" → identical entity names → forced `_2`
+  suffix. Now "Unknown parameter 4C/DA (ClimaRad Ventura)". Note: `4C`
+  is **not** confirmed to be "Away mode timer" on the Ventura — that
+  name comes from the Orcon-style *builder* schema
+  (`models/hvac_schemas.py`); the parse schema keeps an explicit
+  unknown placeholder until the real meaning is confirmed (issue 740).
+- **extras `transport_monitor` missed clean `pool_status`** (PR 225,
+  `d1af0e1`): aggregate discovery matched entity_id prefix
+  `binary_sensor.pool_status_`, which only worked while a `_2`
+  collision existed. Now matched by unique_id
+  (`*_pool_status_online`, `*_pool_child_{hgi_id}_online`), robust to
+  collision suffixes and user renames. Regression tests cover clean,
+  suffixed, and per-HGI discovery.
+- **Stale `_2` entities on hass**: `binary_sensor.pool_status`,
+  `hgi_18_130236_online`, `hgi_18_149488_online` renamed to the clean
+  entity_ids (HA keeps `_N` suffixes sticky even after the original
+  holder is gone — renaming is manual/registry-level).
+
 ---
 
 ## PR dependency order
@@ -617,12 +721,23 @@ Phase 2 — Serial and hybrid pool (hardware feasibility gate PASSED 2026-09-06)
               |
               = Phase 2 release (USB + hybrid pool) = DONE
 
-Phase 3 — Zigbee pool (hardware verified 2026-09-15)
+Phase 3 — Zigbee pool (hardware verified 2026-09-15/18)
   PR 2
               |
               +--> PR 6: Zigbee identity/lifecycle (un-gate Zigbee in config flow)
+              |      ramses_rf PR 1223 (callback-only pool fallback) — draft, green
+              |      ramses_rf PR 1224 (zigbee availability/reconnect) — draft, green
+              |      ramses_cc PR 1206 (zigbee un-gate + hybrid pool) — ready,
+              |        CI red pending ramses-rf release > 0.60.6
+              |      ramses_extras PR 225 (degraded boot + monitor fixes) — draft
               |
               = Phase 3 release (Zigbee pool) = IN PROGRESS
+
+  NOTE: ramses_cc pins ramses-rf==0.60.6 (manifest + requirements_dev).
+  PR 1206's tests exercise the unreleased Zigbee transport and
+  preset-mode code, so its test/coverage jobs stay red until a
+  ramses-rf release containing PRs 1208/1223/1224 (and, for the
+  preset-mode tests, PR 1219) is published and the pin is bumped.
 ```
 
 ---
@@ -844,6 +959,16 @@ marked **[DONE]** and retained for historical context.
   - ramses_rf PR 1195 (PR 4A: MQTT callback contract, merged)
   - ramses_cc PR 1157 (PR 4B: HA-native MQTT pool bridge, merged)
   - ramses_cc PR 1133 (PR 5: membership + config flow + MQTT pool assembly)
+- Phase 2/3 PRs:
+  - ramses_rf PR 1208 (Phase 2 serial/hybrid, **merged** 2026-09-12)
+  - ramses_cc PR 1183 (issue 1171 config bugs, **merged**)
+  - ramses_rf PR 1223 (pool callback-only fallback, draft)
+  - ramses_rf PR 1224 (Zigbee availability + reconnect, draft)
+  - ramses_rf PR 1219 (boost-timer builtin commands — preset-mode
+    tests in PR 1206 depend on it)
+  - ramses_cc PR 1206 (Phase 3 Zigbee un-gate + hybrid pool)
+  - ramses_extras PR 225 (degraded boot + transport monitor fixes,
+    draft)
 - Fixture evidence: `fixtures/fixture_report.md`, `fixtures/pool_test_report.md`
 - Analyzer: `tools/analyze_fixture.py`
 - Hardware feasibility gate report: `docs/serial_hw_gate_report.md`
@@ -854,6 +979,11 @@ marked **[DONE]** and retained for historical context.
 - Regression test: `tools/ha_sim_test/recipes/r126_phase3_zigbee_pool.py`
   (R126 — Zigbee identity derivation, IEEE/HGI separation, fail-fast child,
   pool failure isolation)
+- Regression test: `tools/ha_sim_test/recipes/r127_zigbee_availability.py`
+  (R127 — ZHA availability → PoolChild reconnect, ramses_rf PR 1224)
+- Regression test: `tools/ha_sim_test/recipes/r128_startup_running_state.py`
+  (R128 — HA reaches `RUNNING` promptly after restart with degraded
+  transport)
 - Related issues:
   - https://github.com/ramses-rf/ramses_rf/issues/1119 (original multi-HGI
     discussion)
