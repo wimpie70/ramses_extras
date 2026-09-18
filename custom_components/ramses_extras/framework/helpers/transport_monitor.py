@@ -25,9 +25,9 @@ _LOGGER = logging.getLogger(__name__)
 
 # Entity ID patterns for ramses_cc pool health entities.
 # The unique_id format is ``{entry_id}_pool_status_online`` and
-# ``{entry_id}_pool_child_{hgi_id}_online``; the resulting entity_id
-# is ``binary_sensor.pool_status_N`` and ``binary_sensor.hgi_{hgi}_online_N``.
-_POOL_STATUS_ENTITY_PREFIX = "binary_sensor.pool_status_"
+# ``{entry_id}_pool_child_{hgi_id}_online``. Matching is done on
+# unique_id (not entity_id) so discovery survives renames and works
+# with or without a ``_N`` registry-collision suffix.
 _HGI_ONLINE_ENTITY_PREFIX = "binary_sensor.hgi_"
 
 
@@ -312,8 +312,8 @@ class TransportMonitor:
                     continue
                 eid = entity.entity_id
                 uid = entity.unique_id
-                if eid.startswith(_POOL_STATUS_ENTITY_PREFIX):
-                    # Prefer the pool_status entity (aggregate).
+                if uid.endswith("_pool_status_online"):
+                    # The aggregate pool status entity.
                     pool_entity_id = eid
                 elif uid.endswith("_online") and "_pool_child_" in uid:
                     # Per-HGI: unique_id = {entry_id}_pool_child_{hgi_id}_online

@@ -100,3 +100,71 @@ class TestTransportMonitorCallbacks:
 
         transport_monitor.update_device_message_received("32:153289")
         # Should not crash
+
+
+class TestPoolHealthEntityDiscovery:
+    """Regression tests for _discover_pool_health_entities.
+
+    The aggregate pool_status entity must be found by unique_id — the
+    entity_id may be ``binary_sensor.pool_status`` or carry a ``_N``
+    registry-collision suffix (``binary_sensor.pool_status_2``).
+    """
+
+    @staticmethod
+    def _make_monitor_with_registry(entities: list[MagicMock]) -> TransportMonitor:
+        monitor = TransportMonitor()
+        monitor._hass = MagicMock()
+        registry = MagicMock()
+        registry.entities.values.return_value = entities
+        with patch(
+            "homeassistant.helpers.entity_registry.async_get",
+            return_value=registry,
+        ):
+            monitor._discover_pool_health_entities()
+        return monitor
+
+    @staticmethod
+    def _entity(entity_id: str, unique_id: str) -> MagicMock:
+        e = MagicMock()
+        e.platform = "ramses_cc"
+        e.entity_id = entity_id
+        e.unique_id = unique_id
+        return e
+
+    def test_discovers_clean_pool_status_entity_id(self):
+        """binary_sensor.pool_status (no _N suffix) must be discovered."""
+        monitor = self._make_monitor_with_registry(
+            [
+                self._entity(
+                    "binary_sensor.pool_status",
+                    "ENTRY_pool_status_online",
+                )
+            ]
+        )
+        assert monitor._pool_status_entity_id == "binary_sensor.pool_status"
+
+    def test_discovers_suffixed_pool_status_entity_id(self):
+        """binary_sensor.pool_status_2 (collision suffix) must be discovered."""
+        monitor = self._make_monitor_with_registry(
+            [
+                self._entity(
+                    "binary_sensor.pool_status_2",
+                    "ENTRY_pool_status_online",
+                )
+            ]
+        )
+        assert monitor._pool_status_entity_id == "binary_sensor.pool_status_2"
+
+    def test_discovers_hgi_online_entities_by_unique_id(self):
+        """Per-HGI online entities resolve hgi_id from the unique_id."""
+        monitor = self._make_monitor_with_registry(
+            [
+                self._entity(
+                    "binary_sensor.hgi_18_130236_online",
+                    "ENTRY_pool_child_18:130236_online",
+                )
+            ]
+        )
+        assert monitor._hgi_online_entity_ids == {
+            "18:130236": "binary_sensor.hgi_18_130236_online"
+        }
