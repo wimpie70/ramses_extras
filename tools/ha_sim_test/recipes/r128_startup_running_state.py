@@ -54,7 +54,10 @@ class R128StartupRunningState(Recipe):
         running_at: float | None = None
         deadline = t0 + RUNNING_DEADLINE_S
         while time.monotonic() < deadline:
-            ctx.refresh_token()
+            try:
+                ctx.refresh_token()
+            except Exception:  # noqa: BLE001 — API still restarting
+                pass
             if is_ha_running(ctx.token):
                 running_at = time.monotonic() - t0
                 break
