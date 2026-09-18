@@ -474,6 +474,57 @@ Verified live: SLZB powered off → pool up with both MQTT HGIs online
 via LWT and live traffic flowing, Zigbee child entity correctly
 unavailable.
 
+#### Startup-wrap-up block (2026-09-18, SLZB offline at startup)
+
+A degraded boot left `hass.config.state` stuck below `RUNNING` for
+minutes, which latched every `ramses_extras` frontend card into its
+"Home Assistant is initializing" state even though the backend and
+websocket layer were fully up. HA logged
+`Something is blocking Home Assistant from wrapping up the start up
+phase` with three tracked tasks pending.
+
+Root cause: fire-and-forget tasks created with
+`hass.async_create_task` are awaited by `async_block_till_done`
+during startup wrap-up. With the Zigbee coordinator offline these
+never finished:
+
+- `RamsesCoordinator._schedule_zigbee_rejoin._watch` — polled for the
+  ZHA gateway indefinitely.
+- `RamsesServiceHandler._async_run_fan_param_sequence` — ~30-param
+  sweep, up to 30 s/param on a degraded transport (spawned from
+  `services.py` and `coordinator.get_all_fan_params`).
+- `RamsesFanHandler.async_setup_fan_device.on_fan_first_message` —
+  waited for the device's first packet, then ran the same sweep.
+- `coordinator._probe_task` — probe-and-discover, ~20 s+/device.
+
+All are now `async_create_background_task` (still cancelled on entry
+unload / HA stop), so they cannot delay startup wrap-up. The rejoin
+watcher additionally unregisters its own unload-cancellation before
+calling `async_reload` (self-cancellation guard) and is deduplicated
+against a pending watcher. Verified live: SLZB powered off → HA
+reaches `state: RUNNING` in ~70 s, `get_cards_enabled` returns true,
+no bootstrap-block warnings.
+
+Companion fixes in ramses_rf (`fix(protocol): quiet expected pool
+lifecycle noise`):
+
+- `ZigbeeTransport._async_init` logs expected `TransportZigbeeError`
+  (missing ZHA gateway/device) as a warning without a traceback —
+  unexpected failures still log with `_LOGGER.exception`.
+- `connection_lost` retrieves exceptions set on
+  `_wait_connection_lost` and abandoned send futures, eliminating
+  `Future exception was never retrieved: TransportZigbeeError`.
+- `PortProtocol.connection_made` no-ops when already connected —
+  a second pool child coming online (or a reconnect racing a queued
+  `connection_lost`) no longer re-runs active-HGI detection and no
+  longer logs `Active gateway already set ... overwriting`.
+
+Design note: mid-operation coordinator/device failure does **not**
+block HA — the Zigbee transport's own availability loop (not an
+HA-tracked task) marks the child offline and retries; only the
+startup-phase `wait_for_gateway` poll (30 s, bounded) is on the
+connection path.
+
 #### Regression tests required
 
 - [x] IEEE addresses are never inserted into RAMSES frames. —

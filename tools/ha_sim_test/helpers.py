@@ -810,6 +810,34 @@ def _get_ramses_cc_entry_id() -> str:
     return ""
 
 
+def get_ha_config(token: str) -> dict | None:
+    """Get HA's /api/config payload (contains ``state``, e.g. RUNNING).
+
+    Returns ``None`` while the API is not yet reachable or not yet
+    authorised (container still booting), so callers can poll it.
+    """
+    req = urllib.request.Request(
+        get_current_instance().ha_url + "/api/config",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        return json.loads(urllib.request.urlopen(req, timeout=10).read())
+    except Exception:
+        return None
+
+
+def is_ha_running(token: str) -> bool:
+    """True when ``hass.config.state`` reports RUNNING (startup wrapped up).
+
+    ``is_ha_ready`` only proves the HTTP API responds — HA can serve
+    the API while still in ``NOT_RUNNING`` because tracked startup
+    tasks haven't finished.  This check catches integrations whose
+    fire-and-forget tasks block the startup wrap-up phase.
+    """
+    config = get_ha_config(token)
+    return bool(config) and config.get("state") == "RUNNING"
+
+
 def get_entities(token: str) -> list:
     """Get all entity states from the HA API.
 
