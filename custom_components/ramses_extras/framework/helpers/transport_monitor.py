@@ -4,7 +4,7 @@ This module provides monitoring of the Ramses RF transport state and
 implements graceful degradation when the transport is unavailable.
 
 The primary source of transport availability is the ramses_cc pool health
-entities (``binary_sensor.pool_status_*`` and per-HGI ``*_online``
+entities (``binary_sensor.pool_status`` and per-HGI ``*_online``
 entities introduced with the multi-HGI pool work).  When those entities
 are not yet available (e.g. before ramses_cc has created them), the
 monitor falls back to its own command-based liveness detection.
@@ -293,14 +293,18 @@ class TransportMonitor:
                 self._mark_device_online(normalized_device_id),
             )
 
-    def _discover_pool_health_entities(self) -> None:
+    def _discover_pool_health_entities(self) -> bool:
         """Discover ramses_cc pool health entity IDs from the entity registry.
 
         Populates ``_pool_status_entity_id`` and ``_hgi_online_entity_ids``
         by scanning the HA entity registry for ramses_cc pool entities.
         """
         if not self._hass:
-            return
+            return False
+        previous = (
+            self._pool_status_entity_id,
+            self._hgi_online_entity_ids,
+        )
         try:
             from homeassistant.helpers import entity_registry as er
 
@@ -324,17 +328,20 @@ class TransportMonitor:
                         hgi_entities[hgi_id] = eid
             self._pool_status_entity_id = pool_entity_id
             self._hgi_online_entity_ids = hgi_entities
-            if pool_entity_id or hgi_entities:
+            changed = previous != (pool_entity_id, hgi_entities)
+            if changed and (pool_entity_id or hgi_entities):
                 _LOGGER.info(
                     "Transport monitor: discovered pool health entities: "
                     "pool_status=%s, hgi_online=%s",
                     pool_entity_id,
                     hgi_entities,
                 )
+            return changed
         except Exception as e:
             _LOGGER.debug(
                 "Could not discover pool health entities: %s", e, exc_info=True
             )
+            return False
 
     def _get_pool_status_from_entity(self) -> bool | None:
         """Read the pool status from the ramses_cc entity.
@@ -413,6 +420,10 @@ class TransportMonitor:
         # Re-discover on each state change to catch entities created
         # after monitoring starts.
         self._discover_pool_health_entities()
+
+        if self._pool_state_unsub:
+            self._pool_state_unsub()
+            self._pool_state_unsub = None
 
         target_entities: list[str] = []
         if self._pool_status_entity_id:
@@ -502,17 +513,9 @@ class TransportMonitor:
                 await asyncio.sleep(self._check_interval)
 
                 # Re-discover pool health entities periodically in case
-                # they were created after monitoring started.
-                if not self._pool_status_entity_id:
-                    self._discover_pool_health_entities()
-                    # _discover_pool_health_entities may set
-                    # _pool_status_entity_id; re-check and subscribe if
-                    # newly found and not yet subscribed.
-                    if (
-                        self._pool_status_entity_id is not None
-                        and self._pool_state_unsub is None
-                    ):
-                        self._subscribe_pool_state_changes()
+                # they were created or renamed after monitoring started.
+                if self._discover_pool_health_entities():
+                    self._subscribe_pool_state_changes()
 
                 # Primary: read from the pool health entity.
                 pool_state = self._get_pool_status_from_entity()

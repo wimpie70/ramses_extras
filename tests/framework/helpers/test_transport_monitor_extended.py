@@ -1,5 +1,6 @@
 """Tests for transport_monitor to improve coverage."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -168,3 +169,47 @@ class TestPoolHealthEntityDiscovery:
         assert monitor._hgi_online_entity_ids == {
             "18:130236": "binary_sensor.hgi_18_130236_online"
         }
+
+    def test_runtime_rename_replaces_state_subscription(self):
+        """A runtime entity rename must replace the stale subscription."""
+        monitor = TransportMonitor()
+        monitor._hass = MagicMock()
+        registry = MagicMock()
+        old_entity = self._entity(
+            "binary_sensor.pool_status_2",
+            "ENTRY_pool_status_online",
+        )
+        new_entity = self._entity(
+            "binary_sensor.pool_status",
+            "ENTRY_pool_status_online",
+        )
+        registry.entities.values.return_value = [old_entity]
+        old_unsub = MagicMock()
+        new_unsub = MagicMock()
+
+        with (
+            patch(
+                "homeassistant.helpers.entity_registry.async_get",
+                return_value=registry,
+            ),
+            patch(
+                "homeassistant.helpers.event.async_track_state_change_event",
+                side_effect=[old_unsub, new_unsub],
+            ) as track_state,
+        ):
+            monitor._discover_pool_health_entities()
+            monitor._subscribe_pool_state_changes()
+            assert track_state.call_args.args[1] == ["binary_sensor.pool_status_2"]
+
+            registry.entities.values.return_value = [new_entity]
+            with patch(
+                "custom_components.ramses_extras.framework.helpers."
+                "transport_monitor.asyncio.sleep",
+                new_callable=AsyncMock,
+                side_effect=[None, asyncio.CancelledError],
+            ):
+                asyncio.run(monitor._monitor_loop())
+
+        old_unsub.assert_called_once_with()
+        assert track_state.call_args.args[1] == ["binary_sensor.pool_status"]
+        assert monitor._pool_state_unsub is new_unsub
