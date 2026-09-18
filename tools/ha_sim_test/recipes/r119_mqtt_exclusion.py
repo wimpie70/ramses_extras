@@ -6,12 +6,14 @@ and that the pool adapts correctly.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 
 from ..base import Recipe, RecipeContext
 from ..helpers import (
     call_service,
+    docker_exec_python,
     get_current_instance,
 )
 from ..multi_hgi_helpers import ensure_multi_hgi_config, wait_for_hgi_states
@@ -146,6 +148,133 @@ class R119MqttExclusion(Recipe):
         error_logs = grep_log("ERROR.*ramses_cc|ERROR.*ramses_tx", tail=5)
         ctx.check(
             "No errors during exclusion tests",
+            not error_logs,
+            detail=f"Errors: {error_logs[:200] if error_logs else 'none'}",
+        )
+
+        # ---------------------------------------------------------------
+        # Sentinel HGI 18:000730 must not leak into the schema (issue 1171)
+        # ---------------------------------------------------------------
+        # The sentinel is ramses_rf's internal placeholder source address —
+        # not a real gateway.  Stale/retained broker topics under it must
+        # be ignored end-to-end.  A real unknown HGI is published as a
+        # positive control to prove discovery still works.
+        ctx.log_section("Sentinel HGI 18:000730 must not leak into schema")
+        sentinel = "18:000730"
+        probe_hgi = "18:009999"
+        tns = inst.mqtt_topic_ns
+
+        try:
+            # Stale retained LWT on the sentinel topic (the forum scenario).
+            call_service(
+                ctx.token,
+                "mqtt",
+                "publish",
+                {
+                    "topic": f"{tns}/{sentinel}",
+                    "payload": "online",
+                    "retain": True,
+                },
+            )
+            # An rx frame on the sentinel topic.
+            call_service(
+                ctx.token,
+                "mqtt",
+                "publish",
+                {
+                    "topic": f"{tns}/{sentinel}/rx",
+                    "payload": json.dumps(
+                        {"msg": "000 RQ --- 18:000730 01:150000 --:------ 30C9 001 07"}
+                    ),
+                },
+            )
+            # Positive control: a real unknown HGI must still be discovered.
+            call_service(
+                ctx.token,
+                "mqtt",
+                "publish",
+                {
+                    "topic": f"{tns}/{probe_hgi}/rx",
+                    "payload": json.dumps(
+                        {
+                            "msg": "000  I --- 01:150000 18:009999 "
+                            "--:------ 30C9 003 000F1B"
+                        }
+                    ),
+                },
+            )
+        except Exception as err:
+            ctx.check(
+                "Sentinel/control topics published",
+                False,
+                detail=f"mqtt.publish failed: {err}",
+            )
+            return
+        finally:
+            # Clear the retained topics so later recipes (and other
+            # branches on the shared broker) start from a clean state.
+            try:
+                call_service(
+                    ctx.token,
+                    "mqtt",
+                    "publish",
+                    {"topic": f"{tns}/{sentinel}", "payload": "", "retain": True},
+                )
+            except Exception:
+                pass
+
+        # Poll the persisted schema — the discovery write is debounced,
+        # so wait for the positive control to land before asserting the
+        # sentinel is absent.
+        flags: dict = {}
+        for _attempt in range(10):
+            flags = docker_exec_python(
+                """
+import json
+d = json.load(open('/config/.storage/core.config_entries'))
+for e in d['data']['entries']:
+    if e['domain'] == 'ramses_cc':
+        s = e['options'].get('schema', {})
+        probe = s.get('18:009999') or {}
+        print(json.dumps({
+            'sentinel': '18:000730' in s,
+            'probe': '18:009999' in s,
+            'probe_owner': probe.get('_owner'),
+            'probe_class': probe.get('_class'),
+        }))
+        break
+"""
+            )
+            if flags.get("probe") or "error" in flags:
+                break
+            ctx.wait(2, "for discovery candidate write")
+
+        ctx.check(
+            "Schema probe executed",
+            "error" not in flags,
+            detail=f"{flags.get('error', flags)}",
+        )
+        ctx.check(
+            "Unknown HGI 18:009999 discovered (control)",
+            bool(flags.get("probe")),
+            detail=f"schema flags: {flags}",
+        )
+        ctx.check(
+            "Discovered HGI is an ownerless HGI candidate",
+            flags.get("probe_class") == "HGI" and not flags.get("probe_owner"),
+            detail=f"_class: {flags.get('probe_class')}, "
+            f"_owner: {flags.get('probe_owner')}",
+        )
+        ctx.check(
+            "Sentinel 18:000730 absent from schema",
+            not flags.get("sentinel"),
+            detail=f"schema flags: {flags}",
+        )
+
+        # No errors from the sentinel traffic either
+        error_logs = grep_log("ERROR.*ramses_cc|ERROR.*ramses_tx", tail=5)
+        ctx.check(
+            "No errors during sentinel checks",
             not error_logs,
             detail=f"Errors: {error_logs[:200] if error_logs else 'none'}",
         )
