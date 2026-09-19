@@ -517,6 +517,12 @@ class TransportMonitor:
                 if self._discover_pool_health_entities():
                     self._subscribe_pool_state_changes()
 
+                # Refresh the coordinator/client binding so the message
+                # handler follows ramses_cc entry reloads.  Without this,
+                # the handler stays attached to the old (dead) client and
+                # devices marked offline can never re-online.
+                self._refresh_coordinator()
+
                 # Primary: read from the pool health entity.
                 pool_state = self._get_pool_status_from_entity()
                 if pool_state is not None:
@@ -524,7 +530,6 @@ class TransportMonitor:
                     transport_active = pool_state
                 else:
                     # Fallback: internal transport check.
-                    self._refresh_coordinator()
                     transport_active = self._is_transport_active()
                 self._transport_available = transport_active
 

@@ -213,3 +213,57 @@ class TestPoolHealthEntityDiscovery:
         old_unsub.assert_called_once_with()
         assert track_state.call_args.args[1] == ["binary_sensor.pool_status"]
         assert monitor._pool_state_unsub is new_unsub
+
+    def test_monitor_loop_rebinds_msg_handler_after_entry_reload(self):
+        """The msg handler must follow the client across entry reloads.
+
+        A ramses_cc entry reload replaces ``entry.runtime_data`` with a new
+        coordinator and client.  The monitor must refresh its binding from
+        the monitor loop — otherwise the message handler stays attached to
+        the dead client and no received packet can re-online a device.
+        """
+        monitor = TransportMonitor()
+        monitor._hass = MagicMock()
+
+        old_client = MagicMock()
+        old_unsub = MagicMock()
+        old_client.add_msg_handler.return_value = old_unsub
+        new_client = MagicMock()
+        new_unsub = MagicMock()
+        new_client.add_msg_handler.return_value = new_unsub
+
+        entry = MagicMock()
+        entry.runtime_data = MagicMock(client=old_client)
+        monitor._hass.config_entries.async_entries.return_value = [entry]
+
+        registry = MagicMock()
+        registry.entities.values.return_value = []
+
+        with patch(
+            "homeassistant.helpers.entity_registry.async_get",
+            return_value=registry,
+        ):
+            # Initial binding, as start_monitoring() would do.
+            monitor._refresh_coordinator()
+            old_client.add_msg_handler.assert_called_once_with(monitor._handle_msg)
+
+            # Simulate an entry reload: runtime_data now exposes the
+            # new coordinator/client.  The pool entity still exists, so
+            # the loop's fallback path would not run — the refresh must
+            # happen regardless.
+            entry.runtime_data = MagicMock(client=new_client)
+            monitor._pool_status_entity_id = "binary_sensor.pool_status"
+            monitor._hass.states.get.return_value = MagicMock(state="on")
+
+            with patch(
+                "custom_components.ramses_extras.framework.helpers."
+                "transport_monitor.asyncio.sleep",
+                new_callable=AsyncMock,
+                side_effect=[None, asyncio.CancelledError],
+            ):
+                asyncio.run(monitor._monitor_loop())
+
+        old_unsub.assert_called_once_with()
+        new_client.add_msg_handler.assert_called_once_with(monitor._handle_msg)
+        assert monitor._client is new_client
+        assert monitor._msg_handler_unsub is new_unsub
