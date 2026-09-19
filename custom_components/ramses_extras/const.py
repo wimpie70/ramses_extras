@@ -144,7 +144,7 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "has_device_config": False,
     },
     "device_status_card": {
-        "name": "Device Status Card",
+        "name": "Ramses Device Status Card",
         "description": (
             "Fleet overview: all devices with status and communication quality"
         ),
