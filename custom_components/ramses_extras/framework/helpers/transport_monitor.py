@@ -63,6 +63,9 @@ class TransportMonitor:
         # Pool health entity integration (primary source of truth).
         self._pool_status_entity_id: str | None = None
         self._hgi_online_entity_ids: dict[str, str] = {}  # hgi_id -> entity_id
+        # Per-device status entities (ramses_cc issue 1210):
+        # unique_id ``{device_id}-device_status``, state on/off.
+        self._device_status_entity_ids: dict[str, str] = {}
         self._pool_state_unsub: Callable[[], None] | None = None
         self._pool_entity_available: bool = False  # Have we seen the entity?
 
@@ -89,7 +92,7 @@ class TransportMonitor:
         )
         # Trigger an immediate check to update the new callback with current state
         if self._hass and normalized_device_id:
-            current_state = self._device_states.get(normalized_device_id, True)
+            current_state = self.is_device_available(normalized_device_id)
             _LOGGER.debug(
                 "Setting initial state for %s to %s",
                 normalized_device_id,
@@ -116,6 +119,12 @@ class TransportMonitor:
         """
         normalized_device_id = device_id.replace("_", ":")
         self._last_command_sent_times[normalized_device_id] = time.time()
+
+        # When ramses_cc exposes a per-device status entity, liveness is
+        # tracked there (heartbeat + missed polls); the internal 61s
+        # command timer is only a fallback for devices without one.
+        if normalized_device_id in self._device_status_entity_ids:
+            return
 
         # Only start a timer if one isn't already running
         existing_task = self._device_timeout_tasks.get(normalized_device_id)
@@ -294,16 +303,19 @@ class TransportMonitor:
             )
 
     def _discover_pool_health_entities(self) -> bool:
-        """Discover ramses_cc pool health entity IDs from the entity registry.
+        """Discover ramses_cc health entity IDs from the entity registry.
 
-        Populates ``_pool_status_entity_id`` and ``_hgi_online_entity_ids``
-        by scanning the HA entity registry for ramses_cc pool entities.
+        Populates ``_pool_status_entity_id``, ``_hgi_online_entity_ids``
+        and ``_device_status_entity_ids`` by scanning the HA entity
+        registry for ramses_cc pool entities and the per-device
+        ``*-device_status`` entities (ramses_cc issue 1210).
         """
         if not self._hass:
             return False
         previous = (
             self._pool_status_entity_id,
             self._hgi_online_entity_ids,
+            self._device_status_entity_ids,
         )
         try:
             from homeassistant.helpers import entity_registry as er
@@ -311,6 +323,7 @@ class TransportMonitor:
             reg = er.async_get(self._hass)
             pool_entity_id: str | None = None
             hgi_entities: dict[str, str] = {}
+            status_entities: dict[str, str] = {}
             for entity in reg.entities.values():
                 if entity.platform != "ramses_cc":
                     continue
@@ -326,15 +339,27 @@ class TransportMonitor:
                     if len(parts) == 2:
                         hgi_id = parts[1].removesuffix("_online")
                         hgi_entities[hgi_id] = eid
+                elif uid.endswith("-device_status"):
+                    # Per-device status: unique_id = {device_id}-device_status
+                    # (ramses_cc issue 1210).  The device_id retains its
+                    # colons in the unique_id.
+                    device_id = uid.removesuffix("-device_status")
+                    status_entities[device_id] = eid
             self._pool_status_entity_id = pool_entity_id
             self._hgi_online_entity_ids = hgi_entities
-            changed = previous != (pool_entity_id, hgi_entities)
+            self._device_status_entity_ids = status_entities
+            changed = previous != (pool_entity_id, hgi_entities, status_entities)
             if changed and (pool_entity_id or hgi_entities):
                 _LOGGER.info(
                     "Transport monitor: discovered pool health entities: "
                     "pool_status=%s, hgi_online=%s",
                     pool_entity_id,
                     hgi_entities,
+                )
+            if changed and status_entities:
+                _LOGGER.info(
+                    "Transport monitor: discovered %d device status entities",
+                    len(status_entities),
                 )
             return changed
         except Exception as e:
@@ -366,6 +391,24 @@ class TransportMonitor:
         if not self._hass:
             return None
         entity_id = self._hgi_online_entity_ids.get(hgi_id)
+        if not entity_id:
+            return None
+        state = self._hass.states.get(entity_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        return bool(state.state == "on")
+
+    def _get_device_status_from_entity(self, device_id: str) -> bool | None:
+        """Read a device's status from its ramses_cc status entity.
+
+        :param device_id: Device ID (normalized, e.g. ``32:153289``)
+        :return: True if the device is communicating, False if not,
+                 None if no status entity exists or its state is
+                 unknown/unavailable.
+        """
+        if not self._hass:
+            return None
+        entity_id = self._device_status_entity_ids.get(device_id)
         if not entity_id:
             return None
         state = self._hass.states.get(entity_id)
@@ -429,6 +472,7 @@ class TransportMonitor:
         if self._pool_status_entity_id:
             target_entities.append(self._pool_status_entity_id)
         target_entities.extend(self._hgi_online_entity_ids.values())
+        target_entities.extend(self._device_status_entity_ids.values())
 
         if not target_entities:
             _LOGGER.debug(
@@ -459,6 +503,20 @@ class TransportMonitor:
                     self._hass.async_create_task(  # type: ignore[union-attr]
                         self._mark_all_tracked_devices_offline()
                     )
+                return
+
+            # Per-device status entity (ramses_cc issue 1210): mirror the
+            # state into _device_states (keeps the fallback coherent) and
+            # notify any registered callbacks.  Re-online no longer
+            # depends on the msg handler for devices with a status entity.
+            for dev_id, eid in self._device_status_entity_ids.items():
+                if eid == entity_id:
+                    if self._device_states.get(dev_id) != is_on:
+                        self._device_states[dev_id] = is_on
+                        self._hass.async_create_task(  # type: ignore[union-attr]
+                            self._notify_device_state_changed(dev_id, is_on)
+                        )
+                    return
 
         # Subscribe to all pool health entities.  We use a single
         # subscription for all of them.
@@ -631,9 +689,14 @@ class TransportMonitor:
         if pool_state is not None:
             if not pool_state:
                 return False
-            # Pool is online — fall through to per-device check below.
-            # The pool entity tells us the transport is up, but the
-            # device may still be offline (e.g. no RF response).
+            # Pool is online — check the per-device status entity next
+            # (ramses_cc issue 1210).  It reports heartbeat liveness and
+            # consecutive missed polls; unavailable state means the
+            # entity has no data yet, so fall through to the internal
+            # tracking in that case.
+            status = self._get_device_status_from_entity(normalized_device_id)
+            if status is not None:
+                return status
             return self._device_states.get(normalized_device_id, True)
 
         # Fallback: when the pool entity is not available, use the
@@ -644,6 +707,29 @@ class TransportMonitor:
     def is_transport_available(self) -> bool:
         """Check if transport layer is currently available."""
         return self._transport_available
+
+    @property
+    def pool_status_entity_id(self) -> str | None:
+        """The aggregate pool status entity, if discovered."""
+        return self._pool_status_entity_id
+
+    @property
+    def hgi_online_entity_ids(self) -> dict[str, str]:
+        """Map of HGI device_id to its online entity_id."""
+        return dict(self._hgi_online_entity_ids)
+
+    @property
+    def device_status_entity_ids(self) -> dict[str, str]:
+        """Map of device_id to its ramses_cc status entity_id."""
+        return dict(self._device_status_entity_ids)
+
+    def refresh_entity_discovery(self, hass: HomeAssistant) -> None:
+        """Re-run entity registry discovery for a snapshot consumer.
+
+        :param hass: Home Assistant instance to bind for discovery
+        """
+        self._hass = hass
+        self._discover_pool_health_entities()
 
     @property
     def is_monitoring(self) -> bool:
