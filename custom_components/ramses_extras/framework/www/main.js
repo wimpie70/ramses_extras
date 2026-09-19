@@ -111,6 +111,10 @@ const CARD_MODULES = [
     tag: 'device-simulator-card',
     modulePath: '../features/device_simulator/device-simulator-card.js',
   },
+  {
+    tag: 'device-status-card',
+    modulePath: '../features/device_status_card/device-status-card.js',
+  },
 ];
 
 const loaded = new Set();

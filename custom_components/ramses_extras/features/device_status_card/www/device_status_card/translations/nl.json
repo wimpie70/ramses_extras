@@ -1,0 +1,21 @@
+{
+  "card": {
+    "title": "Ramses Apparaatstatus",
+    "device": "Apparaat",
+    "type": "Type",
+    "status": "Status",
+    "rssi": "RSSI",
+    "quality": "Kwaliteit",
+    "last_seen": "Laatst gezien",
+    "missed_polls": "Gemist",
+    "online": "online",
+    "offline": "offline",
+    "unknown": "onbekend",
+    "no_devices": "Geen RAMSES-apparaten gevonden",
+    "load_error": "Apparaatstatus laden mislukt"
+  },
+  "pool": {
+    "title": "Pool",
+    "hgi_packets": "pakketten"
+  }
+}

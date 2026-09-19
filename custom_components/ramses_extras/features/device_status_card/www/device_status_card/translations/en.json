@@ -1,0 +1,21 @@
+{
+  "card": {
+    "title": "Ramses Device Status",
+    "device": "Device",
+    "type": "Type",
+    "status": "Status",
+    "rssi": "RSSI",
+    "quality": "Quality",
+    "last_seen": "Last seen",
+    "missed_polls": "Missed",
+    "online": "online",
+    "offline": "offline",
+    "unknown": "unknown",
+    "no_devices": "No RAMSES devices found",
+    "load_error": "Failed to load device status"
+  },
+  "pool": {
+    "title": "Pool",
+    "hgi_packets": "packets"
+  }
+}
