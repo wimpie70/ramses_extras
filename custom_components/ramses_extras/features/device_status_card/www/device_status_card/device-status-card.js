@@ -41,6 +41,41 @@ function formatAge(seconds) {
 }
 
 /**
+ * Return the HGI that heard this device best: argmax over the fresh
+ * per-HGI RSSI map, falling back to the last-known map.  Returns the
+ * HGI id (with '~' prefix when only last-known data exists), or ''.
+ *
+ * @param {Object} d - Device row
+ * @returns {string} HGI device id or ''
+ */
+function bestHgi(d) {
+  const fresh =
+    d.rssi_per_hgi &&
+    typeof d.rssi_per_hgi === 'object' &&
+    Object.keys(d.rssi_per_hgi).length
+      ? d.rssi_per_hgi
+      : null;
+  const stale =
+    !fresh &&
+    d.last_known_rssi_per_hgi &&
+    typeof d.last_known_rssi_per_hgi === 'object' &&
+    Object.keys(d.last_known_rssi_per_hgi).length
+      ? d.last_known_rssi_per_hgi
+      : null;
+  const map = fresh || stale;
+  if (!map) return '';
+  let bestId = null;
+  let bestVal = -Infinity;
+  for (const [hgi, r] of Object.entries(map)) {
+    if (Number(r) > bestVal) {
+      bestVal = Number(r);
+      bestId = hgi;
+    }
+  }
+  return bestId ? `${stale ? '~' : ''}${bestId}` : '';
+}
+
+/**
  * Format the "last seen" cell: prefer staleness_seconds, fall back to
  * the pool child's last_pkt_time for transport (HGI) rows.
  *
@@ -262,6 +297,8 @@ class DeviceStatusCard extends RamsesBaseCard {
           return d.best_rssi === null || d.best_rssi === undefined
             ? -999
             : Number(d.best_rssi);
+        case 'by':
+          return bestHgi(d);
         case 'last_seen':
           return d.staleness_seconds === null ||
             d.staleness_seconds === undefined
@@ -407,7 +444,7 @@ class DeviceStatusCard extends RamsesBaseCard {
       const rows = byGroup.get(key);
       if (!rows || rows.length === 0) continue;
       sections.push(
-        `<tr class="r-xtrs-devstat-group"><td colspan="7">${label}</td></tr>` +
+        `<tr class="r-xtrs-devstat-group"><td colspan="8">${label}</td></tr>` +
           this._organizeGroup(rows)
             .map((d) => this._renderDeviceRow(d))
             .join('')
@@ -485,6 +522,7 @@ class DeviceStatusCard extends RamsesBaseCard {
           </span>
         </td>
         <td class="${rssiClass.trim()}" title="${escapeHtml(rssiTitle)}">${escapeHtml(rssi)}</td>
+        <td class="r-xtrs-devstat-hgi">${escapeHtml(bestHgi(d))}</td>
         <td>
           ${d.rssi_quality ? `<span class="r-xtrs-devstat-quality ${qClass}">${escapeHtml(d.rssi_quality)}</span>` : '-'}
         </td>
@@ -521,8 +559,8 @@ class DeviceStatusCard extends RamsesBaseCard {
 
     const devices = this._visibleDevices();
     if (devices.length) {
-      lines.push('| Device | Type | Status | RSSI | Quality | Last seen | Missed |');
-      lines.push('|---|---|---|---|---|---|---|');
+      lines.push('| Device | Type | Status | RSSI | By | Quality | Last seen | Missed |');
+      lines.push('|---|---|---|---|---|---|---|---|');
       for (const d of devices) {
         const name =
           (this._deviceNameMap && this._deviceNameMap.get
@@ -558,7 +596,7 @@ class DeviceStatusCard extends RamsesBaseCard {
           d.group && d.group !== 'orphan' ? `${d.group}: ` : '';
         lines.push(
           `| ${group}${label}${owner} | ${d.class || ''} | ${d.status === 'on' ? 'online' : d.status === 'off' ? 'offline' : 'unknown'} |` +
-            ` ${rssi} | ${d.rssi_quality || '-'} |` +
+            ` ${rssi} | ${bestHgi(d) || '-'} | ${d.rssi_quality || '-'} |` +
             ` ${lastSeenLabel(d)} |` +
             ` ${d.consecutive_missed_polls > 0 ? d.consecutive_missed_polls : ''} |`
         );
@@ -631,6 +669,7 @@ class DeviceStatusCard extends RamsesBaseCard {
                   <th data-sort="class">Type${sortArrow('class')}</th>
                   <th data-sort="status">Status${sortArrow('status')}</th>
                   <th data-sort="rssi">RSSI${sortArrow('rssi')}</th>
+                  <th data-sort="by" title="HGI with the best signal for this device">By${sortArrow('by')}</th>
                   <th>Quality</th>
                   <th data-sort="last_seen">Last seen${sortArrow('last_seen')}</th>
                   <th title="Consecutive missed polls">Missed</th>
