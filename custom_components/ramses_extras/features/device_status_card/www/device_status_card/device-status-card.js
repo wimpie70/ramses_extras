@@ -107,6 +107,7 @@ class DeviceStatusCard extends RamsesBaseCard {
     this._sortKey = 'status';
     this._sortDir = 'asc';
     this._boundOnSortClick = null;
+    this._showForeign = false;
   }
 
   getCardSize() {
@@ -323,64 +324,173 @@ class DeviceStatusCard extends RamsesBaseCard {
       </div>`;
   }
 
-  _renderDeviceRows() {
+  /**
+   * Devices visible under the current foreign/unowned filter.  Devices
+   * without owner info (older ramses_cc without schema, or no schema)
+   * are always shown; HGI rows are pool infrastructure and always
+   * shown regardless of ownership.
+   *
+   * @returns {Array<Object>} Filtered device rows
+   */
+  _visibleDevices() {
     const devices = this._snapshot?.devices;
-    if (!Array.isArray(devices) || devices.length === 0) {
+    if (!Array.isArray(devices)) {
+      return [];
+    }
+    if (this._showForeign) {
+      return devices;
+    }
+    return devices.filter(
+      (d) =>
+        d.group === 'hgi' || d.owner === undefined || d.owner === 'owned'
+    );
+  }
+
+  /**
+   * Order a group's rows so children follow their parent device.
+   *
+   * @param {Array<Object>} devices - Rows of one group
+   * @returns {Array<Object>} Ordered rows (children flagged _child)
+   */
+  _organizeGroup(devices) {
+    const sorted = this._sortDevices(devices);
+    const byParent = new Map();
+    const tops = [];
+    for (const d of sorted) {
+      if (d.parent) {
+        if (!byParent.has(d.parent)) byParent.set(d.parent, []);
+        byParent.get(d.parent).push(d);
+      } else {
+        tops.push(d);
+      }
+    }
+    const out = [];
+    const emitted = new Set();
+    for (const d of tops) {
+      out.push(d);
+      for (const c of byParent.get(d.id) || []) {
+        out.push({ ...c, _child: true });
+        emitted.add(c);
+      }
+    }
+    for (const children of byParent.values()) {
+      for (const c of children) {
+        if (!emitted.has(c)) {
+          out.push({ ...c, _child: true });
+        }
+      }
+    }
+    return out;
+  }
+
+  _renderDeviceRows() {
+    const devices = this._visibleDevices();
+    if (devices.length === 0) {
       return `<div class="r-xtrs-devstat-empty">No RAMSES devices found</div>`;
     }
 
-    const sorted = this._sortDevices(devices);
+    const groups = [
+      ['hgi', 'HGIs'],
+      ['hvac', 'HVAC'],
+      ['heat', 'Heat'],
+      ['orphan', 'Orphans'],
+    ];
+    const byGroup = new Map();
+    for (const d of devices) {
+      const g = groups.some(([k]) => k === d.group) ? d.group : 'orphan';
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g).push(d);
+    }
 
-    return sorted
-      .map((d) => {
-        const online = d.status === 'on';
-        const name =
-          (this._deviceNameMap && this._deviceNameMap.get
-            ? this._deviceNameMap.get(d.id)
-            : undefined) ||
-          d.name ||
-          '';
-        const dotClass = online ? 'on' : d.status === 'off' ? 'off' : 'unknown';
-        const qClass = qualityClass(d.rssi_quality);
-        const rssi =
-          d.best_rssi !== null && d.best_rssi !== undefined
-            ? `${d.best_rssi} dBm`
-            : '-';
-        const perHgi =
-          d.rssi_per_hgi && typeof d.rssi_per_hgi === 'object'
-            ? Object.entries(d.rssi_per_hgi)
-                .map(([hgi, r]) => `${hgi}: ${r}`)
-                .join('\n')
-            : '';
-        const missed =
-          d.consecutive_missed_polls !== undefined &&
-          d.consecutive_missed_polls !== null &&
-          d.consecutive_missed_polls > 0
-            ? String(d.consecutive_missed_polls)
-            : '';
+    const sections = [];
+    for (const [key, label] of groups) {
+      const rows = byGroup.get(key);
+      if (!rows || rows.length === 0) continue;
+      sections.push(
+        `<tr class="r-xtrs-devstat-group"><td colspan="7">${label}</td></tr>` +
+          this._organizeGroup(rows)
+            .map((d) => this._renderDeviceRow(d))
+            .join('')
+      );
+    }
+    return sections.join('');
+  }
 
-        return `
-          <tr class="${online ? '' : 'offline'}">
-            <td>
-              <div>${escapeHtml(name || d.id)}</div>
-              <div class="r-xtrs-devstat-hgi">${escapeHtml(d.id)}</div>
-            </td>
-            <td>${escapeHtml(d.class || '')}</td>
-            <td>
-              <span class="r-xtrs-devstat-status">
-                <span class="r-xtrs-devstat-dot ${dotClass}"></span>
-                ${online ? 'online' : d.status === 'off' ? 'offline' : 'unknown'}
-              </span>
-            </td>
-            <td title="${escapeHtml(perHgi)}">${escapeHtml(rssi)}</td>
-            <td>
-              ${d.rssi_quality ? `<span class="r-xtrs-devstat-quality ${qClass}">${escapeHtml(d.rssi_quality)}</span>` : '-'}
-            </td>
-            <td>${escapeHtml(lastSeenLabel(d))}</td>
-            <td>${escapeHtml(missed)}</td>
-          </tr>`;
-      })
-      .join('');
+  _renderDeviceRow(d) {
+    const online = d.status === 'on';
+    const name =
+      (this._deviceNameMap && this._deviceNameMap.get
+        ? this._deviceNameMap.get(d.id)
+        : undefined) ||
+      d.name ||
+      '';
+    const dotClass = online ? 'on' : d.status === 'off' ? 'off' : 'unknown';
+    const qClass = qualityClass(d.rssi_quality);
+
+    // Fresh RSSI wins; fall back to the entity's last-known value
+    // (pool per-HGI readings expire after 5 min, all readings are
+    // lost on restart) with the age shown in the tooltip.
+    const hasFresh = d.best_rssi !== null && d.best_rssi !== undefined;
+    const hasLast = d.last_known_rssi !== null && d.last_known_rssi !== undefined;
+    let rssi = '-';
+    let rssiTitle = '';
+    let rssiClass = '';
+    if (hasFresh) {
+      rssi = `${d.best_rssi} dBm`;
+      rssiTitle =
+        d.rssi_per_hgi && typeof d.rssi_per_hgi === 'object'
+          ? Object.entries(d.rssi_per_hgi)
+              .map(([hgi, r]) => `${hgi}: ${r}`)
+              .join('\n')
+          : '';
+    } else if (hasLast) {
+      rssi = `${d.last_known_rssi} dBm`;
+      rssiClass = ' r-xtrs-devstat-stale';
+      const parts = [];
+      if (
+        d.last_known_rssi_per_hgi &&
+        typeof d.last_known_rssi_per_hgi === 'object'
+      ) {
+        parts.push(
+          Object.entries(d.last_known_rssi_per_hgi)
+            .map(([hgi, r]) => `${hgi}: ${r}`)
+            .join('\n')
+        );
+      }
+      const age = formatAge(d.last_rssi_age_seconds);
+      parts.push(`last known${age !== '-' ? `, ${age} ago` : ''}`);
+      rssiTitle = parts.join('\n');
+    }
+
+    const missed =
+      d.consecutive_missed_polls !== undefined &&
+      d.consecutive_missed_polls !== null &&
+      d.consecutive_missed_polls > 0
+        ? String(d.consecutive_missed_polls)
+        : '';
+    const ownerMark =
+      d.owner && d.owner !== 'owned' ? ` (${d.owner})` : '';
+
+    return `
+      <tr class="${online ? '' : 'offline'}${d._child ? ' r-xtrs-devstat-child' : ''}">
+        <td>
+          <div>${d._child ? '↳ ' : ''}${escapeHtml(name || d.id)}${escapeHtml(ownerMark)}</div>
+          <div class="r-xtrs-devstat-hgi">${escapeHtml(d.id)}</div>
+        </td>
+        <td>${escapeHtml(d.class || '')}</td>
+        <td>
+          <span class="r-xtrs-devstat-status">
+            <span class="r-xtrs-devstat-dot ${dotClass}"></span>
+            ${online ? 'online' : d.status === 'off' ? 'offline' : 'unknown'}
+          </span>
+        </td>
+        <td class="${rssiClass.trim()}" title="${escapeHtml(rssiTitle)}">${escapeHtml(rssi)}</td>
+        <td>
+          ${d.rssi_quality ? `<span class="r-xtrs-devstat-quality ${qClass}">${escapeHtml(d.rssi_quality)}</span>` : '-'}
+        </td>
+        <td>${escapeHtml(lastSeenLabel(d))}</td>
+        <td>${escapeHtml(missed)}</td>
+      </tr>`;
   }
 
   /**
@@ -409,7 +519,7 @@ class DeviceStatusCard extends RamsesBaseCard {
       lines.push('');
     }
 
-    const devices = this._sortDevices(this._snapshot?.devices || []);
+    const devices = this._visibleDevices();
     if (devices.length) {
       lines.push('| Device | Type | Status | RSSI | Quality | Last seen | Missed |');
       lines.push('|---|---|---|---|---|---|---|');
@@ -419,19 +529,36 @@ class DeviceStatusCard extends RamsesBaseCard {
             ? this._deviceNameMap.get(d.id)
             : undefined) || '';
         const label = name ? `${name} (${d.id})` : d.id;
-        const rssi =
-          d.best_rssi !== null && d.best_rssi !== undefined
-            ? `${d.best_rssi} dBm`
-            : '-';
-        const perHgi =
-          d.rssi_per_hgi && typeof d.rssi_per_hgi === 'object'
-            ? ` (${Object.entries(d.rssi_per_hgi)
-                .map(([h, r]) => `${h}:${r}`)
-                .join(', ')})`
-            : '';
+        const hasFresh =
+          d.best_rssi !== null && d.best_rssi !== undefined;
+        const hasLast =
+          d.last_known_rssi !== null && d.last_known_rssi !== undefined;
+        let rssi = '-';
+        if (hasFresh) {
+          rssi = `${d.best_rssi} dBm`;
+          if (d.rssi_per_hgi && typeof d.rssi_per_hgi === 'object') {
+            rssi += ` (${Object.entries(d.rssi_per_hgi)
+              .map(([h, r]) => `${h}:${r}`)
+              .join(', ')})`;
+          }
+        } else if (hasLast) {
+          rssi = `${d.last_known_rssi} dBm (last ${formatAge(d.last_rssi_age_seconds)} ago)`;
+          if (
+            d.last_known_rssi_per_hgi &&
+            typeof d.last_known_rssi_per_hgi === 'object'
+          ) {
+            rssi += ` (${Object.entries(d.last_known_rssi_per_hgi)
+              .map(([h, r]) => `${h}:${r}`)
+              .join(', ')})`;
+          }
+        }
+        const owner =
+          d.owner && d.owner !== 'owned' ? ` [${d.owner}]` : '';
+        const group =
+          d.group && d.group !== 'orphan' ? `${d.group}: ` : '';
         lines.push(
-          `| ${label} | ${d.class || ''} | ${d.status === 'on' ? 'online' : d.status === 'off' ? 'offline' : 'unknown'} |` +
-            ` ${rssi}${perHgi} | ${d.rssi_quality || '-'} |` +
+          `| ${group}${label}${owner} | ${d.class || ''} | ${d.status === 'on' ? 'online' : d.status === 'off' ? 'offline' : 'unknown'} |` +
+            ` ${rssi} | ${d.rssi_quality || '-'} |` +
             ` ${lastSeenLabel(d)} |` +
             ` ${d.consecutive_missed_polls > 0 ? d.consecutive_missed_polls : ''} |`
         );
@@ -471,6 +598,17 @@ class DeviceStatusCard extends RamsesBaseCard {
         <div class="r-xtrs-devstat-content">
           <div class="r-xtrs-devstat-header">
             <div class="card-header">${escapeHtml(title)}</div>
+            <label
+              class="r-xtrs-devstat-toggle"
+              title="Show foreign-owned and unowned devices"
+            >
+              <input
+                type="checkbox"
+                id="r-xtrs-devstat-foreign"
+                ${this._showForeign ? 'checked' : ''}
+              >
+              non-owned
+            </label>
             <button
               id="r-xtrs-devstat-copy"
               class="r-xtrs-devstat-refresh"
@@ -512,6 +650,16 @@ class DeviceStatusCard extends RamsesBaseCard {
     if (copyBtn) {
       copyBtn.onclick = () => {
         void this._copyToClipboard(copyBtn);
+      };
+    }
+
+    const foreignToggle = this.shadowRoot?.getElementById(
+      'r-xtrs-devstat-foreign'
+    );
+    if (foreignToggle) {
+      foreignToggle.onchange = (e) => {
+        this._showForeign = Boolean(e.target?.checked);
+        this.render();
       };
     }
   }

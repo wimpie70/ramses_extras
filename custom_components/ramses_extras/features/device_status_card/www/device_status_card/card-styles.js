@@ -143,6 +143,36 @@ export const deviceStatusCardStyle = `
     padding: 8px 0;
   }
 
+  .r-xtrs-devstat-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    user-select: none;
+    margin-left: auto;
+  }
+
+  .r-xtrs-devstat-group td {
+    font-weight: 500;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--secondary-text-color);
+    padding-top: 10px;
+    border-bottom: 1px solid var(--divider-color, #e0e0e0);
+  }
+
+  tr.r-xtrs-devstat-child td:first-child {
+    padding-left: 18px;
+  }
+
+  td.r-xtrs-devstat-stale {
+    color: var(--secondary-text-color);
+    font-style: italic;
+  }
+
   .r-xtrs-devstat-refresh {
     background: none;
     border: none;

@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -39,11 +39,17 @@ def _make_hass(states: dict[str, Any] | None = None) -> MagicMock:
     return mock_hass
 
 
-def _make_coordinator(devices: dict[str, Any]) -> MagicMock:
+def _make_coordinator(
+    devices: dict[str, Any],
+    schema: dict[str, Any] | None = None,
+    config_schema: dict[str, Any] | None = None,
+) -> MagicMock:
     """Build a mock ramses_cc coordinator exposing the given devices."""
     registry = SimpleNamespace(device_by_id=devices)
     coordinator = MagicMock()
     coordinator.client.device_registry = registry
+    coordinator.client.schema = AsyncMock(return_value=schema or {})
+    coordinator.options = {"schema": config_schema or {}}
     return coordinator
 
 
@@ -303,6 +309,69 @@ async def test_snapshot_hgi_device_row_overlaid_by_pool_entity(
     assert row["status"] == "off"
     assert row["availability"] == "OFFLINE"
     assert row["status_entity_id"] == "binary_sensor.hgi_18_254172_online"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_topology_groups_and_owner(_patch_coordinator, _patch_monitor):
+    """Rows carry topology group/parent and owner classification.
+
+    - FAN + bound REM -> hvac (REM parented to the FAN)
+    - CTL + zone TRV  -> heat (TRV parented to the CTL)
+    - device absent from config schema -> unowned
+    - device with foreign _owner -> foreign
+    - schema-less orphan -> orphan group
+    """
+    devices = {
+        "32:153289": SimpleNamespace(_SLUG="FAN", is_available=True),
+        "29:176861": SimpleNamespace(_SLUG="REM", is_available=True),
+        "01:000001": SimpleNamespace(_SLUG="CTL", is_available=True),
+        "04:000002": SimpleNamespace(_SLUG="TRV", is_available=True),
+        "37:000003": SimpleNamespace(_SLUG="REM", is_available=True),
+        "13:000004": SimpleNamespace(_SLUG="TRP", is_available=True),
+    }
+    runtime_schema = {
+        "main_tcs": "01:000001",
+        "01:000001": {
+            "system": {"appliance_control": "10:000005"},
+            "zones": {"01": {"sensor": "34:000006", "actuators": ["04:000002"]}},
+        },
+        "32:153289": {"remotes": ["29:176861"], "sensors": []},
+        "orphans_hvac": ["13:000004"],
+    }
+    config_schema = {
+        "_owner": "me",
+        "main_tcs": "01:000001",
+        "01:000001": {"zones": {"01": {"actuators": ["04:000002"]}}},
+        "32:153289": {"remotes": ["29:176861"]},
+        "37:000003": {"_owner": "neighbour"},
+        "18:254172": {"_class": "HGI", "_owner": "me"},
+        "18:000007": {"_class": "HGI"},
+    }
+    coordinator = _make_coordinator(devices, runtime_schema, config_schema)
+    _patch_coordinator.return_value = coordinator
+    _patch_monitor.return_value = _make_monitor()
+
+    hass = _make_hass()
+    conn = _FakeConnection()
+    await ws_get_device_status(hass, conn, {"id": 8})
+
+    by_id = {d["id"]: d for d in conn.results[0][1]["devices"]}
+
+    assert by_id["32:153289"]["group"] == "hvac"
+    assert "parent" not in by_id["32:153289"]
+    assert by_id["29:176861"]["group"] == "hvac"
+    assert by_id["29:176861"]["parent"] == "32:153289"
+
+    assert by_id["01:000001"]["group"] == "heat"
+    assert by_id["04:000002"]["group"] == "heat"
+    assert by_id["04:000002"]["parent"] == "01:000001"
+
+    assert by_id["13:000004"]["group"] == "orphan"
+
+    assert by_id["32:153289"]["owner"] == "owned"
+    assert by_id["04:000002"]["owner"] == "owned"  # referenced in schema
+    assert by_id["37:000003"]["owner"] == "foreign"
+    assert by_id["13:000004"]["owner"] == "unowned"  # not in config schema
 
 
 @pytest.mark.asyncio

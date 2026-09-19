@@ -19,6 +19,8 @@ Data sources (ramses_cc issue 1210 / ramses_extras issue 227):
 """
 
 import logging
+import re
+from collections.abc import Mapping
 from datetime import datetime as dt
 from typing import TYPE_CHECKING, Any
 
@@ -35,6 +37,13 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+_DEVICE_ID_RE = re.compile(r"^\d{2}:\d{6}$")
+
+# Schema keys that are metadata, not per-system device dicts.
+_SCHEMA_META_KEYS = frozenset(
+    {"main_tcs", "orphans_heat", "orphans_hvac", "_owner", "transport_constructor"}
+)
+
 
 def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
     """Return the first ramses_cc coordinator, or None."""
@@ -45,18 +54,136 @@ def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
     return None
 
 
-def _device_rows(hass: HomeAssistant) -> list[dict[str, Any]]:
+def _collect_device_ids(value: Any, out: set[str]) -> None:
+    """Recursively collect device IDs from a schema subtree."""
+    if isinstance(value, str):
+        if _DEVICE_ID_RE.match(value):
+            out.add(value)
+    elif isinstance(value, dict):
+        for v in value.values():
+            _collect_device_ids(v, out)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            _collect_device_ids(v, out)
+
+
+def _build_topology(schema: Any) -> dict[str, dict[str, Any]]:
+    """Map device IDs to topology groups from ``gateway.schema()``.
+
+    Returns ``{device_id: {"group": ..., "parent": ...}}`` where group
+    is ``"heat"`` (controller + zone/DHW/system children), ``"hvac"``
+    (FAN + bound remotes/sensors), or ``"orphan"``.  HGI rows are
+    assigned ``"hgi"`` separately since HGIs never appear in the
+    runtime schema.
+    """
+    topo: dict[str, dict[str, Any]] = {}
+    if not isinstance(schema, dict):
+        return topo
+
+    main_tcs = schema.get("main_tcs")
+    for key, value in schema.items():
+        if key in _SCHEMA_META_KEYS or not isinstance(value, dict):
+            continue
+        if (
+            "zones" in value
+            or "system" in value
+            or "stored_hotwater" in value
+            or key == main_tcs
+        ):
+            group = "heat"
+        elif "remotes" in value or "sensors" in value:
+            group = "hvac"
+        else:
+            continue
+        topo.setdefault(str(key), {"group": group})
+        children: set[str] = set()
+        _collect_device_ids(value, children)
+        children.discard(str(key))
+        for child in children:
+            topo.setdefault(child, {"group": group, "parent": str(key)})
+
+    for orphan_key in ("orphans_heat", "orphans_hvac"):
+        for orphan in schema.get(orphan_key) or []:
+            topo.setdefault(str(orphan), {"group": "orphan"})
+    return topo
+
+
+def _owner_map(coordinator: Any) -> dict[str, str]:
+    """Classify devices as ``owned`` / ``foreign`` / ``unowned``.
+
+    Uses the config-entry schema: devices with an ``_owner`` different
+    from the root ``_owner`` are foreign (a neighbour's devices adopted
+    for monitoring); devices absent from the schema — or HGIs with no
+    ``_owner`` yet (discovery candidates) — are unowned.
+    """
+    options = getattr(coordinator, "options", None)
+    schema = options.get("schema", {}) if isinstance(options, Mapping) else {}
+    if not isinstance(schema, dict) or not schema:
+        return {}
+
+    root_owner = schema.get("_owner")
+    all_ids: set[str] = set()
+    _collect_device_ids(schema, all_ids)
+
+    owners: dict[str, str] = {}
+    for key, value in schema.items():
+        if not _DEVICE_ID_RE.match(str(key)):
+            continue
+        entry = value if isinstance(value, dict) else {}
+        entry_owner = entry.get("_owner")
+        if entry_owner and root_owner and entry_owner != root_owner:
+            owners[str(key)] = "foreign"
+        elif (
+            str(key).startswith("18:")
+            and entry.get("_class") == "HGI"
+            and not entry_owner
+            and root_owner
+        ):
+            # HGIs without an _owner are discovery candidates, not
+            # accepted pool members.
+            owners[str(key)] = "unowned"
+        else:
+            owners.setdefault(str(key), "owned")
+    for dev_id in all_ids:
+        owners.setdefault(dev_id, "owned")
+    return owners
+
+
+async def _device_rows(hass: HomeAssistant, coordinator: Any) -> list[dict[str, Any]]:
     """Build the per-device status rows.
 
     :param hass: Home Assistant instance
+    :param coordinator: The ramses_cc coordinator (or None)
     :return: List of device status dictionaries
     """
     monitor = get_transport_monitor()
     status_entities = monitor.device_status_entity_ids
 
-    coordinator = _get_ramses_cc_coordinator(hass)
     registry = getattr(getattr(coordinator, "client", None), "device_registry", None)
     devices = getattr(registry, "device_by_id", {}) or {}
+
+    runtime_schema: dict[str, Any] = {}
+    client = getattr(coordinator, "client", None)
+    if client is not None and hasattr(client, "schema"):
+        try:
+            runtime_schema = await client.schema()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Could not build runtime schema for topology: %s", err)
+    topo = _build_topology(runtime_schema)
+    owners = _owner_map(coordinator) if coordinator is not None else {}
+
+    def _classify(device_id: str, row: dict[str, Any]) -> None:
+        info = topo.get(device_id)
+        if info:
+            row["group"] = info["group"]
+            if parent := info.get("parent"):
+                row["parent"] = parent
+        else:
+            row["group"] = "orphan"
+        # Only classify ownership when a config schema exists — without
+        # one, every device would look "unowned".
+        if owners:
+            row["owner"] = owners.get(device_id, "unowned")
 
     rows: list[dict[str, Any]] = []
     for device_id, device in devices.items():
@@ -80,6 +207,10 @@ def _device_rows(hass: HomeAssistant) -> list[dict[str, Any]]:
                 "rssi_quality",
                 "is_stale",
                 "rssi_per_hgi",
+                "last_known_rssi",
+                "last_known_rssi_per_hgi",
+                "last_rssi_seen",
+                "last_rssi_age_seconds",
             ):
                 if key in state.attributes:
                     row[key] = state.attributes[key]
@@ -110,6 +241,9 @@ def _device_rows(hass: HomeAssistant) -> list[dict[str, Any]]:
             )
             row["source"] = "device"
 
+        _classify(str(device_id), row)
+        if row.get("class") == "HGI" or str(device_id).startswith("18:"):
+            row["group"] = "hgi"
         rows.append(row)
 
     # Pool HGIs: the per-HGI ``*_online`` entity is the transport-level
@@ -126,7 +260,9 @@ def _device_rows(hass: HomeAssistant) -> list[dict[str, Any]]:
             hgi_row = {"id": hgi_id, "source": "hgi"}
             rows.append(hgi_row)
             rows_by_id[hgi_id] = hgi_row
+            _classify(hgi_id, hgi_row)
         hgi_row["class"] = "HGI"
+        hgi_row["group"] = "hgi"
         hgi_row["status"] = (
             "on" if hgi_state is not None and hgi_state.state == "on" else "off"
         )
@@ -194,10 +330,12 @@ async def ws_get_device_status(
         # entities are picked up.
         get_transport_monitor().refresh_entity_discovery(hass)
 
+        coordinator = _get_ramses_cc_coordinator(hass)
+
         connection.send_result(
             msg["id"],
             {
-                "devices": _device_rows(hass),
+                "devices": await _device_rows(hass, coordinator),
                 "pool": _pool_section(hass),
             },
         )
