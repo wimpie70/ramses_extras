@@ -1,0 +1,6 @@
+FAN online status -> _cc/_rf
+FAN communication quality (best RSSI hgi ?) Should we have this for all devices ? how fast do we update ? maybe poll this instead of live updates ?
+
+Pool status, not only online, but also n/y hgi's online.
+ And what does connected mean ? that it has communication with at least 1 device ? or with 1 fan ? but there could be more.
+  It should mean that the pool is up and running at least 1 HGI

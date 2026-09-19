@@ -39,14 +39,17 @@ disconnect/reconnect cycles (2026-09-18):
 | PR | Repo | State | CI |
 |----|------|-------|----|
 | 1223 | ramses_rf | draft | green |
-| 1224 | ramses_rf | draft | green |
-| 1206 | ramses_cc | open (ready) | test/coverage red — needs ramses-rf release > 0.60.6 |
+| 1224 | ramses_rf | draft, stacked on 1223 | green |
+| 1219 | ramses_rf | open | green; required by preset-mode code currently in 1206 |
+| 1209 | ramses_cc | open | green; sentinel-HGI hardening |
+| 1206 | ramses_cc | open (non-draft) | test/coverage red — needs a newer ramses-rf release |
 | 225 | ramses_extras | draft | green |
 
-Remaining before release: land the ramses_rf PRs, publish a ramses-rf
-release containing them, bump the `ramses-rf==0.60.6` pin in ramses_cc
-(manifest + requirements_dev) so PR 1206's tests run against the Zigbee
-transport code they exercise, then land 1206 and 225.
+Remaining before release: resolve the open review findings below; land
+ramses_rf PRs 1223, 1224, and 1219; publish a ramses-rf release
+containing them; bump the `ramses-rf==0.60.6` pin in the ramses_cc
+manifest and development requirements; then rebase/retest and land
+ramses_cc PRs 1209 and 1206 before the dependent ramses_extras PR 225.
 
 ## Background
 
@@ -700,6 +703,108 @@ entities from the live registry:
   `hgi_18_130236_online`, `hgi_18_149488_online` renamed to the clean
   entity_ids (HA keeps `_N` suffixes sticky even after the original
   holder is gone — renaming is manual/registry-level).
+
+### Open PR review findings (2026-09-18)
+
+The following were found by checking the current GitHub PRs against
+actual code and live behavior. Green CI alone is not sufficient to call
+all PRs ready.
+
+#### Correctness findings and local fixes pending commit
+
+1. **`runtime_data` could still make a failed setup look successful**
+   (ramses_cc PR 1206). `async_setup_entry()` assigned
+   `entry.runtime_data = coordinator` after `coordinator.async_setup()`
+   but before `coordinator.async_start()`. `async_start()` performs
+   initial discovery, starts passive scanning, and calls
+   `async_config_entry_first_refresh()`, all of which can raise. A
+   failure left `runtime_data` set; HA's retry then returned early from
+   the "already set up" guard. The local fix keeps `runtime_data`
+   available during `async_start()` (platform discovery requires it),
+   but clears it if start raises before re-raising. A regression test
+   proves that the next setup attempt runs both setup and start again.
+
+2. **Cached unavailable Zigbee devices were sendable for 30 seconds at
+   startup** (ramses_rf PR 1224). `_async_init()` accepts a device found
+   in ZHA's cached registry, binds it, calls `connection_made()`, and
+   then starts `_availability_loop()`. The loop previously slept 30
+   seconds before its first health check. Live evidence on 2026-09-18
+   showed the child connect during boot while ZHA considered the device
+   unavailable, then disconnect exactly at that first check. The local
+   fix checks immediately before the first sleep; cached unavailable
+   state must be confirmed by a live Basic-cluster ping, otherwise the
+   child is disconnected. Tests cover failed/successful initial ping and
+   verify that the first health check precedes the first sleep.
+
+3. **Pool-health entity discovery did not survive a runtime rename**
+   (ramses_extras PR 225). Discovery correctly resolved entity IDs by
+   unique ID, but `_monitor_loop()` only rediscovered while
+   `_pool_status_entity_id` was `None`. After HA renamed/recreated the
+   entity, the old ID remained non-`None`, the state subscription still
+   targeted the old IDs, and the monitor fell back instead of finding
+   the new entity. The local fix compares registry results every monitor
+   cycle and safely replaces the old state subscription whenever the
+   aggregate or per-HGI entity IDs change. A regression test renames the
+   aggregate entity after monitoring starts and verifies the old
+   subscription is removed and replaced.
+
+#### Scope, dependency, and PR-description issues
+
+- **ramses_rf PR 1224 is stacked on PR 1223** and includes its commit.
+  Merge 1223 first, or temporarily base 1224 on the 1223 branch so
+  reviewers see only the availability changes. PR 1224's body also
+  predates later protocol-noise, state-aware gateway wait, unacked-send,
+  mypy, and Ventura 2411 fixes. The Ventura `4C`/`DA` change is unrelated
+  to Zigbee availability and should preferably be a separate focused PR;
+  otherwise it must be called out explicitly.
+- **ramses_cc PR 1206 includes unrelated climate preset-mode work**
+  (`41142057`, 213 lines in `climate.py` plus tests). That makes Phase 3
+  depend on ramses_rf PR 1219 and is the source of five current CI
+  failures. Split the climate commit from PR 1206, or explicitly stack
+  and document the dependency. Its PR body currently lists only
+  ramses_rf PR 1222 and reports a stale passing-suite result, while the
+  current test and coverage jobs both fail.
+- **ramses_cc PR 1206 imports private ramses_rf API**
+  `_hgi_id_from_ieee`. Expose a public typed identity helper in
+  ramses_rf, or persist/use the derived HGI identity through a supported
+  configuration contract instead of coupling ramses_cc to an
+  underscore-prefixed transport implementation detail.
+- **ramses_extras PR 225 is much broader than its title/body**: the
+  current diff is 25 files (about 1.4k additions), including parallel
+  simulation hardening, R119/R127/R128, a production transport-monitor
+  fix, test-isolation fixes, and this document. Update the title/body or
+  split the production fix and independent simulation work into focused
+  PRs before requesting review.
+- **ramses_cc PR 1209** is focused, mergeable, and green. A virtual merge
+  of PR 1209 followed by PR 1206 produced no textual conflict, but PR
+  1206 still needs a rebase and full test run after the dependency
+  release.
+
+#### Repeat live outage and watcher-reload check (2026-09-18)
+
+With the SLZB coordinator disconnected on the running `hass` instance:
+HA stayed `RUNNING`; `binary_sensor.pool_status` stayed `on`; MQTT HGIs
+`18:130236` and `18:149488` stayed `on`; Zigbee HGI `18:254172` changed
+to `off`; the pool logged `2/3 connected`. No RAMSES ERROR or traceback
+was emitted.
+
+The setup-time path was then exercised separately: HA was restarted
+while the SLZB was disconnected. Zigbee setup failed immediately, the
+MQTT bridge attached, the rejoin watcher registered (attempt 1/3), and
+HA reached `RUNNING` on the two MQTT children. After the SLZB returned,
+ZHA remained in its 600-second backoff, so only the ZHA config entry
+was manually reloaded. The watcher then logged `ZHA gateway available`
+and called `async_reload`. Platforms, discovery, the MQTT bridge, and the
+RAMSES client unloaded cleanly; there was no `TypeError` or
+`Error unloading entry`; the config entry set up successfully again.
+
+The C6 itself had not rejoined the Zigbee network. The pre-fix code
+therefore exposed the cached device as connected at 23:13:25, then the
+first availability check disconnected it at 23:14:05 after ping failed.
+HA remained `RUNNING`, both MQTT children stayed online, and the pool
+returned to degraded `2/3`. This second observation confirms the
+startup false-online finding above; the local ramses_rf fix removes the
+30-second pre-check delay.
 
 ---
 
