@@ -7,6 +7,10 @@ automation, services, entities, and configuration.
 
 # Import from the correct feature-centric structure
 from .device_simulator import create_device_simulator_feature
+from .device_status_card import (
+    DeviceStatusCardManager,
+    create_device_status_card_feature,
+)
 from .hello_world import (
     create_hello_world_feature,
 )
@@ -39,5 +43,8 @@ __all__ = [
     "create_hvac_fan_card_feature",
     # Device Simulator Feature
     "create_device_simulator_feature",
+    # Device Status Card Feature
+    "DeviceStatusCardManager",
+    "create_device_status_card_feature",
     # Add more below for future features
 ]
