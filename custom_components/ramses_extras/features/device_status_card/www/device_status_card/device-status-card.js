@@ -17,6 +17,7 @@
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocketShared } from '../../helpers/card-services.js';
 import { deviceCache } from '../../helpers/device-cache.js';
+import { copyToClipboard } from '../../helpers/clipboard.js';
 import { deviceStatusCardStyle } from './card-styles.js';
 
 const WS_GET_DEVICE_STATUS = 'ramses_extras/device_status_card/get_device_status';
@@ -37,6 +38,26 @@ function formatAge(seconds) {
   if (s < 3600) return `${Math.round(s / 60)}m`;
   if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
   return `${(s / 86400).toFixed(1)}d`;
+}
+
+/**
+ * Format the "last seen" cell: prefer staleness_seconds, fall back to
+ * the pool child's last_pkt_time for transport (HGI) rows.
+ *
+ * @param {Object} d - Device row
+ * @returns {string} Human-readable age
+ */
+function lastSeenLabel(d) {
+  if (d.staleness_seconds !== null && d.staleness_seconds !== undefined) {
+    return formatAge(d.staleness_seconds);
+  }
+  if (d.last_pkt_time) {
+    const t = Date.parse(d.last_pkt_time);
+    if (!Number.isNaN(t)) {
+      return formatAge((Date.now() - t) / 1000);
+    }
+  }
+  return '-';
 }
 
 /**
@@ -355,11 +376,87 @@ class DeviceStatusCard extends RamsesBaseCard {
             <td>
               ${d.rssi_quality ? `<span class="r-xtrs-devstat-quality ${qClass}">${escapeHtml(d.rssi_quality)}</span>` : '-'}
             </td>
-            <td>${escapeHtml(formatAge(d.staleness_seconds))}</td>
+            <td>${escapeHtml(lastSeenLabel(d))}</td>
             <td>${escapeHtml(missed)}</td>
           </tr>`;
       })
       .join('');
+  }
+
+  /**
+   * Build a markdown-table export of the current snapshot for
+   * copy/paste into GitHub issues or debugging notes.
+   *
+   * @returns {string} Markdown text
+   */
+  _buildClipboardText() {
+    const lines = [];
+    const pool = this._snapshot?.pool;
+
+    if (pool) {
+      const hgis = Array.isArray(pool.hgis) ? pool.hgis : [];
+      const total = pool.children_total ?? hgis.length;
+      const online =
+        pool.children_online ?? hgis.filter((h) => h.online === true).length;
+      lines.push(`Pool: ${pool.status === 'on' ? 'online' : 'offline'} (${online}/${total} HGIs)`);
+      for (const hgi of hgis) {
+        lines.push(
+          `- ${hgi.hgi_id}: ${hgi.online === true ? 'online' : hgi.online === false ? 'offline' : 'unknown'}` +
+            (hgi.availability ? ` (${hgi.availability})` : '') +
+            (hgi.pkts_received !== undefined ? `, ${hgi.pkts_received} pkts` : '')
+        );
+      }
+      lines.push('');
+    }
+
+    const devices = this._sortDevices(this._snapshot?.devices || []);
+    if (devices.length) {
+      lines.push('| Device | Type | Status | RSSI | Quality | Last seen | Missed |');
+      lines.push('|---|---|---|---|---|---|---|');
+      for (const d of devices) {
+        const name =
+          (this._deviceNameMap && this._deviceNameMap.get
+            ? this._deviceNameMap.get(d.id)
+            : undefined) || '';
+        const label = name ? `${name} (${d.id})` : d.id;
+        const rssi =
+          d.best_rssi !== null && d.best_rssi !== undefined
+            ? `${d.best_rssi} dBm`
+            : '-';
+        const perHgi =
+          d.rssi_per_hgi && typeof d.rssi_per_hgi === 'object'
+            ? ` (${Object.entries(d.rssi_per_hgi)
+                .map(([h, r]) => `${h}:${r}`)
+                .join(', ')})`
+            : '';
+        lines.push(
+          `| ${label} | ${d.class || ''} | ${d.status === 'on' ? 'online' : d.status === 'off' ? 'offline' : 'unknown'} |` +
+            ` ${rssi}${perHgi} | ${d.rssi_quality || '-'} |` +
+            ` ${lastSeenLabel(d)} |` +
+            ` ${d.consecutive_missed_polls > 0 ? d.consecutive_missed_polls : ''} |`
+        );
+      }
+    }
+
+    lines.push('');
+    lines.push(`_Exported ${new Date().toISOString()}_`);
+    return lines.join('\n');
+  }
+
+  async _copyToClipboard(btn) {
+    const flash = (label) => {
+      if (!btn) return;
+      btn.textContent = label;
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+      }, 2000);
+    };
+    try {
+      await copyToClipboard(this._buildClipboardText());
+      flash('Copied');
+    } catch {
+      flash('Failed');
+    }
   }
 
   _renderContent() {
@@ -370,8 +467,16 @@ class DeviceStatusCard extends RamsesBaseCard {
 
     this.shadowRoot.innerHTML = `
       <style>${deviceStatusCardStyle}</style>
-      <ha-card header="${escapeHtml(title)}">
+      <ha-card>
         <div class="r-xtrs-devstat-content">
+          <div class="r-xtrs-devstat-header">
+            <div class="card-header">${escapeHtml(title)}</div>
+            <button
+              id="r-xtrs-devstat-copy"
+              class="r-xtrs-devstat-refresh"
+              title="Copy status table to clipboard"
+            >Copy</button>
+          </div>
           ${
             error
               ? `<div class="r-xtrs-devstat-error">Failed to load device status: ${escapeHtml(
@@ -402,6 +507,13 @@ class DeviceStatusCard extends RamsesBaseCard {
       </ha-card>`;
 
     this._attachSortListeners();
+
+    const copyBtn = this.shadowRoot?.getElementById('r-xtrs-devstat-copy');
+    if (copyBtn) {
+      copyBtn.onclick = () => {
+        void this._copyToClipboard(copyBtn);
+      };
+    }
   }
 
   _attachSortListeners() {

@@ -126,9 +126,9 @@ async def test_snapshot_uses_status_entity_attributes(
     assert len(conn.results) == 1
     payload = conn.results[0][1]
 
-    assert len(payload["devices"]) == 1
-    row = payload["devices"][0]
-    assert row["id"] == "32:153289"
+    # 1 device + 1 HGI row for the pool child absent from device_by_id
+    assert len(payload["devices"]) == 2
+    row = next(d for d in payload["devices"] if d["id"] == "32:153289")
     assert row["class"] == "FAN"
     assert row["status"] == "on"
     assert row["source"] == "entity"
@@ -216,6 +216,93 @@ async def test_snapshot_offline_device_from_entity(_patch_coordinator, _patch_mo
     assert row["status"] == "off"
     assert row["source"] == "entity"
     assert row["consecutive_missed_polls"] == 3
+
+
+@pytest.mark.asyncio
+async def test_snapshot_includes_pool_hgi_without_device_object(
+    _patch_coordinator, _patch_monitor
+):
+    """Pool HGIs absent from the rf registry still appear as HGI rows.
+
+    Covers e.g. a zigbee-only HGI whose transport was never created:
+    it has a pool *_online entity but no device_by_id entry.
+    """
+    device = SimpleNamespace(_SLUG="FAN", is_available=True)
+    coordinator = _make_coordinator({"32:153289": device})
+    _patch_coordinator.return_value = coordinator
+
+    _patch_monitor.return_value = _make_monitor(
+        status_entities={"32:153289": "binary_sensor.fan_32_153289_status"},
+        pool_entity="binary_sensor.pool_status",
+        hgi_entities={
+            "18:130236": "binary_sensor.hgi_18_130236_online",
+            "18:254172": "binary_sensor.hgi_18_254172_online",
+        },
+    )
+
+    hass = _make_hass(
+        {
+            "binary_sensor.fan_32_153289_status": _state("on"),
+            "binary_sensor.pool_status": _state("on"),
+            "binary_sensor.hgi_18_130236_online": _state(
+                "on", connected=True, availability="ONLINE"
+            ),
+            "binary_sensor.hgi_18_254172_online": _state(
+                "off", connected=False, availability="OFFLINE"
+            ),
+        }
+    )
+
+    conn = _FakeConnection()
+    await ws_get_device_status(hass, conn, {"id": 6})
+
+    devices = conn.results[0][1]["devices"]
+    by_id = {d["id"]: d for d in devices}
+
+    assert by_id["18:254172"]["class"] == "HGI"
+    assert by_id["18:254172"]["status"] == "off"
+    assert by_id["18:254172"]["source"] == "hgi"
+    assert by_id["18:254172"]["availability"] == "OFFLINE"
+
+    assert by_id["18:130236"]["class"] == "HGI"
+    assert by_id["18:130236"]["status"] == "on"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_hgi_device_row_overlaid_by_pool_entity(
+    _patch_coordinator, _patch_monitor
+):
+    """An HGI with a device object still follows its pool online entity.
+
+    An HGI's rf device object reports is_available=True regardless of
+    the pool child state, so the *_online entity must win.
+    """
+    hgi_device = SimpleNamespace(_SLUG="HGI", is_available=True)
+    coordinator = _make_coordinator({"18:254172": hgi_device})
+    _patch_coordinator.return_value = coordinator
+
+    _patch_monitor.return_value = _make_monitor(
+        hgi_entities={"18:254172": "binary_sensor.hgi_18_254172_online"},
+    )
+
+    hass = _make_hass(
+        {
+            "binary_sensor.hgi_18_254172_online": _state(
+                "off", connected=False, availability="OFFLINE", pkts_received=0
+            ),
+        }
+    )
+
+    conn = _FakeConnection()
+    await ws_get_device_status(hass, conn, {"id": 7})
+
+    devices = conn.results[0][1]["devices"]
+    assert len(devices) == 1
+    row = devices[0]
+    assert row["class"] == "HGI"
+    assert row["status"] == "off"
+    assert row["availability"] == "OFFLINE"
+    assert row["status_entity_id"] == "binary_sensor.hgi_18_254172_online"
 
 
 @pytest.mark.asyncio

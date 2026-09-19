@@ -112,6 +112,30 @@ def _device_rows(hass: HomeAssistant) -> list[dict[str, Any]]:
 
         rows.append(row)
 
+    # Pool HGIs: the per-HGI ``*_online`` entity is the transport-level
+    # source of truth. An HGI's rf device object can report
+    # ``is_available=True`` while its pool child is offline, so overlay
+    # the entity state onto existing device rows — and add rows for
+    # HGIs with no device object at all (e.g. a zigbee-only HGI whose
+    # transport was never created).
+    rows_by_id = {r["id"]: r for r in rows}
+    for hgi_id, entity_id in monitor.hgi_online_entity_ids.items():
+        hgi_state = hass.states.get(entity_id)
+        hgi_row = rows_by_id.get(hgi_id)
+        if hgi_row is None:
+            hgi_row = {"id": hgi_id, "source": "hgi"}
+            rows.append(hgi_row)
+            rows_by_id[hgi_id] = hgi_row
+        hgi_row["class"] = "HGI"
+        hgi_row["status"] = (
+            "on" if hgi_state is not None and hgi_state.state == "on" else "off"
+        )
+        hgi_row["status_entity_id"] = entity_id
+        if hgi_state is not None:
+            for key in ("connected", "availability", "pkts_received", "last_pkt_time"):
+                if key in hgi_state.attributes:
+                    hgi_row[key] = hgi_state.attributes[key]
+
     return rows
 
 

@@ -136,6 +136,13 @@ export const deviceStatusCardStyle = `
     margin-bottom: 8px;
   }
 
+  .r-xtrs-devstat-header .card-header {
+    font-size: var(--ha-card-header-font-size, 24px);
+    font-weight: normal;
+    color: var(--ha-card-header-color, var(--primary-text-color));
+    padding: 8px 0;
+  }
+
   .r-xtrs-devstat-refresh {
     background: none;
     border: none;
