@@ -164,7 +164,7 @@ class DeviceStatusCard extends RamsesBaseCard {
   static getCardInfo() {
     return {
       type: this.getTagName(),
-      name: 'Device Status Card',
+      name: 'Ramses Device Status Card',
       description: 'All RAMSES devices with online status and communication quality',
       preview: true,
       documentationURL: 'https://github.com/wimpie70/ramses_extras',
@@ -192,7 +192,7 @@ class DeviceStatusCard extends RamsesBaseCard {
 
   getDefaultConfig() {
     return {
-      name: 'Device Status',
+      name: 'Ramses Device Status',
       poll_interval: DEFAULT_POLL_INTERVAL_MS,
     };
   }
@@ -625,7 +625,7 @@ class DeviceStatusCard extends RamsesBaseCard {
   }
 
   _renderContent() {
-    const title = this._config?.name || 'Device Status';
+    const title = this._config?.name || 'Ramses Device Status';
     const error = this._lastError;
     const sortArrow = (key) =>
       this._sortKey === key ? (this._sortDir === 'asc' ? ' ▲' : ' ▼') : '';

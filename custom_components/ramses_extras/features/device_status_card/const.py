@@ -22,7 +22,7 @@ DOMAIN = "device_status_card"
 # Feature identification
 FEATURE_ID = "device_status_card"
 
-FEATURE_NAME = "Device Status Card"
+FEATURE_NAME = "Ramses Device Status Card"
 FEATURE_DESCRIPTION = (
     "Fleet overview: all RAMSES devices with status and communication quality"
 )
@@ -48,7 +48,7 @@ DEVICE_STATUS_CARD_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {}
 DEVICE_STATUS_CARD_CARD_CONFIGS: list[dict[str, Any]] = [
     {
         "card_id": "device-status-card",
-        "card_name": "Device Status Card",
+        "card_name": "Ramses Device Status Card",
         "description": (
             "All RAMSES devices with online status and communication quality"
         ),
