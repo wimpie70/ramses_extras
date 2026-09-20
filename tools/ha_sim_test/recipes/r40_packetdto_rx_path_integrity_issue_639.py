@@ -72,6 +72,11 @@ except ImportError as e:
         # now-typed `payload` field (PayloadBase).  It is a pure L1/L2
         # transport field — the raw hex, not decoded — so it does not
         # violate issue 639 rule 4 ("No Decoding Callbacks").
+        # is_echo was added to mark over-air copies of our own TXs heard
+        # back through pool child transports.  It is set by the transport
+        # layer (pooled echo detection) so upstream consumers can exclude
+        # self-generated traffic — a pure L1/L2 provenance flag carrying
+        # no decoded payload data.
         allowed_fields = {
             "timestamp",
             "rssi",
@@ -85,6 +90,7 @@ except ImportError as e:
             "payload",
             "raw_payload",
             "is_tx",
+            "is_echo",
             "comment",
         }
 
