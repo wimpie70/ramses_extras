@@ -67,6 +67,7 @@ class FanStub:
         self.id = fan_id
         self.scheme = scheme
         self.strategy = None  # force best_hvac_strategy fallback
+        self.model = "Orcon"  # mirrors the 10E0 description below
         self._scheme = scheme
         self._strategy = None
         self.entity_state = MagicMock()
