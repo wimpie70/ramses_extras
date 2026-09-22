@@ -72,6 +72,8 @@ except ImportError as e:
         # now-typed `payload` field (PayloadBase).  It is a pure L1/L2
         # transport field — the raw hex, not decoded — so it does not
         # violate issue 639 rule 4 ("No Decoding Callbacks").
+        # is_echo was added by commit 3e7734c2 to flag frames that are an
+        # echo of our own transmission — a pure L1/L2 transport field.
         allowed_fields = {
             "timestamp",
             "rssi",
@@ -85,6 +87,7 @@ except ImportError as e:
             "payload",
             "raw_payload",
             "is_tx",
+            "is_echo",
             "comment",
         }
 

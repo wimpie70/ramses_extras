@@ -9,10 +9,12 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL, FAN, REM
 from ..helpers import (
     call_service,
+    container_log_timestamp,
     docker_exec_python,
     get_current_instance,
     get_entities,
     load_profile_yaml,
+    log_lines_since,
     wait_for,
     wait_for_schema_populated,
     wait_for_transport_ready,
@@ -142,18 +144,8 @@ print(json.dumps({{
             f"result={attrs_result}",
         )
 
-        # Get baseline packet log line count
-        baseline = docker_exec_python(
-            """
-import json
-from pathlib import Path
-path = Path("/config/packet_log.log")
-print(json.dumps({
-    "line_count": len(path.read_text().splitlines()) if path.exists() else 0
-}))
-"""
-        )
-        line_count = int(baseline.get("line_count", 0))
+        # Baseline timestamp — rotation-safe (packet_log.log* files)
+        baseline_ts = container_log_timestamp()
 
         # Send "high" via remote.send_command — not in _commands,
         # should fall back to strategy (Orcon high = 03, payload 000307)
@@ -171,17 +163,10 @@ print(json.dumps({
         expected = f"{REM} {FAN} --:------ 22F1 003 000307"
 
         def _native_packet_sent() -> bool:
-            result = docker_exec_python(
-                f"""
-import json
-from pathlib import Path
-path = Path("/config/packet_log.log")
-lines = path.read_text().splitlines() if path.exists() else []
-new_lines = lines[{line_count}:]
-print(json.dumps({{"found": any({expected!r} in line for line in new_lines)}}))
-"""
+            return any(
+                expected in line
+                for line in log_lines_since("packet_log.log*", baseline_ts)
             )
-            return bool(result.get("found", False))
 
         wait_for(
             _native_packet_sent,
@@ -197,17 +182,7 @@ print(json.dumps({{"found": any({expected!r} in line for line in new_lines)}}))
         )
 
         # Also test a Dutch alias
-        baseline2 = docker_exec_python(
-            """
-import json
-from pathlib import Path
-path = Path("/config/packet_log.log")
-print(json.dumps({
-    "line_count": len(path.read_text().splitlines()) if path.exists() else 0
-}))
-"""
-        )
-        line_count2 = int(baseline2.get("line_count", 0))
+        baseline_ts2 = container_log_timestamp()
 
         call_service(
             ctx.token,
@@ -223,17 +198,10 @@ print(json.dumps({
         expected_hoog = f"{REM} {FAN} --:------ 22F1 003 000307"
 
         def _hoog_packet_sent() -> bool:
-            result = docker_exec_python(
-                f"""
-import json
-from pathlib import Path
-path = Path("/config/packet_log.log")
-lines = path.read_text().splitlines() if path.exists() else []
-new_lines = lines[{line_count2}:]
-print(json.dumps({{"found": any({expected_hoog!r} in line for line in new_lines)}}))
-"""
+            return any(
+                expected_hoog in line
+                for line in log_lines_since("packet_log.log*", baseline_ts2)
             )
-            return bool(result.get("found", False))
 
         wait_for(
             _hoog_packet_sent,

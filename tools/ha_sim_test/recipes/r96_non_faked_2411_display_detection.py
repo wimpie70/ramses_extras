@@ -10,9 +10,10 @@ from ..base import Recipe, RecipeContext
 from ..const import FAN
 from ..helpers import (
     call_service,
-    docker_exec_python,
+    container_log_timestamp,
     get_schema_retry,
     load_profile_yaml,
+    log_lines_since,
     wait_for,
     wait_for_transport_ready,
     ws_send,
@@ -107,35 +108,13 @@ class R96NonFaked2411DisplayDetection(Recipe):
             floor=10.0,
         )
 
-        def _log_line_count() -> int:
-            result = docker_exec_python(
-                """
-import json
-from pathlib import Path
-path = Path("/config/home-assistant.log")
-print(json.dumps({"count": len(path.read_text().splitlines())}))
-"""
+        def _has_detection_since(since_ts: str, device_id: str) -> bool:
+            return any(
+                device_id in line and "Rule_HVAC_2411_Request_Source_to_DIS" in line
+                for line in log_lines_since("home-assistant.log*", since_ts)
             )
-            return int(result.get("count", 0))
 
-        def _has_detection_since(line_count: int, device_id: str) -> bool:
-            result = docker_exec_python(
-                f"""
-import json
-from pathlib import Path
-lines = Path("/config/home-assistant.log").read_text().splitlines()
-new_lines = lines[{line_count}:]
-found = any(
-    {device_id!r} in line
-    and "Rule_HVAC_2411_Request_Source_to_DIS" in line
-    for line in new_lines
-)
-print(json.dumps({{"found": found}}))
-"""
-            )
-            return result.get("found") is True
-
-        physical_baseline = _log_line_count()
+        physical_baseline = container_log_timestamp()
         _inject_2411(ctx, PHYSICAL_DISPLAY)
         detected = wait_for(
             lambda: _has_detection_since(physical_baseline, PHYSICAL_DISPLAY),
@@ -150,7 +129,7 @@ print(json.dumps({{"found": found}}))
             f"device_id={PHYSICAL_DISPLAY}",
         )
 
-        faked_baseline = _log_line_count()
+        faked_baseline = container_log_timestamp()
         for _ in range(3):
             _inject_2411(ctx, FAKED_REMOTE)
         ctx.wait(5, "for faked REM requests to be evaluated", floor=3.0)
