@@ -1433,6 +1433,68 @@ def docker_exec_python(code: str, timeout: int = 30, retries: int = 2) -> dict:
     return {"error": last_error}
 
 
+def container_log_timestamp() -> str:
+    """Return the current time inside the container as an ISO timestamp.
+
+    Use as a baseline for :func:`log_lines_since` — both run on the
+    container clock, so the comparison is consistent.
+
+    :return: ISO-8601 timestamp with microsecond precision, or ``""``
+        on failure.
+    """
+    result = docker_exec_python(
+        """
+import json
+from datetime import datetime
+print(json.dumps({"ts": datetime.now().isoformat(timespec="microseconds")}))
+"""
+    )
+    return str(result.get("ts", ""))
+
+
+def log_lines_since(filename_glob: str, since_ts: str) -> list[str]:
+    """Return log lines timestamped at/after ``since_ts``.
+
+    Scans every file in ``/config`` matching ``filename_glob`` (e.g.
+    ``"packet_log.log*"`` or ``"home-assistant.log*"``), so a log rotation
+    between the baseline and the check cannot hide freshly written lines.
+    Both the packet-log (``2026-09-22T20:16:08.254015``) and HA log
+    (``2026-09-22 20:13:23.643``) timestamp formats are recognised.
+
+    Returns an empty list when ``since_ts`` is empty (baseline failed) —
+    fail closed rather than silently matching stale lines.
+
+    :param filename_glob: Glob for the log file(s), relative to /config.
+    :param since_ts: ISO-8601 baseline timestamp (container clock).
+    :return: Matching log lines.
+    """
+    if not since_ts:
+        return []
+    result = docker_exec_python(
+        f"""
+import json
+import re
+from datetime import datetime
+from pathlib import Path
+since = datetime.fromisoformat({since_ts!r})
+ts_re = re.compile(
+    r"^(\\d{{4}}-\\d{{2}}-\\d{{2}}[T ]\\d{{2}}:\\d{{2}}:\\d{{2}}(?:\\.\\d+)?)"
+)
+lines = []
+for p in Path("/config").glob({filename_glob!r}):
+    try:
+        lines += p.read_text().splitlines()
+    except OSError:
+        pass
+print(json.dumps({{"lines": [
+    ln for ln in lines
+    if (m := ts_re.match(ln)) and datetime.fromisoformat(m.group(1)) >= since
+]}}))
+"""
+    )
+    return list(result.get("lines", []))
+
+
 # ---------------------------------------------------------------------------
 # Container lifecycle helpers
 # ---------------------------------------------------------------------------

@@ -350,8 +350,10 @@ async def run_tests():
         ]
         mock_engine = MagicMock()
         mock_engine._transport = mock_transport
+        mock_engine.transport = mock_transport
         mock_client = MagicMock()
         mock_client._engine = mock_engine
+        mock_client.engine = mock_engine
         coord.client = mock_client
 
         mock_scan = MagicMock()
@@ -412,8 +414,10 @@ async def run_tests():
         ]
         mock_engine2 = MagicMock()
         mock_engine2._transport = mock_transport2
+        mock_engine2.transport = mock_transport2
         mock_client2 = MagicMock()
         mock_client2._engine = mock_engine2
+        mock_client2.engine = mock_engine2
         coord2.client = mock_client2
 
         mock_scan2 = MagicMock()
@@ -472,8 +476,10 @@ async def run_tests():
         ]
         mock_engine3 = MagicMock()
         mock_engine3._transport = mock_transport3
+        mock_engine3.transport = mock_transport3
         mock_client3 = MagicMock()
         mock_client3._engine = mock_engine3
+        mock_client3.engine = mock_engine3
         coord3.client = mock_client3
 
         mock_scan3 = MagicMock()

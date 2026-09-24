@@ -291,8 +291,10 @@ async def run_tests():
         mock_transport.get_extra_info.return_value = []
         mock_engine = MagicMock()
         mock_engine._transport = mock_transport
+        mock_engine.transport = mock_transport
         mock_client = MagicMock()
         mock_client._engine = mock_engine
+        mock_client.engine = mock_engine
         coord.client = mock_client
 
         mock_scan = MagicMock()
@@ -349,8 +351,10 @@ async def run_tests():
         mock_transport.get_extra_info.return_value = ["18:130236"]
         mock_engine = MagicMock()
         mock_engine._transport = mock_transport
+        mock_engine.transport = mock_transport
         mock_client = MagicMock()
         mock_client._engine = mock_engine
+        mock_client.engine = mock_engine
         coord.client = mock_client
 
         mock_scan = MagicMock()

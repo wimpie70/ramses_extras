@@ -64,6 +64,10 @@ class FanStub:
         self.id = fan_id
         self._scheme = scheme
         self._strategy = None  # force best_hvac_strategy fallback
+        # ramses_rf reads the public accessors (scheme/strategy/model)
+        self.scheme = scheme
+        self.strategy = None
+        self.model = "Orcon"
         self.entity_state = MagicMock()
         self.entity_state.get_value = AsyncMock(
             return_value={"description": "Orcon"}
