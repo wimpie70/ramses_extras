@@ -46,9 +46,10 @@ from ..base import Recipe, RecipeContext
 from ..const import FAN
 from ..helpers import (
     call_service,
-    docker_exec_python,
+    container_log_timestamp,
     get_schema_retry,
     load_profile_yaml,
+    log_lines_since,
     wait_for,
     wait_for_transport_ready,
     ws_send,
@@ -114,53 +115,18 @@ def _inject(ctx: RecipeContext, source_id: str, code: str, verb: str = "I") -> N
     )
 
 
-def _log_line_count() -> int:
-    result = docker_exec_python(
-        """
-import json
-from pathlib import Path
-path = Path("/config/home-assistant.log")
-print(json.dumps({"count": len(path.read_text().splitlines())}))
-"""
+def _has_event_since(since_ts: str, device_id: str, rule: str) -> bool:
+    return any(
+        device_id in line and rule in line
+        for line in log_lines_since("home-assistant.log*", since_ts)
     )
-    return int(result.get("count", 0))
 
 
-def _has_event_since(line_count: int, device_id: str, rule: str) -> bool:
-    result = docker_exec_python(
-        f"""
-import json
-from pathlib import Path
-lines = Path("/config/home-assistant.log").read_text().splitlines()
-new_lines = lines[{line_count}:]
-found = any(
-    {device_id!r} in line
-    and {rule!r} in line
-    for line in new_lines
-)
-print(json.dumps({{"found": found}}))
-"""
+def _has_mismatch_since(since_ts: str, device_id: str, suggests: str) -> bool:
+    return any(
+        device_id in line and "class mismatch" in line and suggests in line
+        for line in log_lines_since("home-assistant.log*", since_ts)
     )
-    return result.get("found") is True
-
-
-def _has_mismatch_since(line_count: int, device_id: str, suggests: str) -> bool:
-    result = docker_exec_python(
-        f"""
-import json
-from pathlib import Path
-lines = Path("/config/home-assistant.log").read_text().splitlines()
-new_lines = lines[{line_count}:]
-found = any(
-    {device_id!r} in line
-    and "class mismatch" in line
-    and {suggests!r} in line
-    for line in new_lines
-)
-print(json.dumps({{"found": found}}))
-"""
-    )
-    return result.get("found") is True
 
 
 class R125Co2PromotionFromRem(Recipe):
@@ -202,7 +168,7 @@ class R125Co2PromotionFromRem(Recipe):
         )
 
         # --- Test 1: I 1298 promotes REM to CO2 (direct promotion) ---
-        baseline1 = _log_line_count()
+        baseline1 = container_log_timestamp()
         _inject(ctx, HYBRID_DEVICE, "1298", verb="I")
         promoted = wait_for(
             lambda: _has_event_since(
@@ -236,7 +202,7 @@ class R125Co2PromotionFromRem(Recipe):
         # --- Test 2: RQ 2411 THEN I 1298 — direct promotion overrides DIS ---
         # Use a separate device (HYBRID_DEVICE_2) because test 1 already
         # promoted HYBRID_DEVICE to CO2 in the SSOT.
-        baseline2 = _log_line_count()
+        baseline2 = container_log_timestamp()
         # First inject RQ 2411 (would trigger REM→DIS)
         _inject(ctx, HYBRID_DEVICE_2, "2411", verb="RQ")
         # Wait a moment for the DIS event
@@ -259,7 +225,7 @@ class R125Co2PromotionFromRem(Recipe):
         )
 
         # --- Test 3: Pure REM sending RQ 2411 is promoted to DIS ---
-        baseline3 = _log_line_count()
+        baseline3 = container_log_timestamp()
         _inject(ctx, PURE_REM, "2411", verb="RQ")
         dis_promoted = wait_for(
             lambda: _has_event_since(
