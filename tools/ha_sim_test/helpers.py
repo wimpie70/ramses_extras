@@ -1455,9 +1455,9 @@ print(json.dumps({"ts": datetime.now().isoformat(timespec="microseconds")}))
 def log_lines_since(filename_glob: str, since_ts: str) -> list[str]:
     """Return log lines timestamped at/after ``since_ts``.
 
-    Scans every file in ``/config`` matching ``filename_glob`` (e.g.
-    ``"packet_log.log*"`` or ``"home-assistant.log*"``), so a log rotation
-    between the baseline and the check cannot hide freshly written lines.
+    Recursively scans ``/config`` for ``filename_glob`` (e.g.
+    ``"packet_log.log*"`` or ``"home-assistant.log*"``), so configured log
+    subdirectories and rotation cannot hide freshly written lines.
     Both the packet-log (``2026-09-22T20:16:08.254015``) and HA log
     (``2026-09-22 20:13:23.643``) timestamp formats are recognised.
 
@@ -1481,7 +1481,7 @@ ts_re = re.compile(
     r"^(\\d{{4}}-\\d{{2}}-\\d{{2}}[T ]\\d{{2}}:\\d{{2}}:\\d{{2}}(?:\\.\\d+)?)"
 )
 lines = []
-for p in Path("/config").glob({filename_glob!r}):
+for p in Path("/config").rglob({filename_glob!r}):
     try:
         lines += p.read_text().splitlines()
     except OSError:
