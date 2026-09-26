@@ -81,6 +81,7 @@ DEVICE_SIMULATOR_WEBSOCKET_COMMANDS = {
     "clear_ramses_cache": "ramses_extras/device_simulator/clear_ramses_cache",
     "set_device_excluded_codes": "ramses_extras/device_simulator/set_device_excluded_codes",  # noqa: E501
     "set_auto_answer": "ramses_extras/device_simulator/set_auto_answer",
+    "set_echo": "ramses_extras/device_simulator/set_echo",
     "set_answer_unknown_devices": "ramses_extras/device_simulator/set_answer_unknown_devices",  # noqa: E501
     "set_preserve_state": "ramses_extras/device_simulator/set_preserve_state",
     "set_heartbeat_timeout_scale": "ramses_extras/device_simulator/set_heartbeat_timeout_scale",  # noqa: E501
