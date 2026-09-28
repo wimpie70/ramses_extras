@@ -70,6 +70,10 @@ EXPECTED_WARNINGS: list[str] = [
     "SUPPRESSED in SystemBase 000C",
     # HA: logging too frequently (simulator at 100x speed generates lots of logs)
     "logging too frequently",
+    # HA core: websocket_api logs an ERROR when a device-removal hook
+    # refuses — R134 intentionally verifies the refusal for an
+    # in-schema device (issue 1246)
+    "Failed to remove device entry",
     # HA: custom integration not tested (cosmetic, every reload)
     "not been tested by Home Assistant",
     # ramses_cc: config schema not minimal (cosmetic, expected with full schema)
