@@ -137,7 +137,7 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_tx: foreign gateway warning when injecting from 18: devices
     # that are not the active gateway (expected in recipe 19c)
     "potentially a Foreign gateway",
-    # ramses_cc: bind_device service lifecycle notices (expected in R132 —
+    # ramses_cc: bind_device service lifecycle notices (expected in R135 —
     # the service deliberately logs start/success at WARNING level)
     "Starting binding process for device",
     "Binding process completed for device",
