@@ -857,12 +857,6 @@ class RamsesCommands:
                 ):
                     return coordinator
 
-            # Fallback: old approach via hass.data (for backward compat)
-            ramses_cc_data = self.hass.data.get("ramses_cc", {})
-            for _entry_id, coordinator_instance in ramses_cc_data.items():
-                if getattr(coordinator_instance, "client", None) is not None:
-                    return coordinator_instance
-
         except Exception as e:
             _LOGGER.debug(f"Could not get ramses_cc coordinator: {e}")
 

@@ -298,11 +298,8 @@ async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
         if not ramses_cc_entries:
             return
         cc_entry = ramses_cc_entries[0]
-        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        # ramses_cc stores the coordinator in entry.runtime_data
         coordinator = getattr(cc_entry, "runtime_data", None)
-        if coordinator is None:
-            # Legacy fallback: hass.data["ramses_cc"][entry_id]
-            coordinator = (hass.data.get("ramses_cc") or {}).get(cc_entry.entry_id)
         if coordinator is None:
             return
         discover = getattr(coordinator, "_async_discovery_task", None)
@@ -538,12 +535,8 @@ async def _update_known_list_and_reload(
     # stale one.  The coordinator deep-copies entry.options at init time
     # (coordinator.py line 208), so it won't see the update we just made
     # to entry.options unless we explicitly update it here.
-    # Modern ramses_cc stores the coordinator in entry.runtime_data
+    # ramses_cc stores the coordinator in entry.runtime_data
     coordinator = getattr(entry, "runtime_data", None)
-    if coordinator is None:
-        # Legacy fallback: hass.data["ramses_cc"]
-        ra = hass.data.get("ramses_cc", {})
-        coordinator = ra.get("coordinator")
     if coordinator is not None:
         try:
             coordinator.options = dict(new_options)  # noqa: SLF001

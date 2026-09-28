@@ -97,7 +97,8 @@ class TestTransportMonitorCoverage:
         # has one connected child, so _is_transport_active() returns True.
         mock_client = MagicMock()
         mock_client._engine._transport._connected_children = [MagicMock()]
-        hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(client=mock_client)}}
+        entry = MagicMock(runtime_data=MagicMock(client=mock_client))
+        hass.config_entries.async_entries.return_value = [entry]
         existing_task = MagicMock()
         existing_task.done.return_value = False
         monitor._device_timeout_tasks["32:123456"] = existing_task
@@ -219,7 +220,8 @@ class TestTransportMonitorCoverage:
     async def test_start_monitoring_coordinator_without_client_attr(self, monitor):
         """Test start_monitoring when coordinator lacks client attribute."""
         hass = MagicMock()
-        hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(spec=[])}}
+        entry = MagicMock(runtime_data=MagicMock(spec=[]))
+        hass.config_entries.async_entries.return_value = [entry]
 
         await monitor.start_monitoring(None, hass)
 
@@ -231,7 +233,8 @@ class TestTransportMonitorCoverage:
         hass = MagicMock()
         coordinator = MagicMock()
         coordinator.client = None
-        hass.data = {"ramses_cc": {"mock_coordinator": coordinator}}
+        entry = MagicMock(runtime_data=coordinator)
+        hass.config_entries.async_entries.return_value = [entry]
 
         await monitor.start_monitoring(None, hass)
 
