@@ -1,4 +1,4 @@
-"""Recipe R132: bind_device service — supplicant handshake.
+"""Recipe R135: bind_device service — supplicant handshake.
 
 Exercises ``ramses_cc.bind_device`` end-to-end: the service initiates the
 binding FSM for a faked device (supplicant), an injected ``W 1FC9`` Accept
@@ -37,15 +37,15 @@ _ACCEPT_PAYLOAD = "0022F18249F00022F38249F0"  # FAN accepts 22F1 + 22F3
 _CONFIRM_PAYLOAD = "0022F1969770"  # REM confirms 22F1
 
 
-class R132BindDeviceSupplicantHandshake(Recipe):
-    id = "R132"
-    seq = 1320
+class R135BindDeviceSupplicantHandshake(Recipe):
+    id = "R135"
+    seq = 1350
     title = "bind_device service — supplicant handshake completes"
     tags = ("1FC9", "binding", "bind_device", "supplicant")
 
     async def run(self, ctx: RecipeContext) -> None:
         """Run the bind_device handshake scenario."""
-        ctx.log_section("Recipe 132: bind_device service handshake")
+        ctx.log_section("Recipe 135: bind_device service handshake")
 
         # bind_device needs a Fakeable device — load the minimal HVAC
         # profile (FAN + REM + CO2 + HGI) so REM 37:170000 exists
