@@ -168,6 +168,14 @@ class ScenarioEngine:
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
         self._auto_answer_enabled: bool = True
+        # Gateway loopback echo toggle (default on).
+        # When False the engine receives frames on /tx but never echoes them
+        # back on /rx — simulates a gateway whose own TX is not heard (RF
+        # congestion, weak link, or a crashed gateway app).  ramses_tx then
+        # holds each send in-flight for the full QoS echo timeout, which is
+        # required to reproduce bugs that only trigger when a send blocks
+        # (e.g. ramses_cc issue 1241 — caller cancelled mid-send).
+        self._echo_enabled: bool = True
         # Answer unknown devices toggle (default off).
         # When True the engine responds to RQ frames even if the destination
         # device is not in the active simulator devices list. Uses device DB
@@ -1115,7 +1123,8 @@ class ScenarioEngine:
             LOGGER.debug(
                 "Simulator received W frame: %s -> %s, code=%s", src, dst, code
             )
-            await self._echo_write(src, dst, code, payload)
+            if self._echo_enabled:
+                await self._echo_write(src, dst, code, payload)
             return
 
         # Echo I frames from faked devices to satisfy ramses_tx WantEcho
@@ -1127,7 +1136,8 @@ class ScenarioEngine:
             LOGGER.debug(
                 "Simulator received I frame: %s -> %s, code=%s", src, dst, code
             )
-            await self._echo_inform(src, dst, code, payload)
+            if self._echo_enabled:
+                await self._echo_inform(src, dst, code, payload)
             return
 
         # Echo RQ frames back on /rx so ramses_tx FSM WantEcho state is
@@ -1142,7 +1152,8 @@ class ScenarioEngine:
             LOGGER.debug(
                 "Simulator received RQ frame: %s -> %s, code=%s", src, dst, code
             )
-            await self._echo_request(src, dst, code, payload)
+            if self._echo_enabled:
+                await self._echo_request(src, dst, code, payload)
             if not self._auto_answer_enabled:
                 LOGGER.debug("Auto-answer disabled, dropping RQ %s from %s", code, src)
                 return
@@ -1637,6 +1648,28 @@ class ScenarioEngine:
         self._auto_answer_enabled = enabled
         LOGGER.info(
             "Auto-answer %s", "enabled" if enabled else "disabled (no RQ replies)"
+        )
+
+    @property
+    def echo_enabled(self) -> bool:
+        """Return True when the engine echoes TX frames back on /rx."""
+        return self._echo_enabled
+
+    def set_echo_enabled(self, enabled: bool) -> None:
+        """Enable or disable the gateway loopback echo.
+
+        When disabled the engine still receives frames on /tx (and may still
+        send RP replies via auto-answer) but never echoes them back on /rx,
+        simulating a gateway whose own TX is not heard.  ramses_tx then holds
+        each send in-flight for the full QoS echo timeout — needed to
+        reproduce send-blocking bugs such as ramses_cc issue 1241.
+
+        :param enabled: True to echo TX frames, False to suppress the echo.
+        """
+        self._echo_enabled = enabled
+        LOGGER.info(
+            "Gateway echo %s",
+            "enabled" if enabled else "disabled (no TX loopback echo)",
         )
 
     def set_profile_schema(self, schema: dict[str, Any] | None) -> None:

@@ -357,6 +357,7 @@ def ws_get_status(
             "active_devices": len(engine.active_device_ids),
             "active_device_ids": engine.active_device_ids,
             "auto_answer": engine.auto_answer_enabled,
+            "echo": engine.echo_enabled,
             "running_scenarios": engine.get_running_scenario_ids(),
             "scenario_registry": SCENARIO_REGISTRY,
             "ready": engine.ready,
@@ -1999,6 +2000,48 @@ def ws_set_auto_answer(
             "success": True,
             "auto_answer": enabled,
             "conflicts": conflicts,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/set_echo",
+        vol.Required("enabled"): bool,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_echo(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Enable or disable the gateway loopback echo.
+
+    When disabled the simulator still receives frames on /tx (and may still
+    send RP replies via auto-answer) but never echoes them back on /rx,
+    simulating a gateway whose own TX is not heard (RF congestion, weak
+    link, crashed gateway app).  ramses_tx then holds each send in-flight
+    for the full QoS echo timeout — needed to reproduce send-blocking bugs
+    such as ramses_cc issue 1241.
+
+    The flag is intentionally not persisted: echo defaults back to on after
+    every restart/reload of ramses_extras so a forgotten toggle cannot leave
+    the simulator in a broken state.
+    """
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    enabled: bool = msg["enabled"]
+    engine.set_echo_enabled(enabled)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "echo": enabled,
         },
     )
 

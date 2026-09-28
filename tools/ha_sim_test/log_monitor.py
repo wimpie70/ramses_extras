@@ -137,6 +137,10 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_tx: foreign gateway warning when injecting from 18: devices
     # that are not the active gateway (expected in recipe 19c)
     "potentially a Foreign gateway",
+    # ramses_cc: bind_device service lifecycle notices (expected in R132 —
+    # the service deliberately logs start/success at WARNING level)
+    "Starting binding process for device",
+    "Binding process completed for device",
     # ramses_rf: payload format mismatch when injecting test 000A packets
     # (expected — the scan engine still processes the raw payload)
     "Payload doesn't match",
