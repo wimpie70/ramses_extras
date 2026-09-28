@@ -70,6 +70,10 @@ EXPECTED_WARNINGS: list[str] = [
     "SUPPRESSED in SystemBase 000C",
     # HA: logging too frequently (simulator at 100x speed generates lots of logs)
     "logging too frequently",
+    # HA core: websocket_api logs an ERROR when a device-removal hook
+    # refuses — R134 intentionally verifies the refusal for an
+    # in-schema device (issue 1246)
+    "Failed to remove device entry",
     # HA: custom integration not tested (cosmetic, every reload)
     "not been tested by Home Assistant",
     # ramses_cc: config schema not minimal (cosmetic, expected with full schema)
@@ -133,7 +137,7 @@ EXPECTED_WARNINGS: list[str] = [
     # ramses_tx: foreign gateway warning when injecting from 18: devices
     # that are not the active gateway (expected in recipe 19c)
     "potentially a Foreign gateway",
-    # ramses_cc: bind_device service lifecycle notices (expected in R132 —
+    # ramses_cc: bind_device service lifecycle notices (expected in R135 —
     # the service deliberately logs start/success at WARNING level)
     "Starting binding process for device",
     "Binding process completed for device",
