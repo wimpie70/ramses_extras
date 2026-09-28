@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
     LOGGER,
     SCENARIO_AUTO_ANSWER,
+    SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_LOAD_PROFILE_YAML,
     SCENARIO_MANUAL_DEVICE_INJECTION,
     SCENARIO_PARAM_SCHEMAS,
@@ -38,13 +39,6 @@ from .const import (
 )
 from .entity_helpers import get_device_entities
 from .scenario_engine import MESSAGE_EVENT, ScenarioEngine
-
-try:  # pragma: no cover - legacy fallback for partially updated installs
-    from .const import SCENARIO_DEVICE_UNAVAILABILITY
-except ImportError:  # pragma: no cover - safety net when const is missing
-    SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
-except AttributeError:  # pragma: no cover - attribute missing in older builds
-    SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
 
 # Import ramses_cc storage constants
 try:
@@ -127,17 +121,8 @@ def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
     if not entries:
         return None
     cc_entry = entries[0]
-    # Modern ramses_cc stores the coordinator in entry.runtime_data
-    coordinator = getattr(cc_entry, "runtime_data", None)
-    if coordinator is not None:
-        return coordinator
-    # Legacy fallback: hass.data["ramses_cc"][entry_id]
-    domain_data = hass.data.get("ramses_cc", {})
-    coordinator = domain_data.get(cc_entry.entry_id)
-    if coordinator is not None:
-        return coordinator
-    # Fallback for older layouts that used a "coordinators" sub-dict
-    return domain_data.get("coordinators", {}).get(cc_entry.entry_id)
+    # ramses_cc stores the coordinator in entry.runtime_data
+    return getattr(cc_entry, "runtime_data", None)
 
 
 def _build_profile_zone_index(profile: SystemConfigProfile) -> list[dict[str, Any]]:
@@ -309,11 +294,8 @@ async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
         if not ramses_cc_entries:
             return
         cc_entry = ramses_cc_entries[0]
-        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        # ramses_cc stores the coordinator in entry.runtime_data
         coordinator = getattr(cc_entry, "runtime_data", None)
-        if coordinator is None:
-            # Legacy fallback: hass.data["ramses_cc"][entry_id]
-            coordinator = (hass.data.get("ramses_cc") or {}).get(cc_entry.entry_id)
         if coordinator is None:
             return
         discover = getattr(coordinator, "_async_discovery_task", None)
