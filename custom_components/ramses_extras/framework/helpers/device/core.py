@@ -50,12 +50,8 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
         return None
 
     for entry in ramses_cc_entries:
-        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        # ramses_cc stores the coordinator in entry.runtime_data
         coordinator = getattr(entry, "runtime_data", None)
-        if coordinator is None:
-            # Legacy fallback: hass.data["ramses_cc"][entry.entry_id]
-            ramses_cc_data = hass.data.get("ramses_cc", {})
-            coordinator = ramses_cc_data.get(entry.entry_id)
         if coordinator is None:
             continue
 
@@ -127,12 +123,8 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
 
     device_ids: list[str] = []
     for entry in ramses_cc_entries:
-        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        # ramses_cc stores the coordinator in entry.runtime_data
         broker = getattr(entry, "runtime_data", None)
-        if broker is None:
-            # Legacy fallback: hass.data["ramses_cc"][entry.entry_id]
-            ramses_cc_data = hass.data.get("ramses_cc", {})
-            broker = ramses_cc_data.get(entry.entry_id)
         if not broker:
             continue
 
@@ -231,13 +223,9 @@ async def _get_broker_for_entry(hass: HomeAssistant) -> Any | None:
     entry = ramses_cc_entries[0]
 
     try:
-        # Method 1: Modern ramses_cc stores the coordinator in entry.runtime_data
+        # Method 1: ramses_cc stores the coordinator in entry.runtime_data
         broker = None
         broker_data = getattr(entry, "runtime_data", None)
-        if broker_data is None:
-            # Legacy fallback: hass.data["ramses_cc"][entry.entry_id]
-            ramses_cc_data = hass.data.get("ramses_cc", {})
-            broker_data = ramses_cc_data.get(entry.entry_id)
 
         if broker_data is not None:
             if (
