@@ -58,7 +58,7 @@ try:
         SZ_CLIENT_STATE,
         SZ_PACKETS,
     )
-    from ramses_rf.schemas import SZ_SCHEMA
+    from ramses_tx.schemas import SZ_SCHEMA
 except ImportError:
     # Fallback for testing environments where ramses_cc may not be available
     RAMSES_CC_STORAGE_VERSION = 1
