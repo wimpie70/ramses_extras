@@ -275,17 +275,19 @@ async def test_get_bound_rem_device_variations(ramses_commands, mock_hass):
     device_id = "32:111111"
 
     # Scenario 1: No broker
-    mock_hass.data = {}
+    mock_hass.config_entries.async_entries.return_value = []
     assert await ramses_commands._get_bound_rem_device(device_id) is None
 
     # Scenario 2: Broker with no _get_device
-    mock_hass.data = {"ramses_cc": {"entry": MagicMock(spec=[])}}
+    entry = MagicMock(runtime_data=MagicMock(spec=[]))
+    mock_hass.config_entries.async_entries.return_value = [entry]
     assert await ramses_commands._get_bound_rem_device(device_id) is None
 
     # Scenario 3: Device not found
     mock_broker = MagicMock()
     mock_broker._get_device.return_value = None
-    mock_hass.data = {"ramses_cc": {"entry": mock_broker}}
+    entry = MagicMock(runtime_data=mock_broker)
+    mock_hass.config_entries.async_entries.return_value = [entry]
     assert await ramses_commands._get_bound_rem_device(device_id) is None
 
     # Scenario 4: Device found but no get_bound_rem method
@@ -312,7 +314,8 @@ async def test_get_bound_rem_device(ramses_commands, mock_hass):
     mock_device = MagicMock()
     mock_rem = "30:222222"
 
-    mock_hass.data = {"ramses_cc": {"entry_id": mock_broker}}
+    entry = MagicMock(runtime_data=mock_broker)
+    mock_hass.config_entries.async_entries.return_value = [entry]
     mock_broker._get_device.return_value = mock_device
     mock_device.get_bound_rem.return_value = mock_rem
 

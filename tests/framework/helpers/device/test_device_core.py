@@ -135,20 +135,6 @@ class TestFindRamsesDevice:
         result = find_ramses_device(self.hass, self.device_id)
         assert result == mock_device
 
-    def test_find_ramses_device_legacy_fallback(self):
-        """Test finding device via legacy hass.data fallback."""
-        mock_device = MagicMock()
-        mock_broker = MagicMock()
-        mock_broker._get_device = MagicMock(return_value=mock_device)
-        mock_entry = MagicMock()
-        mock_entry.entry_id = "entry1"
-        mock_entry.runtime_data = None  # Force legacy fallback
-        self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
-        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
-
-        result = find_ramses_device(self.hass, self.device_id)
-        assert result == mock_device
-
 
 class TestGetDeviceType:
     """Test cases for get_device_type function."""

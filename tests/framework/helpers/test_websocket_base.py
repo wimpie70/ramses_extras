@@ -124,22 +124,11 @@ class TestDeviceWebSocketCommand:
     def test_init(self, hass):
         """Test initialization of DeviceWebSocketCommand."""
         feature_name = "test_feature"
-        hass.data = {"ramses_cc": {"test": "data"}}
 
         command = DeviceWebSocketCommand(hass, feature_name)
 
         assert command.hass == hass
         assert command.feature_name == feature_name
-        assert command._ramses_data == {"test": "data"}
-
-    def test_init_no_ramses_data(self, hass):
-        """Test initialization when ramses_cc data is not available."""
-        feature_name = "test_feature"
-        hass.data = {}  # No ramses_cc data
-
-        command = DeviceWebSocketCommand(hass, feature_name)
-
-        assert command._ramses_data == {}
 
 
 class TestGetEntityMappingsCommand:

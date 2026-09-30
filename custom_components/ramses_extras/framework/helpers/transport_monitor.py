@@ -153,19 +153,6 @@ class TransportMonitor:
                     self._ensure_msg_handler(client)
                     return
 
-        # Legacy fallback: hass.data["ramses_cc"]
-        ramses_cc_data = self._hass.data.get("ramses_cc", {})
-        for coordinator_instance in ramses_cc_data.values():
-            if not hasattr(coordinator_instance, "client"):
-                continue
-            client = getattr(coordinator_instance, "client", None)
-            if client is None:
-                continue
-
-            self._coordinator = coordinator_instance
-            self._ensure_msg_handler(client)
-            return
-
         self._coordinator = None
         self._ensure_msg_handler(None)
 

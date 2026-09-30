@@ -73,13 +73,6 @@ def _get_ramses_cc_options(hass: HomeAssistant) -> dict[str, Any] | None:
             # Coordinator.options is a deep merge of data + options
             return dict(coord_options)
 
-    # Legacy fallback: hass.data["ramses_cc"]
-    ramses_cc_data = hass.data.get("ramses_cc", {})
-    for _entry_id, coordinator in ramses_cc_data.items():
-        if hasattr(coordinator, "options") and isinstance(coordinator.options, dict):
-            # Coordinator.options is a deep merge of data + options
-            return dict(coordinator.options)
-
     return options
 
 
