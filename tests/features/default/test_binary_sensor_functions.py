@@ -92,7 +92,9 @@ async def test_get_ramses_cc_coordinator_with_coordinator():
     hass = MagicMock()
     mock_coordinator = MagicMock()
     mock_coordinator.client = MagicMock()
-    hass.data = {"ramses_cc": {"entry_id": mock_coordinator}}
+    entry = MagicMock()
+    entry.runtime_data = mock_coordinator
+    hass.config_entries.async_entries.return_value = [entry]
 
     result = await _get_ramses_cc_coordinator(hass)
     assert result == mock_coordinator

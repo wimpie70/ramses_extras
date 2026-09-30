@@ -306,12 +306,8 @@ async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
         broker: Any | None = None
         devices_list: list[Any] = []
 
-        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        # ramses_cc stores the coordinator in entry.runtime_data
         broker_data: Any | None = getattr(entry, "runtime_data", None)
-        if broker_data is None:
-            # Legacy fallback: hass.data["ramses_cc"][entry.entry_id]
-            ramses_cc_data = hass.data.get("ramses_cc", {})
-            broker_data = ramses_cc_data.get(entry.entry_id)
 
         if broker_data is not None:
             if (
