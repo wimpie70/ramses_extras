@@ -1578,3 +1578,263 @@ class TestRemoteListenerAttach:
 
         assert len(tracked) == 1  # add_msg_handler(_handle_remote_msg)
         assert hass.data[DOMAIN]["_fan_remote_listener_unsubs"]
+
+
+class TestExternalFanCommands:
+    """Test manual-override registration for unmatched fan commands (issue 216).
+
+    A 22F1 fan-speed change that did not come from a bound REM — e.g.
+    remote.send_command, the HA fan entity, an unbound physical remote —
+    must still register as a manual override so temp_control and friends
+    do not immediately undo it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_unbound_rem_speed_command_sets_manual_override(self, hass):
+        """An unbound REM pressing a speed button still overrules extras."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.get_bindings_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            mock_bind.return_value._get_config_manager.return_value = None
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.set_extras_control_enabled = MagicMock()
+            mock_arb_inst.set_manual_override_state = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            msg = _make_msg(
+                {
+                    "src": "37_654321",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000107",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_bind.return_value.record_remote_activity.assert_called_once()
+            mock_arb_inst.set_manual_override_state.assert_called_once()
+            kwargs = mock_arb_inst.set_manual_override_state.call_args.kwargs
+            assert kwargs["requested_speed"] == "fan_low"
+            assert kwargs["source_id"] == "37:654321"
+
+    @pytest.mark.asyncio
+    async def test_unbound_rem_fan_auto_resumes_extras_control(self, hass):
+        """An unbound REM pressing auto re-enables extras control."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.get_bindings_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            mock_bind.return_value._get_config_manager.return_value = None
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.set_extras_control_enabled = MagicMock()
+            mock_arb_inst.clear_manual_override_state = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            msg = _make_msg(
+                {
+                    "src": "37_654321",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000407",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_arb_inst.set_extras_control_enabled.assert_called_once_with(
+                "32:123456", True
+            )
+            mock_arb_inst.clear_manual_override_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_gateway_echo_of_own_send_is_ignored(self, hass):
+        """An echo of our own arbiter send must not trigger an override."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.get_bindings_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            mock_bind.return_value._get_config_manager.return_value = None
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=True)
+            mock_arb_inst.set_manual_override_state = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            msg = _make_msg(
+                {
+                    "src": "18_130236",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000307",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_arb_inst.was_recently_applied.assert_called_once_with(
+                "32:123456", "fan_high"
+            )
+            mock_arb_inst.set_manual_override_state.assert_not_called()
+            mock_arb_inst.async_commit_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_gateway_src_new_command_sets_override(self, hass):
+        """A gateway-sourced command we did not send counts as external."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.get_bindings_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            mock_bind.return_value._get_config_manager.return_value = None
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
+            mock_arb_inst.set_extras_control_enabled = MagicMock()
+            mock_arb_inst.set_manual_override_state = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            msg = _make_msg(
+                {
+                    "src": "18_130236",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000107",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            kwargs = mock_arb_inst.set_manual_override_state.call_args.kwargs
+            assert kwargs["requested_speed"] == "fan_low"
+
+    @pytest.mark.asyncio
+    async def test_gateway_echo_of_direct_away_send_is_ignored(self, hass):
+        """fan_away echoes of our own direct sends are not treated as external."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.get_bindings_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            mock_bind.return_value._get_config_manager.return_value = None
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.set_extras_control_enabled = MagicMock()
+            mock_arb_inst.set_manual_override_state = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            msg = _make_msg(
+                {
+                    "src": "18_130236",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000007",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_arb_inst.set_extras_control_enabled.assert_not_called()
+            mock_arb_inst.set_manual_override_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unbound_rem_away_disables_extras_control(self, hass):
+        """An unbound REM pressing away disables extras control."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.get_bindings_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            mock_bind.return_value._get_config_manager.return_value = None
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.set_extras_control_enabled = MagicMock()
+            mock_arb_inst.clear_manual_override_state = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            msg = _make_msg(
+                {
+                    "src": "37_654321",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000007",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_arb_inst.set_extras_control_enabled.assert_called_once_with(
+                "32:123456", False
+            )
