@@ -11,6 +11,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -503,6 +504,65 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             str(verb) if verb is not None else None,
         )
 
+    async def _async_attach_remote_listener(
+        domain_data: dict[str, Any],
+        commands: RamsesCommands,
+        attempt: int = 0,
+    ) -> None:
+        """Attach the remote packet listener to the ramses_cc client.
+
+        The coordinator's ``client`` is only created once its gateway
+        has started, which can take tens of seconds during HA startup.
+        A single-shot attach silently leaves physical remotes unable to
+        overrule extras control for the whole session (issue 232), so
+        retry until the handler is attached, the entry is unloaded, or
+        the attempt budget runs out.
+        """
+        unsubs: list[Callable[[], None]] = domain_data.setdefault(
+            "_fan_remote_listener_unsubs", []
+        )
+        if unsubs:
+            return
+
+        coordinator = await commands._get_ramses_cc_coordinator()
+        client = getattr(coordinator, "client", None)
+        add_msg_handler = getattr(client, "add_msg_handler", None)
+        if callable(add_msg_handler):
+            try:
+                msg_unsub = add_msg_handler(_handle_remote_msg)
+            except Exception as err:
+                _LOGGER.debug("Remote listener attach failed: %s", err)
+            else:
+                if callable(msg_unsub):
+                    unsubs.append(msg_unsub)
+                    _LOGGER.info(
+                        "Remote fan listener attached to ramses_cc (attempt %d)",
+                        attempt + 1,
+                    )
+                    return
+
+        if hass.data.get(DOMAIN) is not domain_data:
+            return  # entry unloaded/reloaded: this domain_data is stale
+
+        if attempt >= 120:
+            # Give up after ~2 minutes; clear the flag so a later
+            # services re-registration may try again.
+            domain_data["_fan_remote_listener_started"] = False
+            _LOGGER.warning(
+                "Remote fan listener could not attach to ramses_cc "
+                "after %d attempts; remote presses will not overrule "
+                "extras control until services are re-registered",
+                attempt + 1,
+            )
+            return
+
+        def _retry() -> None:
+            hass.async_create_task(
+                _async_attach_remote_listener(domain_data, commands, attempt + 1)
+            )
+
+        hass.loop.call_later(1, _retry)
+
     async def _async_resume_feature_control(device_id: str) -> None:
         domain_data = hass.data.get(DOMAIN, {})
         features = domain_data.get("features", {})
@@ -671,20 +731,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     domain_data = hass.data.setdefault(DOMAIN, {})
     if not domain_data.get("_fan_remote_listener_started"):
-        unsubs: list[Callable[[], None]] = []
-
-        coordinator = await RamsesCommands(hass)._get_ramses_cc_coordinator()
-        client = (
-            getattr(coordinator, "client", None) if coordinator is not None else None
-        )
-        add_msg_handler = getattr(client, "add_msg_handler", None)
-        if callable(add_msg_handler):
-            msg_unsub = add_msg_handler(_handle_remote_msg)
-            if callable(msg_unsub):
-                unsubs.append(msg_unsub)
-
-        domain_data["_fan_remote_listener_unsubs"] = unsubs
+        domain_data["_fan_remote_listener_unsubs"] = []
         domain_data["_fan_remote_listener_started"] = True
+        commands = RamsesCommands(hass)
+        await _async_attach_remote_listener(domain_data, commands)
 
     if not hass.services.has_service(DOMAIN, SVC_SEND_FAN_COMMAND):
         hass.services.async_register(
