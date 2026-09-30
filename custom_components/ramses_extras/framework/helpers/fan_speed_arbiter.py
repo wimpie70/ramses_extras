@@ -464,6 +464,24 @@ class FanSpeedArbiter:
 
         return True
 
+    def was_recently_applied(
+        self,
+        device_id: str,
+        command_name: str,
+        *,
+        window_s: float = 120.0,
+    ) -> bool:
+        """Return True if command_name was applied to device_id within window_s.
+
+        Used to distinguish echoes of our own gateway sends from
+        externally-originated fan commands seen on the RF network.
+        """
+        normalized_device_id = self._normalize_device_id(device_id)
+        last = self._last_applied.get(normalized_device_id)
+        return bool(
+            last and last[0] == command_name and (time.monotonic() - last[1]) < window_s
+        )
+
     @staticmethod
     def normalize_speed(requested_speed: str | int) -> str:
         """Normalize an input speed or level to a command name."""

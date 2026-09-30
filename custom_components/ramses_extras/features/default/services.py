@@ -438,7 +438,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             matched=is_matched,
         )
 
+        domain_data = hass.data.setdefault(DOMAIN, {})
+        recent = domain_data.setdefault("_fan_remote_last_seen", {})
+        key = (normalized_dst, command)
+        now = time.monotonic()
+        last_seen = recent.get(key, 0.0)
+        if now - last_seen < 1.5:
+            return
+        recent[key] = now
+
         if not is_matched:
+            # The command did not come from a bound REM, but it can still
+            # be user-initiated (remote.send_command, the HA fan entity,
+            # an unbound remote).  Register it as a manual override so
+            # extras automations do not immediately undo it (issue 216).
+            await _async_maybe_apply_external_fan_command(
+                normalized_src, normalized_dst, command
+            )
             return
 
         bound_zone_id: str | None = None
@@ -453,21 +469,87 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 bound_zone_id = zone_candidate
             break
 
-        domain_data = hass.data.setdefault(DOMAIN, {})
-        recent = domain_data.setdefault("_fan_remote_last_seen", {})
-        key = (normalized_dst, command)
-        now = time.monotonic()
-        last_seen = recent.get(key, 0.0)
-        if now - last_seen < 1.5:
-            return
-        recent[key] = now
-
         await _async_apply_observed_remote_command(
             normalized_dst,
             command,
             normalized_src,
             bound_zone_id,
         )
+
+    async def _async_maybe_apply_external_fan_command(
+        src_id: str,
+        device_id: str,
+        command: str,
+    ) -> None:
+        """Treat an externally-originated fan command as a manual override.
+
+        Packets reaching this point were not sent by a bound REM.  They can
+        still be user-initiated: remote.send_command spoofs, the HA fan
+        entity, unbound remotes, or other systems on the RF network.  Without
+        a manual override, temp_control/humidity_control would re-send their
+        own demand on the next evaluation and undo the user's command
+        (issue 216).
+
+        Gateway-sourced packets (18:*) can also be echoes of our own sends —
+        those are filtered out by comparing the command against what the
+        arbiter last applied.  Our own direct sends that are not tracked by
+        the arbiter (fan_away, fan_timer_*) are additionally excluded, since
+        their originating service call already updated the control state.
+        """
+        if device_id.startswith("18:"):
+            return  # dst is a gateway, not a controllable FAN
+
+        # Respect explicitly-disabled bindings: an REM the user disabled
+        # in remote_binding must not create manual overrides either.
+        from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+        manager = get_remote_binding_registry(hass)._get_config_manager()
+        if manager is not None:
+            for binding in manager.get_fan_remote_bindings(device_id):
+                rem_id = str(binding.get("rem_id") or "").replace("_", ":").strip()
+                if rem_id == src_id and not binding.get("enabled", True):
+                    return
+
+        arbiter = get_fan_speed_arbiter(hass)
+
+        if src_id.startswith("18:"):
+            # Gateway-sourced: could be an echo of our own send.
+            if command not in {"fan_low", "fan_medium", "fan_high", "fan_auto"}:
+                return
+            if arbiter.was_recently_applied(device_id, command):
+                return
+
+        _LOGGER.info(
+            "External fan command observed: %s -> %s (%s); "
+            "registering as manual override",
+            src_id,
+            device_id,
+            command,
+        )
+
+        if command == "fan_auto":
+            arbiter.set_extras_control_enabled(device_id, True)
+            arbiter.clear_manual_override_state(device_id)
+            await arbiter.async_commit_state(device_id, apply=False)
+            await _async_resume_feature_control(device_id)
+            return
+
+        if command in {"fan_low", "fan_medium", "fan_high"}:
+            arbiter.set_extras_control_enabled(device_id, True)
+            arbiter.set_manual_override_state(
+                device_id,
+                source_id=src_id,
+                requested_speed=command,
+                reason="manual_external_command",
+                metadata={"origin": "external"},
+            )
+            await arbiter.async_commit_state(device_id, apply=False)
+            return
+
+        if command == "fan_away" or command.startswith("fan_timer_"):
+            arbiter.set_extras_control_enabled(device_id, False)
+            arbiter.clear_manual_override_state(device_id)
+            await arbiter.async_commit_state(device_id, apply=False)
 
     def _schedule_observed_remote_packet(
         src: object,

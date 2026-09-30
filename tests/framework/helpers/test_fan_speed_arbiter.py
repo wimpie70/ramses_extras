@@ -1,5 +1,6 @@
 """Tests for the shared fan speed arbiter."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -732,3 +733,28 @@ def test_integration_humidity_veto_then_clear_lets_temp_resume(arbiter):
     resolved = arbiter.resolve("32_123456")
     assert resolved.command_name == "fan_high"
     assert resolved.winning_demand.feature_id == "temp_control"
+
+
+@pytest.mark.asyncio
+async def test_was_recently_applied_tracks_last_sent_command(arbiter):
+    """was_recently_applied distinguishes own-send echoes from external cmds."""
+    await arbiter.async_set_demand(
+        "32_123456",
+        feature_id="temp_control",
+        source_id="temp_control",
+        requested_speed="fan_high",
+    )
+
+    # The command we just applied is "recently applied"
+    assert arbiter.was_recently_applied("32:123456", "fan_high") is True
+    # A different command on the same device was not sent by us
+    assert arbiter.was_recently_applied("32:123456", "fan_low") is False
+    # The same command on another device was not sent by us
+    assert arbiter.was_recently_applied("32:654321", "fan_high") is False
+
+
+def test_was_recently_applied_expires_after_window(arbiter):
+    """An applied command stops counting as 'ours' once the window expires."""
+    arbiter._last_applied["32:123456"] = ("fan_high", time.monotonic() - 300)
+
+    assert arbiter.was_recently_applied("32:123456", "fan_high") is False
