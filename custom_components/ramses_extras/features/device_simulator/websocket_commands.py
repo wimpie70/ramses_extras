@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
     LOGGER,
     SCENARIO_AUTO_ANSWER,
+    SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_LOAD_PROFILE_YAML,
     SCENARIO_MANUAL_DEVICE_INJECTION,
     SCENARIO_PARAM_SCHEMAS,
@@ -38,13 +39,6 @@ from .const import (
 )
 from .entity_helpers import get_device_entities
 from .scenario_engine import MESSAGE_EVENT, ScenarioEngine
-
-try:  # pragma: no cover - legacy fallback for partially updated installs
-    from .const import SCENARIO_DEVICE_UNAVAILABILITY
-except ImportError:  # pragma: no cover - safety net when const is missing
-    SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
-except AttributeError:  # pragma: no cover - attribute missing in older builds
-    SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
 
 # Import ramses_cc storage constants
 try:
@@ -58,7 +52,7 @@ try:
         SZ_CLIENT_STATE,
         SZ_PACKETS,
     )
-    from ramses_rf.schemas import SZ_SCHEMA
+    from ramses_tx.schemas import SZ_SCHEMA
 except ImportError:
     # Fallback for testing environments where ramses_cc may not be available
     RAMSES_CC_STORAGE_VERSION = 1
@@ -127,17 +121,8 @@ def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
     if not entries:
         return None
     cc_entry = entries[0]
-    # Modern ramses_cc stores the coordinator in entry.runtime_data
-    coordinator = getattr(cc_entry, "runtime_data", None)
-    if coordinator is not None:
-        return coordinator
-    # Legacy fallback: hass.data["ramses_cc"][entry_id]
-    domain_data = hass.data.get("ramses_cc", {})
-    coordinator = domain_data.get(cc_entry.entry_id)
-    if coordinator is not None:
-        return coordinator
-    # Fallback for older layouts that used a "coordinators" sub-dict
-    return domain_data.get("coordinators", {}).get(cc_entry.entry_id)
+    # ramses_cc stores the coordinator in entry.runtime_data
+    return getattr(cc_entry, "runtime_data", None)
 
 
 def _build_profile_zone_index(profile: SystemConfigProfile) -> list[dict[str, Any]]:
@@ -309,11 +294,8 @@ async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
         if not ramses_cc_entries:
             return
         cc_entry = ramses_cc_entries[0]
-        # Modern ramses_cc stores the coordinator in entry.runtime_data
+        # ramses_cc stores the coordinator in entry.runtime_data
         coordinator = getattr(cc_entry, "runtime_data", None)
-        if coordinator is None:
-            # Legacy fallback: hass.data["ramses_cc"][entry_id]
-            coordinator = (hass.data.get("ramses_cc") or {}).get(cc_entry.entry_id)
         if coordinator is None:
             return
         discover = getattr(coordinator, "_async_discovery_task", None)
@@ -357,6 +339,7 @@ def ws_get_status(
             "active_devices": len(engine.active_device_ids),
             "active_device_ids": engine.active_device_ids,
             "auto_answer": engine.auto_answer_enabled,
+            "echo": engine.echo_enabled,
             "running_scenarios": engine.get_running_scenario_ids(),
             "scenario_registry": SCENARIO_REGISTRY,
             "ready": engine.ready,
@@ -1999,6 +1982,48 @@ def ws_set_auto_answer(
             "success": True,
             "auto_answer": enabled,
             "conflicts": conflicts,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/set_echo",
+        vol.Required("enabled"): bool,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_echo(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Enable or disable the gateway loopback echo.
+
+    When disabled the simulator still receives frames on /tx (and may still
+    send RP replies via auto-answer) but never echoes them back on /rx,
+    simulating a gateway whose own TX is not heard (RF congestion, weak
+    link, crashed gateway app).  ramses_tx then holds each send in-flight
+    for the full QoS echo timeout — needed to reproduce send-blocking bugs
+    such as ramses_cc issue 1241.
+
+    The flag is intentionally not persisted: echo defaults back to on after
+    every restart/reload of ramses_extras so a forgotten toggle cannot leave
+    the simulator in a broken state.
+    """
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    enabled: bool = msg["enabled"]
+    engine.set_echo_enabled(enabled)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "echo": enabled,
         },
     )
 

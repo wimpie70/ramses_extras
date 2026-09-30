@@ -61,7 +61,7 @@ async def run_tests():
             SZ_TR_OWNER,
         )
         from ramses_tx.schemas import SZ_PORT_NAME, SZ_SERIAL_PORT
-        from ramses_rf.schemas import SZ_SCHEMA
+        from ramses_tx.schemas import SZ_SCHEMA
 
         # Create a mock coordinator
         coord = MagicMock()

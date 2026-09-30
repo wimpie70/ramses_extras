@@ -1481,11 +1481,16 @@ ts_re = re.compile(
     r"^(\\d{{4}}-\\d{{2}}-\\d{{2}}[T ]\\d{{2}}:\\d{{2}}:\\d{{2}}(?:\\.\\d+)?)"
 )
 lines = []
-for p in Path("/config").glob({filename_glob!r}):
-    try:
-        lines += p.read_text().splitlines()
-    except OSError:
-        pass
+# Logs live either directly in /config or in the configured log dir
+# (/config/ramses_rf_logs since ramses_cc 128c1be5, issue 1205).
+# Deliberately not rglob: /config/ramses_rf is the source bind mount and
+# its packet_log.log contains local test traffic, not HA's.
+for root in ("/config", "/config/ramses_rf_logs"):
+    for p in Path(root).glob({filename_glob!r}):
+        try:
+            lines += p.read_text().splitlines()
+        except OSError:
+            pass
 print(json.dumps({{"lines": [
     ln for ln in lines
     if (m := ts_re.match(ln)) and datetime.fromisoformat(m.group(1)) >= since

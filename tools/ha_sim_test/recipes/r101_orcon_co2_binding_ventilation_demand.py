@@ -58,16 +58,18 @@ class GatewayStub:
 
 
 class FanStub:
-    # Minimal fan stub for set_ventilation_demand strategy resolution
+    # Minimal fan stub for set_ventilation_demand strategy resolution.
+    # Public attrs (scheme/strategy) match the DeviceBase accessors
+    # added for ramses_cc issue 1137; the private attrs keep this
+    # recipe working against ramses_rf versions predating them.
 
     def __init__(self, fan_id, scheme="orcon"):
         self.id = fan_id
-        self._scheme = scheme
-        self._strategy = None  # force best_hvac_strategy fallback
-        # ramses_rf reads the public accessors (scheme/strategy/model)
         self.scheme = scheme
-        self.strategy = None
-        self.model = "Orcon"
+        self.strategy = None  # force best_hvac_strategy fallback
+        self.model = "Orcon"  # mirrors the 10E0 description below
+        self._scheme = scheme
+        self._strategy = None
         self.entity_state = MagicMock()
         self.entity_state.get_value = AsyncMock(
             return_value={"description": "Orcon"}

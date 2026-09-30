@@ -1528,3 +1528,53 @@ class TestForceZoneVentilation:
             hass.bus.fire.assert_called()
             fire_args = hass.bus.fire.call_args
             assert fire_args.args[1]["results"] == {}
+
+
+class TestRemoteListenerAttach:
+    """Retry attaching the remote listener until ramses_cc's client is up.
+
+    Regression test for issue 232: at HA boot the ramses_cc gateway
+    client is often not yet created when ramses_extras sets up services.
+    The listener must keep retrying instead of silently staying detached
+    for the whole session (which leaves physical remotes unable to
+    overrule extras control).
+    """
+
+    @pytest.mark.asyncio
+    async def test_listener_retries_until_client_ready(self, hass):
+        """Attach is retried when the ramses_cc client is not yet up."""
+        hass.services.has_service.return_value = False
+
+        # Coordinator only has a usable client on the second attempt
+        mock_coordinator = MagicMock()
+        mock_client = MagicMock()
+        tracked: list = []
+
+        def _track_add_msg_handler(*args, **kwargs):
+            tracked.append(args)
+            return MagicMock()
+
+        mock_client.add_msg_handler = _track_add_msg_handler
+        mock_coordinator.client = mock_client
+
+        with patch(
+            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        ) as mock_cmds:
+            mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
+                side_effect=[None, mock_coordinator]
+            )
+            await async_setup_services(hass)
+
+            # The first attach attempt found no client; a retry must be
+            # scheduled via the event loop instead of giving up.
+            assert tracked == []
+            hass.loop.call_later.assert_called_once()
+            delay, retry_cb = hass.loop.call_later.call_args.args[:2]
+            assert delay == 1
+
+            # Simulate the retry timer firing once the client is up
+            retry_cb()
+            await _drain_pending(hass)
+
+        assert len(tracked) == 1  # add_msg_handler(_handle_remote_msg)
+        assert hass.data[DOMAIN]["_fan_remote_listener_unsubs"]

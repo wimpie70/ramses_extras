@@ -26,6 +26,7 @@ def hass():
     hass.bus.async_listen = MagicMock(return_value=MagicMock())
     hass.services = MagicMock()
     hass.data = {}
+    hass.loop = MagicMock()
     return hass
 
 

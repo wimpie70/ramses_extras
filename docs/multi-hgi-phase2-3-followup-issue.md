@@ -1,12 +1,12 @@
 # Follow-up issue: multi-HGI pool — Phase 2 (serial/hybrid) and Phase 3 (Zigbee)
 
 **Source plan:** [`multi-hgi-plan.md`](../multi-hgi-plan.md) (repo root)
-**version:** Sep 18 2026 23:59
+**version:** Sep 24 2026
 **Scope:** Continue the phased rollout of transport-neutral HGI pooling after
 Phase 1 (MQTT-only pool) ships. Phase 2 adds serial and hybrid USB+MQTT pools;
 Phase 3 adds Zigbee pools once physical hardware is available.
 
-## Current status (2026-09-18)
+## Current status (2026-09-24)
 
 ### Phase 2 — COMPLETE
 
@@ -16,7 +16,7 @@ Phase 2 (serial and hybrid pool) is **complete and verified on real hardware**:
 - **ramses_cc PR 1183** (`fix/issue-1171-pool-config-bugs`): **MERGED** (head `5cf926a9`). Includes pool health entities, config flow improvements, test alignment.
 - **ramses_extras** (commit `2059b77`): dynamic default sensor creation for newly discovered devices + pool health entity integration in `TransportMonitor`.
 
-### Phase 3 — IN PROGRESS (hardware verified, PRs open)
+### Phase 3 — COMPLETE (merged, released in ramses-rf 0.60.7)
 
 Physical Zigbee hardware is available (Elecram ESP32-C6 running
 IMMRMKW's `ramses_esp` firmware, paired via ZHA) and the Zigbee pool is
@@ -34,22 +34,32 @@ disconnect/reconnect cycles (2026-09-18):
 - Regression tests and `ha_sim_test` recipes R126–R128 added; full
   suites run.
 
-**Open Phase-3 PRs (2026-09-18):**
+**Phase-3 PRs — all merged (verified 2026-09-24):**
 
-| PR | Repo | State | CI |
-|----|------|-------|----|
-| 1223 | ramses_rf | draft | green |
-| 1224 | ramses_rf | draft, stacked on 1223 | green |
-| 1219 | ramses_rf | open | green; required by preset-mode code currently in 1206 |
-| 1209 | ramses_cc | open | green; sentinel-HGI hardening |
-| 1206 | ramses_cc | open (non-draft) | test/coverage red — needs a newer ramses-rf release |
-| 225 | ramses_extras | draft | green |
+| PR | Repo | State |
+|----|------|-------|
+| 1223 | ramses_rf | **MERGED** |
+| 1224 | ramses_rf | **MERGED** |
+| 1219 | ramses_rf | **MERGED** |
+| 1209 | ramses_cc | **MERGED** |
+| 1206 | ramses_cc | **MERGED** |
+| 225 | ramses_extras | **MERGED** |
 
-Remaining before release: resolve the open review findings below; land
-ramses_rf PRs 1223, 1224, and 1219; publish a ramses-rf release
-containing them; bump the `ramses-rf==0.60.6` pin in the ramses_cc
-manifest and development requirements; then rebase/retest and land
-ramses_cc PRs 1209 and 1206 before the dependent ramses_extras PR 225.
+`ramses-rf==0.60.7` has been released containing PRs 1208/1223/1224/1219
+and the ramses_cc manifest pin is already bumped to `0.60.7` — the
+release-dependency items listed below are resolved.
+
+### Post-Phase-3 — serial leg resilience (ramses_cc PR 1240, draft)
+
+A live incident on 2026-09-24 (see "Serial identity impersonation
+incident") exposed a new failure class: a *wedged-but-open* USB-serial
+leg combined with an unverified `configured_hgi_id` fallback could mask
+a healthy remote gateway's MQTT feed. ramses_cc **PR 1240**
+(`feat/mqtt-serial-failover`, draft) adds MQTT failover, flap damping,
+an identity guard, and schema-driven serial identity resolution — all
+verified live on `hass`. A follow-up ramses_tx PR for automatic serial
+child reset/reopen is planned (see "Pool-only design and remaining
+follow-ups").
 
 ## Background
 
@@ -704,11 +714,18 @@ entities from the live registry:
   entity_ids (HA keeps `_N` suffixes sticky even after the original
   holder is gone — renaming is manual/registry-level).
 
-### Open PR review findings (2026-09-18)
+### Open PR review findings (2026-09-18) — RESOLVED
 
 The following were found by checking the current GitHub PRs against
 actual code and live behavior. Green CI alone is not sufficient to call
 all PRs ready.
+
+**Update 2026-09-24:** all PRs referenced below have been merged —
+ramses_rf 1223/1224/1219, ramses_cc 1206/1209, ramses_extras 225 — and
+`ramses-rf==0.60.7` (with the ramses_cc manifest pin bumped) contains
+the required ramses_rf changes. The "local fixes pending commit" items
+were committed and shipped in those merges. Retained below for
+historical context.
 
 #### Correctness findings and local fixes pending commit
 
@@ -806,6 +823,103 @@ returned to degraded `2/3`. This second observation confirms the
 startup false-online finding above; the local ramses_rf fix removes the
 30-second pre-check delay.
 
+### Serial identity impersonation incident (2026-09-24)
+
+A multi-hour live outage on `hass` exposed a failure class not covered
+by the original design: **a wedged-but-open serial leg combined with an
+unverified `configured_hgi_id` fallback can impersonate a different,
+healthy gateway**.
+
+Live chain of events:
+
+1. `/dev/ttyACM0` (physically HGI `18:149488`, out of RF range of the
+   fan) opened fine but never answered `!I` — a wedged ESP32
+   USB-serial leg.
+2. `PortTransport` fell back to `configured_hgi_id`, which the
+   coordinator had set to `18:130236` — the *config-derived* primary
+   HGI (first schema HGI), actually a remote MQTT-only ESP32 near the
+   fan.
+3. The pool excluded `18:130236`'s MQTT feed as presumed serial
+   duplicates — the only in-range gateway's frames were dropped.
+4. `18:149488`'s own MQTT feed stayed accepted but heard nothing
+   (out of range) → total silence, all entities stale.
+
+Key insight: the exclusion was keyed on an **unverified** identity
+claim. The wedged dongle could only claim `18:130236` because the
+coordinator handed it that id as a Gap-B fallback.
+
+Fixes in ramses_cc PR 1240 (`feat/mqtt-serial-failover`, draft —
+commits `b7f5b4c9`, `0233a301`, `dd3279d3`, `833ab2f0`), all verified
+live:
+
+- **Serial-silence failover**: MQTT RX timestamps from excluded HGIs
+  are tracked; serial silent >3 min while that feed stays live →
+  `unexclude_hgi_id()` + WARNING + persistent notification. Quiet
+  networks do not trigger it (MQTT traffic is the liveness proof).
+- **HVAC probe after failover**: `RQ 10E0` to each `DeviceHvac`
+  repopulates state immediately instead of waiting for spontaneous
+  traffic.
+- **Identity guard**: exclusion requires the claiming serial child to
+  have `pkts_received > 0` — an unverified fallback identity can no
+  longer mask a live feed. Stray packets don't revive: sustained
+  packet-count growth over 2 watchdog cycles is required
+  (flap damping).
+- **Schema-driven serial identity**: `_get_serial_hgi_id()` resolves
+  the serial port's real identity from the schema's
+  `_preferred_type: usb` entry instead of blindly trusting the
+  config-derived primary id. In the incident setup the serial child
+  now gets `configured_hgi_id=18:149488` (correct) rather than
+  `18:130236`. The serial probe uses the same resolver, so remote
+  MQTT HGIs can no longer be falsely marked USB-capable.
+
+### Pool-only design findings (follow-up)
+
+Question raised during the incident: *why does a "primary" exist at
+all, and can the design be pool-only?*
+
+Findings:
+
+- **The transport layer is already a pool of equals.**
+  `pooled_transport_factory` takes flat `port_names` +
+  `callback_port_names` lists; index 0 is merely "first", not
+  privileged. TX routing is per-child RSSI, health demotion is
+  symmetric, dedup is content-based.
+- **MQTT children in `port_names` are full paho `MqttTransport`
+  members** — the HA-native callback bridge is a ramses_cc workaround
+  for "no paho inside HA", not a library limitation. A CLI-only pool
+  (ramses_cli) could already inject a `PooledTransport` via
+  `Gateway(transport_constructor=...)` today; only the CLI arg
+  plumbing (single `serial_port` key) is missing.
+- **The one irreducible "primary" is the outbound engine identity**
+  (`engine_kwargs["hgi_id"]`). RAMSES devices bind to a specific
+  controller id and ignore commands from stranger HGIs — the RF side
+  must present one logical controller. This is protocol-inherent and
+  cannot be pooled away; but it is *logical*, and PR 1240's failover
+  already decouples it from any single physical leg.
+- **Remaining "primary" plumbing debt** (ramses_cc): required
+  `serial_port.port_name` config field, index-0 assumptions in the
+  pool constructor, `configured_hgi_id` resolution. A full pool-only
+  refactor (primary = schema-level "controller identity", all
+  transports equal children) is a ramses_rf + config-flow change —
+  candidate for a dedicated follow-up issue/PR.
+
+### Remaining follow-up work
+
+- **ramses_tx: automatic serial child reset/reopen** — the wedged
+  `/dev/ttyACM0` could have been cured by close+reopen (the open's DTR
+  pulse resets the ESP32). Needs a per-child restart API on
+  `PooledTransport` keyed by the *serial child/port* (not the claimed
+  HGI id — that can be wrong, as this incident proved), a conservative
+  trigger (sustained serial silence while MQTT children prove live RF
+  traffic), backoff, and post-reopen `!I` verification. Separate PR.
+- **ramses_tx: identity provenance on `PoolChild`** — expose whether
+  `hgi_id` was verified (`!I`/`_PUZZ`) or came from
+  `configured_hgi_id` fallback, so the ramses_cc `pkts_received > 0`
+  proxy guard can become an explicit check.
+- **ramses_cli: multi-port / pool-only CLI mode** — expose the
+  existing `pooled_transport_factory` in the CLI (repeated `--port`
+  or a `ports:` config list); the transport layer needs nothing new.
+
 ---
 
 ## PR dependency order
@@ -830,19 +944,20 @@ Phase 3 — Zigbee pool (hardware verified 2026-09-15/18)
   PR 2
               |
               +--> PR 6: Zigbee identity/lifecycle (un-gate Zigbee in config flow)
-              |      ramses_rf PR 1223 (callback-only pool fallback) — draft, green
-              |      ramses_rf PR 1224 (zigbee availability/reconnect) — draft, green
-              |      ramses_cc PR 1206 (zigbee un-gate + hybrid pool) — ready,
-              |        CI red pending ramses-rf release > 0.60.6
-              |      ramses_extras PR 225 (degraded boot + monitor fixes) — draft
+              |      ramses_rf PR 1223 (callback-only pool fallback) — MERGED
+              |      ramses_rf PR 1224 (zigbee availability/reconnect) — MERGED
+              |      ramses_cc PR 1206 (zigbee un-gate + hybrid pool) — MERGED
+              |      ramses_extras PR 225 (degraded boot + monitor fixes) — MERGED
               |
-              = Phase 3 release (Zigbee pool) = IN PROGRESS
+              = Phase 3 release (Zigbee pool) = DONE (ramses-rf 0.60.7,
+                ramses_cc manifest pins 0.60.7)
 
-  NOTE: ramses_cc pins ramses-rf==0.60.6 (manifest + requirements_dev).
-  PR 1206's tests exercise the unreleased Zigbee transport and
-  preset-mode code, so its test/coverage jobs stay red until a
-  ramses-rf release containing PRs 1208/1223/1224 (and, for the
-  preset-mode tests, PR 1219) is published and the pin is bumped.
+Post-Phase-3 — serial leg resilience (2026-09-24)
+  ramses_cc PR 1240 (serial→MQTT failover + identity guard) — draft
+              |
+              +--> ramses_tx: serial child reset/reopen — not started
+              +--> ramses_tx: PoolChild identity provenance — not started
+              +--> ramses_cli: pool-only multi-port CLI — not started
 ```
 
 ---
@@ -1064,16 +1179,19 @@ marked **[DONE]** and retained for historical context.
   - ramses_rf PR 1195 (PR 4A: MQTT callback contract, merged)
   - ramses_cc PR 1157 (PR 4B: HA-native MQTT pool bridge, merged)
   - ramses_cc PR 1133 (PR 5: membership + config flow + MQTT pool assembly)
-- Phase 2/3 PRs:
+- Phase 2/3 PRs (all merged as of 2026-09-24):
   - ramses_rf PR 1208 (Phase 2 serial/hybrid, **merged** 2026-09-12)
   - ramses_cc PR 1183 (issue 1171 config bugs, **merged**)
-  - ramses_rf PR 1223 (pool callback-only fallback, draft)
-  - ramses_rf PR 1224 (Zigbee availability + reconnect, draft)
-  - ramses_rf PR 1219 (boost-timer builtin commands — preset-mode
-    tests in PR 1206 depend on it)
-  - ramses_cc PR 1206 (Phase 3 Zigbee un-gate + hybrid pool)
+  - ramses_rf PR 1223 (pool callback-only fallback, **merged**)
+  - ramses_rf PR 1224 (Zigbee availability + reconnect, **merged**)
+  - ramses_rf PR 1219 (boost-timer builtin commands, **merged**)
+  - ramses_rf PR 1238 (Orcon 3-byte `31D9` mode fix, **merged**)
+  - ramses_cc PR 1206 (Phase 3 Zigbee un-gate + hybrid pool, **merged**)
+  - ramses_cc PR 1209 (sentinel HGI hardening, **merged**)
   - ramses_extras PR 225 (degraded boot + transport monitor fixes,
-    draft)
+    **merged**)
+- Post-Phase-3 PRs:
+  - ramses_cc PR 1240 (serial→MQTT failover + identity guard, draft)
 - Fixture evidence: `fixtures/fixture_report.md`, `fixtures/pool_test_report.md`
 - Analyzer: `tools/analyze_fixture.py`
 - Hardware feasibility gate report: `docs/serial_hw_gate_report.md`

@@ -129,9 +129,9 @@ class TestValidateRamsesCcConfig:
                 "send_packet": True,
             },
         }
+        entry.runtime_data = coordinator
         hass.config_entries.async_entries.return_value = [entry]
         hass.config.components = {"recorder"}
-        hass.data = {"ramses_cc": {"entry_id": coordinator}}
 
         result = await validate_ramses_cc_config(hass)
 

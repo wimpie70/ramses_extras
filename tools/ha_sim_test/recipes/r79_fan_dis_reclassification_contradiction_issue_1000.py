@@ -11,7 +11,10 @@ but never I/RP 31DA or I 31D9).  The contradiction should:
 
 Also tests that ``_locked: true`` on the device's schema entry suppresses
 the reclassification warning entirely (INFO log instead of WARNING, no
-class_mismatch flag).
+class_mismatch flag), and that ``_faked: true`` suppresses scan-engine
+re-classification: a faked device's packets may be spoofed by the
+integration itself, so packet evidence cannot contradict the declared
+class (false-positive mismatch notification regression).
 
 Strategy:
   - Load a profile with 37:169161 classified as FAN, bound to 32:150000.
@@ -24,9 +27,17 @@ Strategy:
     These are non-FAN packets (a FAN never sends them as src).
   - After 3 packets (threshold), the contradiction detection fires.
   - Reload with _locked: true and verify suppression.
+  - Reload with 37:169161 as _class=DIS + _faked: true and a second
+    device 37:169162 as _class=DIS (physical, not faked).  Inject I 22F1
+    (REM evidence) at both — a faked device spoofs its own traffic, and
+    REM-class behaviour is a subset of DIS (a display IS a remote plus
+    display requests), so NEITHER may be re-classified to REM and no
+    mismatch notification may fire.
 """
 
 from __future__ import annotations
+
+import re
 
 import yaml as _yaml
 
@@ -47,9 +58,19 @@ from ..profile import MIXED_SCHEMA, get_mixed_kl
 # A 37: device that we'll classify as FAN but make behave as a DIS.
 DIS_DEVICE = "37:169161"
 
+# A second 37: device, used in Phase 4 declared as DIS without _faked —
+# REM-class evidence must not "downgrade" it either (REM ⊂ DIS).
+DIS_DEVICE_REAL = "37:169162"
 
-def _build_profile_yaml(*, locked: bool = False) -> str:
+
+def _build_profile_yaml(*, locked: bool = False, faked: bool = False) -> str:
     """Build a mixed-profile YAML with DIS_DEVICE classified as FAN.
+
+    With ``faked=True`` the device is instead declared DIS + faked — the
+    class REM evidence (I 22F1) must NOT re-classify it because the
+    integration spoofs its traffic.  A second declared-DIS device
+    (DIS_DEVICE_REAL, not faked) is added to cover the REM⊂DIS subset
+    rule for physical displays.
 
     IMPORTANT: DIS_DEVICE is NOT added to the FAN's remotes list.
     If it were, the activated REM (37:170000) would send RQ 2411 to
@@ -57,17 +78,23 @@ def _build_profile_yaml(*, locked: bool = False) -> str:
     RP 2411 (FAN evidence), preventing the contradiction detection.
     """
     kl = get_mixed_kl()
-    kl[DIS_DEVICE] = {"class": "FAN"}
+    kl[DIS_DEVICE] = {"class": "DIS", "faked": True} if faked else {"class": "FAN"}
+    if faked:
+        kl[DIS_DEVICE_REAL] = {"class": "DIS"}
 
     schema = dict(MIXED_SCHEMA)
     # Do NOT add DIS_DEVICE to the FAN's remotes — see docstring.
     # Do NOT add _bound — that would create an invalid FAN→FAN binding
     # and trigger a spurious "Cannot bind device" warning.  The
     # contradiction detection only needs _class=FAN in the schema.
-    dis_entry: dict = {"_class": "FAN"}
+    dis_entry: dict = {"_class": "DIS"} if faked else {"_class": "FAN"}
     if locked:
         dis_entry["_locked"] = True
+    if faked:
+        dis_entry["_faked"] = True
     schema[DIS_DEVICE] = dis_entry
+    if faked:
+        schema[DIS_DEVICE_REAL] = {"_class": "DIS"}
 
     profile = {
         "known_list": kl,
@@ -85,17 +112,23 @@ _PACKETS = [
 ]
 
 
-async def _inject_packets(ctx: RecipeContext, label: str) -> None:
-    """Inject the 3 non-FAN packets from DIS_DEVICE to FAN."""
-    for i, (verb, code, payload, desc) in enumerate(_PACKETS):
-        print(f"  [{label}] Injecting packet {i + 1}/{len(_PACKETS)}: {desc}")
+async def _inject_packets(
+    ctx: RecipeContext,
+    label: str,
+    packets: list | None = None,
+    src: str = DIS_DEVICE,
+) -> None:
+    """Inject non-FAN packets from *src* to FAN."""
+    packets = packets or _PACKETS
+    for i, (verb, code, payload, desc) in enumerate(packets):
+        print(f"  [{label}] Injecting packet {i + 1}/{len(packets)}: {desc}")
         try:
             call_service(
                 ctx.token,
                 "ramses_extras",
                 "device_simulator_inject_message",
                 {
-                    "source_id": DIS_DEVICE,
+                    "source_id": src,
                     "dst": FAN,
                     "code": code,
                     "payload": payload,
@@ -125,7 +158,10 @@ async def _force_sync(ctx: RecipeContext) -> None:
 class R79FanDisReclassification(Recipe):
     id = "R79"
     seq = 770
-    title = "FAN→DIS reclassification via contradiction detection (issue 1000)"
+    title = (
+        "FAN→DIS reclassification via contradiction detection (issue 1000),"
+        " incl. _locked/_faked suppression"
+    )
 
     async def run(self, ctx: RecipeContext) -> None:
         ctx.log_section(
@@ -280,6 +316,129 @@ class R79FanDisReclassification(Recipe):
             f"{DIS_DEVICE} schema _class stays FAN (locked)",
             dis_entry_after.get("_class") == "FAN",
             f"_class={dis_entry_after.get('_class')}",
+        )
+
+        # --- Phase 4: _faked + REM⊂DIS suppress reclassification ---
+        ctx.log_section("  Phase 4: _faked and REM-subset-of-DIS suppression")
+
+        profile_faked_yaml = _build_profile_yaml(faked=True)
+        await load_profile_yaml(ctx.token, profile_faked_yaml, speed=0.01)
+        ctx.wait_for_ramses_cc_reload(msg="for _faked profile reload")
+        ctx.refresh_token()
+        wait_for_transport_ready(timeout=30)
+
+        # Re-activate FAN
+        try:
+            await ws_send(
+                ctx.token,
+                {
+                    "type": "ramses_extras/device_simulator/activate_profile_device",
+                    "device_id": FAN,
+                },
+            )
+        except RuntimeError:
+            pass
+
+        ctx.wait(5, "for FAN to stabilize after reload", floor=3.0)
+
+        # Verify _class=DIS + _faked are in the schema
+        schema = get_schema()
+        dis_entry = schema.get(DIS_DEVICE, {})
+        ctx.check(
+            f"{DIS_DEVICE} has _class=DIS in schema",
+            dis_entry.get("_class") == "DIS",
+            f"_class={dis_entry.get('_class')}",
+        )
+        ctx.check(
+            f"{DIS_DEVICE} has _faked=True in schema",
+            dis_entry.get("_faked") is True,
+            f"_faked={dis_entry.get('_faked')}",
+        )
+        real_entry = schema.get(DIS_DEVICE_REAL, {})
+        ctx.check(
+            f"{DIS_DEVICE_REAL} has _class=DIS in schema (not faked)",
+            real_entry.get("_class") == "DIS" and real_entry.get("_faked") is not True,
+            f"entry={real_entry}",
+        )
+
+        # Baseline: count existing re-classification/mismatch log lines so
+        # we can assert this phase adds none (phases 1-3 legitimately
+        # logged some for this device).
+        reclass_pattern = (
+            f"re-classified known device ({DIS_DEVICE}|{DIS_DEVICE_REAL})"
+            f"|class mismatch for ({DIS_DEVICE}|{DIS_DEVICE_REAL})"
+        )
+        log_lines_before = len(grep_ha_log(reclass_pattern))
+
+        # Inject 4x I 22F1 (REM VC-pair evidence) at BOTH declared-DIS
+        # devices — past the contradiction threshold.  Neither must be
+        # re-classified: the faked one spoofs its own traffic, and the
+        # physical one is protected by the REM⊂DIS subset rule.
+        for dev_id in (DIS_DEVICE, DIS_DEVICE_REAL):
+            await _inject_packets(
+                ctx,
+                "faked",
+                packets=[("I", "22F1", "000207", "I 22F1 — REM evidence")] * 4,
+                src=dev_id,
+            )
+        ctx.wait(10, "for contradiction detection (faked)", floor=5.0)
+        await _force_sync(ctx)
+
+        # --- Check 4: no re-classification / mismatch logged ---
+        ctx.check(
+            "Declared DIS devices NOT re-classified by REM evidence",
+            len(grep_ha_log(reclass_pattern)) == log_lines_before,
+            f"log lines before={log_lines_before}, "
+            f"after={len(grep_ha_log(reclass_pattern))}",
+        )
+
+        # --- Check 5: no class_mismatch notification for the faked device ---
+        # The phase-2 notification (if still present) must be dismissed by
+        # check_all_mismatches once the stale flag is cleared.
+        async def _no_mismatch_notif() -> bool:
+            # The mismatches notification bundles ALL health findings
+            # (weak signal, comms quality, ...) — a bare device-id match
+            # would false-positive on e.g. an RSSI line.  Match the
+            # class-mismatch line format: `- <dev_id> — schema=...`.
+            notifications = await get_persistent_notifications(ctx.token)
+            return not any(
+                (
+                    "mismatch" in n.get("title", "").lower()
+                    or "mismatch" in n.get("notification_id", "").lower()
+                )
+                and re.search(
+                    rf"({DIS_DEVICE}|{DIS_DEVICE_REAL})[^\n]*schema=",
+                    n.get("message", ""),
+                )
+                for n in notifications
+            )
+
+        await wait_for_async(
+            _no_mismatch_notif,
+            timeout=30,
+            interval=3,
+            msg="for stale class_mismatch notification to be dismissed",
+            floor=5.0,
+        )
+        ctx.check(
+            "No mismatch notification for faked DIS_DEVICE",
+            await _no_mismatch_notif(),
+            f"notifications={await get_persistent_notifications(ctx.token)}",
+        )
+
+        # --- Check 6: schema _class unchanged for both DIS devices ---
+        schema_after_faked = get_schema()
+        dis_entry_faked = schema_after_faked.get(DIS_DEVICE, {})
+        ctx.check(
+            f"{DIS_DEVICE} schema _class stays DIS (faked)",
+            dis_entry_faked.get("_class") == "DIS",
+            f"_class={dis_entry_faked.get('_class')}",
+        )
+        real_entry_after = schema_after_faked.get(DIS_DEVICE_REAL, {})
+        ctx.check(
+            f"{DIS_DEVICE_REAL} schema _class stays DIS",
+            real_entry_after.get("_class") == "DIS",
+            f"_class={real_entry_after.get('_class')}",
         )
 
         # --- Cleanup: restore default mixed profile ---
