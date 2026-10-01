@@ -1,97 +1,24 @@
 /**
  * Unit tests for template-helpers.js
  * Tests the calculateEfficiency and createTemplateData functions
+ *
+ * Runs under Jest's ESM support (node --experimental-vm-modules), so it
+ * imports the real module instead of maintaining a mock copy.
  */
 
+import { describe, expect, jest, test } from '@jest/globals';
+
+import {
+  calculateEfficiency,
+  createTemplateData,
+} from '../../custom_components/ramses_extras/features/hvac_fan_card/www/hvac_fan_card/templates/template-helpers.js';
+
 // Mock console methods to avoid noise in tests
-global.console = {
+globalThis.console = {
   log: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
   debug: jest.fn(),
-};
-
-// Import the functions we want to test
-// Note: Since these are ES6 modules, we need to handle them appropriately
-// For now, we'll mock the functions since Jest can't handle ES modules easily
-// TODO: Set up proper ES module support or convert to CommonJS
-
-// Mock the functions for testing
-global.calculateEfficiency = function (supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
-  if (supplyTemp === '?' || exhaustTemp === '?' || outdoorTemp === '?' || indoorTemp === '?') {
-    return 75;
-  }
-
-  const supply = parseFloat(supplyTemp);
-  const exhaust = parseFloat(exhaustTemp);
-  const outdoor = parseFloat(outdoorTemp);
-  const indoor = parseFloat(indoorTemp);
-
-  if (isNaN(supply) || isNaN(exhaust) || isNaN(outdoor) || isNaN(indoor)) {
-    return 75;
-  }
-
-  if (indoor <= supply) {
-    const tempDiff = exhaust - outdoor;
-    if (Math.abs(tempDiff) < 0.1) return 75;
-    return Math.max(
-      0,
-      Math.min(100, Math.round(((supply - outdoor) / (exhaust - outdoor)) * 100 * 10) / 10)
-    );
-  }
-
-  const efficiency = ((supply - outdoor) / (indoor - outdoor)) * 100;
-  return Math.max(0, Math.min(100, Math.round(efficiency * 10) / 10));
-};
-
-global.createTemplateData = function (rawData) {
-  const {
-    indoorTemp,
-    outdoorTemp,
-    indoorHumidity,
-    outdoorHumidity,
-    indoorAbsHumidity,
-    outdoorAbsHumidity,
-    supplyTemp,
-    exhaustTemp,
-    fanSpeed,
-    fanMode,
-    co2Level,
-    flowRate,
-    dehumMode,
-    dehumActive,
-    dehumEntitiesAvailable,
-    comfortTemp,
-    timerMinutes = 0,
-    efficiency = 75,
-  } = rawData;
-
-  const calculatedEfficiency =
-    efficiency !== 75
-      ? efficiency
-      : global.calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp);
-
-  return {
-    indoorTemp: indoorTemp || '?',
-    outdoorTemp: outdoorTemp || '?',
-    indoorHumidity: indoorHumidity || '?',
-    outdoorHumidity: outdoorHumidity || '?',
-    supplyTemp: supplyTemp || '?',
-    exhaustTemp: exhaustTemp || '?',
-    indoorAbsHumidity: indoorAbsHumidity,
-    outdoorAbsHumidity: outdoorAbsHumidity,
-    fanSpeed: fanSpeed || 'speed ?',
-    fanMode: fanMode || 'auto',
-    co2Level: co2Level || '?',
-    flowRate: flowRate || '?',
-    efficiency: calculatedEfficiency,
-    dehumMode: dehumMode || 'off',
-    dehumActive: dehumActive || 'off',
-    dehumEntitiesAvailable: dehumEntitiesAvailable || false,
-    comfortTemp: comfortTemp || '?',
-    timerMinutes: timerMinutes,
-    bypassState: 'auto',
-  };
 };
 
 describe('calculateEfficiency', () => {
@@ -139,15 +66,17 @@ describe('createTemplateData', () => {
     outdoorAbsHumidity: '7.1',
     supplyTemp: '20',
     exhaustTemp: '18',
-    fanSpeed: 'medium',
+    supplyFanSpeed: 'medium',
+    exhaustFanSpeed: 'medium',
     fanMode: 'auto',
     co2Level: '400',
-    flowRate: '150',
+    supplyFlowRate: '150',
+    exhaustFlowRate: '150',
     dehumMode: 'off',
     dehumActive: 'off',
     dehumEntitiesAvailable: false,
     comfortTemp: '21',
-    timerMinutes: 0,
+    timerMinutesRemaining: 0,
     efficiency: 75,
   };
 
@@ -160,7 +89,8 @@ describe('createTemplateData', () => {
     expect(result).toHaveProperty('outdoorHumidity');
     expect(result).toHaveProperty('indoorAbsHumidity');
     expect(result).toHaveProperty('outdoorAbsHumidity');
-    expect(result).toHaveProperty('fanSpeed');
+    expect(result).toHaveProperty('supplyFanSpeed');
+    expect(result).toHaveProperty('exhaustFanSpeed');
     expect(result).toHaveProperty('fanMode');
     expect(result).toHaveProperty('efficiency');
   });
@@ -174,7 +104,8 @@ describe('createTemplateData', () => {
     expect(result.outdoorHumidity).toBe('60');
     expect(result.indoorAbsHumidity).toBe('8.2');
     expect(result.outdoorAbsHumidity).toBe('7.1');
-    expect(result.fanSpeed).toBe('medium');
+    expect(result.supplyFanSpeed).toBe('medium');
+    expect(result.exhaustFanSpeed).toBe('medium');
     expect(result.fanMode).toBe('auto');
   });
 
@@ -182,7 +113,7 @@ describe('createTemplateData', () => {
     const incompleteData = {
       indoorTemp: null,
       outdoorTemp: undefined,
-      fanSpeed: '',
+      supplyFanSpeed: '',
       fanMode: null,
     };
 
@@ -190,7 +121,7 @@ describe('createTemplateData', () => {
 
     expect(result.indoorTemp).toBe('?');
     expect(result.outdoorTemp).toBe('?');
-    expect(result.fanSpeed).toBe('speed ?');
+    expect(result.supplyFanSpeed).toBe('?');
     expect(result.fanMode).toBe('auto'); // This has a default
   });
 
