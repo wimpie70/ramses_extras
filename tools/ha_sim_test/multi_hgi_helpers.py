@@ -249,11 +249,9 @@ def _docker_exec_retry(
 
 
 def publish_mqtt_lwt(
-    container: str,
     topic: str,
     status: str,
-    broker: str = "localhost",
-    port: int = 1884,
+    *,
     token: str = "",
     ha_url: str = "http://localhost:8124",
 ) -> bool:
@@ -262,11 +260,8 @@ def publish_mqtt_lwt(
     Uses HA's built-in MQTT integration (homeassistant.components.mqtt),
     never paho (issue 1119 no-paho invariant).
 
-    :param container: Docker container name (unused — HA service is HTTP).
     :param topic: MQTT topic (e.g. 'RAMSES/GATEWAY_SIM/18:149488').
     :param status: Status message ('online' or 'offline').
-    :param broker: Unused (kept for API compat).
-    :param port: Unused (kept for API compat).
     :param token: HA auth token.
     :param ha_url: HA URL.
     :return: True if published successfully.
