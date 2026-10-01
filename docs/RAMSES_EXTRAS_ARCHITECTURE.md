@@ -27,6 +27,7 @@
   - [5.4. 🧩 Helper Modules](#54--helper-modules)
   - [5.5. 🛠️ Framework Services](#55-️-framework-services)
   - [5.6. 📖 Framework Usage Examples](#56--framework-usage-examples)
+  - [5.7. 🔌 Framework API Surface](#57--framework-api-surface)
 - [6. Device Feature Management](#6-device-feature-management)
   - [6.1. Device Filtering](#61-device-filtering)
   - [6.2. DeviceFeatureMatrix](#62-devicefeaturematrix)
@@ -1192,6 +1193,57 @@ class HumidityServices(ExtrasServiceManager):
 ```
 
 ---
+
+## 5.7. 🔌 Framework API Surface
+
+The framework exposes a small set of helpers that are considered stable for
+feature modules to call.  Feature code should use these entry points rather
+than reaching into framework internals or other features' private modules.
+
+### Feature enablement
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `get_enabled_feature_names(hass)` | `feature_utils.py` | Single authority for which features are enabled (dict/list config shapes, `default` always included, importability filter) |
+| `get_enabled_features_dict(hass)` | `feature_utils.py` | Same, returned as a `{name: enabled}` mapping |
+| `extras_registry` | `extras_registry.py` | Shared registry singleton for entities, cards, and WebSocket command metadata |
+
+### Platform and entity helpers
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `PlatformSetup` / `async_setup_platform` | `framework/helpers/platform.py` | Standard platform setup pipeline for feature platforms |
+| `EntityHelpers` | `framework/helpers/entity/core.py` | Entity-id parsing/generation (`parse_entity_id`, template helpers) |
+| `get_feature_entity_mappings` | `framework/helpers/entity/core.py` | Resolve a feature's configured entities for a device |
+| `DeviceFilter` | `framework/helpers/device/filter.py` | Device filtering by `allowed_device_slugs` |
+
+### Automation base classes
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `ExtrasBaseAutomation` | `framework/base_classes/base_automation.py` | Lifecycle, debounced state handling, entity validation, transport monitoring |
+| `ExtrasBaseEntity` | `framework/base_classes/` | Common entity behaviour |
+
+### Message and transport helpers
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `RamsesCommands` | `framework/helpers/ramses_commands.py` | Sending commands to ramses_cc devices |
+| `get_ramses_message_stream(hass)` | `framework/helpers/ramses_message_stream.py` | Shared in-process stream of RAMSES RF messages |
+| `get_transport_monitor()` | `framework/helpers/transport_monitor.py` | Transport availability tracking and per-device freshness |
+
+### Frontend
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `CardRegistry` | `framework/helpers/card_registry.py` | Card registration and deployment bookkeeping |
+| `RamsesBaseCard` | `framework/www/ramses-base-card.js` | Base class for feature cards (hass latch, cards_enabled gate, update throttling) |
+
+### Cross-feature services
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `SensorControlResolver` | `features/sensor_control/resolver.py` | Effective sensor mappings with source overrides (consumed by humidity_control, co2_control, default WebSocket commands) |
 
 # 6. Device Feature Management
 
