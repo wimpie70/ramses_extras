@@ -225,7 +225,7 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
 
     try:
         from ramses_rf import Message, Packet
-    except (ModuleNotFoundError, ImportError):
+    except ModuleNotFoundError, ImportError:
         return None
 
     dtm_raw = msg.get("dtm")
@@ -470,14 +470,22 @@ class TrafficBufferProvider(MessagesProvider):
                 continue
             if code and raw.get("code") != code:
                 continue
-            # TODO: since/until filtering by dtm if needed
             dtm = (
                 raw.get("time_fired")
                 if isinstance(raw.get("time_fired"), str)
                 else raw.get("dtm")
             )
+            # since/until filtering by dtm (ISO strings compare
+            # lexicographically).  Entries without a dtm string are
+            # excluded when a since filter is active, consistent with
+            # the packet-log provider.
+            dtm_str = dtm if isinstance(dtm, str) else ""
+            if since and dtm_str < since:
+                continue
+            if until and dtm_str > until:
+                continue
             msg = NormalizedMessage(
-                dtm=dtm if isinstance(dtm, str) else "",
+                dtm=dtm_str,
                 src=raw.get("src", ""),
                 dst=raw.get("dst", ""),
                 verb=raw.get("verb"),
