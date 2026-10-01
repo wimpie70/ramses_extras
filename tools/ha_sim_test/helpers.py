@@ -592,7 +592,7 @@ def get_schema_retry(max_tries: int = 5, delay: int = 3) -> dict:
 
 
 def get_known_list() -> dict:
-    """Get the known_list from .storage.
+    """Get the known_list derived from the schema in .storage.
 
     Phase 4: known_list is no longer stored in config entry options.
     It is derived from the schema.  This function now extracts device IDs
@@ -618,9 +618,6 @@ def get_known_list() -> dict:
     for e in data["data"]["entries"]:
         if e["domain"] == "ramses_cc":
             options = e.get("options", {})
-            # Phase 4: check known_list first (backward compat), then schema
-            if "known_list" in options:
-                return options["known_list"]
             schema = options.get("schema", {})
             # Extract device IDs from schema — top-level device keys
             import re

@@ -90,12 +90,12 @@ class TestHvacFanCardConst:
         assert "boolean_configs" in FEATURE_DEFINITION
         assert "device_entity_mapping" in FEATURE_DEFINITION
         assert "websocket_commands" in FEATURE_DEFINITION
-        assert "card_config" in FEATURE_DEFINITION
+        assert "card_configs" in FEATURE_DEFINITION
         assert "required_entities" in FEATURE_DEFINITION
         assert "entity_mappings" in FEATURE_DEFINITION
 
-        # Check card_config is set
-        assert FEATURE_DEFINITION["card_config"]["card_id"] == "hvac-fan-card"
+        # Check card_configs is set
+        assert FEATURE_DEFINITION["card_configs"][0]["card_id"] == "hvac-fan-card"
 
         # Check required_entities is empty
         assert FEATURE_DEFINITION["required_entities"] == {}
