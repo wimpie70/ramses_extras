@@ -1239,16 +1239,3 @@ def ws_subscribe_messages(
     unsubscribe = stream.subscribe(_on_message)
     connection.subscriptions[msg["id"]] = unsubscribe
     connection.send_result(msg["id"], {"success": True})
-
-
-def register_default_websocket_commands() -> dict[str, str]:
-    """Register WebSocket commands for the default feature.
-
-    :return: Dictionary mapping command names to their WebSocket command types
-    """
-    from .const import DEFAULT_WEBSOCKET_COMMANDS
-
-    return {
-        **DEFAULT_WEBSOCKET_COMMANDS,
-        "websocket_info": "ramses_extras/websocket_info",  # Utility for cmd discovery
-    }

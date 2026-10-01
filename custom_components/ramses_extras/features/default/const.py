@@ -100,6 +100,8 @@ WS_CMD_GET_ZONE_COORDINATOR_STATE = "ramses_extras/get_zone_coordinator_state"
 WS_CMD_SET_ZONE_DEMAND = "ramses_extras/set_zone_demand"
 WS_CMD_CLEAR_ZONE_DEMAND = "ramses_extras/clear_zone_demand"
 WS_CMD_SUBSCRIBE_MESSAGES = "ramses_extras/subscribe_messages"
+WS_CMD_WEBSOCKET_INFO = "ramses_extras/websocket_info"
+WS_CMD_RUN_ZONE_ACTUATION = "ramses_extras/run_zone_actuation"
 
 # WebSocket commands for the default feature
 DEFAULT_WEBSOCKET_COMMANDS = {
@@ -123,6 +125,8 @@ DEFAULT_WEBSOCKET_COMMANDS = {
     "set_zone_demand": WS_CMD_SET_ZONE_DEMAND,
     "clear_zone_demand": WS_CMD_CLEAR_ZONE_DEMAND,
     "subscribe_messages": WS_CMD_SUBSCRIBE_MESSAGES,
+    "websocket_info": WS_CMD_WEBSOCKET_INFO,
+    "run_zone_actuation": WS_CMD_RUN_ZONE_ACTUATION,
 }
 
 # Default feature constant configuration for EntityManager
