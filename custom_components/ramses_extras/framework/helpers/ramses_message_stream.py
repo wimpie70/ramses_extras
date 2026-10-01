@@ -219,7 +219,7 @@ class RamsesMessageStream:
                 parsed_msg = Message(dto)
                 data["decoded_payload"] = parsed_msg.payload
                 return
-            except (PacketInvalid, Exception):
+            except PacketInvalid, Exception:
                 pass
 
         # Keep payload as string if we couldn't parse
@@ -246,11 +246,8 @@ class RamsesMessageStream:
 
         # Capture RSSI for the traffic buffer / viewer.
         # ramses_rf's Message stores rssi directly on the message (msg.rssi),
-        # not on a _pkt attribute.  Fall back to pkt.rssi for older versions
-        # or other message types that do use _pkt.
+        # not on a _pkt attribute.
         rssi = getattr(msg, "rssi", None)
-        if not isinstance(rssi, str) or not rssi:
-            rssi = getattr(pkt, "rssi", None)
         if isinstance(rssi, str) and rssi and rssi != "...":
             data["rssi"] = rssi
 
@@ -270,7 +267,7 @@ class RamsesMessageStream:
             try:
                 parsed_msg = Message(msg)
                 data["decoded_payload"] = parsed_msg.payload
-            except (PacketInvalid, Exception):
+            except PacketInvalid, Exception:
                 self._parse_payload(data)
         else:
             self._parse_payload(data)

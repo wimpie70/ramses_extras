@@ -112,6 +112,47 @@ class TestTrafficBufferProvider:
         msgs = await provider.get_messages(hass, limit=1)
         assert len(msgs) == 1
 
+    @pytest.mark.asyncio
+    async def test_get_messages_since_until(self, hass, sample_traffic_buffer):
+        """Test since/until dtm filtering."""
+        provider = TrafficBufferProvider()
+        # Add an entry without a dtm to check it is excluded by `since`
+        for event in [
+            {"src": "01:000001", "dst": "01:000002", "verb": "I"},
+            *sample_traffic_buffer,
+        ]:
+            provider.ingest_event(event)
+
+        # since excludes the first (dtm < since) and the dtm-less entry
+        msgs = await provider.get_messages(hass, since="2026-01-20T10:00:00.500000")
+        assert [m.dtm for m in msgs] == ["2026-01-20T10:00:01.000000"]
+
+        # until excludes the second entry; entries without a dtm are
+        # kept ("" > until is false, same as the packet-log provider)
+        msgs = await provider.get_messages(hass, until="2026-01-20T10:00:00.500000")
+        assert [m.dtm for m in msgs] == ["", "2026-01-20T10:00:00.000000"]
+
+        # combined since+until
+        msgs = await provider.get_messages(
+            hass,
+            since="2026-01-20T09:59:59.000000",
+            until="2026-01-20T10:00:00.500000",
+        )
+        assert [m.dtm for m in msgs] == ["2026-01-20T10:00:00.000000"]
+
+        # time_fired key is honoured as the dtm source
+        provider2 = TrafficBufferProvider()
+        provider2.ingest_event(
+            {
+                "time_fired": "2026-01-20T11:00:00.000000",
+                "src": "01:000001",
+                "dst": "01:000002",
+                "verb": "I",
+            }
+        )
+        msgs = await provider2.get_messages(hass, since="2026-01-20T12:00:00.000000")
+        assert msgs == []
+
 
 class TestPacketLogParser:
     """Test PacketLogParser."""
