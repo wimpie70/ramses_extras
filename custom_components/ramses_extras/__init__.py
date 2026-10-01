@@ -45,7 +45,6 @@ import logging
 from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
-from .framework.helpers.ramses_tx_patches import apply_ramses_tx_patches
 from .framework.setup.entry import (
     async_remove_entry as _async_remove_entry,
 )
@@ -63,11 +62,6 @@ from .framework.setup.yaml import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-# Patch ramses_tx FSM to prevent AssertionError crashes on unsolicited packets
-# TODO: remove once ramses_rf >= 0.61.0 is the minimum dependency
-# (FSM deleted in ramses-rf/ramses_rf#1174, patches are now a no-op)
-apply_ramses_tx_patches()
 
 # Make setup functions available at module level for Home Assistant
 async_setup = _async_setup
