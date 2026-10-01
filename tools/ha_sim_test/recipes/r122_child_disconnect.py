@@ -89,7 +89,6 @@ class R122ChildDisconnect(Recipe):
 
         # Disconnect secondary via LWT offline (HA mqtt.publish, no paho)
         lwt_ok = publish_mqtt_lwt(
-            inst.name,
             f"RAMSES/GATEWAY_SIM/{hgi_secondary}",
             "offline",
             token=ctx.token,
@@ -149,7 +148,6 @@ class R122ChildDisconnect(Recipe):
 
         # Reconnect secondary
         lwt_ok = publish_mqtt_lwt(
-            inst.name,
             f"RAMSES/GATEWAY_SIM/{hgi_secondary}",
             "online",
             token=ctx.token,

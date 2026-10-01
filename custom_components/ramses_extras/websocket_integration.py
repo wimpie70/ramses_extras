@@ -257,44 +257,21 @@ def get_enabled_websocket_commands(
     all_commands = extras_registry.get_all_websocket_commands()
 
     # Check if feature has commands registered in the registry
-    feature_commands = all_commands.get(feature_name, {})
+    feature_commands: dict[str, str] = all_commands.get(feature_name, {})
 
     if not feature_commands:
         _LOGGER.debug("No WebSocket commands registered for feature: %s", feature_name)
         return {}
 
-    # Check if the feature is enabled based on configuration
-    config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
-
-    # Default feature is always considered enabled
-    if feature_name == "default":
+    # Defer to the shared feature authority (feature_utils) for enablement;
+    # it already handles dict/list config shapes, the "default" feature,
+    # and importability of the feature.
+    if feature_name in get_enabled_feature_names(hass):
         _LOGGER.debug(
-            "Default feature always enabled, returning %d commands",
+            "Feature %s enabled, returning %d commands",
+            feature_name,
             len(feature_commands),
         )
         return feature_commands
 
-    if config_entry and hasattr(config_entry, "options"):
-        enabled_features_raw = (
-            config_entry.data.get("enabled_features")
-            or config_entry.options.get("enabled_features")
-            or {}
-        )
-
-        if isinstance(enabled_features_raw, dict):
-            is_enabled = bool(enabled_features_raw.get(feature_name, False))
-        elif isinstance(enabled_features_raw, list):
-            is_enabled = feature_name in enabled_features_raw
-        else:
-            is_enabled = False
-
-        if is_enabled:
-            _LOGGER.debug(
-                "Feature %s enabled in config, returning %d commands",
-                feature_name,
-                len(feature_commands),
-            )
-            return feature_commands
-
-    # Fallback: if no config entry, deny non-default features
     return {}
