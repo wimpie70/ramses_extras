@@ -122,7 +122,7 @@ def test_load_feature_definitions_with_feature_definition_dict(registry):
         "number_configs": {"n1": {"name": "N1"}},
         "boolean_configs": {"b1": {"name": "B1"}},
         "device_entity_mapping": {"32": {"sensor": ["s1"]}},
-        "card_config": {"card_id": "card1", "type": "card1"},
+        "card_configs": [{"card_id": "card1", "type": "card1"}],
         "websocket_commands": websocket_commands,
     }
 

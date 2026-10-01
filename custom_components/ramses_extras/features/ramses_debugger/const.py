@@ -77,9 +77,7 @@ FEATURE_DEFINITION = {
     "boolean_configs": RAMSES_DEBUGGER_BOOLEAN_CONFIGS,
     "device_entity_mapping": RAMSES_DEBUGGER_DEVICE_ENTITY_MAPPING,
     "websocket_commands": RAMSES_DEBUGGER_WEBSOCKET_COMMANDS,
-    "card_config": (
-        RAMSES_DEBUGGER_CARD_CONFIGS[0] if RAMSES_DEBUGGER_CARD_CONFIGS else {}
-    ),
+    "card_configs": RAMSES_DEBUGGER_CARD_CONFIGS,
     "required_entities": {},
 }
 

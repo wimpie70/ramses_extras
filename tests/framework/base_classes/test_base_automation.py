@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -348,6 +349,53 @@ class TestExtrasBaseAutomation:
             assert automation._periodic_check_handle is None
             assert "sensor.test_32_153289" in automation._specific_entity_ids
 
+    @pytest.mark.asyncio
+    async def test_check_for_entities_periodically_stops_with_listeners(
+        self, automation
+    ):
+        """Test periodic check stops when listeners exist, even without new ones."""
+        automation._specific_entity_ids = {"sensor.test_32_153289"}
+        mock_handle = MagicMock()
+        automation._periodic_check_handle = mock_handle
+
+        async def mock_register():
+            """Mock register that finds no additional entities."""
+
+        with patch.object(
+            automation, "_register_entity_listeners", side_effect=mock_register
+        ):
+            await automation._check_for_entities_periodically(None)
+
+            mock_handle.assert_called_once()
+            assert automation._periodic_check_handle is None
+
+    @pytest.mark.asyncio
+    async def test_check_for_entities_periodically_keeps_running(self, automation):
+        """Test periodic check continues while no listeners are registered."""
+        automation._specific_entity_ids = set()
+        mock_handle = MagicMock()
+        automation._periodic_check_handle = mock_handle
+
+        async def mock_register():
+            """Mock register that still finds nothing."""
+
+        with patch.object(
+            automation, "_register_entity_listeners", side_effect=mock_register
+        ):
+            await automation._check_for_entities_periodically(None)
+
+            mock_handle.assert_not_called()
+            assert automation._periodic_check_handle is mock_handle
+
+    def test_handle_state_change_dispatches_via_add_job(self, automation):
+        """Test _handle_state_change schedules processing via hass.add_job."""
+        automation._handle_state_change("sensor.test_32_153289", None, MagicMock())
+
+        automation.hass.add_job.assert_called_once()
+        job = automation.hass.add_job.call_args.args[0]
+        assert asyncio.iscoroutine(job)
+        job.close()  # avoid un-awaited coroutine warning
+
     def test_entity_matches_patterns(self, automation):
         """Test entity pattern matching."""
         automation._entity_patterns = ["sensor.test_*", "switch.control_*"]
@@ -423,6 +471,56 @@ class TestExtrasBaseAutomation:
             assert result is True
             # Verify that hass.states.get was called with the expected entity ID
             hass.states.get.assert_called_with("sensor.temperature_32_153289")
+
+    @pytest.mark.asyncio
+    async def test_validate_device_entities_warns_once(self, automation):
+        """Test empty required-entities warning is logged only once."""
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_required_entity_ids_for_feature_device",
+                return_value=[],
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation._LOGGER"
+            ) as mock_logger,
+        ):
+            assert await automation._validate_device_entities("32_153289") is False
+            assert await automation._validate_device_entities("32_153289") is False
+
+            mock_logger.warning.assert_called_once()
+            mock_logger.debug.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_validate_device_entities_warns_again_after_entities_appear(
+        self, automation, hass
+    ):
+        """Test warn-once flag resets once required entities are configured."""
+        mock_state = MagicMock()
+        mock_state.state = "25.0"
+        hass.states.get.return_value = mock_state
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_required_entity_ids_for_feature_device"
+            ) as mock_get,
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation._LOGGER"
+            ) as mock_logger,
+        ):
+            mock_get.return_value = []
+            assert await automation._validate_device_entities("32_153289") is False
+
+            mock_get.return_value = ["sensor.temperature_32_153289"]
+            assert await automation._validate_device_entities("32_153289") is True
+
+            mock_get.return_value = []
+            assert await automation._validate_device_entities("32_153289") is False
+
+            assert mock_logger.warning.call_count == 2
 
     def test_extract_device_id(self, automation):
         """Test device ID extraction from entity ID."""

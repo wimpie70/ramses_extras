@@ -11,7 +11,7 @@
  * @param {string|number} outdoorTemp - Outdoor air temperature
  * @returns {number} Efficiency percentage (0-100) or 75 if data invalid
  */
-function calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
+export function calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
   // console.log('🔍 DEBUG - Efficiency calculation inputs:', { supplyTemp, exhaustTemp, outdoorTemp, indoorTemp });
 
   if (supplyTemp === '?' || exhaustTemp === '?' || outdoorTemp === '?' || indoorTemp === '?') {
