@@ -126,7 +126,7 @@ def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
                     "packet_log_prefix"
                 ) or packet_log.get("prefix")
                 path = _resolve_packet_log_base_path(
-                    packet_log_path or packet_log.get("file_name"),
+                    packet_log_path,
                     packet_log_prefix,
                 )
                 if path:
@@ -136,16 +136,6 @@ def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
                     for candidate in _default_packet_log_candidates(packet_log_prefix):
                         if candidate.exists():
                             return candidate
-
-            # v1 fallback: ramses_rf.file_name (migration may not have copied it)
-            ramses_rf = merged_config.get("ramses_rf")
-            if isinstance(ramses_rf, dict):
-                path = _resolve_packet_log_base_path(
-                    ramses_rf.get("file_name"),
-                    "packet_log",
-                )
-                if path:
-                    return path
 
             for candidate in _default_packet_log_candidates():
                 if candidate.exists():
@@ -332,7 +322,7 @@ def read_file_lines(path: Path, start_line: int, end_line: int) -> list[str]:
                     break
                 if current_line >= start_line:
                     lines.append(line.rstrip("\n\r"))
-    except (OSError, UnicodeDecodeError):
+    except OSError, UnicodeDecodeError:
         return []
 
     return lines
