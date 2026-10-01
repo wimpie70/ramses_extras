@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.core import HomeAssistant
 
@@ -225,7 +225,7 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
 
     try:
         from ramses_rf import Message, Packet
-    except (ModuleNotFoundError, ImportError):
+    except ModuleNotFoundError, ImportError:
         return None
 
     dtm_raw = msg.get("dtm")
@@ -470,14 +470,22 @@ class TrafficBufferProvider(MessagesProvider):
                 continue
             if code and raw.get("code") != code:
                 continue
-            # TODO: since/until filtering by dtm if needed
             dtm = (
                 raw.get("time_fired")
                 if isinstance(raw.get("time_fired"), str)
                 else raw.get("dtm")
             )
+            # since/until filtering by dtm (ISO strings compare
+            # lexicographically).  Entries without a dtm string are
+            # excluded when a since filter is active, consistent with
+            # the packet-log provider.
+            dtm_str = dtm if isinstance(dtm, str) else ""
+            if since and dtm_str < since:
+                continue
+            if until and dtm_str > until:
+                continue
             msg = NormalizedMessage(
-                dtm=dtm if isinstance(dtm, str) else "",
+                dtm=dtm_str,
                 src=raw.get("src", ""),
                 dst=raw.get("dst", ""),
                 verb=raw.get("verb"),
@@ -751,6 +759,29 @@ def _parse_ha_log_line_as_packet(line: str) -> NormalizedMessage | None:
     )
 
 
+def _provider_cache(hass: HomeAssistant) -> dict[str, MessagesProvider]:
+    """Return the per-instance provider cache stored in hass.data."""
+    domain_data = hass.data.setdefault("ramses_extras", {})
+    feature_data = domain_data.setdefault("ramses_debugger", {})
+    return cast(
+        dict[str, MessagesProvider],
+        feature_data.setdefault("message_providers", {}),
+    )
+
+
+def _provider_instance(
+    cache: dict[str, MessagesProvider],
+    source: str,
+    factory: type[MessagesProvider],
+) -> MessagesProvider:
+    """Return a cached provider instance, creating it on first use."""
+    provider = cache.get(source)
+    if provider is None:
+        provider = factory()
+        cache[source] = provider
+    return provider
+
+
 async def get_messages_from_sources(
     hass: HomeAssistant,
     sources: list[str],
@@ -779,7 +810,12 @@ async def get_messages_from_sources(
     :return: List of JSON-serializable dicts.
     """
     providers: dict[str, MessagesProvider] = {}
-    # Initialize providers (TODO: cache/reuse instances)
+    # Provider instances are stateless; cache and reuse them per HA
+    # instance.
+    try:
+        provider_cache = _provider_cache(hass)
+    except Exception:
+        provider_cache = {}
     if "traffic_buffer" in sources:
         # Use the shared buffer provider from TrafficCollector if available
         try:
@@ -789,13 +825,21 @@ async def get_messages_from_sources(
             if collector is not None and hasattr(collector, "get_buffer_provider"):
                 providers["traffic_buffer"] = collector.get_buffer_provider()
             else:
-                providers["traffic_buffer"] = TrafficBufferProvider()
+                providers["traffic_buffer"] = _provider_instance(
+                    provider_cache, "traffic_buffer", TrafficBufferProvider
+                )
         except Exception:
-            providers["traffic_buffer"] = TrafficBufferProvider()
+            providers["traffic_buffer"] = _provider_instance(
+                provider_cache, "traffic_buffer", TrafficBufferProvider
+            )
     if "packet_log" in sources:
-        providers["packet_log"] = PacketLogProvider()
+        providers["packet_log"] = _provider_instance(
+            provider_cache, "packet_log", PacketLogProvider
+        )
     if "ha_log" in sources:
-        providers["ha_log"] = HALogProvider()
+        providers["ha_log"] = _provider_instance(
+            provider_cache, "ha_log", HALogProvider
+        )
 
     all_messages: list[NormalizedMessage] = []
     for source in sources:

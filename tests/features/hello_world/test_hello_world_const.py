@@ -154,10 +154,10 @@ class TestHelloWorldConst:
         assert "device_entity_mapping" in FEATURE_DEFINITION
         assert "websocket_commands" in FEATURE_DEFINITION
         assert "entity_mappings" in FEATURE_DEFINITION
-        assert "card_config" in FEATURE_DEFINITION
+        assert "card_configs" in FEATURE_DEFINITION
 
-        # Check card_config is set
-        assert FEATURE_DEFINITION["card_config"]["card_id"] == "hello-world"
+        # Check card_configs is set
+        assert FEATURE_DEFINITION["card_configs"][0]["card_id"] == "hello-world"
 
     def test_entity_mappings(self):
         """Test entity mappings contain expected entities."""

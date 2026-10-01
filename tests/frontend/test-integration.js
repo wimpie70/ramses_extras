@@ -3,8 +3,10 @@
  * Tests the complete card rendering and interaction flow
  */
 
+import { describe, expect, jest, test, beforeEach } from '@jest/globals';
+
 // Mock console methods to avoid noise in tests
-global.console = {
+globalThis.console = {
   log: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
@@ -19,8 +21,8 @@ describe('HvacFanCard Integration', () => {
 
   beforeEach(() => {
     // Set up DOM environment
-    window = global.window;
-    document = global.document;
+    window = globalThis.window;
+    document = globalThis.document;
     dom = { window };
 
     // Mock Home Assistant
@@ -32,7 +34,7 @@ describe('HvacFanCard Integration', () => {
     window.customCards = [];
 
     // Mock console to reduce noise
-    global.console = {
+    globalThis.console = {
       log: jest.fn(),
       warn: jest.fn(),
       error: jest.fn(),
