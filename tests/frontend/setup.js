@@ -3,12 +3,14 @@
  */
 
 // Mock TextEncoder/TextDecoder for jsdom
-const { TextEncoder, TextDecoder } = require('util');
-global.TextEncoder = TextEncoder;
-global.TextDecoder = TextDecoder;
+import { TextEncoder, TextDecoder } from 'node:util';
+import { jest, beforeEach, afterEach } from '@jest/globals';
+
+globalThis.TextEncoder = TextEncoder;
+globalThis.TextDecoder = TextDecoder;
 
 // Mock Home Assistant WebSocket connection
-global.WebSocket = class MockWebSocket {
+globalThis.WebSocket = class MockWebSocket {
   constructor() {
     this.readyState = 1; // OPEN
     this.onopen = null;
@@ -27,7 +29,7 @@ global.WebSocket = class MockWebSocket {
 };
 
 // Mock ResizeObserver
-global.ResizeObserver = class MockResizeObserver {
+globalThis.ResizeObserver = class MockResizeObserver {
   constructor(callback) {
     this.callback = callback;
   }
@@ -46,7 +48,7 @@ global.ResizeObserver = class MockResizeObserver {
 };
 
 // Mock IntersectionObserver
-global.IntersectionObserver = class MockIntersectionObserver {
+globalThis.IntersectionObserver = class MockIntersectionObserver {
   constructor(callback) {
     this.callback = callback;
   }
@@ -65,7 +67,7 @@ global.IntersectionObserver = class MockIntersectionObserver {
 };
 
 // Mock HTMLElement for testing
-global.HTMLElement = class MockHTMLElement {
+globalThis.HTMLElement = class MockHTMLElement {
   constructor() {
     this.shadowRoot = null;
     this.innerHTML = '';

@@ -70,9 +70,6 @@ FEATURE_DEFINITION = {
     "binary_sensor_configs": DEVICE_STATUS_CARD_BINARY_SENSOR_CONFIGS,
     "device_entity_mapping": DEVICE_STATUS_CARD_DEVICE_ENTITY_MAPPING,
     "websocket_commands": DEVICE_STATUS_CARD_WEBSOCKET_COMMANDS,
-    "card_config": (
-        DEVICE_STATUS_CARD_CARD_CONFIGS[0] if DEVICE_STATUS_CARD_CARD_CONFIGS else {}
-    ),
     "card_configs": DEVICE_STATUS_CARD_CARD_CONFIGS,
     "required_entities": {},
     "entity_mappings": {},

@@ -129,7 +129,7 @@ FEATURE_DEFINITION = {
         "sensor_state": "binary_sensor.hello_world_status_{device_id}",
     },
     # Cards that this feature manages
-    "card_config": HELLO_WORLD_CARD_CONFIGS[0] if HELLO_WORLD_CARD_CONFIGS else {},
+    "card_configs": HELLO_WORLD_CARD_CONFIGS,
 }
 
 
