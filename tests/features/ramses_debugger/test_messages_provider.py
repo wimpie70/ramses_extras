@@ -868,3 +868,21 @@ class TestGetMessagesFromSources:
                     dedupe=False,
                 )
                 assert len(msgs) == 2
+
+    @pytest.mark.asyncio
+    async def test_provider_instances_reused(self, hass):
+        """Providers are cached in hass.data and reused across calls."""
+        hass.data = {"ramses_extras": {"ramses_debugger": {}}}
+
+        with patch(
+            "custom_components.ramses_extras.features.ramses_debugger.messages_provider.PacketLogProvider"
+        ) as mock_packet:  # noqa: E501
+            mock_packet.return_value.get_messages = AsyncMock(return_value=[])
+
+            await get_messages_from_sources(hass, sources=["packet_log"])
+            await get_messages_from_sources(hass, sources=["packet_log"])
+
+            # Constructor only ran once; the cached instance was reused
+            assert mock_packet.call_count == 1
+            cache = hass.data["ramses_extras"]["ramses_debugger"]["message_providers"]
+            assert cache["packet_log"] is mock_packet.return_value
