@@ -881,18 +881,6 @@ export class RamsesBaseCard extends HTMLElement {
       // connectionChanged to attach the ready listener.
       const needsReadyLatch = !this._hassLoaded;
 
-      // Temporarily disable cards_enabled check to get HVAC card working
-      // TODO: Debug cards_enabled latch timing issue
-      // if (!this._cardsEnabled) {
-      //   this._ensureCardsEnabledLoaded();
-      //   if (!this._cardsEnabled) {
-      //     this._hassLoaded = false;
-      //     this.clearUpdateThrottle();
-      //     this.renderFeatureInitializing();
-      //     return;
-      //   }
-      // }
-
       // Note: do not set _hassLoaded = true here.
       // We wait for the websocket 'ready' event (or timeout) to avoid
       // cards becoming interactive while HA is still initializing.

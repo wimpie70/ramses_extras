@@ -19,4 +19,4 @@ Targets:
 
 ## Notes / findings
 
-- `ramses-base-card.js` currently contains a TODO about `cards_enabled` latch timing.
+- `ramses-base-card.js` latch timing was investigated; the live `cards_enabled` guard remains in `render()`/`_scheduleRender()` and the dead commented-out block in the `hass` setter has been removed.
