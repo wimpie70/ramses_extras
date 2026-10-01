@@ -109,7 +109,6 @@ class R121Failover(Recipe):
 
         # Disconnect primary via LWT offline (HA mqtt.publish, no paho)
         lwt_ok = publish_mqtt_lwt(
-            inst.name,
             f"RAMSES/GATEWAY_SIM/{hgi_primary}",
             "offline",
             token=ctx.token,
@@ -171,7 +170,6 @@ class R121Failover(Recipe):
 
         # Reconnect primary
         lwt_ok = publish_mqtt_lwt(
-            inst.name,
             f"RAMSES/GATEWAY_SIM/{hgi_primary}",
             "online",
             token=ctx.token,
