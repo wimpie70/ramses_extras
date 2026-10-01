@@ -85,9 +85,6 @@ FEATURE_DEFINITION: dict[str, Any] = {
     "boolean_configs": SENSOR_CONTROL_BOOLEAN_CONFIGS,
     "device_entity_mapping": SENSOR_CONTROL_DEVICE_ENTITY_MAPPING,
     "websocket_commands": SENSOR_CONTROL_WEBSOCKET_COMMANDS,
-    "card_config": (
-        SENSOR_CONTROL_CARD_CONFIGS[0] if SENSOR_CONTROL_CARD_CONFIGS else {}
-    ),
     "card_configs": SENSOR_CONTROL_CARD_CONFIGS,
 }
 

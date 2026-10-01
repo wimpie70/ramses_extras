@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.ramses_extras import websocket_integration
+from custom_components.ramses_extras import feature_utils, websocket_integration
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.extras_registry import extras_registry
 
@@ -317,10 +317,14 @@ async def test_get_enabled_websocket_commands_list_config(hass):
         "websocket_integration": {"registered": True},
         "config_entry": mock_entry,
     }
-    with patch.object(
-        extras_registry,
-        "get_all_websocket_commands",
-        return_value={"f1": {"c1": "t1"}},
+    with (
+        patch.object(
+            extras_registry,
+            "get_all_websocket_commands",
+            return_value={"f1": {"c1": "t1"}},
+        ),
+        # fake feature names aren't importable; bypass that filter
+        patch.object(feature_utils, "_is_feature_importable", return_value=True),
     ):
         assert websocket_integration.get_enabled_websocket_commands(hass, "f1") == {
             "c1": "t1"
@@ -418,14 +422,40 @@ async def test_get_enabled_websocket_commands_list_enabled(hass):
         "websocket_integration": {"registered": True},
         "config_entry": mock_entry,
     }
-    with patch.object(
-        extras_registry,
-        "get_all_websocket_commands",
-        return_value={"f1": {"c1": "t1"}},
+    with (
+        patch.object(
+            extras_registry,
+            "get_all_websocket_commands",
+            return_value={"f1": {"c1": "t1"}},
+        ),
+        patch.object(feature_utils, "_is_feature_importable", return_value=True),
     ):
         assert websocket_integration.get_enabled_websocket_commands(hass, "f1") == {
             "c1": "t1"
         }
+
+
+@pytest.mark.asyncio
+async def test_get_enabled_websocket_commands_uses_feature_utils(hass):
+    """Test that enablement defers to feature_utils.get_enabled_feature_names."""
+    hass.data[DOMAIN] = {"websocket_integration": {"registered": True}}
+    with (
+        patch.object(
+            extras_registry,
+            "get_all_websocket_commands",
+            return_value={"hvac_fan_card": {"c1": "t1"}},
+        ),
+        patch.object(
+            websocket_integration,
+            "get_enabled_feature_names",
+            return_value=["hvac_fan_card"],
+        ) as mock_get_enabled,
+    ):
+        assert websocket_integration.get_enabled_websocket_commands(
+            hass, "hvac_fan_card"
+        ) == {"c1": "t1"}
+        assert websocket_integration.get_enabled_websocket_commands(hass, "f2") == {}
+        mock_get_enabled.assert_called_with(hass)
 
 
 @pytest.mark.asyncio

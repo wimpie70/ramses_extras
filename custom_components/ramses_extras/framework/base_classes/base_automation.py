@@ -91,14 +91,17 @@ class ExtrasBaseAutomation(ABC):
         # _validate_device_entities calls for the same device when a
         # batch of state-change tasks are all created in the same tick.
         self._validating_devices: set[str] = set()
+        self._required_entities_warned = False
+        self._device_id_unparsed_logged: set[str] = set()
 
         # Transport state tracking
         self._transport_available: bool = True
         self._transport_monitor = get_transport_monitor()
 
         _LOGGER.info(
-            f"ExtrasBaseAutomation initialized for feature: {feature_id}, "
-            f"debounce: {debounce_seconds}s"
+            "ExtrasBaseAutomation initialized for feature: %s, debounce: %ss",
+            feature_id,
+            debounce_seconds,
         )
 
     # ==================== LIFECYCLE MANAGEMENT ====================
@@ -111,8 +114,8 @@ class ExtrasBaseAutomation(ABC):
         """
         if self._active:
             _LOGGER.warning(
-                f"Automation {self.feature_id} already started, "
-                f"skipping duplicate start"
+                "Automation %s already started, skipping duplicate start",
+                self.feature_id,
             )
             return
 
@@ -188,7 +191,7 @@ class ExtrasBaseAutomation(ABC):
         if not self._active:
             return
 
-        _LOGGER.info(f"Stopping {self.feature_id} automation")
+        _LOGGER.info("Stopping %s automation", self.feature_id)
 
         # Cancel periodic entity check if running
         if self._periodic_check_handle:
@@ -209,7 +212,7 @@ class ExtrasBaseAutomation(ABC):
         self._active = False
         self._specific_entity_ids.clear()
 
-        _LOGGER.info(f"{self.feature_id} automation stopped")
+        _LOGGER.info("%s automation stopped", self.feature_id)
 
     # ==================== ENTITY PATTERNS ====================
 
@@ -333,8 +336,8 @@ class ExtrasBaseAutomation(ABC):
         if listeners_registered == 0:
             if not self._no_entities_logged:
                 _LOGGER.info(
-                    f"No entities found yet for {self.feature_id}, "
-                    "setting up periodic check"
+                    "No entities found yet for %s, setting up periodic check",
+                    self.feature_id,
                 )
                 self._no_entities_logged = True
             else:
@@ -362,12 +365,9 @@ class ExtrasBaseAutomation(ABC):
             return
 
         # Schedule async processing in a thread-safe manner
-        def _create_async_task() -> None:
-            self.hass.async_create_task(
-                self._async_handle_state_change(entity_id, old_state, new_state)
-            )
-
-        self.hass.loop.call_soon_threadsafe(_create_async_task)
+        self.hass.add_job(
+            self._async_handle_state_change(entity_id, old_state, new_state)
+        )
 
     async def _async_handle_state_change(
         self, entity_id: str, old_state: State | None, new_state: State | None
@@ -394,9 +394,11 @@ class ExtrasBaseAutomation(ABC):
         if not device_id:
             # This is expected for external sensors (e.g. area sensors
             # configured in sensor_control) whose entity_ids don't
-            # contain a ramses device_id pattern.  Log at debug to
-            # avoid spamming the log on every sensor update.
-            _LOGGER.debug("Could not extract device_id from entity: %s", entity_id)
+            # contain a ramses device_id pattern.  Log once per entity
+            # at debug to avoid spamming the log on every sensor update.
+            if entity_id not in self._device_id_unparsed_logged:
+                _LOGGER.debug("Could not extract device_id from entity: %s", entity_id)
+                self._device_id_unparsed_logged.add(entity_id)
             return
 
         # Check validation cooldown for this device
@@ -474,7 +476,7 @@ class ExtrasBaseAutomation(ABC):
         for timer in self._change_timers.values():
             timer.cancel()
         self._change_timers.clear()
-        _LOGGER.debug(f"Cancelled all debouncing timers for {self.feature_id}")
+        _LOGGER.debug("Cancelled all debouncing timers for %s", self.feature_id)
 
     # ==================== ENTITY MANAGEMENT ====================
 
@@ -506,14 +508,13 @@ class ExtrasBaseAutomation(ABC):
             )
 
         # Try to register listeners again
-        listeners_before = len(self._specific_entity_ids)
         await self._register_entity_listeners()
         listeners_after = len(self._specific_entity_ids)
 
         # Stop periodic checks once we have listeners
-        if listeners_after > listeners_before and self._periodic_check_handle:
+        if listeners_after > 0 and self._periodic_check_handle:
             _LOGGER.info(
-                f"Found entities for {self.feature_id}, stopping periodic check"
+                "Found entities for %s, stopping periodic check", self.feature_id
             )
             self._periodic_check_handle()
             self._periodic_check_handle = None
@@ -548,10 +549,19 @@ class ExtrasBaseAutomation(ABC):
             device_id,
         )
         if not required_entity_ids:
-            _LOGGER.warning(
-                f"No required entities found for feature: {self.feature_id}"
-            )
+            if not self._required_entities_warned:
+                _LOGGER.warning(
+                    "No required entities found for feature: %s", self.feature_id
+                )
+                self._required_entities_warned = True
+            else:
+                _LOGGER.debug(
+                    "No required entities found for feature: %s", self.feature_id
+                )
             return False
+
+        # Reset the warn-once flag now that entities are configured again
+        self._required_entities_warned = False
 
         missing_entities: list[str] = []
         for entity_id in required_entity_ids:
@@ -561,8 +571,10 @@ class ExtrasBaseAutomation(ABC):
 
         if missing_entities:
             _LOGGER.debug(
-                f"Device {device_id}: Missing {self.feature_id} "
-                f"entities - {missing_entities}"
+                "Device %s: Missing %s entities - %s",
+                device_id,
+                self.feature_id,
+                missing_entities,
             )
             return False
 
@@ -664,7 +676,7 @@ class ExtrasBaseAutomation(ABC):
         else:
             try:
                 return float(state_value)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 # If numeric conversion fails, treat as boolean
                 return state_value.lower() in ["on", "true", "1", "yes"]
 
@@ -695,17 +707,19 @@ class ExtrasBaseAutomation(ABC):
                 # Call the entity's set_state method to update the binary sensor
                 entity.set_state(is_on)
                 _LOGGER.debug(
-                    f"Updated binary sensor {entity_id} to {is_on} via set_state()"
+                    "Updated binary sensor %s to %s via set_state()",
+                    entity_id,
+                    is_on,
                 )
                 return True
             _LOGGER.warning(
-                f"Binary sensor entity {entity_id} not found or doesn't have "
-                f"set_state method"
+                "Binary sensor entity %s not found or doesn't have set_state method",
+                entity_id,
             )
             return False
 
         except Exception as e:
-            _LOGGER.error(f"Failed to update binary sensor {entity_id}: {e}")
+            _LOGGER.error("Failed to update binary sensor %s: %s", entity_id, e)
             return False
 
     async def toggle_binary_sensor_state(self, entity_id: str) -> bool:
@@ -721,7 +735,7 @@ class ExtrasBaseAutomation(ABC):
             # Get current state
             state = self.hass.states.get(entity_id)
             if not state:
-                _LOGGER.warning(f"Binary sensor {entity_id} not found")
+                _LOGGER.warning("Binary sensor %s not found", entity_id)
                 return False
 
             # Determine current state as boolean
@@ -731,7 +745,7 @@ class ExtrasBaseAutomation(ABC):
             return await self.set_binary_sensor_state(entity_id, not current_is_on)
 
         except Exception as e:
-            _LOGGER.error(f"Failed to toggle binary sensor {entity_id}: {e}")
+            _LOGGER.error("Failed to toggle binary sensor %s: %s", entity_id, e)
             return False
 
     # ==================== TRANSPORT MONITORING ====================
@@ -803,7 +817,7 @@ class ExtrasBaseAutomation(ABC):
         """Check if a specific target device is replying recently."""
         if not self._transport_monitor.is_monitoring:
             return True
-        return self._transport_monitor.is_device_available(device_id)
+        return bool(self._transport_monitor.is_device_available(device_id))
 
     # ==================== ABSTRACT METHODS ====================
 
