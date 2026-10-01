@@ -22,7 +22,8 @@
 
 ## Developer experience (Later)
 
- - [ ] **Add an explicit “Framework API surface” doc section**
+ - [x] **Add an explicit “Framework API surface” doc section**
    - What helpers are stable for features to call (PlatformSetup, CardRegistry, SensorControlResolver, etc.).
+   - Done: see section 5.7 "Framework API Surface" in docs/RAMSES_EXTRAS_ARCHITECTURE.md.
  - [ ] **Add a cleanup test**
    - A unit test asserting there are no duplicate registries / unused registries for WS.
