@@ -3,8 +3,10 @@
  * Tests the main card functionality and event handling
  */
 
+import { describe, expect, jest, test, beforeEach } from '@jest/globals';
+
 // Mock console methods to avoid noise in tests
-global.console = {
+globalThis.console = {
   log: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
