@@ -67,9 +67,6 @@ FEATURE_DEFINITION = {
     "boolean_configs": HVAC_FAN_CARD_BOOLEAN_CONFIGS,
     "device_entity_mapping": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
     "websocket_commands": HVAC_FAN_CARD_WEBSOCKET_COMMANDS,
-    # Support both single card_config (backward compat)
-    # and card_configs list (multi-card)
-    "card_config": HVAC_FAN_CARD_CONFIGS[0] if HVAC_FAN_CARD_CONFIGS else {},
     "card_configs": HVAC_FAN_CARD_CONFIGS,
     "required_entities": {},
     "entity_mappings": {

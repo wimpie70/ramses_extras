@@ -181,15 +181,10 @@ class RamsesEntityRegistry:
                                 if entity not in existing_entities:
                                     existing_entities.append(entity)
 
-                # Handle card configs - support both single card_config
-                # and list of card_configs
-                card_config = feature_definition.get("card_config")
+                # Handle card configs (list of per-card dicts)
                 card_configs = feature_definition.get("card_configs", [])
 
-                # Normalize to a list
                 cards_to_register: list[dict[str, Any]] = []
-                if isinstance(card_config, dict):
-                    cards_to_register.append(card_config)
                 if isinstance(card_configs, list):
                     cards_to_register.extend(card_configs)
 

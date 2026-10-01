@@ -21,16 +21,8 @@ CONF_ENABLED_FEATURES = "enabled_features"
 CONF_ENABLED_WEB_SOCKETS = "enabled_web_sockets"
 CONF_MESSAGE_EVENTS = "message_events"
 
-# UI/Frontend constants (still needed for backward compatibility)
+# UI/Frontend constants
 CARD_FOLDER = "www"
-CARD_HELPERS_FOLDER = "framework/www"
-FEATURE_FOLDER = "features"
-
-# Web assets path constants (for reorganization)
-WEB_ASSETS_BASE = "www"
-FEATURE_WEB_BASE = "features"
-CARD_DEPLOYMENT_PATH = "www/ramses_extras"
-HELPERS_DEPLOYMENT_PATH = "www/ramses_extras/helpers"
 
 # Feature identifiers
 FEATURE_ID_DEFAULT = "default"
