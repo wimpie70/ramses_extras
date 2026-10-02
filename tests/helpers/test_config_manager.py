@@ -74,16 +74,6 @@ def test_config_manager_validate(config_manager):
     config_manager._config["enabled"] = "yes"
     assert config_manager.validate_config() is False
 
-    # Invalid numeric types
-    config_manager._config["enabled"] = True
-    config_manager._config["min_value"] = "ten"  # type: ignore[assignment]
-    assert config_manager.validate_config() is False
-
-    # Invalid range
-    config_manager._config["min_value"] = 20
-    config_manager._config["max_value"] = 10
-    assert config_manager.validate_config() is False
-
 
 def test_config_manager_get_set(config_manager):
     """Test get and set methods."""
@@ -111,34 +101,6 @@ def test_config_manager_helpers(config_manager):
 
     config_manager.reset_to_defaults()
     assert config_manager.get("enabled") == config_manager._default_config["enabled"]
-
-
-def test_config_manager_numeric_validation(config_manager):
-    """Test get_numeric_validation."""
-    config_manager._config = {"val": 50}
-    assert config_manager.get_numeric_validation("val", 0, 100) is True
-    assert config_manager.get_numeric_validation("val", 60, 100) is False
-
-    config_manager._config["val"] = "abc"  # type: ignore[assignment]
-    assert config_manager.get_numeric_validation("val", 0, 100) is False
-
-
-def test_config_manager_string_validation(config_manager):
-    """Test get_string_validation."""
-    config_manager._config = {"val": "test"}
-    assert (
-        config_manager.get_string_validation("val", min_length=2, max_length=10) is True
-    )
-    assert (
-        config_manager.get_string_validation("val", choices=["test", "other"]) is True
-    )
-
-    assert config_manager.get_string_validation("val", min_length=5) is False
-    assert config_manager.get_string_validation("val", max_length=2) is False
-    assert config_manager.get_string_validation("val", choices=["other"]) is False
-
-    config_manager._config["val"] = 123  # type: ignore[assignment]
-    assert config_manager.get_string_validation("val") is False
 
 
 def test_config_validator():

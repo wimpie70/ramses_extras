@@ -81,63 +81,12 @@ class HumidityConfig(ExtrasConfigManager):
             _LOGGER.error("Configuration validation error: %s", e)
             return False
 
-    def get_config_schema(self) -> dict[str, Any]:
-        """Get humidity control configuration schema for UI.
-
-        :return: Configuration schema dictionary
-        """
-        return self.get_config_schema_dict()
-
-    def get_config_schema_dict(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "title": "Enable Humidity Control",
-                    "description": "Enable or disable the humidity control feature",
-                    "default": True,
-                },
-                "automation_enabled": {
-                    "type": "boolean",
-                    "title": "Enable Automation",
-                    "description": "Enable automatic humidity control",
-                    "default": False,
-                },
-                "default_min_humidity": {
-                    "type": "numeric",
-                    "title": "Minimum Humidity",
-                    "description": "Default minimum humidity threshold (%)",
-                    "min": 0,
-                    "max": 100,
-                    "default": 40,
-                },
-                "default_max_humidity": {
-                    "type": "numeric",
-                    "title": "Maximum Humidity",
-                    "description": "Default maximum humidity threshold (%)",
-                    "min": 0,
-                    "max": 100,
-                    "default": 60,
-                },
-                "activation_threshold": {
-                    "type": "numeric",
-                    "title": "Activation Threshold",
-                    "description": "Humidity differential threshold (g/m³)",
-                    "min": 0.1,
-                    "max": 10.0,
-                    "default": 1.0,
-                },
-            },
-        }
-
     # Inherited methods from ExtrasConfigManager:
     # - async_load()
     # - async_save()
     # - get(), set(), get_all(), update()
     # - is_enabled(), is_automation_enabled()
     # - reset_to_defaults()
-    # - get_numeric_validation(), get_boolean_validation(), get_string_validation()
 
     # Additional humidity-specific convenience methods
     def get_humidity_thresholds(self) -> dict[str, float]:
