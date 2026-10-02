@@ -518,6 +518,7 @@ async def test_get_all_entities_from_feature_non_dict_definition(hass):
             "sensor": {},
             "switch": {},
             "number": {},
+            "select": {},
         }
 
 

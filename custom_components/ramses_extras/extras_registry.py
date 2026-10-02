@@ -137,25 +137,17 @@ class RamsesEntityRegistry:
                     )
                     return
 
-                sensor_configs = feature_definition.get("sensor_configs", {})
-                if isinstance(sensor_configs, dict):
-                    self._sensor_configs.update(sensor_configs)
+                # Single authority for the platform -> *-configs mapping
+                # lives in framework/helpers/entity/core.py; import lazily to
+                # keep this module standalone (no package dependencies).
+                from .framework.helpers.entity.core import get_config_sources
 
-                switch_configs = feature_definition.get("switch_configs", {})
-                if isinstance(switch_configs, dict):
-                    self._switch_configs.update(switch_configs)
-
-                number_configs = feature_definition.get("number_configs", {})
-                if isinstance(number_configs, dict):
-                    self._number_configs.update(number_configs)
-
-                select_configs = feature_definition.get("select_configs", {})
-                if isinstance(select_configs, dict):
-                    self._select_configs.update(select_configs)
-
-                boolean_configs = feature_definition.get("boolean_configs", {})
-                if isinstance(boolean_configs, dict):
-                    self._boolean_configs.update(boolean_configs)
+                config_sources = get_config_sources(feature_definition)
+                self._sensor_configs.update(config_sources["sensor"])
+                self._switch_configs.update(config_sources["switch"])
+                self._number_configs.update(config_sources["number"])
+                self._select_configs.update(config_sources["select"])
+                self._boolean_configs.update(config_sources["binary_sensor"])
 
                 device_mapping = feature_definition.get("device_entity_mapping")
                 if isinstance(device_mapping, dict):

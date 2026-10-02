@@ -99,5 +99,6 @@ This file tracks *big picture* cleanup and refactoring work across the integrati
   - `vol.Schema` (selectors) is the single representation for HA UI.
   - `get_config_schema()` was removed — no non-HA consumers existed.
 
-- Consolidate entity metadata derivation:
-  - Ensure there is exactly one authority for “what entities exist for a feature” (avoid duplication between helpers and config-flow manager).
+- Consolidate entity metadata derivation — done:
+  - `framework/helpers/entity/core.py` is the single authority: `get_feature_definition()` / `get_config_sources()` / `get_required_entities()` cover feature-const introspection; `get_required_entity_ids_for_feature_device()` and `get_feature_entity_mappings()` cover entity derivation.
+  - `websocket_base._get_all_entities_from_feature()` and `extras_registry` no longer re-implement the platform→`*_configs` mapping; both use `get_config_sources()`.

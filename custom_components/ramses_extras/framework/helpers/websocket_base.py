@@ -6,7 +6,7 @@ This module provides minimal WebSocket infrastructure for Ramses Extras features
 import asyncio
 import importlib
 import logging
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
 
 from .entity.entity_id_fallbacks import (
     extract_unique_id_from_param_entity,
@@ -427,28 +427,20 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
                     const_module_path,
                 )
 
-            feature_definition = getattr(feature_module, "FEATURE_DEFINITION", None)
-            if not isinstance(feature_definition, dict):
-                feature_definition = {}
+            from custom_components.ramses_extras.framework.helpers.entity.core import (
+                get_config_sources,
+                get_feature_definition,
+            )
 
-            def _as_config_dict(value: Any) -> dict[str, dict[str, Any]]:
-                return value if isinstance(value, dict) else {}
-
-            all_entities: dict[str, dict[str, Any]] = {
-                "switch": _as_config_dict(feature_definition.get("switch_configs")),
-                "binary_sensor": _as_config_dict(
-                    feature_definition.get("boolean_configs")
-                ),
-                "sensor": _as_config_dict(feature_definition.get("sensor_configs")),
-                "number": _as_config_dict(feature_definition.get("number_configs")),
-            }
+            feature_definition = get_feature_definition(feature_module)
+            all_entities = get_config_sources(feature_definition)
 
             self._logger.debug(
                 "Found all entities for %s: %s",
                 self.feature_identifier,
                 all_entities,
             )
-            return all_entities
+            return cast("dict[str, Any]", all_entities)
 
         except Exception as error:
             self._logger.error(
@@ -468,11 +460,12 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
         :return: Dictionary of parsed entity configurations with actual entity IDs
         """
         parsed_entities: dict[str, dict[str, Any]] = {
-            "switch": {},
-            "binary_sensor": {},
-            "sensor": {},
-            "number": {},
+            platform: {}
+            for platform in ("switch", "binary_sensor", "sensor", "number", "select")
         }
+        parsed_entities.update(
+            {platform: {} for platform in all_entities if isinstance(platform, str)}
+        )
 
         from custom_components.ramses_extras.framework.helpers.entity.core import (
             parse_entity_mapping_templates_for_device,

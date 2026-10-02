@@ -61,8 +61,11 @@ def _import_feature_const_module(feature_id: str) -> Any:
     )
 
 
-def _get_feature_definition(feature_module: Any) -> dict[str, Any]:
-    """Return the feature's FEATURE_DEFINITION dict, or an empty dict."""
+def get_feature_definition(feature_module: Any) -> dict[str, Any]:
+    """Return the feature's FEATURE_DEFINITION dict, or an empty dict.
+
+    :param feature_module: An imported feature const module
+    """
     feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
     return feature_def_obj if isinstance(feature_def_obj, dict) else {}
 
@@ -75,8 +78,14 @@ def _is_optional_entity(config: Any) -> bool:
     return isinstance(config, dict) and config.get("optional") is True
 
 
-def _get_config_sources(feature_def: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Map each entity platform to its configured entity dict."""
+def get_config_sources(feature_def: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Map each entity platform to its configured entity dict.
+
+    Single authority for the platform -> *-configs key mapping used for
+    feature entity introspection.
+
+    :param feature_def: A feature's FEATURE_DEFINITION dict
+    """
     return {
         "sensor": _as_config_dict(feature_def.get("sensor_configs")),
         "switch": _as_config_dict(feature_def.get("switch_configs")),
@@ -107,7 +116,7 @@ def _required_entities_from_def(feature_def: dict[str, Any]) -> dict[str, list[s
     required_entities = feature_def.get("required_entities")
     if isinstance(required_entities, dict) and required_entities:
         return required_entities
-    return _derive_required_entities(_get_config_sources(feature_def))
+    return _derive_required_entities(get_config_sources(feature_def))
 
 
 async def get_required_entities(feature_id: str) -> dict[str, list[str]]:
@@ -207,9 +216,9 @@ def _get_required_entity_ids_for_feature_device_sync(
     device_id: str,
 ) -> list[str]:
     feature_module = _import_feature_const_module(feature_id)
-    feature_def = _get_feature_definition(feature_module)
+    feature_def = get_feature_definition(feature_module)
 
-    config_sources = _get_config_sources(feature_def)
+    config_sources = get_config_sources(feature_def)
     # Feature defs are untyped config — validate entry shapes at runtime.
     required_entities: dict[Any, Any] = _required_entities_from_def(feature_def)
 
@@ -256,7 +265,7 @@ def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
     :return: Dictionary mapping entity types to entity names
     """
     feature_module = _import_feature_const_module(feature_id)
-    feature_def = _get_feature_definition(feature_module)
+    feature_def = get_feature_definition(feature_module)
 
     required_entities = _required_entities_from_def(feature_def)
     if required_entities:
