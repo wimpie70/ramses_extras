@@ -322,7 +322,7 @@ class TestEntityHelpersEdgeCases:
         """Test generating entity patterns for invalid feature."""
         with patch(
             "custom_components.ramses_extras.framework.helpers.entity.core."
-            "_get_required_entities_from_feature"
+            "get_required_entities"
         ) as mock_get:
             mock_get.return_value = {}
 
