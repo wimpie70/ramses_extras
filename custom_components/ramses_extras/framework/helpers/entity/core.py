@@ -50,7 +50,67 @@ _DEVICE_ID_CACHE: dict[str, tuple[str | None, int]] = {}
 _FORMAT_CACHE: dict[str, str] = {}
 
 
-async def _get_required_entities_from_feature(feature_id: str) -> dict[str, list[str]]:
+def _import_feature_const_module(feature_id: str) -> Any:
+    """Import a feature's const module (blocking operation).
+
+    :param feature_id: Feature identifier
+    :return: The imported ``features.<feature_id>.const`` module
+    """
+    return importlib.import_module(
+        f"custom_components.ramses_extras.features.{feature_id}.const"
+    )
+
+
+def _get_feature_definition(feature_module: Any) -> dict[str, Any]:
+    """Return the feature's FEATURE_DEFINITION dict, or an empty dict."""
+    feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
+    return feature_def_obj if isinstance(feature_def_obj, dict) else {}
+
+
+def _as_config_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _is_optional_entity(config: Any) -> bool:
+    return isinstance(config, dict) and config.get("optional") is True
+
+
+def _get_config_sources(feature_def: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Map each entity platform to its configured entity dict."""
+    return {
+        "sensor": _as_config_dict(feature_def.get("sensor_configs")),
+        "switch": _as_config_dict(feature_def.get("switch_configs")),
+        "number": _as_config_dict(feature_def.get("number_configs")),
+        "select": _as_config_dict(feature_def.get("select_configs")),
+        "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
+    }
+
+
+def _derive_required_entities(
+    config_sources: dict[str, dict[str, Any]],
+) -> dict[str, list[str]]:
+    """Derive required entity names per platform from non-optional configs."""
+    derived: dict[str, list[str]] = {}
+    for platform, configs in config_sources.items():
+        entity_names = [
+            entity_name
+            for entity_name, config in configs.items()
+            if not _is_optional_entity(config)
+        ]
+        if entity_names:
+            derived[platform] = entity_names
+    return derived
+
+
+def _required_entities_from_def(feature_def: dict[str, Any]) -> dict[str, list[str]]:
+    """Resolve required entities declared in, or derived from, a feature def."""
+    required_entities = feature_def.get("required_entities")
+    if isinstance(required_entities, dict) and required_entities:
+        return required_entities
+    return _derive_required_entities(_get_config_sources(feature_def))
+
+
+async def get_required_entities(feature_id: str) -> dict[str, list[str]]:
     """Get required entities from the feature's own const.py module.
 
     :param feature_id: Feature identifier
@@ -146,43 +206,12 @@ def _get_required_entity_ids_for_feature_device_sync(
     feature_id: str,
     device_id: str,
 ) -> list[str]:
-    feature_module_path = f"custom_components.ramses_extras.features.{feature_id}.const"
-    feature_module = importlib.import_module(feature_module_path)
+    feature_module = _import_feature_const_module(feature_id)
+    feature_def = _get_feature_definition(feature_module)
 
-    feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
-    feature_def: dict[str, Any] = (
-        feature_def_obj if isinstance(feature_def_obj, dict) else {}
-    )
-
-    required_entities = feature_def.get("required_entities")
-    if not isinstance(required_entities, dict):
-        required_entities = {}
-
-    def _as_config_dict(value: Any) -> dict[str, Any]:
-        return value if isinstance(value, dict) else {}
-
-    def _is_optional_entity(config: Any) -> bool:
-        return isinstance(config, dict) and config.get("optional") is True
-
-    config_sources: dict[str, dict[str, Any]] = {
-        "sensor": _as_config_dict(feature_def.get("sensor_configs")),
-        "switch": _as_config_dict(feature_def.get("switch_configs")),
-        "number": _as_config_dict(feature_def.get("number_configs")),
-        "select": _as_config_dict(feature_def.get("select_configs")),
-        "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
-    }
-
-    if not required_entities:
-        derived_required: dict[str, list[str]] = {}
-        for platform, configs in config_sources.items():
-            entity_names = [
-                entity_name
-                for entity_name, config in configs.items()
-                if not _is_optional_entity(config)
-            ]
-            if entity_names:
-                derived_required[platform] = entity_names
-        required_entities = derived_required
+    config_sources = _get_config_sources(feature_def)
+    # Feature defs are untyped config — validate entry shapes at runtime.
+    required_entities: dict[Any, Any] = _required_entities_from_def(feature_def)
 
     entity_ids: list[str] = []
     device_id_underscore = device_id.replace(":", "_")
@@ -209,7 +238,7 @@ def _get_required_entity_ids_for_feature_device_sync(
 
 
 def get_required_entities_from_feature_sync(feature_id: str) -> dict[str, list[str]]:
-    """Synchronous wrapper for _get_required_entities_from_feature.
+    """Synchronous wrapper for get_required_entities.
 
     :param feature_id: Feature identifier
     :return: Dictionary mapping entity types to entity names
@@ -226,46 +255,12 @@ def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
     :param feature_id: Feature identifier
     :return: Dictionary mapping entity types to entity names
     """
-    # Import the feature's const module
-    feature_module_path = f"custom_components.ramses_extras.features.{feature_id}.const"
+    feature_module = _import_feature_const_module(feature_id)
+    feature_def = _get_feature_definition(feature_module)
 
-    feature_module = importlib.import_module(feature_module_path)
-
-    feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
-    feature_def: dict[str, Any] = (
-        feature_def_obj if isinstance(feature_def_obj, dict) else {}
-    )
-
-    required_entities = feature_def.get("required_entities")
-    if isinstance(required_entities, dict) and required_entities:
+    required_entities = _required_entities_from_def(feature_def)
+    if required_entities:
         return required_entities
-
-    def _as_config_dict(value: Any) -> dict[str, Any]:
-        return value if isinstance(value, dict) else {}
-
-    def _is_optional_entity(config: Any) -> bool:
-        return isinstance(config, dict) and config.get("optional") is True
-
-    config_sources: dict[str, dict[str, Any]] = {
-        "sensor": _as_config_dict(feature_def.get("sensor_configs")),
-        "switch": _as_config_dict(feature_def.get("switch_configs")),
-        "number": _as_config_dict(feature_def.get("number_configs")),
-        "select": _as_config_dict(feature_def.get("select_configs")),
-        "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
-    }
-
-    derived_required: dict[str, list[str]] = {}
-    for platform, configs in config_sources.items():
-        entity_names = [
-            entity_name
-            for entity_name, config in configs.items()
-            if not _is_optional_entity(config)
-        ]
-        if entity_names:
-            derived_required[platform] = entity_names
-
-    if derived_required:
-        return derived_required
 
     # Get required_entities from the const data
     const_key = f"{feature_id.upper()}_CONST"
@@ -617,7 +612,7 @@ class EntityHelpers:
         :return: List of entity patterns
         """
         patterns = []
-        required_entities = await _get_required_entities_from_feature(feature_id)
+        required_entities = await get_required_entities(feature_id)
 
         for entity_type, entity_names in required_entities.items():
             entity_base_type = _singularize_entity_type(entity_type)

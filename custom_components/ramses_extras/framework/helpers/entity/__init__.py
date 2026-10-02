@@ -7,6 +7,7 @@ from .core import (
     get_entities_for_device,
     get_entity_device_id,
     get_feature_entity_mappings,
+    get_required_entities,
     parse_entity_id,
 )
 from .entity_id_fallbacks import (
@@ -28,6 +29,7 @@ __all__ = [
     "get_entity_device_id",
     "parse_entity_id",
     "get_feature_entity_mappings",
+    "get_required_entities",
     "iter_ramses_cc_entity_ids",
     "iter_ramses_cc_entity_id_fallbacks",
 ]

@@ -7,7 +7,6 @@ from homeassistant.core import HomeAssistant, State
 
 from custom_components.ramses_extras.framework.helpers.entity.core import (
     EntityHelpers,
-    _get_required_entities_from_feature,
     build_entity_mapping_templates,
     build_frontend_entity_mapping_templates,
     filter_entities_by_patterns,
@@ -16,6 +15,7 @@ from custom_components.ramses_extras.framework.helpers.entity.core import (
     get_entities_for_device,
     get_entity_device_id,
     get_feature_entity_mappings,
+    get_required_entities,
     parse_entity_id,
 )
 
@@ -368,7 +368,7 @@ class TestBuildFrontendEntityMappingTemplates:
         # This test would need to mock the feature import, which is complex
         # For now, test that it returns a list
         with patch(
-            "custom_components.ramses_extras.framework.helpers.entity.core._get_required_entities_from_feature"
+            "custom_components.ramses_extras.framework.helpers.entity.core.get_required_entities"
         ) as mock_get:
             mock_get.return_value = {
                 "sensors": ["temp", "humidity"],
@@ -401,7 +401,7 @@ class TestBuildFrontendEntityMappingTemplates:
     async def test_generate_entity_patterns_for_feature_empty_required(self):
         """Test generating entity patterns when required_entities is empty."""
         with patch(
-            "custom_components.ramses_extras.framework.helpers.entity.core._get_required_entities_from_feature"
+            "custom_components.ramses_extras.framework.helpers.entity.core.get_required_entities"
         ) as mock_get:
             # Return empty dict for required_entities
             mock_get.return_value = {}
@@ -480,7 +480,7 @@ class TestBuildFrontendEntityMappingTemplates:
 
 
 class TestGetRequiredEntitiesFromFeature:
-    """Test cases for _get_required_entities_from_feature function."""
+    """Test cases for get_required_entities function."""
 
     @pytest.mark.asyncio
     async def test_get_required_entities_from_feature_with_required_entities(self):
@@ -492,7 +492,7 @@ class TestGetRequiredEntitiesFromFeature:
             }
             mock_import.return_value = mock_module
 
-            result = await _get_required_entities_from_feature("test_feature")
+            result = await get_required_entities("test_feature")
             assert result == {"sensors": ["temp", "humidity"]}
 
     @pytest.mark.asyncio
@@ -511,7 +511,7 @@ class TestGetRequiredEntitiesFromFeature:
             }
             mock_import.return_value = mock_module
 
-            result = await _get_required_entities_from_feature("test_feature")
+            result = await get_required_entities("test_feature")
             assert result == {
                 "sensor": ["temp"],
                 "switch": ["fan"],
@@ -571,7 +571,7 @@ class TestUtilityFunctions:
     async def test_generate_entity_patterns_for_feature_utility(self):
         """Test generate entity patterns for feature utility function."""
         with patch(
-            "custom_components.ramses_extras.framework.helpers.entity.core._get_required_entities_from_feature"
+            "custom_components.ramses_extras.framework.helpers.entity.core.get_required_entities"
         ) as mock_get:
             mock_get.return_value = {"sensors": ["temp"]}
 
