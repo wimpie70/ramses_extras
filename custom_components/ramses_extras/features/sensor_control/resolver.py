@@ -195,6 +195,19 @@ class SensorControlResolver:
 
         return result
 
+    def _area_name(self, area_id: str) -> str | None:
+        """Resolve the friendly name of an HA area, if the id is known."""
+        if not area_id:
+            return None
+        try:
+            from homeassistant.helpers import area_registry as ar
+
+            area = ar.async_get(self.hass).areas.get(area_id)
+        except Exception:
+            return None
+        name = getattr(area, "name", None)
+        return name if isinstance(name, str) and name else None
+
     def _resolve_area_sensors(self, area_sensors: Any) -> list[dict[str, Any]]:
         if not isinstance(area_sensors, list):
             return []
@@ -204,7 +217,9 @@ class SensorControlResolver:
             if not isinstance(item, dict):
                 continue
 
-            area_id = str(item.get("area_id") or "").strip()
+            # Accept both "area_id" (current schema) and "source_id"
+            # (used by some configs/tests) as the area identifier.
+            area_id = str(item.get("area_id") or item.get("source_id") or "").strip()
             temperature_entity = str(item.get("temperature_entity") or "").strip()
             humidity_entity = str(item.get("humidity_entity") or "").strip()
             co2_entity = str(item.get("co2_entity") or "").strip()
@@ -228,8 +243,17 @@ class SensorControlResolver:
             humidity_valid = (not area_enabled) or (temp_valid and humidity_valid)
             valid = bool(area_id) and humidity_valid and co2_valid
 
+            # Cards key display/highlighting off "source_id" (the same value
+            # the automations report in active_trigger_source_ids) and show
+            # "label".  Keep both in sync with the backend convention:
+            # source_id = area_id (or the CO2 entity when no area is set).
             resolved_item: dict[str, Any] = {
                 "area_id": area_id,
+                "source_id": area_id or co2_entity or None,
+                "label": str(item.get("label") or "").strip()
+                or self._area_name(area_id)
+                or area_id
+                or None,
                 "enabled": area_enabled,
                 "temperature_entity": temperature_entity or None,
                 "humidity_entity": humidity_entity or None,

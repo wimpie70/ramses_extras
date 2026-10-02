@@ -823,6 +823,7 @@ class TestHumidityAutomationManager:
             "Ensuite (64%)",
         ]
         assert attrs["active_trigger_labels_text"] == ("Bathroom (68%), Ensuite (64%)")
+        assert attrs["active_trigger_source_ids"] == ["bathroom", "ensuite"]
         assert attrs["next_check_interval_minutes"] == 1
 
     def test_build_indicator_attributes_with_active_spike_fallback(self):
@@ -856,6 +857,7 @@ class TestHumidityAutomationManager:
         assert attrs["control_mode"] == "spike_boost"
         assert attrs["active_trigger_area_id"] == "bathroom"
         assert attrs["active_trigger_labels_text"] == ("Bathroom (68%), Ensuite (64%)")
+        assert attrs["active_trigger_source_ids"] == ["bathroom", "ensuite"]
         assert attrs["next_check_interval_minutes"] == 1
 
     def test_detect_area_spike_guard_paths(self):
@@ -1985,6 +1987,7 @@ class TestHumidityAutomationManager:
         assert attrs["active_trigger_area_id"] == "indoor_humidity"
         assert attrs["active_trigger_label"] == "Indoor Humidity"
         assert attrs["active_trigger_rise_percent"] == 20.0
+        assert attrs["active_trigger_source_ids"] == ["indoor_humidity"]
         assert attrs["next_check_interval_minutes"] == 5
 
     async def test_indoor_spike_takes_priority_over_area_spike(self):

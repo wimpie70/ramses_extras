@@ -1656,6 +1656,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 attrs["active_triggers"] = ", ".join(trigger_labels)
                 attrs["active_trigger_labels"] = trigger_labels
                 attrs["active_trigger_labels_text"] = ", ".join(trigger_labels)
+                # Source ids (area_ids) so cards can highlight the active area
+                attrs["active_trigger_source_ids"] = [
+                    str(t.get("area_id"))
+                    for t in decision_triggers
+                    if isinstance(t, dict) and t.get("area_id")
+                ]
                 # Set next check interval from the first trigger
                 if decision_triggers:
                     attrs["next_check_interval_minutes"] = decision_triggers[0].get(
@@ -1664,20 +1670,21 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # If no decision triggers, check active area spikes
         if not attrs.get("active_triggers"):
+            area_spikes = self._get_active_area_spikes(device_id)
             active_triggers = [
-                self._format_active_trigger_label(item)
-                for item in self._get_active_area_spikes(device_id)
+                self._format_active_trigger_label(item) for item in area_spikes
             ]
             if active_triggers:
                 attrs["active_triggers"] = ", ".join(active_triggers)
                 attrs["active_trigger_labels"] = active_triggers
                 attrs["active_trigger_labels_text"] = ", ".join(active_triggers)
+                attrs["active_trigger_source_ids"] = [
+                    str(item.get("area_id"))
+                    for item in area_spikes
+                    if isinstance(item, dict) and item.get("area_id")
+                ]
                 # Set next check interval from the first trigger
-                first_trigger = (
-                    self._get_active_area_spikes(device_id)[0]
-                    if self._get_active_area_spikes(device_id)
-                    else None
-                )
+                first_trigger = area_spikes[0] if area_spikes else None
                 if first_trigger:
                     attrs["next_check_interval_minutes"] = first_trigger.get(
                         "check_interval_minutes", 1
@@ -1701,6 +1708,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 attrs["next_check_interval_minutes"] = indoor_spike.get(
                     "check_interval_minutes", 5
                 )
+                indoor_area_id = indoor_spike.get("area_id")
+                if indoor_area_id:
+                    attrs["active_trigger_source_ids"] = [str(indoor_area_id)]
                 # Override control_mode for indoor spike
                 attrs["control_mode"] = "spike_boost"
 
@@ -1931,7 +1941,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return label
         try:
             rh_value = float(current_rh)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return label
         return f"{label} ({rh_value:.0f}%)"
 

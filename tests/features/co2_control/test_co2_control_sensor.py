@@ -35,7 +35,7 @@ def test_create_co2_sensor(hass, config):
 
     assert isinstance(sensor_entity, CO2ControlSensor)
     assert sensor_entity.device_id == device_id
-    assert sensor_entity._zone_status is None
+    assert sensor_entity._attr_native_value == "idle"
 
 
 def test_co2_control_sensor_native_value(hass, config):
@@ -45,9 +45,11 @@ def test_co2_control_sensor_native_value(hass, config):
 
     sensor_entity = CO2ControlSensor(hass, device_id, sensor_type, config)
 
-    assert sensor_entity.native_value == "unknown"
+    # Starts at the semantic baseline instead of "unknown" before the first
+    # automation evaluation.
+    assert sensor_entity.native_value == "idle"
 
-    sensor_entity._zone_status = "active"
+    sensor_entity._attr_native_value = "active"
     assert sensor_entity.native_value == "active"
 
 
@@ -93,7 +95,7 @@ def test_co2_control_sensor_set_zone_status_with_change(hass, config):
     # Set status with different values - should call async_write_ha_state
     sensor_entity.set_zone_status("active", {"zone_id": "zone_1"})
 
-    assert sensor_entity._zone_status == "active"
+    assert sensor_entity._attr_native_value == "active"
     assert sensor_entity._automation_attrs == {"zone_id": "zone_1"}
     sensor_entity.async_write_ha_state.assert_called_once()
 
