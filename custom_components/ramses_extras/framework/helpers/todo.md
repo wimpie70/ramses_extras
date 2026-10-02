@@ -40,23 +40,11 @@ Major areas:
   - Simplify `ExtrasConfigManager.validate_config()` to only perform minimal generic checks (e.g. `enabled` is boolean if present), and remove template/example-only checks (`min_value/max_value`).
   - Remove or deprecate `ExtrasConfigManager.get_*_validation()` helpers and have callers use `ConfigValidator` directly (or delegate to a shared `ConfigValidator` instance inside `ExtrasConfigManager`).
 
-- Entity helper overlap findings (`entity/core.py` vs `entity/simple_entity_manager.py`):
-  - `EntityHelpers` (core.py) owns entity-id parsing and generation logic (`detect_and_parse()`, `generate_entity_name_from_template()`), plus feature const introspection helpers (`_get_required_entities_from_feature()` / `_import_required_entities_sync()` and `_import_entity_mappings_sync()`).
-  - `SimpleEntityManager` re-implements the same *feature const introspection* logic inside `_generate_entity_ids_for_combination()`:
-    - Reads `FEATURE_DEFINITION`.
-    - Derives `required_entities` from `sensor_configs`/`switch_configs`/etc and `optional` flags.
-    - Builds templates and uses `EntityHelpers.generate_entity_name_from_template()`.
-  - Net effect: the “what entities exist for a feature” rules are duplicated in two locations with slightly different surface area and error handling.
-  - There is also a conceptual split that isn’t clean yet:
-    - `EntityHelpers` mixes pure/string functions (parsing/generation) with integration-level concerns (importing feature const modules).
-    - `SimpleEntityManager` is explicitly “config flow operations”, but currently performs both orchestration *and* feature inspection.
-
-- Proposed consolidation direction (low-risk):
-  - Keep `EntityHelpers` as the single authority for:
-    - Entity-ID parsing/generation.
-    - Reading feature const metadata (required entities + mapping resolution).
-  - Make `SimpleEntityManager` call `EntityHelpers` helpers for required entities, instead of duplicating feature const parsing.
-  - Consider extracting a narrow helper with a stable signature (e.g. `get_required_entities(feature_id) -> dict[platform, list[name]]` and `get_entity_templates(feature_id) -> ...`) and using it from both config-flow code and runtime startup validation.
+- Entity helper overlap findings (`entity/core.py` vs `entity/simple_entity_manager.py`) — resolved:
+  - `EntityHelpers` (core.py) owns entity-id parsing and generation logic (`detect_and_parse()`, `generate_entity_name_from_template()`), plus feature const introspection helpers (`get_required_entities()` / `_import_required_entities_sync()` and `_import_entity_mappings_sync()`).
+  - `SimpleEntityManager._generate_entity_ids_for_combination()` delegates to `get_required_entity_ids_for_feature_device()` in `entity/core.py` — no duplicated feature const parsing there.
+  - The remaining duplication was inside `core.py` itself: `_import_required_entities_sync()` and `_get_required_entity_ids_for_feature_device_sync()` each re-implemented module import, `FEATURE_DEFINITION` extraction, config-source mapping, and required-entity derivation. Both now share `_import_feature_const_module()`, `_get_feature_definition()`, `_get_config_sources()`, `_derive_required_entities()`, and `_required_entities_from_def()`.
+  - `get_required_entities(feature_id) -> dict[platform, list[name]]` is the narrow public helper (previously private `_get_required_entities_from_feature`); exported via `entity/__init__.py` for config-flow code and startup validation.
   - Keep the current safety rule noted in `SimpleEntityManager.validate_entities_on_startup()` (do not create entity-registry-only entries that become permanently unavailable).
 
 - Config schema consistency findings:
