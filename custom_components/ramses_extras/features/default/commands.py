@@ -8,9 +8,15 @@ feature initialization.
 from ...framework.helpers.commands.registry import get_command_registry
 
 # FAN command definitions
-# These are the standard fan/ventilation commands available to all features
+# These are the standard fan/ventilation commands available to all features.
+#
+# The 22F1 payloads below are the Orcon encoding and are only used as a
+# fallback: RamsesCommands routes fan_* mode names through
+# device.set_fan_mode() so ramses_rf's per-vendor strategy (Orcon, Itho,
+# Vasco, Nuaire, ClimaRad) builds the correct payload.  The raw path still
+# applies when the ramses_rf device/strategy cannot be resolved.
 FAN_COMMANDS = {
-    # Fan speed commands
+    # Fan speed commands (Orcon payloads — fallback only, see note above)
     "fan_high": {
         "code": "22F1",
         "verb": " I",

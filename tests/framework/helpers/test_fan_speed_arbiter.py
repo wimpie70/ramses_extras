@@ -24,7 +24,7 @@ def hass():
 def arbiter(hass):
     """Arbiter instance with mocked command sender."""
     with patch(
-        "custom_components.ramses_extras.framework.helpers.fan_speed_arbiter.RamsesCommands"
+        "custom_components.ramses_extras.framework.helpers.fan_speed_arbiter.get_ramses_commands"
     ) as mock_commands_cls:
         mock_commands = MagicMock()
         mock_commands.send_command = AsyncMock(return_value=MagicMock(success=True))
@@ -37,7 +37,7 @@ def arbiter(hass):
 def test_get_fan_speed_arbiter_returns_singleton(hass):
     """The same arbiter instance should be reused per hass."""
     with patch(
-        "custom_components.ramses_extras.framework.helpers.fan_speed_arbiter.RamsesCommands"
+        "custom_components.ramses_extras.framework.helpers.fan_speed_arbiter.get_ramses_commands"
     ):
         first = get_fan_speed_arbiter(hass)
         second = get_fan_speed_arbiter(hass)
@@ -424,7 +424,7 @@ def test_get_fan_speed_arbiter_uses_fallback_attribute_for_mock_hass():
     mock_hass.data = MagicMock()
 
     with patch(
-        "custom_components.ramses_extras.framework.helpers.fan_speed_arbiter.RamsesCommands"
+        "custom_components.ramses_extras.framework.helpers.fan_speed_arbiter.get_ramses_commands"
     ):
         first = get_fan_speed_arbiter(mock_hass)
         second = get_fan_speed_arbiter(mock_hass)

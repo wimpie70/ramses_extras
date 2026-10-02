@@ -24,7 +24,9 @@ class TestServicesBasic:
 
         # Mock all the dependencies that the function needs
         with patch.object(services, "get_fan_speed_arbiter", return_value=MagicMock()):
-            with patch.object(services, "RamsesCommands", return_value=MagicMock()):
+            with patch.object(
+                services, "get_ramses_commands", return_value=MagicMock()
+            ):
                 with patch.object(
                     services, "get_zone_coordinator", return_value=MagicMock()
                 ):

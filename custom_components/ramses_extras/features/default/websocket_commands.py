@@ -16,7 +16,7 @@ from homeassistant.helpers import entity_registry
 from ...const import AVAILABLE_FEATURES, DOMAIN
 from ...extras_registry import extras_registry
 from ...framework.helpers.device.filter import DeviceFilter
-from ...framework.helpers.ramses_commands import RamsesCommands
+from ...framework.helpers.ramses_commands import get_ramses_commands
 from ...framework.helpers.websocket_base import GetEntityMappingsCommand
 
 if TYPE_CHECKING:
@@ -509,7 +509,7 @@ async def ws_get_bound_rem(
     from ...framework.helpers.remote_binding import get_remote_binding_registry
 
     device_id = str(msg["device_id"])
-    commands = RamsesCommands(hass)
+    commands = get_ramses_commands(hass)
 
     # Get device-reported binding
     bound = await commands._get_bound_rem_device(device_id)

@@ -24,7 +24,7 @@ class TestHumidityServices:
 
         # Patch RamsesCommands
         with patch(
-            "custom_components.ramses_extras.features.humidity_control.services.RamsesCommands"
+            "custom_components.ramses_extras.features.humidity_control.services.get_ramses_commands"
         ) as mock_ramses:
             self.mock_ramses = mock_ramses.return_value
             self.mock_ramses.send_command = AsyncMock()

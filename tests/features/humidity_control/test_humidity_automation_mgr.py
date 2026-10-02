@@ -38,7 +38,7 @@ class TestHumidityAutomationManager:
         # Patch dependencies
         with (
             patch(
-                "custom_components.ramses_extras.features.humidity_control.automation.RamsesCommands"
+                "custom_components.ramses_extras.features.humidity_control.automation.get_ramses_commands"
             ),
             patch(
                 "custom_components.ramses_extras.features.humidity_control.automation.HumidityConfig"

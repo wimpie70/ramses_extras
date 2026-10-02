@@ -11,7 +11,7 @@ from typing import Any
 
 from custom_components.ramses_extras.const import DOMAIN
 
-from .ramses_commands import RamsesCommands
+from .ramses_commands import get_ramses_commands
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class FanSpeedArbiter:
 
     def __init__(self, hass: Any) -> None:
         self.hass = hass
-        self.ramses_commands = RamsesCommands(hass)
+        self.ramses_commands = get_ramses_commands(hass)
         self._demands: dict[str, dict[tuple[str, str], FanSpeedDemand]] = {}
         self._extras_control_enabled: dict[str, bool] = {}
         self._callbacks: dict[str, tuple[str, Any]] = {}

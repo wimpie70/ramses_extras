@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
-    RamsesCommands,
+    get_ramses_commands,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class HumidityServices:
         self.config_entry = config_entry
 
         # Initialize Ramses commands for direct device control
-        self.ramses_commands = RamsesCommands(hass)
+        self.ramses_commands = get_ramses_commands(hass)
 
         # Dedup: {device_id: (command_name, monotonic_time)}
         self._last_fan_speed: dict[str, tuple[str, float]] = {}

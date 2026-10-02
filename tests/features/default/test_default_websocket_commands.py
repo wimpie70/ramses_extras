@@ -444,7 +444,7 @@ async def test_ws_get_bound_rem(hass, connection):
 
     with (
         patch(
-            "custom_components.ramses_extras.features.default.websocket_commands.RamsesCommands"
+            "custom_components.ramses_extras.features.default.websocket_commands.get_ramses_commands"
         ) as mock_cls,
         patch(  # noqa: N806
             "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"

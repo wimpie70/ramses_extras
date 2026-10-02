@@ -779,9 +779,9 @@ class ExtrasBaseAutomation(ABC):
         it becomes available and register the message handler at that point.
         """
         try:
-            from ..helpers.ramses_commands import RamsesCommands
+            from ..helpers.ramses_commands import get_ramses_commands
 
-            commands = RamsesCommands(self.hass)
+            commands = get_ramses_commands(self.hass)
             coordinator = await commands._get_ramses_cc_coordinator()
 
             if coordinator:

@@ -30,7 +30,7 @@ from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import 
     get_fan_speed_arbiter,
 )
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
-    RamsesCommands,
+    get_ramses_commands,
 )
 from custom_components.ramses_extras.framework.helpers.zone_demand import (
     DemandSource,
@@ -72,7 +72,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
         self.config_entry = config_entry
         self.config = TempControlConfig(hass, config_entry)
-        self.ramses_commands = RamsesCommands(hass)
+        self.ramses_commands = get_ramses_commands(hass)
         self.fan_speed_arbiter = get_fan_speed_arbiter(hass)
         self._zone_demand_registry = get_zone_demand_registry(hass)
 

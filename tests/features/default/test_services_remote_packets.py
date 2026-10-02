@@ -101,7 +101,7 @@ async def _setup_services_with_handler(hass):
     mock_client.add_msg_handler = _track_add_msg_handler
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_cmds:
         mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
             return_value=mock_coordinator
@@ -1125,7 +1125,7 @@ class TestHandleRemoteMsg:
         mock_coordinator.client = mock_client
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=mock_coordinator
@@ -1175,7 +1175,7 @@ class TestHandleRemoteMsg:
         mock_coordinator.client = mock_client
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=mock_coordinator
@@ -1227,7 +1227,7 @@ class TestForceZoneVentilation:
         hass.services.has_service.return_value = False
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=None
@@ -1275,7 +1275,7 @@ class TestForceZoneVentilation:
         hass.services.has_service.return_value = False
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=None
@@ -1321,7 +1321,7 @@ class TestForceZoneVentilation:
         hass.services.has_service.return_value = False
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=None
@@ -1355,7 +1355,7 @@ class TestForceZoneVentilation:
         hass.services.has_service.return_value = False
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=None
@@ -1392,7 +1392,7 @@ class TestForceZoneVentilation:
         hass.services.has_service.return_value = False
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=None
@@ -1438,7 +1438,7 @@ class TestForceZoneVentilation:
         hass.services.has_service.return_value = False
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=None
@@ -1488,7 +1488,7 @@ class TestForceZoneVentilation:
         hass.services.has_service.return_value = False
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=None
@@ -1558,7 +1558,7 @@ class TestRemoteListenerAttach:
         mock_coordinator.client = mock_client
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_cmds:
             mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(
                 side_effect=[None, mock_coordinator]
