@@ -117,10 +117,6 @@ SCENARIO_FLOODING_TEST = "flooding_test"
 SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
 SCENARIO_HVAC_DEVICE_LOSS = "hvac_device_loss"
 SCENARIO_MANUAL_DEVICE_INJECTION = "autonomous_emissions"
-# Legacy alias
-SCENARIO_AUTONOMOUS_EMISSIONS = (
-    SCENARIO_MANUAL_DEVICE_INJECTION  # Start/stop autonomous I frames
-)
 SCENARIO_PROFILE_EMISSIONS = "profile_emissions"
 SCENARIO_LOAD_PROFILE_YAML = "load_profile_yaml"
 SCENARIO_AUTO_ANSWER = "auto_answer"  # Global RQ→RP response toggle
@@ -566,11 +562,6 @@ FEATURE_DEFINITION: dict[str, Any] = {
     "services_module": "services",
     "websocket_commands_module": "websocket_commands",
     "websocket_commands": DEVICE_SIMULATOR_WEBSOCKET_COMMANDS,
-    # Support both single card_config (backward compat)
-    # and card_configs list (multi-card)
-    "card_config": DEVICE_SIMULATOR_CARD_CONFIGS[0]
-    if DEVICE_SIMULATOR_CARD_CONFIGS
-    else {},
     "card_configs": DEVICE_SIMULATOR_CARD_CONFIGS,
 }
 

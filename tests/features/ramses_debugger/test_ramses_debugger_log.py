@@ -370,61 +370,22 @@ async def test_ws_log_search_truncated_by_max_chars(hass, tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_get_configured_packet_log_path_v1_fallback(hass, tmp_path: Path) -> None:
-    """Test that v1 ramses_rf.file_name is used as fallback when packet_log
-     is not configured.
-
-    This covers the migration scenario where ramses_cc v2 migration removes file_name
-    from packet_log but doesn't migrate it from ramses_rf.
-    """
-    from custom_components.ramses_extras.features.ramses_debugger.log_backend import (
-        get_configured_packet_log_path,
-    )
-
-    log_base = tmp_path / "ramses_rf_logs"
-    log_base.mkdir()
-    # v1 file_name can be a directory path - function constructs packet_log.log
-    expected_path = log_base / "packet_log.log"
-    expected_path.write_text("test log\n", encoding="utf-8")
-
-    # Mock ramses_cc config entry with v1 structure (file_name is directory)
-    fake_cc_entry = MagicMock()
-    fake_cc_entry.options = {
-        "ramses_rf": {"file_name": str(log_base)},
-        # No "packet_log" key - simulating incomplete migration
-    }
-
-    with patch.object(
-        hass.config_entries, "async_entries", return_value=[fake_cc_entry]
-    ):
-        result = get_configured_packet_log_path(hass)
-
-    assert result is not None
-    assert result == expected_path
-
-
-@pytest.mark.asyncio
-async def test_get_configured_packet_log_path_v2_preferred_over_v1(
+async def test_get_configured_packet_log_path_from_packet_log_options(
     hass, tmp_path: Path
 ) -> None:
-    """Test that v2 packet_log.packet_log_path takes precedence
-    over v1 ramses_rf.file_name."""
+    """Test that packet_log.packet_log_path is resolved to the base log file."""
     from custom_components.ramses_extras.features.ramses_debugger.log_backend import (
         get_configured_packet_log_path,
     )
 
-    v1_path = tmp_path / "v1_logs"
-    v1_path.mkdir()
     v2_path = tmp_path / "v2_logs"
     v2_path.mkdir()
-    # v2 constructs packet_log.log from directory path
+    # packet_log.path is a directory - function constructs packet_log.log
     expected_v2_path = v2_path / "packet_log.log"
     expected_v2_path.write_text("v2 log\n", encoding="utf-8")
 
-    # Mock ramses_cc config entry with both v1 and v2 structures
     fake_cc_entry = MagicMock()
     fake_cc_entry.options = {
-        "ramses_rf": {"file_name": str(v1_path / "old.log")},
         "packet_log": {"packet_log_path": str(v2_path)},
     }
 
