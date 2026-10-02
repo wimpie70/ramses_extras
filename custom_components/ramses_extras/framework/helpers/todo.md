@@ -33,12 +33,12 @@ Major areas:
     - `humidity_control/config.py` uses `ConfigValidator` + `ExtrasConfigManager.validate_config()`.
     - `hello_world/config.py` uses voluptuous schema + `ExtrasConfigManager.validate_config()`.
 
-- Proposed consolidation direction (low-risk):
+- Proposed consolidation direction (low-risk) — done:
   - Keep the split by responsibility:
     - `common/validation.py` = runtime/Home Assistant state validation.
     - `config/validation.py` = config dictionary validation.
-  - Simplify `ExtrasConfigManager.validate_config()` to only perform minimal generic checks (e.g. `enabled` is boolean if present), and remove template/example-only checks (`min_value/max_value`).
-  - Remove or deprecate `ExtrasConfigManager.get_*_validation()` helpers and have callers use `ConfigValidator` directly (or delegate to a shared `ConfigValidator` instance inside `ExtrasConfigManager`).
+  - `ExtrasConfigManager.validate_config()` now only performs the generic `enabled`-boolean check; the template/example-only `min_value`/`max_value` check was removed.
+  - `ExtrasConfigManager.get_numeric_validation()` / `get_boolean_validation()` / `get_string_validation()` were removed — dead code, no production callers; features use `ConfigValidator` directly (see `humidity_control/config.py`).
 
 - Entity helper overlap findings (`entity/core.py` vs `entity/simple_entity_manager.py`) — resolved:
   - `EntityHelpers` (core.py) owns entity-id parsing and generation logic (`detect_and_parse()`, `generate_entity_name_from_template()`), plus feature const introspection helpers (`get_required_entities()` / `_import_required_entities_sync()` and `_import_entity_mappings_sync()`).
@@ -54,11 +54,10 @@ Major areas:
   - Some feature config modules define additional schemas (e.g. `features/hello_world/config.py` has `FEATURE_CONFIG_SCHEMA` / `OPTIONS_SCHEMA`), but these are validated at runtime and are not integrated into the options flow UI.
   - Net effect: we currently have two schema representations (voluptuous vs JSON-schema-like dicts), but only voluptuous is used for the HA UI.
 
-- Proposed consolidation direction (low-risk):
-  - Treat `vol.Schema` (with selectors) as the single UI schema representation for Home Assistant flows.
-  - Clarify whether `get_config_schema()` is intended for a non-HA UI consumer (cards or external tooling). If not, consider removing it or moving it behind an explicit “non-HA UI schema” API.
-  - For feature runtime validation, prefer a consistent approach:
-    - Either voluptuous validation (like `hello_world`) or `ConfigValidator` rules (like `humidity_control`), but avoid implying that `get_config_schema()` affects the HA UI.
+- Proposed consolidation direction (low-risk) — done:
+  - `vol.Schema` (with selectors) is the single UI schema representation for Home Assistant flows.
+  - `get_config_schema()` / `get_config_schema_dict()` had no consumers (no HA UI, no card/websocket call sites) and were removed — from `ExtrasConfigManager` and the `humidity_control`/`hello_world` overrides.
+  - Feature runtime validation keeps its two established patterns: voluptuous (`hello_world`) or `ConfigValidator` rules (`humidity_control`).
 
 - Error handling patterns findings:
   - Setup/orchestration paths generally aim to be resilient and continue operating with reduced functionality:

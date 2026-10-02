@@ -71,10 +71,9 @@ This file tracks *big picture* cleanup and refactoring work across the integrati
   - We currently resolve enabled features from multiple sources (`hass.data`, `entry.data`, `entry.options`) in multiple modules.
   - Tests cover that disabled features should not expose their WebSocket/services surface area, so drift here is a correctness risk.
 
-- Config/UI schema split:
+- Config/UI schema split — resolved:
   - Home Assistant UI uses `vol.Schema`/selectors.
-  - Some feature modules define JSON-schema-like structures (`get_config_schema`) that are not consumed by HA UI flows.
-  - This is a source of conceptual duplication and confusion (two schema representations).
+  - JSON-schema-like `get_config_schema()`/`get_config_schema_dict()` methods were removed (no HA UI, card, or websocket consumers).
 
 - Error handling policy (boundary implications):
   - Orchestration paths are best-effort: errors in one feature should not prevent other features from loading.
@@ -96,9 +95,9 @@ This file tracks *big picture* cleanup and refactoring work across the integrati
     - card deployment + latch
   - Goal: reduce “god function” pressure and make unit testing easier.
 
-- Clarify schema responsibilities:
-  - Treat `vol.Schema` (selectors) as the single representation for HA UI.
-  - If `get_config_schema()` remains, document it as non-HA consumer only (e.g. cards/external tooling), otherwise remove it.
+- Clarify schema responsibilities — done:
+  - `vol.Schema` (selectors) is the single representation for HA UI.
+  - `get_config_schema()` was removed — no non-HA consumers existed.
 
 - Consolidate entity metadata derivation:
   - Ensure there is exactly one authority for “what entities exist for a feature” (avoid duplication between helpers and config-flow manager).

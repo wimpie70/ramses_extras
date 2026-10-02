@@ -152,26 +152,6 @@ class ExtrasConfigManager:
                 )
                 return False
 
-            # Check for basic numeric ranges if they exist
-            if "min_value" in self._config and "max_value" in self._config:
-                min_val = self._config["min_value"]
-                max_val = self._config["max_value"]
-                if not isinstance(min_val, (int, float)) or not isinstance(
-                    max_val, (int, float)
-                ):
-                    _LOGGER.error(
-                        f"{self.feature_id} configuration error: "
-                        "'min_value' and 'max_value' must be numeric"
-                    )
-                    return False
-
-                if min_val >= max_val:
-                    _LOGGER.error(
-                        f"{self.feature_id} configuration error: "
-                        "'max_value' must be > 'min_value'"
-                    )
-                    return False
-
             _LOGGER.debug(f"{self.feature_id} configuration validation successful")
             return True
 
@@ -371,112 +351,6 @@ class ExtrasConfigManager:
         """
         _LOGGER.info(f"Resetting {self.feature_id} configuration to defaults")
         self._config = self._default_config.copy()
-
-    def get_config_schema_dict(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "title": f"Enable {self.feature_id.title().replace('_', ' ')}",
-                    "description": f"Enable or disable the {self.feature_id} feature",
-                },
-            },
-        }
-
-    def get_config_schema(self) -> dict[str, Any]:
-        """Get configuration schema for UI.
-
-        Features should override this method to provide feature-specific schemas.
-        The base implementation provides a generic schema.
-
-        :return: Configuration schema dictionary
-        """
-        return self.get_config_schema_dict()
-
-    def get_numeric_validation(self, key: str, min_val: float, max_val: float) -> bool:
-        """Validate a numeric configuration value is within range.
-
-        :param key: Configuration key
-        :param min_val: Minimum allowed value
-        :param max_val: Maximum allowed value
-        :return: True if valid
-        """
-        value = self._config.get(key)
-        if not isinstance(value, (int, float)):
-            _LOGGER.error(
-                f"{self.feature_id} configuration error: '{key}' must be numeric"
-            )
-            return False
-
-        if not (min_val <= value <= max_val):
-            _LOGGER.error(
-                f"{self.feature_id} configuration error: '{key}' must be between "
-                f"{min_val} and {max_val}"
-            )
-            return False
-
-        return True
-
-    def get_boolean_validation(self, key: str) -> bool:
-        """Validate a boolean configuration value.
-
-        :param key: Configuration key
-        :return: True if valid
-        """
-        value = self._config.get(key)
-        if not isinstance(value, bool):
-            _LOGGER.error(
-                f"{self.feature_id} configuration error: '{key}' must be boolean"
-            )
-            return False
-
-        return True
-
-    def get_string_validation(
-        self,
-        key: str,
-        choices: list | None = None,
-        min_length: int = 0,
-        max_length: int | None = None,
-    ) -> bool:
-        """Validate a string configuration value.
-
-        :param key: Configuration key
-        :param choices: Optional list of valid choices
-        :param min_length: Minimum allowed length (default 0)
-        :param max_length: Maximum allowed length (default None for no limit)
-        :return: True if valid
-        """
-        value = self._config.get(key)
-        if not isinstance(value, str):
-            _LOGGER.error(
-                f"{self.feature_id} configuration error: '{key}' must be string"
-            )
-            return False
-
-        if len(value) < min_length:
-            _LOGGER.error(
-                f"{self.feature_id} configuration error: '{key}' must be at least "
-                f"{min_length} characters long"
-            )
-            return False
-
-        if max_length is not None and len(value) > max_length:
-            _LOGGER.error(
-                f"{self.feature_id} configuration error: '{key}' must be at most "
-                f"{max_length} characters long"
-            )
-            return False
-
-        if choices and value not in choices:
-            _LOGGER.error(
-                f"{self.feature_id} configuration error: '{key}' must be one of "
-                f"{choices}, got '{value}'"
-            )
-            return False
-
-        return True
 
 
 # Configuration factory function
