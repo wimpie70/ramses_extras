@@ -102,9 +102,11 @@ class R18AddFakedRemServiceCreatesFakedRemBoundToF(Recipe):
                 msg="for schema merge + entity creation",
                 floor=2.0,
             )
-            # Force a save cycle to persist the config entry
+            # Trigger a save cycle to persist the config entry
+            # (sync_topology → async_save_client_state; force_update
+            # only refreshes entities and never persists).
             try:
-                call_service(ctx.token, "ramses_cc", "force_update")
+                call_service(ctx.token, "ramses_cc", "sync_topology")
             except RuntimeError:
                 pass
             ctx.wait(3, "for config entry persistence")
