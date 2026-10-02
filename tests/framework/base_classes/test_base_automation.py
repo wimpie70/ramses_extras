@@ -522,6 +522,74 @@ class TestExtrasBaseAutomation:
 
             assert mock_logger.warning.call_count == 2
 
+    @pytest.mark.asyncio
+    async def test_validate_device_entities_missing_mapped_entity(
+        self, automation, hass
+    ):
+        """Mapped entities (what the automation consumes) are validated too."""
+        hass.states.get.return_value = None
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_required_entity_ids_for_feature_device",
+                return_value=["sensor.temperature_32_153289"],
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_feature_entity_mappings",
+                return_value={"indoor_rh": "sensor.32_153289_indoor_humidity"},
+            ),
+        ):
+            assert await automation._validate_device_entities("32_153289") is False
+
+    @pytest.mark.asyncio
+    async def test_validate_device_entities_mapped_entity_present(
+        self, automation, hass
+    ):
+        """Validation covers the union of required and mapped entity ids."""
+        mock_state = MagicMock()
+        mock_state.state = "25.0"
+        hass.states.get.return_value = mock_state
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_required_entity_ids_for_feature_device",
+                return_value=["sensor.temperature_32_153289"],
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_feature_entity_mappings",
+                return_value={"indoor_rh": "sensor.32_153289_indoor_humidity"},
+            ),
+        ):
+            assert await automation._validate_device_entities("32_153289") is True
+            hass.states.get.assert_any_call("sensor.32_153289_indoor_humidity")
+
+    @pytest.mark.asyncio
+    async def test_validate_device_entities_mapping_failure_ignored(
+        self, automation, hass
+    ):
+        """A failure resolving entity mappings falls back to required only."""
+        mock_state = MagicMock()
+        mock_state.state = "25.0"
+        hass.states.get.return_value = mock_state
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_required_entity_ids_for_feature_device",
+                return_value=["sensor.temperature_32_153289"],
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_feature_entity_mappings",
+                side_effect=Exception("no registry"),
+            ),
+        ):
+            assert await automation._validate_device_entities("32_153289") is True
+
     def test_extract_device_id(self, automation):
         """Test device ID extraction from entity ID."""
         with patch(
@@ -539,8 +607,8 @@ class TestExtrasBaseAutomation:
         """Test getting device entity states."""
         with (
             patch(
-                "custom_components.ramses_extras.framework.helpers.entity.core."
-                "get_feature_entity_mappings"
+                "custom_components.ramses_extras.framework.base_classes."
+                "base_automation.get_feature_entity_mappings"
             ) as mock_get_mappings,
             patch.object(
                 automation, "_extract_entity_type_from_id"

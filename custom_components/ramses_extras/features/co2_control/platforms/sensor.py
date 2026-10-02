@@ -30,13 +30,11 @@ class CO2ControlSensor(ExtrasSensorEntity):
     ) -> None:
         """Initialize CO2 control sensor."""
         super().__init__(hass, device_id, sensor_type, config)
-        self._zone_status: str | None = None
+        # _attr_native_value is what ExtrasSensorEntity.state reports.
+        # Start as "idle" (the semantic baseline) rather than "unknown"
+        # until the first automation evaluation writes a status.
+        self._attr_native_value: StateType = "idle"
         self._automation_attrs: dict[str, Any] = {}
-
-    @property
-    def native_value(self) -> StateType:
-        """Return zone status information."""
-        return self._zone_status if self._zone_status is not None else "unknown"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -49,10 +47,10 @@ class CO2ControlSensor(ExtrasSensorEntity):
         :param status: Status string
         """
         new_attrs = attrs or {}
-        if self._zone_status == status and self._automation_attrs == new_attrs:
+        if self._attr_native_value == status and self._automation_attrs == new_attrs:
             return
 
-        self._zone_status = status
+        self._attr_native_value = status
         self._automation_attrs = new_attrs
         self.async_write_ha_state()
 

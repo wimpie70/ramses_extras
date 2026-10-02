@@ -770,7 +770,7 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   _createAreaSensorIndicator(areaSensor) {
-    const sourceId = areaSensor?.source_id || 'area';
+    const sourceId = areaSensor?.source_id || areaSensor?.area_id || 'area';
     const label = areaSensor?.label || sourceId;
     const tempEntity = areaSensor?.temperature_entity || 'n/a';
     const humidityEntity = areaSensor?.humidity_entity || 'n/a';
@@ -1068,8 +1068,10 @@ class HvacFanCard extends RamsesBaseCard {
     // Build area sensor items (humidity/temp and CO2 where enabled)
     const areaSensorItems = (this._areaSensors || [])
       .map(areaSensor => {
-        const sourceId = areaSensor?.source_id || '';
-        const label = areaSensor?.label || areaSensor?.source_id || 'Unknown';
+        const sourceId = areaSensor?.source_id || areaSensor?.area_id || '';
+        const label =
+          areaSensor?.label || areaSensor?.source_id || areaSensor?.area_id
+          || 'Unknown';
         const tempEntity = areaSensor?.temperature_entity;
         const humidityEntity = areaSensor?.humidity_entity;
         const co2Entity = areaSensor?.co2_entity;

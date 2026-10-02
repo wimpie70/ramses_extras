@@ -123,79 +123,22 @@ class TestConfigManagerEdgeCases:
         result = manager.validate_config()
         assert result is True
 
-    def test_numeric_validation_edge_cases(self):
-        """Test numeric validation with edge cases."""
+    def test_validate_config_edge_cases(self):
+        """Test generic config validation with edge-case values."""
         manager = ExtrasConfigManager(
             self.hass, self.config_entry, "test_feature", {"enabled": True}
         )
 
-        # Test None value
-        result = manager.get_numeric_validation("nonexistent", 0, 100)
-        assert result is False
+        # Missing/None enabled value is allowed
+        manager._config = {}
+        assert manager.validate_config() is True
 
-        # Test string value
-        manager._config["test_value"] = "not_a_number"
-        result = manager.get_numeric_validation("test_value", 0, 100)
-        assert result is False
+        # Falsy non-bool values for enabled are rejected
+        manager._config["enabled"] = 0
+        assert manager.validate_config() is False
 
-        # Test boundary values
-        manager._config["boundary_min"] = 0
-        result = manager.get_numeric_validation("boundary_min", 0, 100)
-        assert result is True
-
-        manager._config["boundary_max"] = 100
-        result = manager.get_numeric_validation("boundary_max", 0, 100)
-        assert result is True
-
-    def test_boolean_validation_edge_cases(self):
-        """Test boolean validation with edge cases."""
-        manager = ExtrasConfigManager(
-            self.hass, self.config_entry, "test_feature", {"enabled": True}
-        )
-
-        # Test None value
-        result = manager.get_boolean_validation("nonexistent")
-        assert result is False
-
-        # Test various falsy/truthy values
-        manager._config["test_bool"] = 0
-        result = manager.get_boolean_validation("test_bool")
-        assert result is False
-
-        manager._config["test_bool"] = 1
-        result = manager.get_boolean_validation("test_bool")
-        assert result is False
-
-        manager._config["test_bool"] = []
-        result = manager.get_boolean_validation("test_bool")
-        assert result is False
-
-    def test_string_validation_edge_cases(self):
-        """Test string validation with edge cases."""
-        manager = ExtrasConfigManager(
-            self.hass, self.config_entry, "test_feature", {"enabled": True}
-        )
-
-        # Test None value
-        result = manager.get_string_validation("nonexistent")
-        assert result is False
-
-        # Test empty string
-        manager._config["empty_string"] = ""
-        result = manager.get_string_validation("empty_string", min_length=1)
-        assert result is False
-
-        # Test choices validation
-        manager._config["choice_string"] = "invalid_choice"
-        result = manager.get_string_validation(
-            "choice_string", choices=["option1", "option2"]
-        )
-        assert result is False
-
-        # Test length limits
-        manager._config["long_string"] = "a" * 1000
-        result = manager.get_string_validation("long_string", max_length=10)
-        assert result is False
+        manager._config["enabled"] = "yes"
+        assert manager.validate_config() is False
 
 
 class TestEntityHelpersEdgeCases:
@@ -322,7 +265,7 @@ class TestEntityHelpersEdgeCases:
         """Test generating entity patterns for invalid feature."""
         with patch(
             "custom_components.ramses_extras.framework.helpers.entity.core."
-            "_get_required_entities_from_feature"
+            "get_required_entities"
         ) as mock_get:
             mock_get.return_value = {}
 

@@ -337,6 +337,8 @@ class TestSensorControlResolver:
 
         assert len(result["area_sensors"]) == 2
         assert result["area_sensors"][0]["area_id"] == "bathroom"
+        assert result["area_sensors"][0]["source_id"] == "bathroom"
+        assert result["area_sensors"][0]["label"] == "Bathroom"
         assert result["area_sensors"][0]["valid"] is True
         assert result["area_sensors"][0]["zone_id"] == "zone_1"
         assert result["area_sensors"][0]["area_co2_enabled"] is True
@@ -348,8 +350,53 @@ class TestSensorControlResolver:
         assert result["area_sensors"][0]["co2_threshold"] == 900
         assert result["area_sensors"][0]["spike_ignore_outdoor"] is True
         assert result["area_sensors"][1]["area_id"] == "broken"
+        assert result["area_sensors"][1]["source_id"] == "broken"
+        assert result["area_sensors"][1]["label"] == "Broken"
         assert result["area_sensors"][1]["valid"] is False
         assert result["area_sensors"][1]["spike_ignore_outdoor"] is False
+
+    def test_resolve_area_sensors_source_id_alias(self):
+        """Items stored with "source_id" instead of "area_id" still resolve."""
+        result = self.resolver._resolve_area_sensors(
+            [
+                {
+                    "source_id": "kitchen",
+                    "co2_entity": "sensor.kitchen_co2",
+                    "area_co2_enabled": True,
+                }
+            ]
+        )
+
+        assert len(result) == 1
+        assert result[0]["area_id"] == "kitchen"
+        assert result[0]["source_id"] == "kitchen"
+        # Falls back to the area id when no label or HA area name exists.
+        assert result[0]["label"] == "kitchen"
+
+    def test_resolve_area_sensors_label_from_area_registry(self):
+        """Label falls back to the HA area registry name, then area_id."""
+        area = MagicMock()
+        area.name = "Living Room"
+        registry = MagicMock()
+        registry.areas = {"living_room": area}
+
+        with patch(
+            "homeassistant.helpers.area_registry.async_get",
+            return_value=registry,
+        ):
+            result = self.resolver._resolve_area_sensors(
+                [
+                    {"area_id": "living_room", "co2_entity": "sensor.lr_co2"},
+                    {"area_id": "", "co2_entity": "sensor.no_area_co2"},
+                ]
+            )
+
+        assert result[0]["label"] == "Living Room"
+        assert result[0]["source_id"] == "living_room"
+        # No area: source_id/label fall back to the CO2 entity id, matching
+        # the backend trigger-source convention.
+        assert result[1]["source_id"] == "sensor.no_area_co2"
+        assert result[1]["label"] is None
 
     def test_resolve_area_sensors_ignores_invalid_input(self):
         """Non-list and non-dict area sensor config should be ignored."""
