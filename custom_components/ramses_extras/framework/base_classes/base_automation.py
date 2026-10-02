@@ -27,6 +27,7 @@ from homeassistant.helpers.event import (
 from ...const import DOMAIN
 from ..helpers.common.utils import _singularize_entity_type
 from ..helpers.entity.core import (
+    get_feature_entity_mappings,
     get_required_entities_from_feature_sync,
     get_required_entity_ids_for_feature_device,
 )
@@ -548,7 +549,23 @@ class ExtrasBaseAutomation(ABC):
             self.feature_id,
             device_id,
         )
-        if not required_entity_ids:
+
+        # Also validate the entity ids this automation actually consumes:
+        # get_feature_entity_mappings resolves the entity_mappings templates
+        # (including ramses_cc-owned entities) and entity-id fallbacks, so the
+        # check matches what _get_device_entity_states will read at runtime.
+        required_set = {str(e) for e in required_entity_ids}
+        try:
+            mappings = await get_feature_entity_mappings(
+                self.feature_id,
+                device_id,
+                self.hass,
+            )
+        except Exception:
+            mappings = {}
+        required_set.update(e for e in mappings.values() if isinstance(e, str))
+
+        if not required_set:
             if not self._required_entities_warned:
                 _LOGGER.warning(
                     "No required entities found for feature: %s", self.feature_id
@@ -564,7 +581,7 @@ class ExtrasBaseAutomation(ABC):
         self._required_entities_warned = False
 
         missing_entities: list[str] = []
-        for entity_id in required_entity_ids:
+        for entity_id in sorted(required_set):
             entity_exists = self.hass.states.get(entity_id)
             if not entity_exists:
                 missing_entities.append(entity_id)
@@ -612,10 +629,6 @@ class ExtrasBaseAutomation(ABC):
         :return: Dictionary with entity state values (numeric or boolean)
         :raises ValueError: If any entity is unavailable or has invalid values
         """
-        from custom_components.ramses_extras.framework.helpers.entity.core import (
-            get_feature_entity_mappings,
-        )
-
         states: dict[str, float | bool] = {}
 
         # Get dynamic state mappings from feature configuration
