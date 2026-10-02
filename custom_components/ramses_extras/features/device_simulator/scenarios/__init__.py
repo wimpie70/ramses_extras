@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import pkgutil
 from functools import lru_cache
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from .base import ScenarioDefinition
 
@@ -42,5 +42,7 @@ async def async_discover_scenarios(
     """Run scenario discovery off the event loop and return definitions."""
 
     loop = hass.loop
-    result = await loop.run_in_executor(None, _discover_scenarios_sync)
-    return cast(dict[str, ScenarioDefinition], result.copy())
+    result: dict[str, ScenarioDefinition] = await loop.run_in_executor(
+        None, _discover_scenarios_sync
+    )
+    return result.copy()

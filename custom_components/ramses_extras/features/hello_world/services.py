@@ -358,7 +358,7 @@ def get_registered_services(hass: HomeAssistant) -> list[str]:
     :param hass: Home Assistant instance
     :return: List of registered service names
     """
-    services = []
+    services: list[str] = []
     service_domains = hass.services.async_services()
 
     if INTEGRATION_DOMAIN in service_domains:

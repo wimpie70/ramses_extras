@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from threading import Lock
 from time import time
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 PacketDirection = Literal["inbound", "outbound"]
 MessageOrigin = Literal["rf", "sim", "auto_answer", "auto_emit"]
@@ -94,7 +94,7 @@ def _decode_payload(
         logging.getLogger(name).disabled = True
     try:
         pkt = Packet(dt_obj, frame)
-        m = Message._from_pkt(pkt)
+        m = cast(Any, Message)._from_pkt(pkt)  # noqa: SLF001
         return m.payload
     except Exception:
         return None

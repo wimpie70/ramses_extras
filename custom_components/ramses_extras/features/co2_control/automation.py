@@ -11,7 +11,12 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from homeassistant.core import Event, HomeAssistant, State
+from homeassistant.core import (
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    State,
+)
 from homeassistant.helpers.event import async_track_state_change_event
 
 from custom_components.ramses_extras.const import DOMAIN
@@ -510,7 +515,9 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self._state_change_listeners.append(listener)
         existing.update(new_entities)
 
-    async def _handle_co2_sensor_change(self, event: Event) -> None:
+    async def _handle_co2_sensor_change(
+        self, event: Event[EventStateChangedData]
+    ) -> None:
         """Handle CO2 sensor state change.
 
         :param event: State change event

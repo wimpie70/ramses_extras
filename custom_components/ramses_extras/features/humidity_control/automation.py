@@ -51,7 +51,7 @@ from .services import HumidityServices
 _LOGGER = logging.getLogger(__name__)
 
 
-def is_supported_humidity_device(hass: object, device_id: str) -> bool:
+def is_supported_humidity_device(hass: HomeAssistant, device_id: str) -> bool:
     normalized_device_id = device_id.replace("_", ":")
     device = find_ramses_device(hass, normalized_device_id)
     device_type = get_device_type(device)
@@ -291,8 +291,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 matching_entities = [
                     state for state in entities if fnmatch(state.entity_id, pattern)
                 ]
-            elif self.hass.states.get(pattern) is not None:
-                matching_entities = [self.hass.states.get(pattern)]
+            elif (state := self.hass.states.get(pattern)) is not None:
+                matching_entities = [state]
             else:
                 matching_entities = []
 
@@ -480,7 +480,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 "device_id": device_id,
             }
 
-            await cmd.execute(connection, msg)
+            await cmd.execute(cast(Any, connection), msg)
 
             if not connection.result or not connection.result.get("success"):
                 _LOGGER.warning(

@@ -224,7 +224,7 @@ async def create_and_start_feature_instances(
     automation_managers_to_start: list[Any] = []
     cards_pending_features: set[str] = set()
 
-    @callback  # type: ignore[untyped-decorator]
+    @callback
     def _on_feature_ready(event: Event[dict[str, Any]]) -> None:
         feature_id = event.data.get("feature_id")
         if not isinstance(feature_id, str):

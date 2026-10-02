@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Any, Iterable
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -71,7 +71,7 @@ class CardRegistry:
         :param hass: Home Assistant instance
         """
         self._hass = hass
-        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
 
     @staticmethod
     def bootstrap_resource(version: str) -> LovelaceCard:

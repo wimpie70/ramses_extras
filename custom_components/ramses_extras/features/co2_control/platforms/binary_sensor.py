@@ -35,7 +35,7 @@ class CO2ControlBinarySensor(ExtrasBinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Return true if CO2 control is active."""
-        return self._attr_is_on
+        return bool(self._attr_is_on)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

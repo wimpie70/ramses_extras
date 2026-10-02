@@ -612,7 +612,7 @@ async def async_step_sensor_control_config(
                     selector.SelectSelectorConfig(
                         options=group_options,
                         multiple=False,
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 )
             }
@@ -827,13 +827,13 @@ async def async_step_sensor_control_config(
                                 value="back", label=labels.get("back", "Back")
                             ),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
                 vol.Optional("area_id"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=area_sensor_select_options,
-                        mode="dropdown",
+                        mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
             }
@@ -1133,7 +1133,9 @@ async def async_step_sensor_control_config(
                     ),
                 ): bool,
                 zone_key: selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=zone_options, mode="dropdown")
+                    selector.SelectSelectorConfig(
+                        options=zone_options, mode=selector.SelectSelectorMode.DROPDOWN
+                    )
                 ),
                 temp_key: area_sensor_selector,
                 humidity_key: area_sensor_selector,
@@ -1313,13 +1315,13 @@ async def async_step_sensor_control_config(
                             ),
                             selector.SelectOptionDict(value="back", label="Back"),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
                 vol.Optional("zone_id"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=zone_select_options,
-                        mode="dropdown",
+                        mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
             }
@@ -1472,7 +1474,9 @@ async def async_step_sensor_control_config(
         schema_fields: dict[Any, Any] = {
             vol.Required("zone_id", default=zone_id_default): selector.TextSelector(),
             vol.Required("type", default=zone_type_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=type_options, mode="dropdown")
+                selector.SelectSelectorConfig(
+                    options=type_options, mode=selector.SelectSelectorMode.DROPDOWN
+                )
             ),
             vol.Required(
                 "enabled", default=enabled_default
@@ -1516,7 +1520,7 @@ async def async_step_sensor_control_config(
                         selector.SelectOptionDict(value="on_demand", label="On Demand"),
                         selector.SelectOptionDict(value="never", label="Never"),
                     ],
-                    mode="dropdown",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             )
         )
@@ -1750,7 +1754,7 @@ async def async_step_sensor_control_config(
                             selector.SelectOptionDict(value="edit", label="Edit again"),
                             selector.SelectOptionDict(value="cancel", label="Cancel"),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
@@ -1799,7 +1803,7 @@ async def async_step_sensor_control_config(
                                 value="back", label="Back to zones menu"
                             ),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
@@ -1907,7 +1911,7 @@ async def async_step_sensor_control_config(
                                 value="back", label="Cancel / Back"
                             ),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
@@ -2012,13 +2016,13 @@ async def async_step_sensor_control_config(
                             ),
                             selector.SelectOptionDict(value="back", label="Back"),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
                 vol.Optional("rem_id"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=rem_select_options,
-                        mode="dropdown",
+                        mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
             }
@@ -2573,7 +2577,9 @@ async def _async_handle_rems_edit(
                 default=enabled_default,
             ): selector.BooleanSelector(),
             zone_key: selector.SelectSelector(
-                selector.SelectSelectorConfig(options=zone_options, mode="dropdown")
+                selector.SelectSelectorConfig(
+                    options=zone_options, mode=selector.SelectSelectorMode.DROPDOWN
+                )
             ),
             vol.Optional("area_id", default=area_default): selector.SelectSelector(
                 selector.SelectSelectorConfig(

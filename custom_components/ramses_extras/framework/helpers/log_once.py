@@ -226,7 +226,7 @@ class LogOnce:
         try:
             from homeassistant.helpers.storage import Store
 
-            store = Store(self._hass, _STORE_VERSION, _STORE_KEY)
+            store: Store[dict[str, Any]] = Store(self._hass, _STORE_VERSION, _STORE_KEY)
             data = await store.async_load()
             if isinstance(data, dict):
                 return data
@@ -239,7 +239,7 @@ class LogOnce:
         try:
             from homeassistant.helpers.storage import Store
 
-            store = Store(self._hass, _STORE_VERSION, _STORE_KEY)
+            store: Store[dict[str, Any]] = Store(self._hass, _STORE_VERSION, _STORE_KEY)
             await store.async_save(state)
         except Exception:
             _LOGGER.debug("Failed to save log-once state", exc_info=True)

@@ -7,14 +7,14 @@ import traceback
 from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
 from homeassistant.config_entries import (
     HANDLERS,
     ConfigEntry,
     ConfigFlow,
-    FlowResult,
+    ConfigFlowResult,
     OptionsFlow,
 )
 from homeassistant.core import HomeAssistant
@@ -173,7 +173,7 @@ async def _remove_card_config_flow(hass: HomeAssistant, card_path: Path) -> None
 class RamsesExtrasConfigFlow(ConfigFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
         # Check if we already have an entry for this domain
         existing_entries = self.hass.config_entries.async_entries(DOMAIN)
@@ -242,13 +242,13 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, list[str]] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle options initialization - redirect to main menu."""
         return await self.async_step_main_menu()
 
     async def async_step_main_menu(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the main configuration menu with ramses_cc style
         link/button navigation."""
 
@@ -270,7 +270,9 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         # Add dynamic feature options for features with config flows
         # Only list features that are actually enabled in the config entry
         dynamic_features_found = []
-        current_features = (self._config_entry.data or {}).get("enabled_features", {})
+        current_features = dict(self._config_entry.data or {}).get(
+            "enabled_features", {}
+        )
         for feature_id, feature_config in AVAILABLE_FEATURES.items():
             if feature_id == "ramses_debugger":
                 if current_features.get(feature_id):
@@ -321,11 +323,13 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_features(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle enable/disable features step."""
         self._refresh_config_entry(self.hass)
         # Get current enabled features
-        current_features = (self._config_entry.data or {}).get("enabled_features", {})
+        current_features = dict(self._config_entry.data or {}).get(
+            "enabled_features", {}
+        )
         enabled_features = {k: v for k, v in current_features.items() if k != "default"}
 
         # Get config flow helper
@@ -374,7 +378,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_device_simulator_warning(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Show warning before enabling device simulator (advanced feature).
 
         This step requires explicit user acknowledgment before enabling
@@ -417,7 +421,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                                 label="I understand, enable Device Simulator",
                             ),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
@@ -450,7 +454,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_sensor_control_overview(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Show a read-only overview of sensor_control mappings.
 
         This summarizes per-device mappings for each supported metric, so users
@@ -573,7 +577,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_advanced_settings(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle advanced settings step."""
         self._refresh_config_entry(self.hass)
 
@@ -674,7 +678,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                                 value="back", label="Back to main menu"
                             ),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
@@ -687,7 +691,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_advanced_yaml_export(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle YAML export from Advanced Settings."""
         self._refresh_config_entry(self.hass)
 
@@ -717,7 +721,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                                 value="back", label="Back to Advanced Settings"
                             ),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
@@ -737,7 +741,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_advanced_yaml_import(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle YAML import from Advanced Settings."""
         self._refresh_config_entry(self.hass)
 
@@ -875,7 +879,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                                 value="back", label="Cancel / Back"
                             ),
                         ],
-                        mode="list",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
@@ -920,7 +924,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_feature_ramses_debugger(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle ramses_debugger feature configuration."""
         self._selected_feature = "ramses_debugger"
         return await self.async_step_feature_config(user_input)
@@ -973,7 +977,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Confirmation step after feature or device configuration.
 
         This step summarizes pending changes and applies them once confirmed,
@@ -981,10 +985,14 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         """
         helper = self._get_config_flow_helper()
 
-        current_features = (self._config_entry.data or {}).get("enabled_features", {})
+        current_features = dict(self._config_entry.data or {}).get(
+            "enabled_features", {}
+        )
         pending = self._pending_data or {}
 
-        staged_enabled_features = pending.get("enabled_features_new", current_features)
+        staged_enabled_features: dict[str, bool] = (
+            pending.get("enabled_features_new", current_features) or {}
+        )
 
         if user_input is not None:
             # Apply staged feature changes, if any
@@ -1106,7 +1114,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def generic_step_feature_config(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle configuration for a feature using the generic flow."""
         self._refresh_config_entry(self.hass)
         if not hasattr(self, "_selected_feature"):
@@ -1228,7 +1236,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_feature_config(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle feature configuration step."""
         self._refresh_config_entry(self.hass)
         _LOGGER.debug("async_step_feature_config called")
@@ -1255,13 +1263,15 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 _LOGGER.info(f"📦 Using feature-specific config flow for {feature_id}")
                 # Support both async and sync feature-specific config flows.
                 if asyncio.iscoroutinefunction(config_function):
-                    return await config_function(self, user_input)
+                    return cast(
+                        "ConfigFlowResult", await config_function(self, user_input)
+                    )
 
                 result = config_function(self, user_input)
                 if inspect.isawaitable(result):
-                    return await result
+                    result = await result
 
-                return result
+                return cast("ConfigFlowResult", result)
 
             _LOGGER.debug(
                 f"Feature {feature_id} has config_flow.py but no "
@@ -1287,7 +1297,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_device_selection(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle device selection step."""
         self._refresh_config_entry(self.hass)
         if not hasattr(self, "_selected_feature") or not self._selected_feature:
@@ -1461,7 +1471,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
     # Add handler for dynamic feature menu items
     async def async_step_feature_default(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle default configuration via feature-specific helper.
 
         This method stays as the Home Assistant entrypoint but delegates the
@@ -1483,7 +1493,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 self, user_input
             )
             _LOGGER.debug("Default config flow completed")
-            return result
+            return cast("ConfigFlowResult", result)
 
         except Exception as e:
             _LOGGER.error("Error in async_step_feature_default: %s", e)
@@ -1493,14 +1503,14 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_feature_humidity_control(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle humidity control feature configuration."""
         self._selected_feature = "humidity_control"
         return await self.async_step_feature_config(user_input)
 
     async def async_step_feature_hvac_fan_card(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle HVAC fan card feature configuration.
 
         The HVAC fan card does not require per-device configuration. This
@@ -1529,28 +1539,28 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_feature_hello_world(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle hello world card feature configuration."""
         self._selected_feature = "hello_world"
         return await self.async_step_feature_config(user_input)
 
     async def async_step_feature_co2_control(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle CO2 control feature configuration."""
         self._selected_feature = "co2_control"
         return await self.async_step_feature_config(user_input)
 
     async def async_step_feature_sensor_control(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle sensor control feature configuration."""
         self._selected_feature = "sensor_control"
         return await self.async_step_feature_config(user_input)
 
     async def async_step_feature_temp_control(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle temperature control feature configuration."""
         self._selected_feature = "temp_control"
         return await self.async_step_feature_config(user_input)
@@ -1656,7 +1666,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             _LOGGER.error("Error during direct platform reload: %s", e)
             # Don't re-raise - platform reload failure shouldn't break config flow
 
-    async def _show_matrix_based_confirmation(self) -> FlowResult:
+    async def _show_matrix_based_confirmation(self) -> ConfigFlowResult:
         """Show confirmation with matrix-based entity changes."""
         _LOGGER.debug("_show_matrix_based_confirmation called")
         # Ensure we have the latest entity lists
@@ -1826,7 +1836,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
     async def async_step_matrix_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle matrix-based confirmation."""
         _LOGGER.debug("async_step_matrix_confirm called")
 
@@ -1994,7 +2004,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         orphaned_devices = []
         for device_entry in ramses_devices:
             # Check if this device has any entities
-            entities = entity_registry.entities.get(device_entry.id, [])
+            entities: Any = entity_registry.entities.get(device_entry.id, []) or []
             if not entities:
                 # No entities found - this device is orphaned
                 device_id = list(device_entry.identifiers)[0][1]  # Extract device ID

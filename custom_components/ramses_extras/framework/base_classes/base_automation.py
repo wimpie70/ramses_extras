@@ -17,7 +17,13 @@ from datetime import datetime, timedelta
 from fnmatch import fnmatch
 from typing import Any, Protocol
 
-from homeassistant.core import CoreState, Event, HomeAssistant, State
+from homeassistant.core import (
+    CoreState,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    State,
+)
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
@@ -281,7 +287,9 @@ class ExtrasBaseAutomation(ABC):
             if entity_id in self._specific_entity_ids:
                 return False
 
-            def _handle_state_change_event(event: Event) -> None:
+            def _handle_state_change_event(
+                event: Event[EventStateChangedData],
+            ) -> None:
                 self._handle_state_change(
                     event.data.get("entity_id"),
                     event.data.get("old_state"),
@@ -293,8 +301,6 @@ class ExtrasBaseAutomation(ABC):
                 entity_id,
                 _handle_state_change_event,
             )
-            if not listener:
-                return False
 
             self._listeners.append(listener)
             self._specific_entity_ids.add(entity_id)

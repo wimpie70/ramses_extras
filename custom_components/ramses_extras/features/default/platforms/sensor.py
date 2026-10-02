@@ -209,7 +209,7 @@ async def async_setup_entry(
     # without requiring a restart.  This fixes the race where a FAN is
     # discovered after the platform setup runs (e.g. first packet arrives
     # after integration load).
-    @ha_callback  # type: ignore[untyped-decorator]
+    @ha_callback
     def _on_devices_updated() -> None:
         """Handle EVENT_DEVICES_UPDATED: add sensors for new devices."""
         current_devices = hass.data.get("ramses_extras", {}).get("devices", [])
@@ -290,9 +290,7 @@ async def create_default_sensor(
 
     # Create sensor for each configured sensor type
     for sensor_type, config in DEFAULT_SENSOR_CONFIGS.items():
-        if config.get("supported_device_types") and "FAN" in config.get(
-            "supported_device_types", []
-        ):
+        if (types := config.get("supported_device_types")) and "FAN" in types:
             if sensor_type == "fan_control_mode":
                 sensor_entity = FanControlModeSensor(
                     hass, device_id_str, sensor_type, config
@@ -305,16 +303,16 @@ async def create_default_sensor(
                 )
                 continue
 
-            sensor_entity = DefaultHumiditySensor(
+            humidity_sensor = DefaultHumiditySensor(
                 hass, device_id_str, sensor_type, config
             )
-            sensor_list.append(sensor_entity)
+            sensor_list.append(humidity_sensor)
             _LOGGER.debug(
                 "Created default %s sensor for device %s: entity_id=%s unique_id=%s",
                 sensor_type,
                 device_id_str,
-                sensor_entity.entity_id,
-                sensor_entity._attr_unique_id,
+                humidity_sensor.entity_id,
+                humidity_sensor._attr_unique_id,
             )
 
     for area_sensor in _get_area_sensors_config(hass, device_id_str, config_entry):

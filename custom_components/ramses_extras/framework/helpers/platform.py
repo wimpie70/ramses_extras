@@ -11,7 +11,7 @@ Key components:
 """
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
 
 from homeassistant.config_entries import ConfigEntry
@@ -54,7 +54,7 @@ class PlatformSetup:
         entity_configs: dict[str, Any],
         entity_factory: Callable[
             [HomeAssistant, str, dict[str, Any], ConfigEntry | None],
-            Awaitable[list[Entity]],
+            Awaitable[Sequence[Entity]],
         ],
         store_entities_for_automation: bool = False,
         feature_id: str | None = None,
@@ -102,7 +102,7 @@ class PlatformSetup:
             _LOGGER.debug("No devices found for %s platform", platform)
             return
 
-        entities = []
+        entities: list[Entity] = []
         for device_id in devices:
             try:
                 # Create entities for device using factory
@@ -135,7 +135,7 @@ class PlatformSetup:
 
     @staticmethod
     def _store_entities_for_automation(
-        hass: HomeAssistant, entities: list[Entity]
+        hass: HomeAssistant, entities: Sequence[Entity]
     ) -> None:
         """Store entities in hass.data for automation access.
 

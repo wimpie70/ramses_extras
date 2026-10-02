@@ -76,7 +76,7 @@ async def create_hello_world_switch(
     :param config_entry: Configuration entry
     :return: List of switch entities
     """
-    switch_list = []
+    switch_list: list[ExtrasSwitchEntity] = []
 
     device_type: str | None = None
     try:

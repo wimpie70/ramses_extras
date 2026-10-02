@@ -5,10 +5,11 @@ for humidity control feature.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -20,13 +21,10 @@ from custom_components.ramses_extras.framework.helpers.device.core import (
     get_device_type,
 )
 
-if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
-
 _LOGGER = logging.getLogger(__name__)
 
 
-def is_supported_humidity_device(hass: object, device_id: str) -> bool:
+def is_supported_humidity_device(hass: HomeAssistant, device_id: str) -> bool:
     normalized_device_id = device_id.replace("_", ":")
     device = find_ramses_device(hass, normalized_device_id)
     return get_device_type(device) == "HvacVentilator"
@@ -93,7 +91,7 @@ async def create_humidity_switch(
 
     from ..const import HUMIDITY_SWITCH_CONFIGS
 
-    switch_list = []
+    switch_list: list[ExtrasSwitchEntity] = []
 
     for switch_type, config in HUMIDITY_SWITCH_CONFIGS.items():
         if config.get("supported_device_types") and "HvacVentilator" in config.get(

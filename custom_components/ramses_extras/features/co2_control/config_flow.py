@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 import voluptuous as vol
-from homeassistant.config_entries import FlowResult
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 
@@ -197,7 +197,7 @@ def _sync_settings_to_number_entities(hass: Any, settings: dict[str, Any]) -> No
 
 async def async_step_co2_control_config(
     flow: Any, user_input: dict[str, Any] | None = None
-) -> FlowResult:
+) -> ConfigFlowResult:
     """Handle co2_control configuration.
 
     Combined device-selection + threshold/hysteresis settings form.
@@ -262,7 +262,7 @@ async def async_step_co2_control_config(
         flow._selected_feature = feature_id  # noqa: SLF001
         flow._temp_matrix_state = helper.get_feature_device_matrix_state()  # noqa: SLF001
 
-        return await flow._show_matrix_based_confirmation()  # noqa: SLF001
+        return cast("ConfigFlowResult", await flow._show_matrix_based_confirmation())  # noqa: SLF001
 
     schema = vol.Schema(
         {
@@ -306,10 +306,13 @@ async def async_step_co2_control_config(
     info_text += "CO2-based ventilation control with priority over humidity.\n"
     info_text += "Set the threshold and hysteresis values (ppm).\n"
 
-    return flow.async_show_form(
-        step_id="feature_config",
-        data_schema=schema,
-        description_placeholders={"info": info_text},
+    return cast(
+        "ConfigFlowResult",
+        flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        ),
     )
 
 

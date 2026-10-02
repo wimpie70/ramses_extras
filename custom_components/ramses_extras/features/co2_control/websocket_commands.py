@@ -13,7 +13,7 @@ from custom_components.ramses_extras.const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-@callback  # type: ignore[untyped-decorator]
+@callback
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register CO2 control WebSocket commands.
 
@@ -27,13 +27,13 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     _LOGGER.debug("CO2 control WebSocket commands registered")
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         "type": "ramses_extras/co2/get_status",
         "device_id": str,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def handle_get_co2_status(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
@@ -63,14 +63,14 @@ def handle_get_co2_status(
         connection.send_error(msg["id"], "unknown_error", str(e))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         "type": "ramses_extras/co2/get_zone_details",
         "device_id": str,
         "zone_id": str,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def handle_get_zone_details(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
@@ -125,7 +125,7 @@ def handle_get_zone_details(
         connection.send_error(msg["id"], "unknown_error", str(e))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         "type": "ramses_extras/co2/update_zone",
         "device_id": str,
@@ -133,7 +133,7 @@ def handle_get_zone_details(
         "updates": dict,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def handle_update_zone_config(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
@@ -176,14 +176,14 @@ def handle_update_zone_config(
         connection.send_error(msg["id"], "unknown_error", str(e))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         "type": "ramses_extras/co2/get_history",
         "device_id": str,
         "hours": int,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def handle_get_co2_history(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
