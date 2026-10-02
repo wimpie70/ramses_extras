@@ -113,38 +113,6 @@ class HelloWorldConfig(ExtrasConfigManager):
             _LOGGER.error("Hello World configuration validation failed: %s", e)
             return False
 
-    def get_config_schema(self) -> dict[str, Any]:
-        """Get Hello World configuration schema for UI.
-
-        TODO: This is not fully implemented yet
-        Note: This schema is for runtime configuration only. Entity definitions
-        (icons, templates, etc.) are managed in const.py and not exposed here.
-
-        :return: Configuration schema dictionary
-        :rtype: dict[str, Any]
-        """
-        return self.get_config_schema_dict()
-
-    def get_config_schema_dict(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "title": "Default state for the Switch",
-                    "description": "Example how to use configs in the submenu",
-                    "default": DEFAULT_CONFIG["enabled"],
-                },
-                "auto_discovery": {
-                    "type": "boolean",
-                    "title": "Enable Auto Discovery",
-                    "description": "Enable automatic discovery of Hello World entities",
-                    "default": DEFAULT_CONFIG["auto_discovery"],
-                },
-            },
-            "required": ["enabled"],
-        }
-
     def is_auto_discovery_enabled(self) -> bool:
         """Check if auto discovery is enabled in configuration.
 
