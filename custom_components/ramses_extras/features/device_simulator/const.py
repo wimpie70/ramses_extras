@@ -54,6 +54,7 @@ DEVICE_SIMULATOR_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
 DEVICE_SIMULATOR_WEBSOCKET_COMMANDS = {
     "clear_messages": "ramses_extras/device_simulator/clear_messages",
     "get_status": "ramses_extras/device_simulator/get_status",
+    "status": "device_simulator/status",
     "get_devices": "device_simulator/devices",
     "get_active_devices": "device_simulator/active_devices",
     "activate_device": "device_simulator/activate",
@@ -64,7 +65,6 @@ DEVICE_SIMULATOR_WEBSOCKET_COMMANDS = {
     "get_conversations": "device_simulator/conversations",
     "get_messages": "device_simulator/messages",
     "get_device_messages": "ramses_extras/device_simulator/get_messages",
-    "get_ui_status": "ramses_extras/device_simulator/get_status",
     "activate_profile_device": "ramses_extras/device_simulator/activate_profile_device",
     "load_profile": "ramses_extras/device_simulator/load_profile",
     "delete_profile": "ramses_extras/device_simulator/delete_profile",

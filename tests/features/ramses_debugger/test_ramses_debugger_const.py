@@ -51,6 +51,7 @@ class TestRamsesDebuggerConst:
             "traffic_subscribe_stats",
             "log_list_files",
             "log_get_tail",
+            "log_get_lines",
             "log_search",
             "packet_log_list_files",
             "packet_log_get_messages",

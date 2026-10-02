@@ -85,7 +85,11 @@ class TestWebSocketFullCoverage:
 
     def test_register_websocket_commands_coverage(self):
         """Test register websocket commands."""
-        commands = websocket.register_default_websocket_commands()
+        from custom_components.ramses_extras.features.default.const import (
+            DEFAULT_WEBSOCKET_COMMANDS,
+        )
+
+        commands = DEFAULT_WEBSOCKET_COMMANDS
 
         assert isinstance(commands, dict)
         assert len(commands) > 0

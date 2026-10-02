@@ -15,6 +15,7 @@ RAMSES_DEBUGGER_WEBSOCKET_COMMANDS: dict[str, str] = {
     "traffic_subscribe_stats": "ramses_extras/ramses_debugger/traffic/subscribe_stats",
     "log_list_files": "ramses_extras/ramses_debugger/log/list_files",
     "log_get_tail": "ramses_extras/ramses_debugger/log/get_tail",
+    "log_get_lines": "ramses_extras/ramses_debugger/log/get_lines",
     "log_search": "ramses_extras/ramses_debugger/log/search",
     "packet_log_list_files": "ramses_extras/ramses_debugger/packet_log/list_files",
     "packet_log_get_messages": "ramses_extras/ramses_debugger/packet_log/get_messages",
