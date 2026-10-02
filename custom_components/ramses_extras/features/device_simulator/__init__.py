@@ -949,7 +949,7 @@ def _setup_entity_registry_listener(hass: HomeAssistant) -> None:
         if flush_task is None:
             flush_task = hass.async_create_task(_flush_pending_entity_updates())
 
-    @callback  # type: ignore[untyped-decorator]
+    @callback
     def _handle_entity_event(event: Any) -> None:
         data = getattr(event, "data", {}) or {}
         if data.get("action") != "create":

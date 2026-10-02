@@ -40,7 +40,7 @@ class CO2ControlSwitch(ExtrasSwitchEntity, RestoreEntity):
     @property
     def is_on(self) -> bool:
         """Return true if CO2 control is on."""
-        return self._attr_is_on
+        return bool(self._attr_is_on)
 
     async def async_added_to_hass(self) -> None:
         """Restore previous switch state when entity is (re)added."""

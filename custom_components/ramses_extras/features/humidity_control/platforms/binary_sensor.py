@@ -23,7 +23,7 @@ from custom_components.ramses_extras.framework.helpers.device.core import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def is_supported_humidity_device(hass: object, device_id: str) -> bool:
+def is_supported_humidity_device(hass: HomeAssistant, device_id: str) -> bool:
     normalized_device_id = device_id.replace("_", ":")
     device = find_ramses_device(hass, normalized_device_id)
     return get_device_type(device) == "HvacVentilator"
@@ -98,7 +98,7 @@ async def create_humidity_control_binary_sensor(
     # Import entity configurations from registry
     from ..const import HUMIDITY_BOOLEAN_CONFIGS
 
-    binary_sensor = []
+    binary_sensor: list[ExtrasBinarySensorEntity] = []
 
     # Create dehumidifying_active binary sensor
     for binary_type, config in HUMIDITY_BOOLEAN_CONFIGS.items():

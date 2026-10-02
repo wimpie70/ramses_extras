@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.core import callback
+from homeassistant.core import Event, callback
 
 from .const import (
     DOMAIN,
@@ -52,20 +52,23 @@ try:
         SZ_CLIENT_STATE,
         SZ_PACKETS,
     )
-    from ramses_tx.schemas import SZ_SCHEMA
 except ImportError:
     # Fallback for testing environments where ramses_cc may not be available
     RAMSES_CC_STORAGE_VERSION = 1
     RAMSES_CC_STORAGE_KEY = "ramses_cc"
     SZ_CLIENT_STATE = "client_state"
     SZ_PACKETS = "packets"
-    SZ_SCHEMA = "schema"
+
 from .profile_loader import (
     async_apply_profile,
     build_profile_from_yaml,
     profile_to_yaml,
 )
 from .system_config import SIM_DEVICE_ID, SystemConfigProfile
+
+# Same value as ramses_tx.schemas.SZ_SCHEMA (declared Final upstream);
+# defined locally so the import fallback above cannot reassign a Final name.
+SZ_SCHEMA = "schema"
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import ActiveConnection
@@ -76,13 +79,13 @@ if TYPE_CHECKING:
     from .system_config import ConfigProfileStore
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/clear_messages",
         vol.Optional("device_ids", default=[]): [str],
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_clear_device_messages(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -312,12 +315,12 @@ def _get_db(hass: HomeAssistant) -> DeviceDatabase | None:
     return cast("DeviceDatabase | None", registry.get("device_simulator_db"))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "device_simulator/status",
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_status(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -347,12 +350,12 @@ def ws_get_status(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "device_simulator/devices",
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_devices(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -380,12 +383,12 @@ def ws_get_devices(
     connection.send_result(msg["id"], {"devices": result})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "device_simulator/active_devices",
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_active_devices(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -413,7 +416,7 @@ def ws_get_active_devices(
     connection.send_result(msg["id"], {"devices": result})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "device_simulator/activate",
         vol.Required("device_id"): str,
@@ -421,7 +424,7 @@ def ws_get_active_devices(
         vol.Optional("variant_id"): str,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_activate_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -448,13 +451,13 @@ def ws_activate_device(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "device_simulator/silence",
         vol.Required("device_id"): str,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_silence_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -470,14 +473,14 @@ def ws_silence_device(
     connection.send_result(msg["id"], {"success": True})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/resume_devices",
         vol.Optional("device_ids"): [str],
         vol.Optional("full_database"): bool,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_resume_devices(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -510,14 +513,14 @@ def ws_resume_devices(
     connection.send_result(msg["id"], {"success": True, "resumed": "all"})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/silence_devices",
         vol.Optional("device_ids", default=[]): [str],
         vol.Optional("set_suppress", default=True): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_silence_devices(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -564,13 +567,13 @@ async def ws_silence_devices(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/discover_capabilities",
         vol.Optional("device_ids", default=[]): [str],
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_discover_capabilities(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -734,12 +737,12 @@ async def ws_discover_capabilities(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "device_simulator/conversations",
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_conversations(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -766,13 +769,13 @@ def ws_get_conversations(
     connection.send_result(msg["id"], {"conversations": result})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "device_simulator/messages",
         vol.Optional("limit", default=50): int,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_messages(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -790,14 +793,14 @@ def ws_get_messages(
     connection.send_result(msg["id"], {"messages": messages})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/get_messages",
         vol.Optional("limit", default=100): int,
         vol.Optional("device_id"): str,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_device_messages(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -821,12 +824,12 @@ def ws_get_device_messages(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/get_status",
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_ui_status(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -998,13 +1001,13 @@ def ws_get_ui_status(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/get_profile_yaml",
         vol.Optional("profile"): str,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_profile_yaml(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1046,13 +1049,13 @@ def ws_get_profile_yaml(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/activate_profile_device",
         vol.Required("device_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_activate_profile_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1107,7 +1110,7 @@ async def ws_activate_profile_device(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/load_profile",
         vol.Required("profile"): str,
@@ -1122,7 +1125,7 @@ async def ws_activate_profile_device(
         vol.Optional("enable_auto_answer", default=True): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_load_profile(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1206,13 +1209,13 @@ async def ws_load_profile(
     connection.send_result(msg["id"], result)
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/delete_profile",
         vol.Required("profile"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_delete_profile(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1251,7 +1254,7 @@ async def ws_delete_profile(
     connection.send_result(msg["id"], {"success": True, "profile": profile_name})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/import_user_log",
         vol.Optional("path"): str,
@@ -1260,7 +1263,7 @@ async def ws_delete_profile(
         vol.Optional("save_yaml", default=True): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_import_user_log(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1298,10 +1301,10 @@ async def ws_import_user_log(
         connection.send_error(msg["id"], "import_failed", "Failed to import log")
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {vol.Required("type"): "ramses_extras/device_simulator/list_saved_playbacks"}
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_list_saved_playbacks(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1316,13 +1319,13 @@ async def ws_list_saved_playbacks(
     connection.send_result(msg["id"], {"success": True, "playbacks": playbacks})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/get_playback_text",
         vol.Required("identifier"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_get_playback_text(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1342,13 +1345,13 @@ async def ws_get_playback_text(
     connection.send_result(msg["id"], {"success": True, "text": text})
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/delete_saved_playback",
         vol.Required("identifier"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_delete_saved_playback(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1368,13 +1371,13 @@ async def ws_delete_saved_playback(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/pause_scenario",
         vol.Required("scenario"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_pause_scenario(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1394,13 +1397,13 @@ async def ws_pause_scenario(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/resume_scenario",
         vol.Required("scenario"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_resume_scenario(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1420,7 +1423,7 @@ async def ws_resume_scenario(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/start_scenario",
         vol.Required("scenario"): str,
@@ -1428,7 +1431,7 @@ async def ws_resume_scenario(
         vol.Optional("clear_message_log", default=False): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_start_scenario(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1567,14 +1570,14 @@ async def ws_start_scenario(
     connection.send_result(msg["id"], response)
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/stop_scenario",
         vol.Optional("scenario"): str,
         vol.Optional("device_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_stop_scenario(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1718,14 +1721,14 @@ async def _start_load_profile_yaml(
     return result
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/set_device_enabled",
         vol.Required("device_id"): str,
         vol.Required("enabled"): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_set_device_enabled(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1772,7 +1775,7 @@ async def ws_set_device_enabled(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/set_autonomous_speed",
         vol.Required("speed"): vol.All(
@@ -1780,7 +1783,7 @@ async def ws_set_device_enabled(
         ),
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_set_autonomous_speed(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1810,14 +1813,14 @@ def ws_set_autonomous_speed(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/clear_ramses_cache",
         vol.Optional("clear_schema", default=True): bool,
         vol.Optional("clear_packets", default=False): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_clear_ramses_cache(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1881,7 +1884,7 @@ async def ws_clear_ramses_cache(
         connection.send_error(msg["id"], "error", str(err))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required(
             "type"
@@ -1890,7 +1893,7 @@ async def ws_clear_ramses_cache(
         vol.Required("excluded_codes"): [str],
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_set_device_excluded_codes(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1935,13 +1938,13 @@ def ws_set_device_excluded_codes(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/set_auto_answer",
         vol.Required("enabled"): bool,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_set_auto_answer(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -1986,13 +1989,13 @@ def ws_set_auto_answer(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/set_echo",
         vol.Required("enabled"): bool,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_set_echo(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -2028,7 +2031,7 @@ def ws_set_echo(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required(
             "type"
@@ -2036,7 +2039,7 @@ def ws_set_echo(
         vol.Required("enabled"): bool,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_set_answer_unknown_devices(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -2074,13 +2077,13 @@ def ws_set_answer_unknown_devices(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/set_preserve_state",
         vol.Required("enabled"): bool,
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_set_preserve_state(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -2113,7 +2116,7 @@ def ws_set_preserve_state(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required(
             "type"
@@ -2124,7 +2127,7 @@ def ws_set_preserve_state(
         vol.Optional("reload_ramses_cc", default=False): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_set_heartbeat_timeout_scale(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -2182,12 +2185,12 @@ async def ws_set_heartbeat_timeout_scale(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/get_rf_config",
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_get_rf_config(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -2224,12 +2227,12 @@ def ws_get_rf_config(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/subscribe_devices",
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_subscribe_devices(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -2241,8 +2244,8 @@ def ws_subscribe_devices(
     or their properties change.
     """
 
-    @callback  # type: ignore[untyped-decorator]
-    def _on_device_changed(event: dict[str, Any]) -> None:
+    @callback
+    def _on_device_changed(event: Event) -> None:
         """Push device change event to client."""
         payload = getattr(event, "data", {}) or {}
         data = {
@@ -2296,12 +2299,12 @@ def ws_subscribe_devices(
     connection.subscriptions[msg["id"]] = unsubscribe
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/subscribe_scenarios",
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_subscribe_scenarios(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -2309,8 +2312,8 @@ def ws_subscribe_scenarios(
 ) -> None:
     """Subscribe to running scenario metadata changes."""
 
-    @callback  # type: ignore[untyped-decorator]
-    def _on_scenario_changed(event: dict[str, Any]) -> None:
+    @callback
+    def _on_scenario_changed(event: Event) -> None:
         payload = getattr(event, "data", {}) or {}
         connection.send_message(
             websocket_api.event_message(
@@ -2341,14 +2344,14 @@ def ws_subscribe_scenarios(
     connection.subscriptions[msg["id"]] = unsubscribe
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_simulator/subscribe_messages",
         vol.Optional("device_ids", default=[]): [str],
         vol.Optional("limit", default=50): vol.All(int, vol.Range(min=1, max=200)),
     }
 )
-@callback  # type: ignore[untyped-decorator]
+@callback
 def ws_subscribe_messages(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -2390,8 +2393,8 @@ def ws_subscribe_messages(
                 for entry in engine.message_log.get_recent(limit=limit)
             ]
 
-    @callback  # type: ignore[untyped-decorator]
-    def _on_message_event(event: dict[str, Any]) -> None:
+    @callback
+    def _on_message_event(event: Event) -> None:
         payload = getattr(event, "data", {}) or {}
         messages: list[dict[str, Any]] = payload.get("messages") or []
         if not messages:

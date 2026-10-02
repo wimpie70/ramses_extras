@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 import voluptuous as vol
-from homeassistant.config_entries import FlowResult
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.helpers import selector
 
 from ...const import AVAILABLE_FEATURES
@@ -88,7 +88,7 @@ def _persist_temp_control_settings(flow: Any, settings: dict[str, Any]) -> None:
 
 async def async_step_temp_control_config(
     flow: Any, user_input: dict[str, Any] | None = None
-) -> FlowResult:
+) -> ConfigFlowResult:
     """Handle temp_control configuration."""
 
     feature_id = "temp_control"
@@ -167,7 +167,7 @@ async def async_step_temp_control_config(
         flow._selected_feature = feature_id  # noqa: SLF001
         flow._temp_matrix_state = helper.get_feature_device_matrix_state()  # noqa: SLF001
 
-        return await flow._show_matrix_based_confirmation()  # noqa: SLF001
+        return cast("ConfigFlowResult", await flow._show_matrix_based_confirmation())  # noqa: SLF001
 
     schema = vol.Schema(
         {
@@ -237,8 +237,11 @@ async def async_step_temp_control_config(
     info_text = f"🌡️ **{feature_name}**\n\n"
     info_text += "Controls bypass to keep indoor temperature near comfort temp.\n"
 
-    return flow.async_show_form(
-        step_id="feature_config",
-        data_schema=schema,
-        description_placeholders={"info": info_text},
+    return cast(
+        "ConfigFlowResult",
+        flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        ),
     )

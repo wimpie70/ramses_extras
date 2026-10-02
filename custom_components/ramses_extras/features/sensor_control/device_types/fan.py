@@ -781,7 +781,7 @@ async def handle_internal_fan_sensors(
                 default=indoor_temp_cfg.get("kind", "internal"),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=temp_kind_options, mode="dropdown"
+                    options=temp_kind_options, mode=selector.SelectSelectorMode.DROPDOWN
                 )
             ),
             vol.Optional(
@@ -791,7 +791,9 @@ async def handle_internal_fan_sensors(
             vol.Required(
                 "indoor_humidity_kind", default=indoor_hum_cfg.get("kind", "internal")
             ): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=hum_kind_options, mode="dropdown")
+                selector.SelectSelectorConfig(
+                    options=hum_kind_options, mode=selector.SelectSelectorMode.DROPDOWN
+                )
             ),
             vol.Optional(
                 "indoor_humidity_entity",
@@ -819,7 +821,7 @@ async def handle_internal_fan_sensors(
                 default=outdoor_temp_cfg.get("kind", "internal"),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=temp_kind_options, mode="dropdown"
+                    options=temp_kind_options, mode=selector.SelectSelectorMode.DROPDOWN
                 )
             ),
             vol.Optional(
@@ -829,7 +831,9 @@ async def handle_internal_fan_sensors(
             vol.Required(
                 "outdoor_humidity_kind", default=outdoor_hum_cfg.get("kind", "internal")
             ): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=hum_kind_options, mode="dropdown")
+                selector.SelectSelectorConfig(
+                    options=hum_kind_options, mode=selector.SelectSelectorMode.DROPDOWN
+                )
             ),
             vol.Optional(
                 "outdoor_humidity_entity",
@@ -839,7 +843,9 @@ async def handle_internal_fan_sensors(
             vol.Required(
                 "co2_kind", default=co2_cfg.get("kind", "internal")
             ): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=co2_kind_options, mode="dropdown")
+                selector.SelectSelectorConfig(
+                    options=co2_kind_options, mode=selector.SelectSelectorMode.DROPDOWN
+                )
             ),
             vol.Optional(
                 "co2_entity", default=co2_cfg.get("entity_id")
@@ -850,7 +856,8 @@ async def handle_internal_fan_sensors(
                 default=indoor_abs_cfg.get("temperature", {}).get("kind", "internal"),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=abs_temp_kind_options, mode="dropdown"
+                    options=abs_temp_kind_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Optional(
@@ -862,7 +869,8 @@ async def handle_internal_fan_sensors(
                 default=indoor_abs_cfg.get("humidity", {}).get("kind", "internal"),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=abs_hum_kind_options, mode="dropdown"
+                    options=abs_hum_kind_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Optional(
@@ -875,7 +883,8 @@ async def handle_internal_fan_sensors(
                 default=outdoor_abs_cfg.get("temperature", {}).get("kind", "internal"),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=abs_temp_kind_options, mode="dropdown"
+                    options=abs_temp_kind_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Optional(
@@ -887,7 +896,8 @@ async def handle_internal_fan_sensors(
                 default=outdoor_abs_cfg.get("humidity", {}).get("kind", "internal"),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=abs_hum_kind_options, mode="dropdown"
+                    options=abs_hum_kind_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Optional(

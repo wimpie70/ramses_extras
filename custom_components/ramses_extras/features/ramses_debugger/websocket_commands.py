@@ -42,7 +42,7 @@ from .messages_provider import get_messages_from_sources
 from .traffic_collector import TrafficCollector
 
 if TYPE_CHECKING:
-    from homeassistant.components.websocket_api import WebSocket
+    from homeassistant.components.websocket_api import ActiveConnection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ def _get_traffic_collector(hass: HomeAssistant) -> TrafficCollector | None:
     return collector
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/traffic/get_stats",
         vol.Optional("traffic_source", default="live"): vol.In(
@@ -135,10 +135,10 @@ def _get_traffic_collector(hass: HomeAssistant) -> TrafficCollector | None:
         vol.Optional("limit", default=200): vol.All(int, vol.Range(min=0, max=5000)),
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_traffic_get_stats(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     """Return traffic statistics for live or log-backed sources."""
@@ -308,15 +308,15 @@ async def ws_traffic_get_stats(
     connection.send_result(msg["id"], _inject_version(hass, stats))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/traffic/reset_stats",
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_traffic_reset_stats(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     collector = _get_traffic_collector(hass)
@@ -332,7 +332,7 @@ async def ws_traffic_reset_stats(
     connection.send_result(msg["id"], _inject_version(hass, {"success": True}))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/traffic/subscribe_stats",
         vol.Optional("device_id"): str,
@@ -347,10 +347,10 @@ async def ws_traffic_reset_stats(
         ),
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_traffic_subscribe_stats(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     collector = _get_traffic_collector(hass)
@@ -427,15 +427,15 @@ async def ws_traffic_subscribe_stats(
     _send_snapshot()
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/log/list_files",
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_log_list_files(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     base = get_configured_log_path(hass)
@@ -459,15 +459,15 @@ async def ws_log_list_files(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/packet_log/list_files",
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_packet_log_list_files(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     base = get_configured_packet_log_path(hass)
@@ -496,7 +496,7 @@ async def ws_packet_log_list_files(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/packet_log/get_messages",
         vol.Required("file_id"): str,
@@ -510,10 +510,10 @@ async def ws_packet_log_list_files(
         vol.Optional("decode", default=False): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_packet_log_get_messages(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     file_id = msg.get("file_id")
@@ -598,7 +598,7 @@ async def ws_packet_log_get_messages(
     connection.send_result(msg["id"], _inject_version(hass, result))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/log/get_tail",
         vol.Required("file_id"): str,
@@ -616,10 +616,10 @@ async def ws_packet_log_get_messages(
         ),
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_log_get_tail(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     file_id = msg.get("file_id")
@@ -712,7 +712,7 @@ async def ws_log_get_tail(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/messages/get_messages",
         vol.Optional(
@@ -730,10 +730,10 @@ async def ws_log_get_tail(
         vol.Optional("decode", default=False): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_messages_get_messages(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     sources = msg.get("sources", ["traffic_buffer", "packet_log", "ha_log"])
@@ -782,7 +782,7 @@ async def ws_messages_get_messages(
         connection.send_error(msg["id"], "error", str(exc))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/log/search",
         vol.Required("file_id"): str,
@@ -800,10 +800,10 @@ async def ws_messages_get_messages(
         vol.Optional("case_sensitive", default=False): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_log_search(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     file_id = msg.get("file_id")
@@ -886,7 +886,7 @@ async def ws_log_search(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/log/get_lines",
         vol.Required("file_id"): str,
@@ -894,10 +894,10 @@ async def ws_log_search(
         vol.Required("end_line"): vol.All(int, vol.Range(min=1)),
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_log_get_lines(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     """Fetch specific line range from a log file."""
@@ -939,15 +939,15 @@ async def ws_log_get_lines(
         connection.send_error(msg["id"], "error", str(exc))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/cache/get_stats",
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_cache_get_stats(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     cache = _get_cache(hass)
@@ -976,15 +976,15 @@ async def ws_cache_get_stats(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/cache/clear",
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_cache_clear(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     cache = _get_cache(hass)
@@ -998,16 +998,16 @@ async def ws_cache_clear(
     connection.send_result(msg["id"], result)
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/config/export",
         vol.Optional("include_sensitive", default=False): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_config_export(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     """Export the full structured canonical config as YAML.
@@ -1088,15 +1088,15 @@ async def ws_config_export(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/config/diagnostics",
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_config_diagnostics(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     """Return diagnostics comparing discovered vs explicit config.
@@ -1225,17 +1225,17 @@ async def ws_config_diagnostics(
     )
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/config/import",
         vol.Required("yaml_content"): str,
         vol.Optional("dry_run", default=True): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_config_import(
     hass: HomeAssistant,
-    connection: WebSocket,
+    connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     """Import full ramses_extras configuration from YAML.

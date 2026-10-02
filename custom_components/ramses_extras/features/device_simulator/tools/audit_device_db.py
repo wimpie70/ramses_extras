@@ -41,7 +41,7 @@ import re
 import sys
 from datetime import datetime as dt
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # ---------------------------------------------------------------------------
 # Path setup: ensure device_db is importable.
@@ -175,7 +175,7 @@ def _load_i_only_codes() -> frozenset[str]:
     """Load codes that have no RQ verb from ramses_tx schema."""
     try:
         from ramses_rf import CODES_SCHEMA  # noqa: PLC0415
-        from ramses_tx.const import VerbT  # noqa: PLC0415
+        from ramses_tx.const import Verb as VerbT  # noqa: PLC0415
 
         return frozenset(
             str(code)
@@ -297,7 +297,7 @@ def _parse_frame(frame: str) -> tuple[dict | None, str | None]:
         from ramses_rf import Message, Packet  # noqa: PLC0415
 
         pkt = Packet(dt.now(), frame)
-        msg = Message._from_pkt(pkt)
+        msg = cast(Any, Message)._from_pkt(pkt)  # noqa: SLF001
         result = msg.payload
         if isinstance(result, list):
             result = result[0] if result else {}

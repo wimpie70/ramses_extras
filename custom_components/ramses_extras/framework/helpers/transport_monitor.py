@@ -468,7 +468,7 @@ class TransportMonitor:
             )
             return
 
-        @ha_callback  # type: ignore[untyped-decorator]
+        @ha_callback
         def _on_pool_state_changed(event: Any) -> None:
             """Handle pool health entity state change."""
             entity_id = event.data.get("entity_id")

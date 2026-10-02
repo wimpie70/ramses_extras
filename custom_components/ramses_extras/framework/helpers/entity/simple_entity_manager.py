@@ -223,8 +223,6 @@ class SimpleEntityManager:
                 entities = entity_registry_instance.entities
                 if hasattr(entities, "values"):
                     return [entity.entity_id for entity in entities.values()]
-                if isinstance(entities, dict):
-                    return list(entities.keys())
                 return []
             # Fallback for mocks that don't have the full structure
             return []

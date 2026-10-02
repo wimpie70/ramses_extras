@@ -266,7 +266,7 @@ class TestExtrasNumberEntity:
         config_entry = MagicMock()
         config_entry.options = {}
         config_entry.entry_id = "test_entry"
-        hass.config_entries.async_update_entry = AsyncMock()
+        hass.config_entries.async_update_entry = MagicMock()
 
         entity = ExtrasNumberEntity(
             hass,
@@ -279,7 +279,7 @@ class TestExtrasNumberEntity:
         await entity.async_set_native_value(25.0)
 
         assert entity._native_value == 25.0
-        hass.config_entries.async_update_entry.assert_awaited_once()
+        hass.config_entries.async_update_entry.assert_called_once()
 
     @pytest.mark.asyncio
     @patch(
@@ -294,7 +294,7 @@ class TestExtrasNumberEntity:
         config_entry = MagicMock()
         config_entry.options = {}
         config_entry.entry_id = "test_entry"
-        hass.config_entries.async_update_entry = AsyncMock()
+        hass.config_entries.async_update_entry = MagicMock()
 
         entity = ExtrasNumberEntity(
             hass,
@@ -306,7 +306,7 @@ class TestExtrasNumberEntity:
 
         await entity._save_value_to_config(25.0)
 
-        hass.config_entries.async_update_entry.assert_awaited_once()
+        hass.config_entries.async_update_entry.assert_called_once()
         call_args = hass.config_entries.async_update_entry.call_args[1]
         assert "test_feature" in call_args["options"]
         assert "32_153289" in call_args["options"]["test_feature"]

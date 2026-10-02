@@ -257,7 +257,7 @@ async def async_setup_entry(
 
         # Listen for newly discovered devices and create binary sensors
         # for them without requiring a restart.
-        @ha_callback  # type: ignore[untyped-decorator]
+        @ha_callback
         def _on_devices_updated() -> None:
             """Handle EVENT_DEVICES_UPDATED: add binary sensors for new fans."""
             current_devices = hass.data.get(DOMAIN, {}).get("devices", [])

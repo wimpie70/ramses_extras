@@ -12,14 +12,19 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from ...const import DOMAIN
 from .ramses_commands import RamsesCommands
 
-try:
-    from ramses_rf.messages import Message
-    from ramses_tx.dtos import PacketDTO
-    from ramses_tx.exceptions import PacketInvalid
-except ImportError:  # ramses_rf not available at import time
-    Message = None
-    PacketDTO = None
-    PacketInvalid = Exception
+
+def _import_ramses_types() -> tuple[Any, Any, type[Exception]]:
+    """Import ramses types lazily; fall back to None when unavailable."""
+    try:
+        from ramses_rf.messages import Message
+        from ramses_tx.dtos import PacketDTO
+        from ramses_tx.exceptions import PacketInvalid
+    except ImportError:  # ramses_rf not available at import time
+        return None, None, Exception
+    return Message, PacketDTO, PacketInvalid
+
+
+Message, PacketDTO, PacketInvalid = _import_ramses_types()
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -33,7 +33,7 @@ from custom_components.ramses_extras.framework.helpers.transport_monitor import 
 )
 
 if TYPE_CHECKING:
-    from homeassistant.components.websocket_api import WebSocket
+    from homeassistant.components.websocket_api import ActiveConnection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -315,14 +315,14 @@ def _pool_section(hass: HomeAssistant) -> dict[str, Any] | None:
     return pool
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/device_status_card/get_device_status",
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_get_device_status(
-    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Return a snapshot of all RAMSES devices' status and quality."""
     try:

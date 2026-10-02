@@ -667,7 +667,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     # 4. Remove Lovelace resources
     try:
-        store = Store(hass, 1, "lovelace_resources")
+        store: Store[dict[str, Any]] = Store(hass, 1, "lovelace_resources")
         data = await store.async_load()
         if data and "items" in data:
             original_count = len(data["items"])

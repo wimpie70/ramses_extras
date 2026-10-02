@@ -22,7 +22,7 @@ from ..const import TEMP_CONTROL_BOOLEAN_CONFIGS
 _LOGGER = logging.getLogger(__name__)
 
 
-def is_supported_temp_control_device(hass: object, device_id: str) -> bool:
+def is_supported_temp_control_device(hass: HomeAssistant, device_id: str) -> bool:
     normalized_device_id = device_id.replace("_", ":")
     device = find_ramses_device(hass, normalized_device_id)
     return bool(get_device_type(device) == "HvacVentilator")

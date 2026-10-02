@@ -28,7 +28,7 @@ from custom_components.ramses_extras.framework.helpers.entity.simple_entity_mana
 from .const import HELLO_WORLD_BINARY_SENSOR_CONFIGS, HELLO_WORLD_SWITCH_CONFIGS
 
 if TYPE_CHECKING:
-    from homeassistant.components.websocket_api import WebSocket
+    from homeassistant.components.websocket_api import ActiveConnection
     from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,16 +62,16 @@ def _get_entities_manager(hass: HomeAssistant) -> Any:
         return None
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/hello_world/toggle_switch",
         vol.Required("device_id"): str,
         vol.Required("state"): vol.In([True, False]),
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_toggle_switch(
-    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Toggle Hello World switch state via WebSocket."""
     _LOGGER.info("WebSocket command received: %s", msg)
@@ -108,13 +108,13 @@ async def ws_toggle_switch(
         # Try to get entity registry, but don't fail if it's not available
         try:
             ent_reg = entity_registry.async_get(hass)
-            registry_entry = ent_reg.async_get(switch_entity_id)
+            entity_registered = ent_reg.async_get(switch_entity_id) is not None
         except Exception:
             # Entity registry not available (e.g., in tests)
             # Assume entity exists for test compatibility
-            registry_entry = True
+            entity_registered = True
 
-        if not entity_state or not registry_entry:
+        if not entity_state or not entity_registered:
             _LOGGER.error(
                 "Switch entity %s does not exist in Home Assistant!",
                 switch_entity_id,
@@ -208,15 +208,15 @@ async def ws_toggle_switch(
         connection.send_error(msg["id"], "toggle_failed", str(err))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/hello_world/get_switch_state",
         vol.Required("device_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_get_switch_state(
-    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Get Hello World switch state via WebSocket."""
     device_id = msg["device_id"]

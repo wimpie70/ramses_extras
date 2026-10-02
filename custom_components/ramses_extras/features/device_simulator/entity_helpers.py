@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -53,7 +54,7 @@ def get_device_entities(hass: HomeAssistant, device_id: str) -> list[dict[str, A
 
     matching_device_entry_ids: set[str] = set()
     # Try different API versions for DeviceRegistry
-    devices_iter = None
+    devices_iter: Iterable[dr.DeviceEntry]
     if hasattr(device_reg, "async_get_devices"):
         devices_iter = device_reg.async_get_devices()
     elif hasattr(device_reg, "devices"):

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 
 from ..const import DOMAIN, LOGGER
 from ..scenario_engine import ScenarioEngine
@@ -103,7 +103,7 @@ class SimulatorMessagesSensor(SimulatorBaseSensor):
         """Initialize messages sensor."""
         super().__init__(hass, "Messages Sent", "messages_sent")
         self._attr_native_unit_of_measurement = "msgs"
-        self._attr_state_class = "total"
+        self._attr_state_class = SensorStateClass.TOTAL
 
     @property
     def native_value(self) -> int:

@@ -152,13 +152,13 @@ async def setup_entity_registry_device_refresh(
             return
         device_refresh_task = hass.async_create_task(_refresh_devices_after_delay())
 
-    @callback  # type: ignore[untyped-decorator]
+    @callback
     def _cancel_device_refresh_task() -> None:
         nonlocal device_refresh_task
         if device_refresh_task is not None and not device_refresh_task.done():
             device_refresh_task.cancel()
 
-    @callback  # type: ignore[untyped-decorator]
+    @callback
     def _on_entity_registry_updated(
         event: Event[er.EventEntityRegistryUpdatedData],
     ) -> None:
@@ -166,7 +166,7 @@ async def setup_entity_registry_device_refresh(
         if data.get("action") != "create":
             return
         entity_id = data.get("entity_id")
-        if not isinstance(entity_id, str):
+        if not entity_id:
             return
 
         entity_reg = er.async_get(hass)

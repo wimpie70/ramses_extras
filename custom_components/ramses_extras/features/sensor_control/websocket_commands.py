@@ -12,14 +12,14 @@ from .resolver import SensorControlResolver
 _LOGGER = logging.getLogger(__name__)
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/sensor_control/get_device_config",
         vol.Required("device_id"): str,
         vol.Optional("device_type"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_get_sensor_control_device_config(
     hass: Any,
     connection: websocket_api.ActiveConnection,
@@ -103,14 +103,14 @@ async def ws_get_sensor_control_device_config(
         connection.send_error(msg["id"], "get_device_config_failed", str(err))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): ("ramses_extras/sensor_control/set_comfort_temp_entity"),
         vol.Required("device_id"): str,
         vol.Required("comfort_temp_entity"): vol.Any(None, str),
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_set_comfort_temp_entity(
     hass: Any,
     connection: websocket_api.ActiveConnection,
@@ -191,14 +191,14 @@ async def ws_set_comfort_temp_entity(
         connection.send_error(msg["id"], "set_comfort_temp_entity_failed", str(err))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): ("ramses_extras/sensor_control/set_spike_ignore_outdoor"),
         vol.Required("device_id"): str,
         vol.Required("spike_ignore_outdoor"): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_set_spike_ignore_outdoor(
     hass: Any,
     connection: websocket_api.ActiveConnection,
@@ -282,7 +282,7 @@ async def ws_set_spike_ignore_outdoor(
         connection.send_error(msg["id"], "set_spike_ignore_outdoor_failed", str(err))
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): (
             "ramses_extras/sensor_control/set_area_spike_ignore_outdoor"
@@ -292,7 +292,7 @@ async def ws_set_spike_ignore_outdoor(
         vol.Required("spike_ignore_outdoor"): bool,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_set_area_spike_ignore_outdoor(
     hass: Any,
     connection: websocket_api.ActiveConnection,

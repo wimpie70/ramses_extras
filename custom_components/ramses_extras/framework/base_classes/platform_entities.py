@@ -253,9 +253,7 @@ class ExtrasNumberEntity(ExtrasPlatformEntity, NumberEntity):
             options[feature_id][device_key] = {}
 
         options[feature_id][device_key][self._entity_type] = value
-        await self.hass.config_entries.async_update_entry(
-            self.config_entry, options=options
-        )
+        self.hass.config_entries.async_update_entry(self.config_entry, options=options)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -393,11 +391,6 @@ class ExtrasSensorEntity(ExtrasPlatformEntity, SensorEntity):
 
         # Initialize state
         self._attr_native_value: StateType = None
-
-    @property
-    def state(self) -> Any:
-        """Return the state of the sensor."""
-        return self._attr_native_value
 
     @property
     def native_value(self) -> StateType:

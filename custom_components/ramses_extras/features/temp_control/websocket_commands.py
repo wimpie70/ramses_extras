@@ -15,13 +15,13 @@ from .const import TEMP_CONTROL_DEFAULTS
 _LOGGER = logging.getLogger(__name__)
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/temp_control/get_device_config",
         vol.Required("device_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_get_temp_control_device_config(
     hass: Any,
     connection: websocket_api.ActiveConnection,
@@ -101,14 +101,14 @@ _SETTING_COERCIONS: dict[str, Any] = {
 }
 
 
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/temp_control/set_device_config",
         vol.Required("device_id"): str,
         vol.Required("settings"): dict,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
+@websocket_api.async_response
 async def ws_set_temp_control_device_config(
     hass: Any,
     connection: websocket_api.ActiveConnection,

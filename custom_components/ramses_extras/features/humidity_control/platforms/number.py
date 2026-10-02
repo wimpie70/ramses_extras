@@ -22,7 +22,7 @@ from custom_components.ramses_extras.framework.helpers.device.core import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def is_supported_humidity_device(hass: object, device_id: str) -> bool:
+def is_supported_humidity_device(hass: HomeAssistant, device_id: str) -> bool:
     normalized_device_id = device_id.replace("_", ":")
     device = find_ramses_device(hass, normalized_device_id)
     return get_device_type(device) == "HvacVentilator"
@@ -87,7 +87,7 @@ async def create_humidity_number(
     # Import entity configurations from registry
     from ..const import HUMIDITY_NUMBER_CONFIGS
 
-    number_list = []
+    number_list: list[ExtrasNumberEntity] = []
 
     # Create configuration number entities
     for number_type, config in HUMIDITY_NUMBER_CONFIGS.items():

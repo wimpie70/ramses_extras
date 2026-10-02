@@ -68,7 +68,7 @@ async def create_hello_world_binary_sensor(
     :param config_entry: Configuration entry
     :return: List of binary sensor entities
     """
-    sensor_list = []
+    sensor_list: list[ExtrasBinarySensorEntity] = []
 
     device_type: str | None = None
     try:

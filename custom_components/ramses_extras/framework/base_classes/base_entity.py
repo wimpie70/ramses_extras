@@ -41,8 +41,8 @@ class ExtrasBaseEntity:
         self._device_id = device_id  # Also set with underscore for compatibility
         self._entity_type = entity_type
         self._config = config or {}
-        self._attr_name = ""
-        self._attr_unique_id = ""
+        self._attr_name: str | None = ""
+        self._attr_unique_id: str | None = ""
 
         device_id_str = self._get_device_id_str()
         device_type = None
@@ -56,7 +56,7 @@ class ExtrasBaseEntity:
             except Exception:
                 device_type = None
 
-        self._attr_device_info = DeviceInfo(
+        self._attr_device_info: DeviceInfo | None = DeviceInfo(
             identifiers={(DOMAIN, device_id_str)},
             name=f"{device_type or 'Ramses'} {device_id_str}".strip(),
             manufacturer="RAMSES",
@@ -85,7 +85,7 @@ class ExtrasBaseEntity:
         return str(device_id)
 
     @property
-    def unique_id(self) -> str:
+    def unique_id(self) -> str | None:
         """Return a unique ID for this entity."""
         if self._attr_unique_id:
             return self._attr_unique_id
@@ -106,7 +106,7 @@ class ExtrasBaseEntity:
         return f"{entity_type}_{device_id}"
 
     @property
-    def device_info(self) -> DeviceInfo:
+    def device_info(self) -> DeviceInfo | None:
         """Attach entities to Ramses Extras devices."""
         return getattr(self, "_attr_device_info", None) or DeviceInfo(
             identifiers={(DOMAIN, self._get_device_id_str())}

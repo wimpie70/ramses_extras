@@ -45,7 +45,7 @@ ZEHNDER_DEVICE_MODELS = {
 }
 
 # Feature-specific switch configurations
-HUMIDITY_SWITCH_CONFIGS = {
+HUMIDITY_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {
     "dehumidify": {
         "name_template": "Balance {device_id}",
         "icon": "mdi:water-percent",
@@ -56,7 +56,7 @@ HUMIDITY_SWITCH_CONFIGS = {
 }
 
 # Feature-specific number configurations
-HUMIDITY_NUMBER_CONFIGS = {
+HUMIDITY_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {
     "relative_humidity_minimum": {
         "name_template": "Min Humidity {device_id}",
         "entity_category": EntityCategory.CONFIG,
@@ -99,7 +99,7 @@ HUMIDITY_NUMBER_CONFIGS = {
 }
 
 # Feature-specific binary sensor configurations
-HUMIDITY_BOOLEAN_CONFIGS = {
+HUMIDITY_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {
     "dehumidifying_active": {
         "name_template": "Balance Active {device_id}",
         "icon": "mdi:water-percent",

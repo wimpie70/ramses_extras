@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from asyncio import Task
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -90,9 +91,12 @@ class ScenarioContext:
             device.suppress_autonomous = False
             await self.engine.async_activate_device(device)
 
-    def schedule_background_task(self, coro: Awaitable[Any], *, name: str) -> Task[Any]:
+    def schedule_background_task(
+        self, coro: Coroutine[Any, Any, Any], *, name: str
+    ) -> Task[Any]:
         """Schedule a background task via Home Assistant."""
-        return cast(Task[Any], self.hass.async_create_background_task(coro, name=name))
+        task: Task[Any] = self.hass.async_create_background_task(coro, name=name)
+        return task
 
     async def cancel_existing(self, scenario_id: str) -> None:
         """Cancel a running scenario via the engine helper."""
