@@ -230,14 +230,6 @@ class TestWebSocketBasic:
         except Exception:
             pass
 
-    def test_register_default_websocket_commands(self):
-        """Test register_default_websocket_commands."""
-        try:
-            commands = websocket.register_default_websocket_commands()
-            assert isinstance(commands, dict)
-        except Exception:
-            pass
-
 
 class TestWebSocketImport:
     """Tests that verify imports work correctly."""
@@ -270,7 +262,6 @@ class TestWebSocketImport:
             "ws_set_zone_demand",
             "ws_run_zone_actuation",
             "ws_clear_zone_demand",
-            "register_default_websocket_commands",
         ]
         for func_name in expected_funcs:
             assert hasattr(websocket, func_name), f"Missing function: {func_name}"
