@@ -30,7 +30,9 @@ class CO2ControlSensor(ExtrasSensorEntity):
     ) -> None:
         """Initialize CO2 control sensor."""
         super().__init__(hass, device_id, sensor_type, config)
-        self._zone_status: str | None = None
+        # Start as "idle" rather than "unknown" — that is the semantic
+        # baseline until the first automation evaluation writes a status.
+        self._zone_status: str | None = "idle"
         self._automation_attrs: dict[str, Any] = {}
 
     @property
