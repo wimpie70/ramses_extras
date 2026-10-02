@@ -201,25 +201,29 @@ print(json.dumps(result, indent=2))
         if not hvac_via_device_implemented:
             print("  NOTE: via_device/parent_device not set for HVAC devices (step 6d)")
             print("  (ramses_cc via_device check does not yet handle DeviceHvac)")
+            skip_msg = (
+                "SKIPPED — via_device/parent_device for HVAC "
+                "not yet implemented (step 6d)"
+            )
             ctx.check(
                 f"REM {REM} has via_device/parent_device set in registry",
                 True,
-                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
+                skip_msg,
             )
             ctx.check(
                 f"CO2 {CO2} has via_device/parent_device set in registry",
                 True,
-                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
+                skip_msg,
             )
             ctx.check(
                 f"REM via_device/parent_device points to FAN {FAN}",
                 True,
-                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
+                skip_msg,
             )
             ctx.check(
                 f"CO2 via_device/parent_device points to FAN {FAN}",
                 True,
-                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
+                skip_msg,
             )
             ctx.check(
                 f"FAN {FAN} does NOT have via_device/parent_device (it's the parent)",
@@ -229,12 +233,12 @@ print(json.dumps(result, indent=2))
             ctx.check(
                 f"REM {REM} via_device/parent_device persists after reload",
                 True,
-                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
+                skip_msg,
             )
             ctx.check(
                 f"CO2 {CO2} via_device/parent_device persists after reload",
                 True,
-                "SKIPPED — via_device/parent_device for HVAC not yet implemented (step 6d)",
+                skip_msg,
             )
             return
 
@@ -316,14 +320,12 @@ print(json.dumps(result, indent=2))
 
                 ctx.check(
                     f"REM {REM} via_device/parent_device persists after reload",
-                    rem_entry2 is not None
-                    and rem_entry2.get("parent_id") is not None,
+                    rem_entry2 is not None and rem_entry2.get("parent_id") is not None,
                     f"entry={rem_entry2}",
                 )
                 ctx.check(
                     f"CO2 {CO2} via_device/parent_device persists after reload",
-                    co2_entry2 is not None
-                    and co2_entry2.get("parent_id") is not None,
+                    co2_entry2 is not None and co2_entry2.get("parent_id") is not None,
                     f"entry={co2_entry2}",
                 )
             except json.JSONDecodeError:

@@ -222,7 +222,7 @@ class CO2ZoneManager:
         try:
             co2_value = int(float(state.state))
             await self.update_zone_co2(zone_id, co2_value)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             _LOGGER.warning("Invalid CO2 value for zone %s: %s", zone_id, state.state)
             await self.update_zone_co2(zone_id, None)
 
