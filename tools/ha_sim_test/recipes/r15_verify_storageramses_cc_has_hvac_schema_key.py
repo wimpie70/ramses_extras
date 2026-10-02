@@ -31,6 +31,7 @@ from ..helpers import (
     get_schema,
     get_schema_retry,
     load_profile_yaml,
+    wait_for_schema_populated,
     write_ramses_storage,
     ws_send,
 )
@@ -63,37 +64,30 @@ class R15VerifyStorageramsesCcHasHvacSchemaKey(Recipe):
                 print(f"  Profile reload failed: {e}")
             ctx.wait_for_ramses_cc_reload(timeout=30)
             ctx.refresh_token()
-            from ..helpers import wait_for, wait_for_schema_populated
 
             wait_for_schema_populated(min_keys=5, timeout=20)
 
-            # Wait for FAN to appear in client_state schema before
-            # calling force_update (parallel mode timing — ramses_rf
-            # may not have processed the FAN device yet).
-            # Under parallel load, ramses_rf may take 30-40s to process
-            # the FAN device from the simulator, so use a generous timeout.
-            def _fan_in_storage() -> bool:
-                s = get_ramses_storage()
-                cs = s.get("client_state", {})
-                sch = cs.get("schema", {})
-                return FAN in sch
+        # Hydration of the FAN into the learned schema is asynchronous
+        # and there is no periodic save soon (SAVE_STATE_INTERVAL is
+        # 30min), so poll with repeated sync_topology calls — that
+        # service runs async_save_client_state → sync_learned_topology
+        # (force_update only does async_refresh and never persists).
+        def _fan_in_storage() -> bool:
+            s = get_ramses_storage()
+            cs = s.get("client_state", {})
+            sch = cs.get("schema", {})
+            return FAN in sch
 
-            if not _fan_in_storage():
-                print("  Waiting for FAN to appear in client_state schema...")
-                wait_for(
-                    _fan_in_storage,
-                    timeout=45,
-                    interval=3,
-                    msg="for FAN in client_state schema",
-                    floor=10.0,
-                )
-
-            # Trigger a save so client_state.schema is persisted
+        deadline = time.time() + 120
+        while not _fan_in_storage() and time.time() < deadline:
+            print("  sync_topology + wait for FAN in client_state schema...")
             try:
-                call_service(ctx.token, "ramses_cc", "force_update")
+                call_service(ctx.token, "ramses_cc", "sync_topology")
             except RuntimeError:
                 pass
             ctx.wait_for_schema_stable(timeout=15, msg="for save_client_state")
+            if not _fan_in_storage():
+                time.sleep(10)
 
         storage = get_ramses_storage()
 

@@ -30,6 +30,7 @@ import paho.mqtt.client as mqtt
 from ..base import Recipe, RecipeContext
 from ..const import MQTT_BROKER_URL, MQTT_TOPIC_NS
 from ..helpers import (
+    call_service,
     clear_cached_state,
     get_current_instance,
     get_schema_retry,
@@ -111,14 +112,33 @@ class R102CleanSchemaStartupBind(Recipe):
         # ID), not the first HGI key — under parallel runs the shared
         # MQTT broker exposes other containers' HGIs, which appear as
         # ownerless candidates and can sort first.
-        schema_after = get_schema_retry(max_tries=5, delay=3)
+        # The primary HGI lands asynchronously: it is added to the
+        # known_list at startup but only written to the schema inside
+        # sync_learned_topology, which runs in async_save_client_state —
+        # i.e. on sync_topology, a discovery checkpoint, or the 30-min
+        # periodic save.  sync_topology accelerates it once the gateway
+        # device exists in ramses_rf, so poll with repeated sync_topology
+        # calls rather than a passive wait.
         primary_hgi = get_current_instance().hgi_id
-        hgi_keys = [
-            k
-            for k in schema_after
-            if isinstance(schema_after.get(k), dict)
-            and schema_after[k].get("_class", "").upper() == "HGI"
-        ]
+        schema_after: dict = {}
+        hgi_keys: list[str] = []
+        deadline = time.time() + 150
+        while time.time() < deadline:
+            schema_after = get_schema_retry(max_tries=5, delay=3)
+            hgi_keys = [
+                k
+                for k in schema_after
+                if isinstance(schema_after.get(k), dict)
+                and schema_after[k].get("_class", "").upper() == "HGI"
+            ]
+            if primary_hgi in hgi_keys:
+                break
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            ctx.wait_for_schema_stable(timeout=15, msg="for save_client_state")
+            time.sleep(5)
         ctx.check(
             "primary HGI registered in clean schema",
             primary_hgi in hgi_keys,
@@ -164,8 +184,6 @@ class R102CleanSchemaStartupBind(Recipe):
         # --- Step 7: Trigger sync_topology and check notification ---
         # The discovery scan runs periodically, but we can trigger it
         # explicitly to speed up the notification.
-        from ..helpers import call_service
-
         try:
             call_service(ctx.token, "ramses_cc", "sync_topology")
         except RuntimeError:

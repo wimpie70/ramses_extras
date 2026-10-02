@@ -29,7 +29,9 @@ import serialx
 
 _LOGGER = logging.getLogger("esp_usb_feasibility")
 
-SIGNATURE_FRAME = " I --- 18:000730 --:------ 18:000730 7FFF 012 0010{ts:012X}76357635763576357635"
+SIGNATURE_FRAME = (
+    " I --- 18:000730 --:------ 18:000730 7FFF 012 0010{ts:012X}76357635763576357635"
+)
 PING_FRAME = " R --- 18:000730 00:000730 --:------ 10E0 001 00"
 
 
@@ -71,26 +73,19 @@ class FeasibilityReport:
         passed = sum(1 for r in self.results if r.success)
         total = len(self.results)
         resets = sum(1 for r in self.results if r.reset_detected)
-        return (
-            f"\nSummary: {passed}/{total} steps passed, "
-            f"{resets} reset(s) detected"
-        )
+        return f"\nSummary: {passed}/{total} steps passed, {resets} reset(s) detected"
 
 
-async def read_for_duration(
-    ser: serialx.AsyncSerial, duration: float
-) -> bytes:
+async def read_for_duration(ser: serialx.AsyncSerial, duration: float) -> bytes:
     """Read all data received for a given duration."""
     chunks: list[bytes] = []
     deadline = time.perf_counter() + duration
     while time.perf_counter() < deadline:
         try:
-            data = await asyncio.wait_for(
-                ser.read(1024), timeout=0.1
-            )
+            data = await asyncio.wait_for(ser.read(1024), timeout=0.1)
             if data:
                 chunks.append(data)
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             continue
     return b"".join(chunks)
 
@@ -98,12 +93,7 @@ async def read_for_duration(
 def detect_reset(data: bytes) -> bool:
     """Check if ESP reset signature is in the data."""
     lower = data.lower()
-    return (
-        b"ets" in lower
-        or b"rst:" in lower
-        or b"boot:" in lower
-        or b"ready" in lower
-    )
+    return b"ets" in lower or b"rst:" in lower or b"boot:" in lower or b"ready" in lower
 
 
 async def test_port_open_no_write(port: str) -> TestResult:
@@ -147,44 +137,52 @@ async def test_dtr_rts_modes(port: str) -> list[TestResult]:
         ("default (DTR=H, RTS=H)", {}),
         ("dtr_on_open=LOW", {"dtr_on_open": PinState.LOW}),
         ("rts_on_open=LOW", {"rts_on_open": PinState.LOW}),
-        ("both LOW", {
-            "dtr_on_open": PinState.LOW,
-            "rts_on_open": PinState.LOW,
-        }),
-        ("both UNDEFINED", {
-            "dtr_on_open": PinState.UNDEFINED,
-            "rts_on_open": PinState.UNDEFINED,
-        }),
+        (
+            "both LOW",
+            {
+                "dtr_on_open": PinState.LOW,
+                "rts_on_open": PinState.LOW,
+            },
+        ),
+        (
+            "both UNDEFINED",
+            {
+                "dtr_on_open": PinState.UNDEFINED,
+                "rts_on_open": PinState.UNDEFINED,
+            },
+        ),
     ]
 
     results: list[TestResult] = []
     for label, kwargs in modes:
         start = time.perf_counter()
         try:
-            ser = serialx.AsyncSerial(
-                port, baudrate=115200, **kwargs
-            )
+            ser = serialx.AsyncSerial(port, baudrate=115200, **kwargs)
             await ser.open()
             data = await read_for_duration(ser, 2.0)
             await ser.close()
             duration = time.perf_counter() - start
             reset_detected = detect_reset(data)
-            results.append(TestResult(
-                name=f"DTR/RTS: {label}",
-                success=True,
-                duration=duration,
-                bytes_received=len(data),
-                reset_detected=reset_detected,
-                notes="RESET detected" if reset_detected else "No reset",
-                received_data=data,
-            ))
+            results.append(
+                TestResult(
+                    name=f"DTR/RTS: {label}",
+                    success=True,
+                    duration=duration,
+                    bytes_received=len(data),
+                    reset_detected=reset_detected,
+                    notes="RESET detected" if reset_detected else "No reset",
+                    received_data=data,
+                )
+            )
         except Exception as e:
-            results.append(TestResult(
-                name=f"DTR/RTS: {label}",
-                success=False,
-                duration=time.perf_counter() - start,
-                notes=str(e),
-            ))
+            results.append(
+                TestResult(
+                    name=f"DTR/RTS: {label}",
+                    success=False,
+                    duration=time.perf_counter() - start,
+                    notes=str(e),
+                )
+            )
     return results
 
 
@@ -363,6 +361,7 @@ async def test_unplug_reconnect(port: str, timeout: float = 30.0) -> TestResult:
     then verifies the port can be reopened and the ESP responds.
     """
     import os
+
     start = time.perf_counter()
     try:
         ser = serialx.AsyncSerial(port, baudrate=115200)
@@ -374,7 +373,7 @@ async def test_unplug_reconnect(port: str, timeout: float = 30.0) -> TestResult:
         while time.perf_counter() < deadline_unplug:
             if not os.path.exists(port):
                 unplugged = True
-                print(f"  >>> Unplug detected, waiting for reconnect... <<<")
+                print("  >>> Unplug detected, waiting for reconnect... <<<")
                 break
             await asyncio.sleep(0.3)
         if not unplugged:
@@ -447,7 +446,7 @@ async def run_feasibility_gate(
     """Run the full feasibility gate test suite."""
     report = FeasibilityReport(port=port)
 
-    print(f"\nESP32 USB Feasibility Gate Test")
+    print("\nESP32 USB Feasibility Gate Test")
     print(f"Port: {port}")
     print(f"Repeats: {repeats}")
     print(f"Delay: {delay}s")
@@ -473,7 +472,7 @@ async def run_dual_port_test(
     port1: str, port2: str, delay: float = 2.0
 ) -> tuple[FeasibilityReport, FeasibilityReport]:
     """Run feasibility tests on two ports simultaneously."""
-    print(f"\nDual-Port USB Feasibility Test")
+    print("\nDual-Port USB Feasibility Test")
     print(f"Port 1: {port1}")
     print(f"Port 2: {port2}")
     print(f"Delay: {delay}s")
@@ -520,8 +519,12 @@ async def run_dual_port_test(
             duration=duration,
             bytes_received=len(data1) + len(data2),
             reset_detected=reset1 or reset2,
-            notes=f"Port1: {'echo' if echo1 else 'no echo'}{' (RESET)' if reset1 else ''}, "
-            f"Port2: {'echo' if echo2 else 'no echo'}{' (RESET)' if reset2 else ''}",
+            notes=(
+                f"Port1: {'echo' if echo1 else 'no echo'}"
+                f"{' (RESET)' if reset1 else ''}, "
+                f"Port2: {'echo' if echo2 else 'no echo'}"
+                f"{' (RESET)' if reset2 else ''}"
+            ),
         )
         report1.add(result)
         print(
@@ -550,7 +553,7 @@ def generate_report(
     lines = [
         "# ESP32 USB Feasibility Gate Report",
         f"\n**Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"**Tool:** tools/esp_usb_feasibility_test.py",
+        "**Tool:** tools/esp_usb_feasibility_test.py",
         "\n## Results\n",
     ]
 
@@ -575,9 +578,7 @@ def generate_report(
     lines.append("## Summary\n")
     lines.append(f"- **Overall:** {'PASSED' if all_passed else 'FAILED'}")
     lines.append(f"- **Total resets detected:** {total_resets}")
-    lines.append(
-        f"- **Ports tested:** {', '.join(r.port for r in reports)}"
-    )
+    lines.append(f"- **Ports tested:** {', '.join(r.port for r in reports)}")
 
     report_text = "\n".join(lines)
     if output_file:
@@ -592,29 +593,25 @@ def main() -> None:
         description="ESP32 USB feasibility gate test for Phase 2"
     )
     parser.add_argument("port", help="Serial port (e.g. /dev/ttyACM0)")
-    parser.add_argument(
-        "--port2", help="Second serial port for dual-port test"
-    )
+    parser.add_argument("--port2", help="Second serial port for dual-port test")
     parser.add_argument(
         "--repeats", type=int, default=1, help="Number of full test cycles"
     )
     parser.add_argument(
         "--delay", type=float, default=2.0, help="Grace period delay (seconds)"
     )
+    parser.add_argument("--report", "-r", help="Write markdown report to this file")
     parser.add_argument(
-        "--report", "-r", help="Write markdown report to this file"
-    )
-    parser.add_argument(
-        "--dtr-test", action="store_true",
+        "--dtr-test",
+        action="store_true",
         help="Test DTR/RTS open modes to find reset-preventing settings",
     )
     parser.add_argument(
-        "--unplug-test", action="store_true",
+        "--unplug-test",
+        action="store_true",
         help="Test physical unplug/reconnect (interactive)",
     )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     args = parser.parse_args()
 
     if args.verbose:
@@ -623,7 +620,7 @@ def main() -> None:
         logging.basicConfig(level=logging.INFO)
 
     if args.dtr_test:
-        print(f"\nDTR/RTS Open Mode Test")
+        print("\nDTR/RTS Open Mode Test")
         print(f"Port: {args.port}")
         print("-" * 60)
         results = asyncio.run(test_dtr_rts_modes(args.port))
@@ -639,7 +636,7 @@ def main() -> None:
         sys.exit(0 if resets == 0 else 1)
 
     if args.unplug_test:
-        print(f"\nUnplug/Reconnect Test")
+        print("\nUnplug/Reconnect Test")
         print(f"Port: {args.port}")
         print("-" * 60)
         result = asyncio.run(test_unplug_reconnect(args.port))
@@ -658,9 +655,7 @@ def main() -> None:
         all_passed = all(r.all_passed for r in reports)
     else:
         report = asyncio.run(
-            run_feasibility_gate(
-                args.port, repeats=args.repeats, delay=args.delay
-            )
+            run_feasibility_gate(args.port, repeats=args.repeats, delay=args.delay)
         )
         reports = [report]
         all_passed = report.all_passed

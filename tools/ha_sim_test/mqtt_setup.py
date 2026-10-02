@@ -36,7 +36,7 @@ def is_mqtt_broker_ready(timeout: float = 5.0) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (OSError, ConnectionRefusedError):
+    except OSError, ConnectionRefusedError:
         return False
 
 

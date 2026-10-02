@@ -137,11 +137,17 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
 
         # Step 8: hvac_schema cache key removed — FAN structure is in schema.
         # The stored client_state lags the live schema — saves are
-        # event-driven (SAVE_STATE_INTERVAL is 30 min), so under parallel
-        # load the FAN topology may not be persisted yet.  Poll until the
-        # stored FAN entry carries its remotes.
+        # event-driven (SAVE_STATE_INTERVAL is 30 min), so the FAN
+        # topology may not be persisted yet.  Drive the real save path
+        # (sync_topology → async_save_client_state) each poll iteration
+        # instead of passively waiting for a periodic save.
         fan_stored_after: dict = {}
         for _ in range(15):
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
             storage_after = get_ramses_storage()
             client_state_after = storage_after.get("client_state", {})
             fan_stored_after = client_state_after.get("schema", {}).get(FAN, {})
@@ -210,6 +216,11 @@ class R07bRestartAndVerifyHvacSurvives(Recipe):
         # the live schema under parallel load).
         remotes_during: list = []
         for _ in range(10):
+            try:
+                call_service(ctx.token, "ramses_cc", "sync_topology")
+            except RuntimeError:
+                pass
+            ctx.wait_for_schema_stable(timeout=10, msg="for save_client_state")
             storage_loss = get_ramses_storage()
             client_state_loss = storage_loss.get("client_state", {})
             fan_schema_loss = client_state_loss.get("schema", {}).get(FAN, {})
