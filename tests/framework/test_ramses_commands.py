@@ -14,7 +14,7 @@ from custom_components.ramses_extras.framework.helpers import ramses_commands
 @pytest.mark.asyncio
 async def test_send_command_immediate_success() -> None:
     rc = MagicMock()
-    rc._send_packet = AsyncMock(return_value=True)
+    rc._dispatch_command = AsyncMock(return_value=True)
 
     mgr = ramses_commands.DeviceCommandManager(rc)
     mgr._min_interval = 0
@@ -31,7 +31,7 @@ async def test_send_command_immediate_success() -> None:
 @pytest.mark.asyncio
 async def test_send_command_queue_and_process() -> None:
     rc = MagicMock()
-    rc._send_packet = AsyncMock(return_value=True)
+    rc._dispatch_command = AsyncMock(return_value=True)
 
     mgr = ramses_commands.DeviceCommandManager(rc)
     mgr._last_command_time["01:123456"] = time.time()
@@ -50,7 +50,7 @@ async def test_send_command_queue_and_process() -> None:
 @pytest.mark.asyncio
 async def test_execute_command_failure_path() -> None:
     rc = MagicMock()
-    rc._send_packet = AsyncMock(side_effect=RuntimeError("boom"))
+    rc._dispatch_command = AsyncMock(side_effect=RuntimeError("boom"))
 
     mgr = ramses_commands.DeviceCommandManager(rc)
     mgr._min_interval = 0
@@ -66,7 +66,7 @@ async def test_execute_command_failure_path() -> None:
 @pytest.mark.asyncio
 async def test_process_device_queue_timeout_cleans_up() -> None:
     rc = MagicMock()
-    rc._send_packet = AsyncMock(return_value=True)
+    rc._dispatch_command = AsyncMock(return_value=True)
 
     mgr = ramses_commands.DeviceCommandManager(rc)
 
@@ -84,7 +84,7 @@ async def test_process_device_queue_timeout_cleans_up() -> None:
 @pytest.mark.asyncio
 async def test_process_device_queue_logs_error() -> None:
     rc = MagicMock()
-    rc._send_packet = AsyncMock(side_effect=RuntimeError("fail"))
+    rc._dispatch_command = AsyncMock(side_effect=RuntimeError("fail"))
 
     mgr = ramses_commands.DeviceCommandManager(rc)
     mgr._last_command_time["01:123456"] = time.time()
@@ -135,7 +135,7 @@ async def test_process_device_queue_warns_on_failed_result(caplog) -> None:
     mgr._queue_depths["01:000001"] = 1
     await mgr._queues["01:000001"].put({"command_def": {}, "timeout": 1})
 
-    async def fail_execute(device_id, command_def, timeout):  # type: ignore[override]
+    async def fail_execute(device_id, command_def, timeout, command_name=None):  # type: ignore[override]
         return ramses_commands.CommandResult(success=False, error_message="bad")
 
     mgr._execute_command = fail_execute  # type: ignore[assignment]
@@ -155,7 +155,7 @@ async def test_process_device_queue_handles_exception(caplog) -> None:
     mgr._queues["01:000002"] = asyncio.Queue()
     await mgr._queues["01:000002"].put({"command_def": {}, "timeout": 1})
 
-    async def raising_execute(device_id, command_def, timeout):  # type: ignore[override]
+    async def raising_execute(device_id, command_def, timeout, command_name=None):  # type: ignore[override]
         raise RuntimeError("boom")
 
     mgr._execute_command = raising_execute  # type: ignore[assignment]
@@ -181,7 +181,7 @@ async def test_process_device_queue_with_mixed_results(caplog) -> None:
 
     call_count = {"n": 0}
 
-    async def exec_mixed(device_id, command_def, timeout):  # type: ignore[override]
+    async def exec_mixed(device_id, command_def, timeout, command_name=None):  # type: ignore[override]
         call_count["n"] += 1
         if call_count["n"] == 1:
             return ramses_commands.CommandResult(success=True, execution_time=0.1)
@@ -221,14 +221,14 @@ def test_get_queue_statistics_success_rate() -> None:
 @pytest.mark.asyncio
 async def test_process_device_queue_updates_depths() -> None:
     rc = MagicMock()
-    rc._send_packet = AsyncMock(return_value=True)
+    rc._dispatch_command = AsyncMock(return_value=True)
 
     mgr = ramses_commands.DeviceCommandManager(rc)
     mgr._queues["01:depth"] = asyncio.Queue()
     mgr._queue_depths["01:depth"] = 1
     await mgr._queues["01:depth"].put({"command_def": {}, "timeout": 1})
 
-    async def exec_ok(device_id, command_def, timeout):  # type: ignore[override]
+    async def exec_ok(device_id, command_def, timeout, command_name=None):  # type: ignore[override]
         return ramses_commands.CommandResult(success=True, execution_time=0.1)
 
     mgr._execute_command = exec_ok  # type: ignore[assignment]
@@ -243,7 +243,7 @@ async def test_process_device_queue_updates_depths() -> None:
 @pytest.mark.asyncio
 async def test_execute_command_logs_error(caplog) -> None:
     rc = MagicMock()
-    rc._send_packet = AsyncMock(side_effect=RuntimeError("boom"))
+    rc._dispatch_command = AsyncMock(side_effect=RuntimeError("boom"))
 
     mgr = ramses_commands.DeviceCommandManager(rc)
     mgr._min_interval = 0
@@ -265,7 +265,7 @@ async def test_process_device_queue_logs_failed_result_warning(caplog) -> None:
     mgr._queue_depths["01:warn"] = 1
     await mgr._queues["01:warn"].put({"command_def": {}, "timeout": 1})
 
-    async def exec_fail(device_id, command_def, timeout):  # type: ignore[override]
+    async def exec_fail(device_id, command_def, timeout, command_name=None):  # type: ignore[override]
         return ramses_commands.CommandResult(success=False, error_message="boom")
 
     mgr._execute_command = exec_fail  # type: ignore[assignment]
@@ -286,7 +286,7 @@ async def test_process_device_queue_updates_depth_and_logs_warning(caplog) -> No
     mgr._queue_depths["01:depth2"] = 1
     await mgr._queues["01:depth2"].put({"command_def": {}, "timeout": 1})
 
-    async def exec_fail(device_id, command_def, timeout):  # type: ignore[override]
+    async def exec_fail(device_id, command_def, timeout, command_name=None):  # type: ignore[override]
         raise RuntimeError("boom")
 
     mgr._execute_command = exec_fail  # type: ignore[assignment]

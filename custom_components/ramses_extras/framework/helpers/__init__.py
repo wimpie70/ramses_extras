@@ -51,6 +51,7 @@ from .fan_speed_arbiter import (
 from .ramses_commands import (
     RamsesCommands,
     create_ramses_commands,
+    get_ramses_commands,
 )
 
 # Translation helpers
@@ -84,6 +85,7 @@ __all__ = [
     # Ramses commands
     "RamsesCommands",
     "create_ramses_commands",
+    "get_ramses_commands",
     # Common utilities - Validation
     "ValidationError",
     "RamsesValidator",

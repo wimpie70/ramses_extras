@@ -45,7 +45,7 @@ async def setup_hass(hass):
     """Set up services and return hass."""
     hass.services.has_service.return_value = False
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_cmds:
         mock_cmds.return_value._get_ramses_cc_coordinator = AsyncMock(return_value=None)
         await async_setup_services(hass)
@@ -70,7 +70,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",
@@ -113,7 +113,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",
@@ -154,7 +154,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",
@@ -203,7 +203,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",
@@ -253,7 +253,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",
@@ -321,7 +321,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",
@@ -388,7 +388,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",
@@ -455,7 +455,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",
@@ -521,7 +521,7 @@ class TestCalibrateAllValves:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coord,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_cmds_class,
             patch(
                 "custom_components.ramses_extras.features.default.services.asyncio.sleep",

@@ -206,7 +206,9 @@ async def test_send_command_success(ramses_commands):
     ) as mock_send:
         result = await ramses_commands.send_command(device_id, command_name)
         assert result.success is True
-        mock_send.assert_called_once_with(device_id, cmd_def, "normal", 30.0)
+        mock_send.assert_called_once_with(
+            device_id, cmd_def, "normal", 30.0, command_name=command_name
+        )
 
 
 @pytest.mark.asyncio

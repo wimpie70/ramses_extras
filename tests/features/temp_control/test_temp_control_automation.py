@@ -86,7 +86,7 @@ def automation_manager():
             "custom_components.ramses_extras.features.temp_control.automation.get_fan_speed_arbiter"
         ),
         patch(
-            "custom_components.ramses_extras.features.temp_control.automation.RamsesCommands"
+            "custom_components.ramses_extras.features.temp_control.automation.get_ramses_commands"
         ),
         patch(
             "custom_components.ramses_extras.features.temp_control.automation.get_zone_demand_registry"

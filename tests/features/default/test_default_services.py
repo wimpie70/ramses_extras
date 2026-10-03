@@ -210,7 +210,7 @@ async def test_send_fan_command_service_away_disables_extras_before_direct_send(
             "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
         ) as mock_get_arbiter,
         patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class,
     ):
         mock_arbiter = MagicMock()
@@ -252,7 +252,7 @@ async def test_send_fan_command_service_requests_still_use_direct_path(hass):
     call.data = {"device_id": "32:123456", "command": "fan_request31DA"}
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.send_command = AsyncMock()
@@ -283,7 +283,7 @@ async def test_set_fan_parameter_service(hass):
     call.data = {"device_id": "32:123456", "param_id": "01", "value": "10"}
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.set_fan_param = AsyncMock()
@@ -302,7 +302,7 @@ async def test_set_fan_parameter_service(hass):
         "from_id": "18:123456",
     }
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.set_fan_param = AsyncMock()
@@ -332,7 +332,7 @@ async def test_update_fan_params_service(hass):
     call.data = {"device_id": "32:123456"}
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.update_fan_params = AsyncMock()
@@ -346,7 +346,7 @@ async def test_update_fan_params_service(hass):
     call_with_from = MagicMock()
     call_with_from.data = {"device_id": "32:123456", "from_id": "18:123456"}
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.update_fan_params = AsyncMock()
@@ -376,7 +376,7 @@ async def test_get_queue_statistics_service(hass):
     call.data = {}
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.get_queue_statistics.return_value = {"sent": 10, "queued": 2}
@@ -416,7 +416,7 @@ async def test_fan_bypass_open_turns_off_temp_control_switch(hass):
     call.data = {"device_id": "32:123456", "command": "fan_bypass_open"}
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.send_command = AsyncMock()
@@ -458,7 +458,7 @@ async def test_fan_bypass_close_turns_off_temp_control_switch(hass):
     call.data = {"device_id": "32:123456", "command": "fan_bypass_close"}
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.send_command = AsyncMock()
@@ -498,7 +498,7 @@ async def test_fan_bypass_open_noop_when_temp_control_already_off(hass):
     call.data = {"device_id": "32:123456", "command": "fan_bypass_open"}
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.send_command = AsyncMock()
@@ -534,7 +534,7 @@ async def test_fan_bypass_open_noop_when_temp_control_switch_missing(hass):
     call.data = {"device_id": "32:123456", "command": "fan_bypass_open"}
 
     with patch(
-        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        "custom_components.ramses_extras.features.default.services.get_ramses_commands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
         mock_commands.send_command = AsyncMock()
@@ -586,7 +586,7 @@ async def test_fan_bypass_auto_resumes_feature_control(hass):
             "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
         ),
         patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class,
     ):
         mock_commands = MagicMock()

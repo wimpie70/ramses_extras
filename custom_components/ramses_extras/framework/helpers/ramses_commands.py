@@ -83,6 +83,7 @@ class DeviceCommandManager:
         command_def: dict[str, Any],
         priority: str = "normal",
         timeout: float = 30.0,
+        command_name: str | None = None,
     ) -> CommandResult:
         """Send command to device with queuing and rate limiting.
 
@@ -90,6 +91,8 @@ class DeviceCommandManager:
         :param command_def: Command definition with code, verb, payload
         :param priority: Command priority ("high", "normal", "low")
         :param timeout: Command timeout in seconds
+        :param command_name: Registry name of the command, used to route
+            22F1 fan modes through the ramses_rf strategy layer
         :return: CommandResult with execution status
         """
         # Update command statistics
@@ -119,6 +122,7 @@ class DeviceCommandManager:
                     "timeout": timeout,
                     "queued_time": current_time,
                     "signature": sig,
+                    "command_name": command_name,
                 }
             )
             pending.add(sig)
@@ -137,7 +141,9 @@ class DeviceCommandManager:
             return CommandResult(success=True, queued=True)
 
         # Execute immediately
-        result = await self._execute_command(device_id, command_def, timeout)
+        result = await self._execute_command(
+            device_id, command_def, timeout, command_name
+        )
 
         # Update statistics based on result
         if result.success:
@@ -166,7 +172,10 @@ class DeviceCommandManager:
 
                 # Execute the command
                 result = await self._execute_command(
-                    device_id, command_data["command_def"], command_data["timeout"]
+                    device_id,
+                    command_data["command_def"],
+                    command_data["timeout"],
+                    command_data.get("command_name"),
                 )
 
                 # Update queue depth
@@ -210,7 +219,11 @@ class DeviceCommandManager:
         self._queues.pop(device_id, None)
 
     async def _execute_command(
-        self, device_id: str, command_def: dict[str, Any], timeout: float
+        self,
+        device_id: str,
+        command_def: dict[str, Any],
+        timeout: float,
+        command_name: str | None = None,
     ) -> CommandResult:
         """Execute a command directly (internal method)."""
         start_time = time.time()
@@ -220,7 +233,9 @@ class DeviceCommandManager:
             self._last_command_time[device_id] = start_time
 
             # Execute command using the RamsesCommands instance
-            success = await self._ramses_commands._send_packet(device_id, command_def)
+            success = await self._ramses_commands._dispatch_command(
+                device_id, command_def, command_name
+            )
             execution_time = time.time() - start_time
 
             return CommandResult(success=success, execution_time=execution_time)
@@ -286,14 +301,19 @@ class RamsesCommands:
         self._update_fan_params_tasks: dict[str, asyncio.Task] = {}
         # Track failed commands for monitoring and retry logic
         self._failed_commands: dict[str, dict[str, Any]] = {}
+        # Recently-sent command names per device.  Commands are sent with a
+        # spoofed bound-REM source address, so they come back over the RF
+        # listener looking like external remote presses — this map lets the
+        # observer distinguish our own echoes (see default/services.py).
+        self._self_sent: dict[tuple[str, str], float] = {}
 
     # Mapping of fan_* command names to semantic strategy mode names.
-    # Used to route fan mode commands through device.set_fan_mode() which
-    # applies the vendor-specific strategy (Orcon, Itho, Vasco, Nuaire,
-    # ClimaRad) instead of hardcoded Orcon hex payloads.
-    # Only 22F1 fan mode commands are mapped here — bypass (22F7), filter
-    # reset (10D0), timer (22F3), and RQ commands don't have strategy
-    # equivalents and keep the raw packet path.
+    # Used by _dispatch_command to route fan mode commands through
+    # device.set_fan_mode(), which applies the vendor-specific strategy
+    # (Orcon, Itho, Vasco, Nuaire, ClimaRad) instead of hardcoded Orcon
+    # hex payloads.  Only 22F1 fan mode commands are mapped here —
+    # bypass (22F7), filter reset (10D0), timer (22F3), and RQ commands
+    # don't have usable strategy equivalents and keep the raw packet path.
     _FAN_COMMAND_TO_STRATEGY_MODE: dict[str, str] = {
         "fan_high": "high",
         "fan_medium": "medium",
@@ -307,42 +327,16 @@ class RamsesCommands:
     async def send_fan_command(self, device_id: str, command: str) -> CommandResult:
         """Send a fan command to a Ramses RF device.
 
-        For 22F1 fan mode commands (fan_high, fan_low, etc.), this routes
-        through ``device.set_fan_mode()`` which applies the vendor strategy
-        to translate the semantic mode name to the correct hex payload for
-        the device's brand (Orcon, Itho, Vasco, Nuaire, ClimaRad).
-
-        Falls back to raw packet sending if the device doesn't support
-        ``set_fan_mode()`` (e.g. older ramses_rf or non-HVAC device).
+        Thin wrapper around :meth:`send_command`, which routes 22F1 fan
+        mode commands through ``device.set_fan_mode()`` (vendor strategy)
+        and everything else through raw packet sending.
 
         :param device_id: Device identifier (e.g., "32_153289")
         :param command: Command name from HvacVentilator standard commands
                        Use prefixed names like "fan_high", "fan_low", "fan_auto", etc.
         :return: CommandResult with execution status and error details
         """
-        # Get command from registry (HvacVentilator standard commands)
-        cmd_def = self._command_registry.get_command(command)
-        if not cmd_def:
-            error_msg = f"Fan command '{command}' not found in registry"
-            _LOGGER.error(error_msg)
-            return CommandResult(success=False, error_message=error_msg)
-
-        # Try strategy-based sending for 22F1 fan mode commands
-        strategy_mode = self._FAN_COMMAND_TO_STRATEGY_MODE.get(command)
-        if strategy_mode is not None:
-            strategy_result = await self._send_fan_mode_via_strategy(
-                device_id, strategy_mode
-            )
-            if strategy_result is not None:
-                return strategy_result
-            # Fall through to raw packet if strategy path unavailable
-
-        # Send the packet (raw fallback or non-strategy command)
-        success = await self._send_packet(device_id, cmd_def)
-        if success:
-            return CommandResult(success=True)
-        error_msg = f"Failed to send fan command '{command}' to device {device_id}"
-        return CommandResult(success=False, error_message=error_msg)
+        return await self.send_command(device_id, command)
 
     async def _send_fan_mode_via_strategy(
         self, device_id: str, mode_name: str
@@ -444,8 +438,10 @@ class RamsesCommands:
 
         # Send command with queuing
         result = await self._device_manager.send_command_to_device(
-            device_id, cmd_def, priority, timeout
+            device_id, cmd_def, priority, timeout, command_name=command_name
         )
+        if result.success:
+            self._record_command_sent(device_id, command_name)
 
         # For bypass commands, also send the 2411/4B parameter that some
         # Orcon/HRC units use instead of (or in addition to) 22F7.  This is
@@ -456,6 +452,72 @@ class RamsesCommands:
             await self._send_bypass_2411_param(device_id, param_value)
 
         return result
+
+    # Window during which an observed packet matching a command we sent is
+    # treated as our own echo rather than an external remote press.  Covers
+    # the MQTT/serial echo delay plus listener scheduling latency.
+    _SELF_SENT_WINDOW = 5.0
+
+    def _record_command_sent(self, device_id: str, command_name: str) -> None:
+        """Record that we sent ``command_name`` to ``device_id``."""
+        key = (device_id.replace("_", ":"), command_name)
+        self._self_sent[key] = time.monotonic()
+        if len(self._self_sent) > 64:
+            cutoff = time.monotonic() - self._SELF_SENT_WINDOW
+            self._self_sent = {
+                k: ts for k, ts in self._self_sent.items() if ts > cutoff
+            }
+
+    def was_command_recently_sent(
+        self, device_id: str, command_name: str, window: float | None = None
+    ) -> bool:
+        """Return True if we sent this command to this device very recently.
+
+        Used by the remote-packet observer to ignore echoes of our own
+        sends (they use a spoofed bound-REM source address and would
+        otherwise register as external manual overrides).
+
+        :param device_id: Device identifier (e.g., "32:153289")
+        :param command_name: Registry command name (e.g., "fan_high")
+        :param window: Match window in seconds (default 5s)
+        :return: True if the same command was sent within the window
+        """
+        ts = self._self_sent.get((device_id.replace("_", ":"), command_name))
+        return ts is not None and (time.monotonic() - ts) < (
+            window or self._SELF_SENT_WINDOW
+        )
+
+    async def _dispatch_command(
+        self,
+        device_id: str,
+        cmd_def: dict[str, Any],
+        command_name: str | None = None,
+    ) -> bool:
+        """Dispatch a command: strategy-aware for 22F1 fan modes, raw otherwise.
+
+        22F1 fan mode commands route through ``device.set_fan_mode()`` so
+        ramses_rf's vendor strategy (Orcon, Itho, Vasco, Nuaire, ClimaRad)
+        translates the semantic mode name into the correct payload.
+        Everything else — bypass (22F7), filter reset (10D0), timers (22F3),
+        RQ requests — keeps the raw ``create_cmd``/``async_send_raw_command``
+        path: ramses_rf has no intent action for those, and its
+        ``SET_BYPASS_POSITION`` builder emits a 2-byte 22F7 payload that its
+        own parser rejects (the parser requires >= 3 bytes; the real command
+        uses e.g. ``00C8EF``).  Tracked upstream in
+        https://github.com/ramses-rf/ramses_cc/issues/1298 — switch bypass to
+        the intent path once the builder emits a valid 3-byte payload.
+
+        :param device_id: Target device identifier
+        :param cmd_def: Command definition with code, verb, payload
+        :param command_name: Registry command name for strategy routing
+        :return: True if the command was sent
+        """
+        mode_name = self._FAN_COMMAND_TO_STRATEGY_MODE.get(command_name or "")
+        if mode_name is not None:
+            result = await self._send_fan_mode_via_strategy(device_id, mode_name)
+            if result is not None:
+                return result.success
+        return await self._send_packet(device_id, cmd_def)
 
     async def _send_bypass_2411_param(self, device_id: str, value: int) -> None:
         """Best-effort send of the 2411 bypass-valve parameter (4B).
@@ -946,9 +1008,29 @@ def create_ramses_commands(hass: Any) -> RamsesCommands:
     return RamsesCommands(hass)
 
 
+def get_ramses_commands(hass: Any) -> RamsesCommands:
+    """Return the shared RamsesCommands instance for this hass.
+
+    The DeviceCommandManager's queue, rate limiting, dedup and statistics
+    only work if all callers share one instance — a fresh RamsesCommands
+    per service call would give every call its own (empty) rate-limit
+    state.  The instance is stored in ``hass.data["ramses_extras"]``.
+
+    :param hass: Home Assistant instance
+    :return: Shared RamsesCommands instance
+    """
+    data: dict[str, Any] = hass.data.setdefault("ramses_extras", {})
+    commands = data.get("ramses_commands")
+    if not isinstance(commands, RamsesCommands):
+        commands = RamsesCommands(hass)
+        data["ramses_commands"] = commands
+    return commands
+
+
 __all__ = [
     "RamsesCommands",
     "create_ramses_commands",
+    "get_ramses_commands",
     "CommandResult",
     "DeviceCommandManager",
 ]

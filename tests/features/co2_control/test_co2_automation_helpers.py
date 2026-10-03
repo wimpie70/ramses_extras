@@ -65,7 +65,7 @@ def manager() -> CO2AutomationManager:
 
     with (
         patch(
-            "custom_components.ramses_extras.features.co2_control.automation.RamsesCommands"
+            "custom_components.ramses_extras.features.co2_control.automation.get_ramses_commands"
         ),
         patch(
             "custom_components.ramses_extras.features.co2_control.automation.get_fan_speed_arbiter",

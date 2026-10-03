@@ -232,7 +232,7 @@ class TestValveCalibrationService:
                 "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
             ) as mock_get_coordinator,
             patch(
-                "custom_components.ramses_extras.features.default.services.RamsesCommands"
+                "custom_components.ramses_extras.features.default.services.get_ramses_commands"
             ) as mock_commands_class,
         ):
             mock_coordinator = MagicMock()
@@ -413,7 +413,7 @@ class TestErrorHandling:
         call.data = {"device_id": "32:123456", "command": "unknown_fan_command"}
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class:
             mock_commands = MagicMock()
             mock_commands.send_command = AsyncMock()
@@ -444,7 +444,7 @@ class TestErrorHandling:
         call.data = {"device_id": "32:123456", "param_id": "ab", "value": "10"}
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class:
             mock_commands = MagicMock()
             mock_commands.set_fan_param = AsyncMock()
@@ -476,7 +476,7 @@ class TestErrorHandling:
         call_without.data = {"device_id": "32:123456"}
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class:
             mock_commands = MagicMock()
             mock_commands.update_fan_params = AsyncMock()
@@ -490,7 +490,7 @@ class TestErrorHandling:
         call_with.data = {"device_id": "32:123456", "from_id": "18:123456"}
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class_with:
             mock_commands_with = MagicMock()
             mock_commands_with.update_fan_params = AsyncMock()
@@ -523,7 +523,7 @@ class TestQueueStatisticsService:
         call.data = {}
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class:
             mock_commands = MagicMock()
             mock_commands.get_queue_statistics.return_value = {
@@ -581,7 +581,7 @@ class TestRemoteEventHandling:
         mock_coordinator.client = mock_client
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class:
             mock_commands = MagicMock()
             mock_commands._get_ramses_cc_coordinator = AsyncMock(
@@ -605,7 +605,7 @@ class TestRemoteEventHandling:
         del mock_coordinator.client  # Remove client attribute
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
         ) as mock_commands_class:
             mock_commands = MagicMock()
             mock_commands._get_ramses_cc_coordinator = AsyncMock(

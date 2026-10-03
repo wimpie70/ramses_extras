@@ -10,7 +10,7 @@ from typing import Any
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 
 from ...const import DOMAIN
-from .ramses_commands import RamsesCommands
+from .ramses_commands import get_ramses_commands
 
 
 def _import_ramses_types() -> tuple[Any, Any, type[Exception]]:
@@ -80,7 +80,7 @@ class RamsesMessageStream:
         return None
 
     async def _async_attach_client_listener(self) -> None:
-        commands = RamsesCommands(self._hass)
+        commands = get_ramses_commands(self._hass)
         max_attempts = 30  # 30s total — coordinator.client may take ~20s
 
         for attempt in range(max_attempts):

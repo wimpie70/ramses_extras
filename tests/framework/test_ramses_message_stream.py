@@ -114,7 +114,7 @@ class TestRamsesMessageStream:
         )
 
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_message_stream.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_message_stream.get_ramses_commands"
         ) as mock_commands_cls:
             mock_commands = mock_commands_cls.return_value
             mock_commands._get_ramses_cc_coordinator = AsyncMock(

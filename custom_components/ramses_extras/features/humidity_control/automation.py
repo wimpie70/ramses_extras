@@ -36,7 +36,7 @@ from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import 
     get_fan_speed_arbiter,
 )
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
-    RamsesCommands,
+    get_ramses_commands,
 )
 from custom_components.ramses_extras.framework.helpers.zone_demand import (
     DemandSource,
@@ -86,7 +86,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._humidity_demand_zones: dict[str, set[str]] = {}
 
         # Initialize Ramses commands for direct device control
-        self.ramses_commands = RamsesCommands(hass)
+        self.ramses_commands = get_ramses_commands(hass)
         self.fan_speed_arbiter = get_fan_speed_arbiter(hass)
 
         # Humidity-specific state tracking

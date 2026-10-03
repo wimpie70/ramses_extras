@@ -1,6 +1,7 @@
 """Tests for Ramses Commands helper."""
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -504,6 +505,143 @@ class TestRamsesCommands:
 
         assert result.success is True
         mock_client.async_send_raw_command.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_send_command_routes_fan_mode_via_strategy(
+        self, ramses_commands, hass
+    ):
+        """Test send_command routes 22F1 names through device.set_fan_mode()."""
+        mock_device = MagicMock()
+        mock_device.set_fan_mode = AsyncMock()
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.device_by_id = {"32:153289": mock_device}
+
+        mock_client = MagicMock()
+        mock_client.device_registry = mock_device_registry
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.client = mock_client
+
+        with patch.object(
+            ramses_commands,
+            "_get_ramses_cc_coordinator",
+            return_value=mock_coordinator,
+        ):
+            result = await ramses_commands.send_command("32_153289", "fan_high")
+
+        assert result.success is True
+        mock_device.set_fan_mode.assert_called_once_with("high")
+
+    @pytest.mark.asyncio
+    async def test_send_command_fan_mode_raw_fallback(self, ramses_commands, hass):
+        """Test send_command falls back to raw packet without a strategy."""
+        mock_client = MagicMock()
+        mock_client.create_cmd = MagicMock(return_value=MagicMock())
+        mock_client.async_send_raw_command = AsyncMock()
+        del mock_client.async_send_cmd
+        mock_client.hgi.id = "18:000001"
+        mock_client.device_registry = None
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.client = mock_client
+
+        with (
+            patch.object(
+                ramses_commands,
+                "_get_ramses_cc_coordinator",
+                return_value=mock_coordinator,
+            ),
+            patch.object(
+                ramses_commands, "_get_bound_rem_device", return_value="18:111111"
+            ),
+        ):
+            result = await ramses_commands.send_command("32_123456", "fan_high")
+
+        assert result.success is True
+        mock_client.async_send_raw_command.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_command_non_fan_mode_uses_raw_packet(
+        self, ramses_commands, hass
+    ):
+        """Test non-22F1 commands bypass the strategy path entirely."""
+        with (
+            patch.object(
+                ramses_commands, "_send_fan_mode_via_strategy"
+            ) as mock_strategy,
+            patch.object(
+                ramses_commands, "_send_packet", return_value=True
+            ) as mock_packet,
+        ):
+            cmd_def = {"code": "22F7", "verb": "W", "payload": "00C8EF"}
+            result = await ramses_commands._dispatch_command(
+                "32_123456", cmd_def, "fan_bypass_open"
+            )
+
+        assert result is True
+        mock_strategy.assert_not_called()
+        mock_packet.assert_called_once_with("32_123456", cmd_def)
+
+
+class TestGetRamsesCommands:
+    """Test the shared RamsesCommands instance helper."""
+
+    def test_returns_same_instance(self, hass):
+        """Test get_ramses_commands caches the instance in hass.data."""
+        from custom_components.ramses_extras.framework.helpers.ramses_commands import (
+            get_ramses_commands,
+        )
+
+        hass.data = {}
+        first = get_ramses_commands(hass)
+        second = get_ramses_commands(hass)
+        assert first is second
+        assert hass.data["ramses_extras"]["ramses_commands"] is first
+
+    def test_creates_instance_when_missing(self, hass):
+        """Test a new instance is created on first use."""
+        from custom_components.ramses_extras.framework.helpers.ramses_commands import (
+            RamsesCommands,
+            get_ramses_commands,
+        )
+
+        hass.data = {}
+        commands = get_ramses_commands(hass)
+        assert isinstance(commands, RamsesCommands)
+        assert commands.hass is hass
+
+
+class TestSelfSendTracking:
+    """Test the self-send suppression used by the remote observer."""
+
+    @pytest.mark.asyncio
+    async def test_send_command_records_self_sent(self, ramses_commands):
+        """Test a successful send is recorded for observer suppression."""
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            return_value=CommandResult(success=True)
+        )
+        await ramses_commands.send_command("32_153289", "fan_high")
+        assert ramses_commands.was_command_recently_sent("32:153289", "fan_high")
+
+    @pytest.mark.asyncio
+    async def test_failed_send_not_recorded(self, ramses_commands):
+        """Test a failed send is not recorded."""
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            return_value=CommandResult(success=False, error_message="x")
+        )
+        await ramses_commands.send_command("32_153289", "fan_high")
+        assert not ramses_commands.was_command_recently_sent("32:153289", "fan_high")
+
+    def test_was_command_recently_sent_window_expires(self, ramses_commands):
+        """Test old entries fall outside the match window."""
+        ramses_commands._self_sent[("32:153289", "fan_high")] = time.monotonic() - 10.0
+        assert not ramses_commands.was_command_recently_sent("32:153289", "fan_high")
+
+    def test_was_command_recently_sent_other_command(self, ramses_commands):
+        """Test a different command name does not match."""
+        ramses_commands._self_sent[("32:153289", "fan_high")] = time.monotonic()
+        assert not ramses_commands.was_command_recently_sent("32:153289", "fan_low")
 
 
 @pytest.mark.asyncio

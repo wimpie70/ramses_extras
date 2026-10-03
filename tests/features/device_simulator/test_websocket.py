@@ -1111,7 +1111,7 @@ class TestWsDiscoverCapabilities:
     @pytest.mark.asyncio
     async def test_not_ready_coordinator(self, hass, connection):
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             mock_commands.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=None
@@ -1124,7 +1124,7 @@ class TestWsDiscoverCapabilities:
     @pytest.mark.asyncio
     async def test_no_devices(self, hass, connection, engine):
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             coordinator = MagicMock()
             coordinator.client = MagicMock()
@@ -1142,7 +1142,7 @@ class TestWsDiscoverCapabilities:
     @pytest.mark.asyncio
     async def test_success_with_devices(self, hass, connection, engine):
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             coordinator = MagicMock()
             coordinator.client = MagicMock()
@@ -1170,7 +1170,7 @@ class TestWsDiscoverCapabilities:
     @pytest.mark.asyncio
     async def test_device_not_in_registry(self, hass, connection, engine):
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             coordinator = MagicMock()
             coordinator.client = MagicMock()
@@ -1190,7 +1190,7 @@ class TestWsDiscoverCapabilities:
     @pytest.mark.asyncio
     async def test_device_no_discovery_service(self, hass, connection, engine):
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             coordinator = MagicMock()
             coordinator.client = MagicMock()
@@ -1212,7 +1212,7 @@ class TestWsDiscoverCapabilities:
     @pytest.mark.asyncio
     async def test_device_no_discovery_commands(self, hass, connection, engine):
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             coordinator = MagicMock()
             coordinator.client = MagicMock()
@@ -1240,7 +1240,7 @@ class TestWsDiscoverCapabilities:
     @pytest.mark.asyncio
     async def test_device_discovery_exception(self, hass, connection, engine):
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             coordinator = MagicMock()
             coordinator.client = MagicMock()
@@ -2822,7 +2822,7 @@ class TestOtherHandlerErrorPaths:
         msg = {"id": 1, "type": "test", "device_ids": ["device1"]}
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             mock_commands.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=coordinator
@@ -2846,7 +2846,7 @@ class TestOtherHandlerErrorPaths:
         msg = {"id": 1, "type": "test", "device_ids": ["device1"]}
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
         with patch(
-            "custom_components.ramses_extras.framework.helpers.ramses_commands.RamsesCommands"
+            "custom_components.ramses_extras.framework.helpers.ramses_commands.get_ramses_commands"
         ) as mock_commands:
             mock_commands.return_value._get_ramses_cc_coordinator = AsyncMock(
                 return_value=coordinator

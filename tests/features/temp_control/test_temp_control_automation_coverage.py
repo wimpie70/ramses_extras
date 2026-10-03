@@ -87,7 +87,7 @@ def automation_manager():
         ),
         patch(
             "custom_components.ramses_extras.features."
-            "temp_control.automation.RamsesCommands"
+            "temp_control.automation.get_ramses_commands"
         ),
         patch(
             "custom_components.ramses_extras.features."

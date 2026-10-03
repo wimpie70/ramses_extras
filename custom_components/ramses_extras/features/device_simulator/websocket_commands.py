@@ -581,14 +581,14 @@ async def ws_discover_capabilities(
 ) -> None:
     """Trigger capability discovery by delegating to ramses_cc devices."""
 
-    from ...framework.helpers.ramses_commands import RamsesCommands
+    from ...framework.helpers.ramses_commands import get_ramses_commands
 
     LOGGER.info("discover_capabilities: invoked with msg=%s", msg)
 
     # Access the simulator (optional, only used to provide defaults)
     engine = _get_engine(hass)
 
-    commands = RamsesCommands(hass)
+    commands = get_ramses_commands(hass)
     coordinator = await commands._get_ramses_cc_coordinator()
     if not coordinator:
         connection.send_error(
