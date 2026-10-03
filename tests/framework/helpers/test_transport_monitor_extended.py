@@ -427,3 +427,110 @@ class TestDeviceStatusEntities:
 
         assert monitor._device_states["32:153289"] is False
         monitor._hass.async_create_task.assert_called_once()
+
+
+class TestPoolEntityUnavailableTransitions:
+    """Pool health entities going ``unavailable`` must not flap devices.
+
+    A ramses_cc config-entry reload takes every pool health entity
+    through ``unavailable`` for tens of seconds.  That is not an
+    outage — only an explicit ``off`` should mark devices offline.
+    """
+
+    @staticmethod
+    def _make_monitor() -> TransportMonitor:
+        monitor = TransportMonitor()
+        monitor._pool_status_entity_id = "binary_sensor.pool_status"
+        monitor._device_status_entity_ids = {
+            "32:153289": "binary_sensor.fan_32_153289_status"
+        }
+        return monitor
+
+    @staticmethod
+    def _hass_mock() -> MagicMock:
+        hass = MagicMock()
+        # Close scheduled coroutines so they don't linger unawaited.
+        hass.async_create_task.side_effect = lambda coro: coro.close()
+        return hass
+
+    @staticmethod
+    def _subscribe(monitor: TransportMonitor) -> object:
+        captured: dict[str, object] = {}
+
+        def _track(hass: object, entities: list[str], cb: object) -> MagicMock:
+            captured["cb"] = cb
+            return MagicMock()
+
+        with (
+            patch(
+                "homeassistant.helpers.event.async_track_state_change_event",
+                side_effect=_track,
+            ),
+            patch.object(monitor, "_discover_pool_health_entities"),
+        ):
+            monitor._subscribe_pool_state_changes()
+        return captured["cb"]
+
+    @staticmethod
+    def _event(entity_id: str, old: str | None, new: str) -> MagicMock:
+        event = MagicMock()
+        event.data = {
+            "entity_id": entity_id,
+            "old_state": MagicMock(state=old) if old else None,
+            "new_state": MagicMock(state=new),
+        }
+        return event
+
+    def test_pool_status_unavailable_keeps_devices_online(self):
+        """pool_status -> unavailable is a reload, not an outage."""
+        monitor = self._make_monitor()
+        callback = MagicMock()
+        monitor.register_callback("test", "32:153289", callback)
+        monitor._hass = self._hass_mock()
+        monitor._device_states["32:153289"] = True
+        monitor._transport_available = True
+        cb = self._subscribe(monitor)
+
+        cb(self._event("binary_sensor.pool_status", "on", "unavailable"))
+
+        assert monitor._device_states["32:153289"] is True
+        assert monitor._transport_available is True
+        monitor._hass.async_create_task.assert_not_called()
+        callback.assert_not_called()
+
+    def test_pool_status_off_marks_devices_offline(self):
+        """An explicit pool_status -> off still marks devices offline."""
+        monitor = self._make_monitor()
+        monitor._hass = self._hass_mock()
+        monitor._device_states["32:153289"] = True
+        monitor._transport_available = True
+        monitor.register_callback("test", "32:153289", MagicMock())
+        cb = self._subscribe(monitor)
+
+        cb(self._event("binary_sensor.pool_status", "on", "off"))
+
+        assert monitor._transport_available is False
+        monitor._hass.async_create_task.assert_called_once()
+
+    def test_status_entity_unavailable_keeps_last_state(self):
+        """A device status entity going unavailable keeps the old state."""
+        monitor = self._make_monitor()
+        monitor._hass = self._hass_mock()
+        monitor._device_states["32:153289"] = True
+        cb = self._subscribe(monitor)
+
+        cb(self._event("binary_sensor.fan_32_153289_status", "on", "unavailable"))
+
+        assert monitor._device_states["32:153289"] is True
+        monitor._hass.async_create_task.assert_not_called()
+
+    def test_attribute_only_update_is_ignored(self):
+        """Events where only attributes changed are skipped entirely."""
+        monitor = self._make_monitor()
+        monitor._hass = self._hass_mock()
+        monitor._device_states["32:153289"] = True
+        cb = self._subscribe(monitor)
+
+        cb(self._event("binary_sensor.fan_32_153289_status", "on", "on"))
+
+        monitor._hass.async_create_task.assert_not_called()

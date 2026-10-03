@@ -213,7 +213,7 @@ class TestTransportMonitorCoverage:
 
         # Should not notify if already offline
         with patch.object(monitor, "_notify_device_state_changed") as mock_notify:
-            await monitor._mark_device_offline("32:123456")
+            await monitor._mark_device_offline("32:123456", "test reason")
             mock_notify.assert_not_called()
 
     @pytest.mark.asyncio
@@ -404,7 +404,7 @@ class TestTransportMonitorCoverage:
         monitor._device_timeout_tasks["32:123456"] = existing_task1
         monitor._device_timeout_tasks["32:123457"] = existing_task2
 
-        await monitor._mark_all_tracked_devices_offline()
+        await monitor._mark_all_tracked_devices_offline("test reason")
 
         assert monitor._device_states["32:123456"] is False
         assert monitor._device_states["32:123457"] is False

@@ -200,19 +200,20 @@ class TransportMonitor:
         try:
             await asyncio.sleep(self._command_timeout)
             # If we reach here, no reply was received within 61s
-            await self._mark_device_offline(device_id)
+            await self._mark_device_offline(device_id, "no reply within 61s of command")
         except asyncio.CancelledError:
             # Timer was cancelled because we got a reply or new command
             pass
 
-    async def _mark_device_offline(self, device_id: str) -> None:
+    async def _mark_device_offline(self, device_id: str, reason: str) -> None:
         """Mark a device as offline and notify callbacks."""
         old_state = self._device_states.get(device_id, True)
         if old_state:  # Was online, now offline
             self._device_states[device_id] = False
             _LOGGER.warning(
-                "Device %s marked offline - no reply within 61s of command",
+                "Device %s marked offline - %s",
                 device_id,
+                reason,
             )
             await self._notify_device_state_changed(device_id, False)
 
@@ -475,12 +476,23 @@ class TransportMonitor:
             new_state = event.data.get("new_state")
             if new_state is None:
                 return
-            is_on = new_state.state == "on"
+            old_state = event.data.get("old_state")
+            if old_state is not None and old_state.state == new_state.state:
+                # Attribute-only update (last_seen, rssi, ...): not a
+                # state transition, nothing to do.
+                return
             _LOGGER.debug(
                 "Transport monitor: pool entity %s -> %s",
                 entity_id,
                 new_state.state,
             )
+            if new_state.state not in ("on", "off"):
+                # unavailable/unknown — e.g. during a ramses_cc
+                # config-entry reload — is not evidence of an outage.
+                # Keep the last known state instead of flapping every
+                # tracked device offline for the duration of the reload.
+                return
+            is_on = new_state.state == "on"
             # Update global transport availability from the pool
             # status entity (aggregate: any HGI online).
             if entity_id == self._pool_status_entity_id:
@@ -488,7 +500,9 @@ class TransportMonitor:
                 self._transport_available = is_on
                 if not is_on:
                     self._hass.async_create_task(  # type: ignore[union-attr]
-                        self._mark_all_tracked_devices_offline()
+                        self._mark_all_tracked_devices_offline(
+                            f"pool status entity {entity_id} is off"
+                        )
                     )
                 return
 
@@ -584,14 +598,16 @@ class TransportMonitor:
                         _LOGGER.info("Global transport active")
                     else:
                         _LOGGER.warning("Global transport inactive")
-                        await self._mark_all_tracked_devices_offline()
+                        await self._mark_all_tracked_devices_offline(
+                            "global transport inactive"
+                        )
                     last_transport_state = transport_active
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 _LOGGER.error("Error in transport monitor loop: %s", e)
 
-    async def _mark_all_tracked_devices_offline(self) -> None:
+    async def _mark_all_tracked_devices_offline(self, reason: str) -> None:
         tracked_device_ids = {
             device_id
             for device_id, _ in self._callbacks.values()
@@ -602,7 +618,7 @@ class TransportMonitor:
             existing_task = self._device_timeout_tasks.pop(device_id, None)
             if existing_task and not existing_task.done():
                 existing_task.cancel()
-            await self._mark_device_offline(device_id)
+            await self._mark_device_offline(device_id, reason)
 
     def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         """Handle live ramses_cc client messages to track device replies.
