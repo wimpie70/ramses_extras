@@ -36,6 +36,7 @@ import os
 import pty
 import threading
 import time
+from types import MethodType
 
 results = []
 
@@ -284,7 +285,11 @@ async def run_tests():
         }
         coord.options = coord.entry.options
         coord._get_primary_hgi_id = MagicMock(return_value="18:001111")
+        coord._suppress_reload = 0
         coord.hass.config_entries.async_update_entry = MagicMock()
+        coord._persist_options_no_reload = MethodType(
+            RamsesCoordinator._persist_options_no_reload, coord
+        )
 
         # Modbus: no HGI IDs learned (pool_hgi_ids is empty)
         mock_transport = MagicMock()
@@ -344,7 +349,11 @@ async def run_tests():
         }
         coord.options = coord.entry.options
         coord._get_primary_hgi_id = MagicMock(return_value="18:001111")
+        coord._suppress_reload = 0
         coord.hass.config_entries.async_update_entry = MagicMock()
+        coord._persist_options_no_reload = MethodType(
+            RamsesCoordinator._persist_options_no_reload, coord
+        )
 
         # HGI discovered via serial: pool_hgi_ids has the new HGI
         mock_transport = MagicMock()
@@ -434,6 +443,9 @@ async def run_tests():
         coord._get_primary_hgi_id = MagicMock(return_value="18:001111")
         coord._suppress_reload = 0
         coord.hass.config_entries.async_update_entry = MagicMock()
+        coord._persist_options_no_reload = MethodType(
+            RamsesCoordinator._persist_options_no_reload, coord
+        )
 
         with patch("glob.glob", return_value=["/dev/ttyACM0", "/dev/ttyACM1"]):
             await RamsesCoordinator._async_probe_serial_ports(

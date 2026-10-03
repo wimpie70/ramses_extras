@@ -122,6 +122,10 @@ class R102CleanSchemaStartupBind(Recipe):
         primary_hgi = get_current_instance().hgi_id
         schema_after: dict = {}
         hgi_keys: list[str] = []
+        # Wait until the primary is present AND owned: the bare
+        # {'_class': 'HGI'} learned-schema entry appears first, and the
+        # _owner stamp from the config-schema sync lands on a later
+        # save cycle (the MQTT LWT callback auto-owns the primary).
         deadline = time.time() + 150
         while time.time() < deadline:
             schema_after = get_schema_retry(max_tries=5, delay=3)
@@ -131,7 +135,12 @@ class R102CleanSchemaStartupBind(Recipe):
                 if isinstance(schema_after.get(k), dict)
                 and schema_after[k].get("_class", "").upper() == "HGI"
             ]
-            if primary_hgi in hgi_keys:
+            _primary_entry = schema_after.get(primary_hgi)
+            if (
+                primary_hgi in hgi_keys
+                and isinstance(_primary_entry, dict)
+                and _primary_entry.get("_owner") == "me"
+            ):
                 break
             try:
                 call_service(ctx.token, "ramses_cc", "sync_topology")

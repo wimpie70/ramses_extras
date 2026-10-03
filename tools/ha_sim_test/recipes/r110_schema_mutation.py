@@ -35,6 +35,7 @@ class R110SchemaMutationScenarios(Recipe):
             """
 import asyncio
 import json
+from types import MethodType
 
 results = []
 
@@ -217,7 +218,11 @@ async def run_tests():
         }
         coord.options = coord.entry.options
         coord._get_primary_hgi_id = MagicMock(return_value="18:001111")
+        coord._suppress_reload = 0
         coord.hass.config_entries.async_update_entry = MagicMock()
+        coord._persist_options_no_reload = MethodType(
+            RamsesCoordinator._persist_options_no_reload, coord
+        )
 
         # Use the coordinator's instance method
         pool_hgis = RamsesCoordinator._extract_pool_hgis_from_schema(coord)
