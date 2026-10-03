@@ -503,7 +503,9 @@ class RamsesCommands:
         path: ramses_rf has no intent action for those, and its
         ``SET_BYPASS_POSITION`` builder emits a 2-byte 22F7 payload that its
         own parser rejects (the parser requires >= 3 bytes; the real command
-        uses e.g. ``00C8EF``).
+        uses e.g. ``00C8EF``).  Tracked upstream in
+        https://github.com/ramses-rf/ramses_cc/issues/1298 — switch bypass to
+        the intent path once the builder emits a valid 3-byte payload.
 
         :param device_id: Target device identifier
         :param cmd_def: Command definition with code, verb, payload
