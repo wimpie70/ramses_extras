@@ -45,7 +45,7 @@ set_fan_speed_mode:
 
 update_fan_params:
   name: Update Fan Parameters
-  description: Request a full refresh of all 2411 parameters from the device (sequential RQ sequence).
+  description: Request a full refresh of all 2411 parameters from the device (sequential RQ sequence). Alias of ramses_cc.update_fan_params, kept for backward compatibility.
   fields:
     device_id:
       name: Device ID
@@ -63,7 +63,7 @@ update_fan_params:
 
 set_fan_parameter:
   name: Set Fan Parameter
-  description: Set a specific 2411 parameter on a fan device.
+  description: Set a specific 2411 parameter on a fan device. Alias of ramses_cc.set_fan_param, kept for backward compatibility.
   fields:
     device_id:
       name: Device ID
