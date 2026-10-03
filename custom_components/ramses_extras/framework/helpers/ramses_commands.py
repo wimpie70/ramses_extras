@@ -301,6 +301,11 @@ class RamsesCommands:
         self._update_fan_params_tasks: dict[str, asyncio.Task] = {}
         # Track failed commands for monitoring and retry logic
         self._failed_commands: dict[str, dict[str, Any]] = {}
+        # Recently-sent command names per device.  Commands are sent with a
+        # spoofed bound-REM source address, so they come back over the RF
+        # listener looking like external remote presses — this map lets the
+        # observer distinguish our own echoes (see default/services.py).
+        self._self_sent: dict[tuple[str, str], float] = {}
 
     # Mapping of fan_* command names to semantic strategy mode names.
     # Used by _dispatch_command to route fan mode commands through
@@ -435,6 +440,8 @@ class RamsesCommands:
         result = await self._device_manager.send_command_to_device(
             device_id, cmd_def, priority, timeout, command_name=command_name
         )
+        if result.success:
+            self._record_command_sent(device_id, command_name)
 
         # For bypass commands, also send the 2411/4B parameter that some
         # Orcon/HRC units use instead of (or in addition to) 22F7.  This is
@@ -445,6 +452,40 @@ class RamsesCommands:
             await self._send_bypass_2411_param(device_id, param_value)
 
         return result
+
+    # Window during which an observed packet matching a command we sent is
+    # treated as our own echo rather than an external remote press.  Covers
+    # the MQTT/serial echo delay plus listener scheduling latency.
+    _SELF_SENT_WINDOW = 5.0
+
+    def _record_command_sent(self, device_id: str, command_name: str) -> None:
+        """Record that we sent ``command_name`` to ``device_id``."""
+        key = (device_id.replace("_", ":"), command_name)
+        self._self_sent[key] = time.monotonic()
+        if len(self._self_sent) > 64:
+            cutoff = time.monotonic() - self._SELF_SENT_WINDOW
+            self._self_sent = {
+                k: ts for k, ts in self._self_sent.items() if ts > cutoff
+            }
+
+    def was_command_recently_sent(
+        self, device_id: str, command_name: str, window: float | None = None
+    ) -> bool:
+        """Return True if we sent this command to this device very recently.
+
+        Used by the remote-packet observer to ignore echoes of our own
+        sends (they use a spoofed bound-REM source address and would
+        otherwise register as external manual overrides).
+
+        :param device_id: Device identifier (e.g., "32:153289")
+        :param command_name: Registry command name (e.g., "fan_high")
+        :param window: Match window in seconds (default 5s)
+        :return: True if the same command was sent within the window
+        """
+        ts = self._self_sent.get((device_id.replace("_", ":"), command_name))
+        return ts is not None and (time.monotonic() - ts) < (
+            window or self._SELF_SENT_WINDOW
+        )
 
     async def _dispatch_command(
         self,

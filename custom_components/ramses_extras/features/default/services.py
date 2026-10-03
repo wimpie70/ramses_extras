@@ -422,6 +422,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not normalized_src or not normalized_dst or not command:
             return
 
+        # Ignore echoes of commands we sent ourselves: outbound packets use
+        # a spoofed bound-REM source address, so without this check our own
+        # sends come back looking like external remote presses and would
+        # register spurious manual overrides / disable extras control.
+        commands = get_ramses_commands(hass)
+        if commands.was_command_recently_sent(normalized_dst, command):
+            return
+
         from ...framework.helpers.remote_binding import get_remote_binding_registry
 
         registry = get_remote_binding_registry(hass)

@@ -1,6 +1,7 @@
 """Tests for Ramses Commands helper."""
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -609,6 +610,38 @@ class TestGetRamsesCommands:
         commands = get_ramses_commands(hass)
         assert isinstance(commands, RamsesCommands)
         assert commands.hass is hass
+
+
+class TestSelfSendTracking:
+    """Test the self-send suppression used by the remote observer."""
+
+    @pytest.mark.asyncio
+    async def test_send_command_records_self_sent(self, ramses_commands):
+        """Test a successful send is recorded for observer suppression."""
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            return_value=CommandResult(success=True)
+        )
+        await ramses_commands.send_command("32_153289", "fan_high")
+        assert ramses_commands.was_command_recently_sent("32:153289", "fan_high")
+
+    @pytest.mark.asyncio
+    async def test_failed_send_not_recorded(self, ramses_commands):
+        """Test a failed send is not recorded."""
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            return_value=CommandResult(success=False, error_message="x")
+        )
+        await ramses_commands.send_command("32_153289", "fan_high")
+        assert not ramses_commands.was_command_recently_sent("32:153289", "fan_high")
+
+    def test_was_command_recently_sent_window_expires(self, ramses_commands):
+        """Test old entries fall outside the match window."""
+        ramses_commands._self_sent[("32:153289", "fan_high")] = time.monotonic() - 10.0
+        assert not ramses_commands.was_command_recently_sent("32:153289", "fan_high")
+
+    def test_was_command_recently_sent_other_command(self, ramses_commands):
+        """Test a different command name does not match."""
+        ramses_commands._self_sent[("32:153289", "fan_high")] = time.monotonic()
+        assert not ramses_commands.was_command_recently_sent("32:153289", "fan_low")
 
 
 @pytest.mark.asyncio
