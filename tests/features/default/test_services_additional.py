@@ -454,7 +454,7 @@ class TestErrorHandling:
 
             # Should call with uppercase param_id
             mock_commands.set_fan_param.assert_awaited_once_with(
-                "32:123456", "AB", "10", None
+                "32:123456", "AB", "10", None, context=call.context
             )
 
     @pytest.mark.asyncio
@@ -483,7 +483,9 @@ class TestErrorHandling:
             mock_commands_class.return_value = mock_commands
 
             await update_params_func(call_without)
-            mock_commands.update_fan_params.assert_awaited_once_with("32:123456", None)
+            mock_commands.update_fan_params.assert_awaited_once_with(
+                "32:123456", None, context=call_without.context
+            )
 
         # Test with from_id
         call_with = MagicMock()
@@ -498,7 +500,7 @@ class TestErrorHandling:
 
             await update_params_func(call_with)
             mock_commands_with.update_fan_params.assert_awaited_once_with(
-                "32:123456", "18:123456"
+                "32:123456", "18:123456", context=call_with.context
             )
 
 

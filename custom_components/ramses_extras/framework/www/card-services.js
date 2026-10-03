@@ -410,19 +410,25 @@ export function getEntityState(hass, entityId) {
 }
 
 /**
- * Set fan parameter (legacy function - now uses WebSocket)
+ * Set fan parameter via the ramses_cc set_fan_param service.
+ *
+ * ramses_cc owns the 2411 parameter path (SET_FAN_PARAM intent via the
+ * ramses_rf dispatcher, bound-REM/HGI source resolution, entity pending
+ * state); ramses_extras keeps its own set_fan_parameter service as a
+ * backward-compatible alias.
  *
  * @param {Object} hass - Home Assistant instance
  * @param {string} deviceId - Device ID
  * @param {string} paramId - Parameter ID
  * @param {string} value - Parameter value
- * @returns {Promise<Object>} WebSocket response
+ * @returns {Promise<Object>} Service call result
  */
 export async function setFanParameter(hass, deviceId, paramId, value) {
-  return callService(hass, 'ramses_extras', 'set_fan_parameter', {
-    device_id: deviceId,
-    param_id: paramId,
-    value: value,
+  return callService(hass, 'ramses_cc', 'set_fan_param', {
+    device_id: String(deviceId).replace(/_/g, ':'),
+    // ramses_cc validates param_id against /^[0-9A-F]{2}$/
+    param_id: String(paramId).toUpperCase(),
+    value: String(value),
   });
 }
 
@@ -450,9 +456,9 @@ export async function sendFanCommand(hass, deviceId, command) {
  * @returns {Promise<Object>} Service call result
  */
 export async function refreshFanParameters(hass, deviceId, fromId = null) {
-  const data = { device_id: deviceId };
-  if (fromId) data.from_id = fromId;
-  return callService(hass, 'ramses_extras', 'update_fan_params', data);
+  const data = { device_id: String(deviceId).replace(/_/g, ':') };
+  if (fromId) data.from_id = String(fromId).replace(/_/g, ':');
+  return callService(hass, 'ramses_cc', 'update_fan_params', data);
 }
 
 // Cache for available devices to prevent duplicate requests
