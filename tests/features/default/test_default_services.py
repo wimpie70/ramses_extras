@@ -291,7 +291,9 @@ async def test_set_fan_parameter_service(hass):
 
         await set_param_func(call)
 
-        mock_commands.set_fan_param.assert_called_with("32:123456", "01", "10", None)
+        mock_commands.set_fan_param.assert_called_with(
+            "32:123456", "01", "10", None, context=call.context
+        )
 
     # Test with from_id
     call_with_from = MagicMock()
@@ -311,7 +313,7 @@ async def test_set_fan_parameter_service(hass):
         await set_param_func(call_with_from)
 
         mock_commands.set_fan_param.assert_called_with(
-            "32:123456", "01", "10", "18:123456"
+            "32:123456", "01", "10", "18:123456", context=call_with_from.context
         )
 
 
@@ -340,7 +342,9 @@ async def test_update_fan_params_service(hass):
 
         await update_params_func(call)
 
-        mock_commands.update_fan_params.assert_called_once_with("32:123456", None)
+        mock_commands.update_fan_params.assert_called_once_with(
+            "32:123456", None, context=call.context
+        )
 
     # Test with from_id
     call_with_from = MagicMock()
@@ -355,7 +359,7 @@ async def test_update_fan_params_service(hass):
         await update_params_func(call_with_from)
 
         mock_commands.update_fan_params.assert_called_once_with(
-            "32:123456", "18:123456"
+            "32:123456", "18:123456", context=call_with_from.context
         )
 
 

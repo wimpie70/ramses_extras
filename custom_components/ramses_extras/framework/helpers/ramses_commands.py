@@ -11,6 +11,8 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.core import Context
+
 from .commands.registry import get_command_registry
 from .transport_monitor import get_transport_monitor
 
@@ -297,8 +299,6 @@ class RamsesCommands:
         self.hass = hass
         self._command_registry = get_command_registry()
         self._device_manager = DeviceCommandManager(self)
-        # Track running update_fan_params tasks per device
-        self._update_fan_params_tasks: dict[str, asyncio.Task] = {}
         # Track failed commands for monitoring and retry logic
         self._failed_commands: dict[str, dict[str, Any]] = {}
         # Recently-sent command names per device.  Commands are sent with a
@@ -550,25 +550,30 @@ class RamsesCommands:
             )
 
     async def update_fan_params(
-        self, device_id: str, from_id: str | None = None
+        self,
+        device_id: str,
+        from_id: str | None = None,
+        context: Context | None = None,
     ) -> CommandResult:
-        """Update all fan parameters for a device by calling ramses_cc broker directly.
+        """Update all fan parameters via the ramses_cc ``update_fan_params`` service.
 
-        This bypasses HA service validation warnings about referenced devices.
-        Uses task tracking to prevent concurrent calls that cause protocol timeouts.
+        ramses_cc owns the refresh sweep (per-parameter GET_FAN_PARAM
+        intents, pacing, dedup via ``_fan_param_sequences``, entity pending
+        state).  We only keep a device-existence check so a refresh for a
+        device ramses_rf doesn't know is skipped instead of warning once
+        per schema parameter upstream.
 
         :param device_id: Target device ID
         :param from_id: Optional source device ID
+        :param context: Optional service-call context (forwarded so the
+                        ramses_cc permission check still applies)
         :return: CommandResult with execution status
         """
         # Convert device_id format if needed (32_153289 -> 32:153289)
         device_id_formatted = device_id.replace("_", ":")
 
-        # Resolve the ramses_cc broker via entry.runtime_data (not
-        # hass.data["ramses_cc"], which is no longer used by ramses_cc).
-        broker = await self._get_ramses_cc_coordinator()
-
-        if not broker:
+        coordinator = await self._get_ramses_cc_coordinator()
+        if not coordinator:
             return CommandResult(
                 success=False, error_message="ramses_cc broker not found"
             )
@@ -592,44 +597,23 @@ class RamsesCommands:
             _LOGGER.info(msg)
             return CommandResult(success=False, error_message=msg)
 
-        # Check if already running for this device
-        if device_id_formatted in self._update_fan_params_tasks:
-            task = self._update_fan_params_tasks[device_id_formatted]
-            if not task.done():
-                _LOGGER.info(
-                    f"update_fan_params already running for {device_id_formatted}, "
-                    "skipping"
-                )
-                return CommandResult(
-                    success=False,
-                    error_message=(
-                        f"Parameter update already in progress for "
-                        f"{device_id_formatted}"
-                    ),
-                )
-            # Clean up completed task
-            del self._update_fan_params_tasks[device_id_formatted]
-
         try:
-            call_data = {"device_id": device_id_formatted}
+            service_data: dict[str, Any] = {"device_id": device_id_formatted}
             if from_id:
-                call_data["from_id"] = from_id
+                service_data["from_id"] = from_id.replace("_", ":")
 
             _LOGGER.debug(f"Starting update_fan_params for {device_id_formatted}")
 
-            # Call broker method directly (spawns async task internally)
-            # Store reference to track it, but don't await it
-            broker.get_all_fan_params(call_data)
-
-            # Track a placeholder task to prevent immediate re-entry
-            # Use a simple delay task that doesn't block the event loop
-            async def _track_completion() -> None:
-                await asyncio.sleep(0.5)  # Minimal delay, non-blocking
-
-            self._update_fan_params_tasks[device_id_formatted] = (
-                self.hass.async_create_task(_track_completion())
+            # The upstream sweep takes ~0.5s per schema parameter; call the
+            # service non-blocking so we return immediately, matching the
+            # previous fire-and-forget behaviour.
+            await self.hass.services.async_call(
+                "ramses_cc",
+                "update_fan_params",
+                service_data,
+                blocking=False,
+                context=context,
             )
-
             return CommandResult(success=True)
 
         except Exception as e:
@@ -637,42 +621,51 @@ class RamsesCommands:
             return CommandResult(success=False, error_message=str(e))
 
     async def set_fan_param(
-        self, device_id: str, param_id: str, value: Any, from_id: str | None = None
+        self,
+        device_id: str,
+        param_id: str,
+        value: Any,
+        from_id: str | None = None,
+        context: Context | None = None,
     ) -> CommandResult:
-        """Set a fan parameter by calling ramses_cc broker directly.
+        """Set a fan parameter via the ramses_cc ``set_fan_param`` service.
 
-        This bypasses HA service validation warnings about referenced devices.
+        ramses_cc owns device/from_id resolution (bound REM -> gateway
+        HGI), parameter validation, entity pending state and the
+        SET_FAN_PARAM intent dispatch — extras no longer plumbs its own
+        request into coordinator internals.
 
         :param device_id: Target device ID
         :param param_id: Parameter ID (2-digit hex)
         :param value: Value to set
         :param from_id: Optional source device ID
+        :param context: Optional service-call context (forwarded so the
+                        ramses_cc permission check still applies)
         :return: CommandResult with execution status
         """
         try:
-            # Convert device_id format if needed (32_153289 -> 32:153289)
-            device_id_formatted = device_id.replace("_", ":")
-
-            # Use the same coordinator lookup as _get_ramses_cc_coordinator:
-            # ramses_cc stores the coordinator in entry.runtime_data,
-            # not hass.data["ramses_cc"] (older versions).
-            broker = await self._get_ramses_cc_coordinator()
-
-            if not broker:
+            coordinator = await self._get_ramses_cc_coordinator()
+            if not coordinator:
                 return CommandResult(
                     success=False, error_message="ramses_cc broker not found"
                 )
 
-            call_data = {
-                "device_id": device_id_formatted,
-                "param_id": param_id,
-                "value": value,
+            service_data: dict[str, Any] = {
+                "device_id": device_id.replace("_", ":"),
+                # ramses_cc validates param_id against ^[0-9A-F]{2}$
+                "param_id": str(param_id).upper(),
+                "value": str(value),
             }
             if from_id:
-                call_data["from_id"] = from_id
+                service_data["from_id"] = from_id.replace("_", ":")
 
-            # Call broker method directly
-            await broker.async_set_fan_param(call_data)
+            await self.hass.services.async_call(
+                "ramses_cc",
+                "set_fan_param",
+                service_data,
+                blocking=True,
+                context=context,
+            )
             return CommandResult(success=True)
 
         except Exception as e:

@@ -803,7 +803,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         from_id = data.get("from_id")
 
         commands = get_ramses_commands(hass)
-        await commands.set_fan_param(device_id, param_id, value, from_id)
+        await commands.set_fan_param(
+            device_id, param_id, value, from_id, context=call.context
+        )
 
     async def _async_update_fan_params(call: ServiceCall) -> None:
         data = dict(call.data)
@@ -811,7 +813,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         from_id = data.get("from_id")
 
         commands = get_ramses_commands(hass)
-        await commands.update_fan_params(device_id, from_id)
+        await commands.update_fan_params(device_id, from_id, context=call.context)
 
     async def _async_get_queue_statistics(call: ServiceCall) -> None:
         commands = get_ramses_commands(hass)
