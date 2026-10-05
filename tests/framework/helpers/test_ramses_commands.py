@@ -648,16 +648,20 @@ class TestSelfSendTracking:
 async def test_update_fan_params_success(ramses_commands, hass):
     """Test successful fan params update."""
     mock_broker = MagicMock()
-    mock_broker.get_all_fan_params = MagicMock()
     entry = MagicMock(runtime_data=mock_broker)
     hass.config_entries.async_entries.return_value = [entry]
+    hass.services.async_call = AsyncMock()
 
     with patch.object(ramses_commands, "_device_supports_2411", return_value=True):
         result = await ramses_commands.update_fan_params("32_123456", "18_654321")
 
     assert result.success is True
-    mock_broker.get_all_fan_params.assert_called_once_with(
-        {"device_id": "32:123456", "from_id": "18_654321"}
+    hass.services.async_call.assert_called_once_with(
+        "ramses_cc",
+        "update_fan_params",
+        {"device_id": "32:123456", "from_id": "18:654321"},
+        blocking=False,
+        context=None,
     )
 
 
@@ -677,7 +681,7 @@ async def test_update_fan_params_no_broker(ramses_commands, hass):
 async def test_update_fan_params_error(ramses_commands, hass):
     """Test fan params update error handling."""
     mock_broker = MagicMock()
-    mock_broker.get_all_fan_params.side_effect = RuntimeError("Update failed")
+    hass.services.async_call = AsyncMock(side_effect=RuntimeError("Update failed"))
     entry = MagicMock(runtime_data=mock_broker)
     hass.config_entries.async_entries.return_value = [entry]
 
@@ -717,7 +721,7 @@ async def test_update_fan_params_allowed_when_2411_flag_false(ramses_commands, h
     through; only None (device not found) is blocked.
     """
     mock_broker = MagicMock()
-    mock_broker.get_all_fan_params = MagicMock()
+    hass.services.async_call = AsyncMock()
 
     entry = MagicMock(runtime_data=mock_broker)
     hass.config_entries.async_entries.return_value = [entry]
@@ -731,7 +735,7 @@ async def test_update_fan_params_allowed_when_2411_flag_false(ramses_commands, h
 
     mock_supports.assert_called_once()
     assert result.success is True
-    mock_broker.get_all_fan_params.assert_called_once()
+    hass.services.async_call.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -756,22 +760,26 @@ async def test__device_supports_2411_uses_device_flag(ramses_commands):
 async def test_set_fan_param_success(ramses_commands, hass):
     """Test successful fan param setting."""
     mock_broker = MagicMock()
-    mock_broker.async_set_fan_param = AsyncMock()
     entry = MagicMock(runtime_data=mock_broker)
     hass.config_entries.async_entries.return_value = [entry]
+    hass.services.async_call = AsyncMock()
 
     result = await ramses_commands.set_fan_param(
         "32_123456", "01", "value", "18_654321"
     )
 
     assert result.success is True
-    mock_broker.async_set_fan_param.assert_called_once_with(
+    hass.services.async_call.assert_called_once_with(
+        "ramses_cc",
+        "set_fan_param",
         {
             "device_id": "32:123456",
             "param_id": "01",
             "value": "value",
-            "from_id": "18_654321",
-        }
+            "from_id": "18:654321",
+        },
+        blocking=True,
+        context=None,
     )
 
 
@@ -790,7 +798,7 @@ async def test_set_fan_param_no_broker(ramses_commands, hass):
 async def test_set_fan_param_error(ramses_commands, hass):
     """Test fan param setting error handling."""
     mock_broker = MagicMock()
-    mock_broker.async_set_fan_param = AsyncMock(side_effect=RuntimeError("Set failed"))
+    hass.services.async_call = AsyncMock(side_effect=RuntimeError("Set failed"))
     entry = MagicMock(runtime_data=mock_broker)
     hass.config_entries.async_entries.return_value = [entry]
 
