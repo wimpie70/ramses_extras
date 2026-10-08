@@ -112,7 +112,7 @@ class TestFindRamsesDevice:
     def test_find_ramses_device_device_not_found(self):
         """Test finding device when device is not in broker."""
         mock_broker = MagicMock()
-        mock_broker._get_device = MagicMock(return_value=None)
+        mock_broker.get_device = MagicMock(return_value=None)
         mock_entry = MagicMock()
         mock_entry.runtime_data = mock_broker
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
@@ -126,7 +126,7 @@ class TestFindRamsesDevice:
         mock_device = MagicMock()
         mock_device.__class__.__name__ = "HvacVentilator"
         mock_broker = MagicMock()
-        mock_broker._get_device = MagicMock(return_value=mock_device)
+        mock_broker.get_device = MagicMock(return_value=mock_device)
         mock_entry = MagicMock()
         mock_entry.runtime_data = mock_broker
         self.hass.data = {"ramses_cc": {"entry1": mock_broker}}

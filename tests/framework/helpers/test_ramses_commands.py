@@ -394,7 +394,7 @@ class TestRamsesCommands:
         mock_device.get_bound_rem.return_value = "18:123456"
 
         mock_broker = MagicMock()
-        mock_broker._get_device.return_value = mock_device
+        mock_broker.get_device.return_value = mock_device
 
         entry = MagicMock(runtime_data=mock_broker)
         hass.config_entries.async_entries.return_value = [entry]

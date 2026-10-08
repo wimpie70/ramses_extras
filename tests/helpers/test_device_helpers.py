@@ -49,14 +49,14 @@ def test_find_ramses_device(hass):
             assert find_ramses_device(hass, device_id) is None
     mock_broker = MagicMock()
     mock_device = MagicMock()
-    mock_broker._get_device.return_value = mock_device
+    mock_broker.get_device.return_value = mock_device
     mock_entry = MagicMock()
     mock_entry.runtime_data = mock_broker
     hass.data = {"ramses_cc": {"entry_id": mock_broker}}
     hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
     assert find_ramses_device(hass, device_id) == mock_device
-    mock_broker._get_device.assert_called_with(device_id)
-    mock_broker._get_device.return_value = None
+    mock_broker.get_device.assert_called_with(device_id)
+    mock_broker.get_device.return_value = None
     assert find_ramses_device(hass, device_id) is None
 
 
@@ -77,7 +77,7 @@ def test_validate_device_for_service(hass):
     device_id = "32:111"
     mock_broker = MagicMock()
     mock_device = MagicMock()
-    mock_broker._get_device.return_value = mock_device
+    mock_broker.get_device.return_value = mock_device
     mock_entry = MagicMock()
     mock_entry.runtime_data = mock_broker
     hass.data = {"ramses_cc": {"entry_id": mock_broker}}
