@@ -297,9 +297,12 @@ async def _wait_for_known_list(
         coordinator = _get_ramses_cc_coordinator(hass)
         known_ids: set[str] = set()
         if coordinator is not None:
-            known_list = coordinator._derive_known_list_from_schema(
-                coordinator.options.get("schema", {})
-            )
+            # Prefer public name (PR 1317/1321); _derive_known_list_from_schema
+            # fallback for older ramses_cc releases.
+            derive = getattr(
+                coordinator, "derive_known_list_from_schema", None
+            ) or getattr(coordinator, "_derive_known_list_from_schema", None)
+            known_list = derive(coordinator.options.get("schema", {})) if derive else {}
             if isinstance(known_list, dict):
                 known_ids = {str(k).upper() for k in known_list}
 
