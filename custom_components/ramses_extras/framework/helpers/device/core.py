@@ -55,8 +55,12 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
         if coordinator is None:
             continue
 
-        # Use coordinator's _get_device method for efficient lookup
-        device = coordinator._get_device(device_id)
+        # Prefer the public get_device (PR 1317); fall back to _get_device
+        # on older ramses_cc releases.
+        get_device = getattr(coordinator, "get_device", None) or getattr(
+            coordinator, "_get_device", None
+        )
+        device = get_device(device_id) if get_device else None
         if device:
             return device
 

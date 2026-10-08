@@ -921,12 +921,17 @@ class RamsesCommands:
         """Return the underlying ramses_rf device for the given ID."""
 
         coordinator = await self._get_ramses_cc_coordinator()
-        if not coordinator or not hasattr(coordinator, "_get_device"):
+        if coordinator is None:
+            return None
+        get_device = getattr(coordinator, "get_device", None) or getattr(
+            coordinator, "_get_device", None
+        )
+        if get_device is None:
             return None
 
         lookup_id = device_id.replace("_", ":")
         try:
-            return coordinator._get_device(lookup_id)
+            return get_device(lookup_id)
         except Exception as err:  # pragma: no cover - defensive
             _LOGGER.debug("Failed to resolve device %s: %s", lookup_id, err)
             return None
@@ -953,8 +958,16 @@ class RamsesCommands:
         try:
             # Get the coordinator to access device information
             coordinator = await self._get_ramses_cc_coordinator()
-            if coordinator and hasattr(coordinator, "_get_device"):
-                device = coordinator._get_device(device_id)
+            get_device = (
+                (
+                    getattr(coordinator, "get_device", None)
+                    or getattr(coordinator, "_get_device", None)
+                )
+                if coordinator
+                else None
+            )
+            if get_device:
+                device = get_device(device_id)
                 if device and hasattr(device, "get_bound_rem"):
                     bound_rem = device.get_bound_rem()
                     if bound_rem:
