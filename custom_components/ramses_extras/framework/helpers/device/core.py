@@ -5,6 +5,7 @@ all features, including device finding, validation, and type detection.
 """
 
 import logging
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -155,6 +156,22 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
     _LOGGER.info("Found %d Ramses devices", len(device_ids))
 
     return device_ids
+
+
+def iter_registry_device_entries(device_registry: Any) -> Iterable[Any]:
+    """Iterate the device entries of a HA device registry.
+
+    ``device_registry.devices`` used to be a mapping (device id -> entry).
+    Since HA 2026.9 it is a view that yields ``DeviceEntry`` objects when
+    iterated, while mapping access (``.values()``, ``.get()``, ``[]``) is
+    deprecated and will stop working in HA 2027.9.  Iterate the view on
+    new HA and fall back to ``.values()`` on the old mapping container.
+
+    :param device_registry: Home Assistant device registry instance
+    :return: iterable of device entries
+    """
+    devices = device_registry.devices
+    return devices.values() if isinstance(devices, Mapping) else devices
 
 
 def ensure_ramses_cc_loaded(hass: HomeAssistant) -> None:

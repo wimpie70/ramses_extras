@@ -41,6 +41,7 @@ from .framework.helpers.config.model import (
     set_feature_section,
 )
 from .framework.helpers.config_flow import ConfigFlowHelper
+from .framework.helpers.device.core import iter_registry_device_entries
 from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.simple_entity_manager import SimpleEntityManager
 from .framework.helpers.paths import DEPLOYMENT_PATHS
@@ -1994,7 +1995,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
         # Get all devices that belong to ramses_extras
         ramses_devices = []
-        for device_entry in device_registry.devices.values():
+        for device_entry in iter_registry_device_entries(device_registry):
             if (DOMAIN, device_entry.id) in device_entry.identifiers or any(
                 identifier[0] == DOMAIN for identifier in device_entry.identifiers
             ):
