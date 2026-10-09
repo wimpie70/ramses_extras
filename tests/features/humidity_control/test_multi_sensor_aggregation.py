@@ -15,6 +15,9 @@ from homeassistant.core import HomeAssistant
 from custom_components.ramses_extras.features.humidity_control.automation import (
     HumidityAutomationManager,
 )
+from custom_components.ramses_extras.framework.helpers.zone_demand import (
+    DemandSource,
+)
 
 
 def _area_state(
@@ -615,3 +618,151 @@ class TestEvaluateHumidityConditionsAggregation:
             "bath",
             "kitchen",
         }
+
+
+class TestSyncZoneDemands:
+    """Tests for _sync_zone_demands zone-demand bookkeeping.
+
+    Verifies that active triggers (spike or static high-humidity) map to
+    DemandSource.HUMIDITY demands on the right DIY zones: a trigger with a
+    zone_id demands only that zone, an unzoned trigger demands every
+    configured zone — including alongside zoned triggers.
+    """
+
+    def setup_method(self):
+        self.hass = MagicMock(spec=HomeAssistant)
+        self.hass.data = MagicMock()
+        self.hass.data.get.return_value = {
+            "enabled_features": {"humidity_control": True}
+        }
+        self.hass.config = MagicMock()
+        self.hass.states = MagicMock()
+        self.config_entry = MagicMock()
+        self.config_entry.options = {}
+        self.config_entry.data = {}
+        self.fan_speed_arbiter = MagicMock()
+        self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
+        self.fan_speed_arbiter.async_clear_demand = AsyncMock(return_value=True)
+        self.fan_speed_arbiter.is_manual_override_active.return_value = False
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.automation.get_ramses_commands"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.automation.HumidityConfig"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.automation.HumidityServices"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.automation.get_fan_speed_arbiter",
+                return_value=self.fan_speed_arbiter,
+            ),
+        ):
+            self.manager = HumidityAutomationManager(self.hass, self.config_entry)
+
+        self.registry = MagicMock()
+        self.manager._zone_demand_registry = self.registry
+        self.device_id = "test"
+
+    @staticmethod
+    def _trigger(area_id: str, **extra: object) -> dict:
+        return {
+            "area_id": area_id,
+            "label": area_id.title(),
+            "current_rh": 75.0,
+            "current_abs": 14.5,
+            "trigger_kind": "high_humidity",
+            **extra,
+        }
+
+    @staticmethod
+    def _zones(*zone_ids: str) -> MagicMock:
+        registry = MagicMock()
+        registry.get_zones_for_fan.return_value = [{"zone_id": zid} for zid in zone_ids]
+        return registry
+
+    def _demanded_zones(self) -> set[str]:
+        return {call.args[1] for call in self.registry.set_demand.call_args_list}
+
+    def test_zoned_trigger_demands_only_that_zone(self):
+        decision = {"active_triggers": [self._trigger("bath", zone_id="bathroom")]}
+        with patch(
+            "custom_components.ramses_extras.features.humidity_control.automation.get_zone_registry",
+            return_value=self._zones("bathroom", "kitchen"),
+        ):
+            self.manager._sync_zone_demands(self.device_id, decision)
+
+        self.registry.set_demand.assert_called_once()
+        call = self.registry.set_demand.call_args
+        assert call.args[:4] == (
+            self.device_id,
+            "bathroom",
+            DemandSource.HUMIDITY,
+            True,
+        )
+        assert call.kwargs["metadata"]["area_id"] == "bath"
+        assert self.manager._humidity_demand_zones[self.device_id] == {"bathroom"}
+        self.registry.clear_demand.assert_not_called()
+
+    def test_unzoned_trigger_demands_all_configured_zones(self):
+        decision = {"active_triggers": [self._trigger("living")]}
+        with patch(
+            "custom_components.ramses_extras.features.humidity_control.automation.get_zone_registry",
+            return_value=self._zones("bathroom", "kitchen"),
+        ):
+            self.manager._sync_zone_demands(self.device_id, decision)
+
+        assert self._demanded_zones() == {"bathroom", "kitchen"}
+        assert self.manager._humidity_demand_zones[self.device_id] == {
+            "bathroom",
+            "kitchen",
+        }
+
+    def test_mixed_zoned_and_unzoned_triggers_demand_all_zones(self):
+        """An unzoned trigger must fan out to all zones, not just the union
+        of zone_ids carried by zoned triggers."""
+        decision = {
+            "active_triggers": [
+                self._trigger("bath", zone_id="bathroom"),
+                self._trigger("living"),
+            ]
+        }
+        with patch(
+            "custom_components.ramses_extras.features.humidity_control.automation.get_zone_registry",
+            return_value=self._zones("bathroom", "kitchen"),
+        ):
+            self.manager._sync_zone_demands(self.device_id, decision)
+
+        assert self._demanded_zones() == {"bathroom", "kitchen"}
+        assert self.manager._humidity_demand_zones[self.device_id] == {
+            "bathroom",
+            "kitchen",
+        }
+
+    def test_empty_decision_clears_previous_demands(self):
+        self.manager._humidity_demand_zones[self.device_id] = {"bathroom"}
+
+        self.manager._sync_zone_demands(self.device_id, None)
+
+        self.registry.clear_demand.assert_called_once_with(
+            self.device_id, "bathroom", DemandSource.HUMIDITY
+        )
+        self.registry.set_demand.assert_not_called()
+        assert self.device_id not in self.manager._humidity_demand_zones
+
+    def test_zone_switch_clears_stale_zone(self):
+        self.manager._humidity_demand_zones[self.device_id] = {"bathroom"}
+        decision = {"active_triggers": [self._trigger("kit", zone_id="kitchen")]}
+        with patch(
+            "custom_components.ramses_extras.features.humidity_control.automation.get_zone_registry",
+            return_value=self._zones("bathroom", "kitchen"),
+        ):
+            self.manager._sync_zone_demands(self.device_id, decision)
+
+        self.registry.clear_demand.assert_called_once_with(
+            self.device_id, "bathroom", DemandSource.HUMIDITY
+        )
+        assert self._demanded_zones() == {"kitchen"}
+        assert self.manager._humidity_demand_zones[self.device_id] == {"kitchen"}

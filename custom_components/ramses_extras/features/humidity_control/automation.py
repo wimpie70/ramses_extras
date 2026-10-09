@@ -817,31 +817,39 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def _sync_zone_demands(
         self, device_id: str, decision: dict[str, Any] | None
     ) -> None:
+        # TODO(zones): zone-steering (area trigger -> zone_id -> zone demand)
+        # is verified by unit tests and code review only — it still needs
+        # validation against real DIY-zone hardware measurements before the
+        # zoned path can be considered field-proven.
         new_zones: set[str] = set()
         triggers: Any = None
         if isinstance(decision, dict):
             triggers = decision.get("active_triggers")
 
         triggers_list: list[dict[str, Any]] = []
+        fan_zone_ids: set[str] = set()
         if isinstance(triggers, list):
-            zone_ids_from_triggers: set[str] = set()
+            has_unzoned_trigger = False
             for item in triggers:
                 if not isinstance(item, dict):
                     continue
                 triggers_list.append(item)
                 zone_id = str(item.get("zone_id") or "").strip()
                 if zone_id:
-                    zone_ids_from_triggers.add(zone_id)
+                    new_zones.add(zone_id)
+                else:
+                    has_unzoned_trigger = True
 
-            if zone_ids_from_triggers:
-                new_zones = zone_ids_from_triggers
-            elif triggers:
+            # An unzoned trigger is a house-level demand: it applies to
+            # every configured zone, even alongside zoned triggers.
+            if has_unzoned_trigger:
                 zone_registry = get_zone_registry(self.hass)
                 all_zones = zone_registry.get_zones_for_fan(device_id)
                 for zone in all_zones:
                     zid = str(zone.get("zone_id") or "").strip()
                     if zid:
-                        new_zones.add(zid)
+                        fan_zone_ids.add(zid)
+                new_zones.update(fan_zone_ids)
 
         prev_zones = self._humidity_demand_zones.get(device_id, set())
         for zone_id in sorted(prev_zones - new_zones):
@@ -880,7 +888,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 )
                 continue
 
-            for zid in sorted(new_zones):
+            for zid in sorted(fan_zone_ids):
                 self._zone_demand_registry.set_demand(
                     device_id,
                     zid,
