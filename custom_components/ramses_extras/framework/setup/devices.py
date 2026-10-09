@@ -88,10 +88,11 @@ def _extract_devices_from_candidate(candidate: Any) -> list[Any]:
     if candidate is None:
         return []
 
-    # Legacy/new attributes seen across coordinator/gateway revisions.
-    devices = getattr(candidate, "_devices", None)
+    # Public ``devices`` on current coordinator/gateway revisions;
+    # ``_devices`` is the older private name.
+    devices = getattr(candidate, "devices", None)
     if not devices:
-        devices = getattr(candidate, "devices", None)
+        devices = getattr(candidate, "_devices", None)
 
     # Some wrappers expose the actual gateway/client under known attributes.
     if not devices:
@@ -99,9 +100,9 @@ def _extract_devices_from_candidate(candidate: Any) -> list[Any]:
             nested = getattr(candidate, nested_attr, None)
             if nested is None:
                 continue
-            nested_devices = getattr(nested, "_devices", None)
+            nested_devices = getattr(nested, "devices", None)
             if not nested_devices:
-                nested_devices = getattr(nested, "devices", None)
+                nested_devices = getattr(nested, "_devices", None)
             if nested_devices:
                 devices = nested_devices
                 break

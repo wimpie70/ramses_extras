@@ -656,14 +656,25 @@ class TransportMonitor:
         # is connected.  The Gateway object exists even when all children
         # are offline, so checking client existence alone is insufficient.
         client = self._coordinator.client
-        engine = getattr(client, "_engine", None)
+        engine = getattr(client, "engine", None) or getattr(client, "_engine", None)
         if engine is not None:
-            transport = getattr(engine, "_transport", None)
+            transport = getattr(engine, "transport", None) or getattr(
+                engine, "_transport", None
+            )
             if transport is not None:
-                # PooledTransport exposes _connected_children
-                connected_children = getattr(transport, "_connected_children", None)
-                if connected_children is not None:
-                    return len(connected_children) > 0
+                # PooledTransport exposes the public ``children`` snapshot;
+                # fall back to the pre-0.60.x private name.
+                children = getattr(transport, "children", None)
+                if children is None:
+                    connected = getattr(transport, "_connected_children", None)
+                    if connected is not None:
+                        return len(connected) > 0
+                else:
+                    return any(
+                        not getattr(c, "removed", False)
+                        and getattr(c, "is_connected", False)
+                        for c in children
+                    )
 
         return True
 

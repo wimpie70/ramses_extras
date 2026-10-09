@@ -132,8 +132,11 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
         if not broker:
             continue
 
-        # Since we know broker._devices is valid, use it directly
-        devices = getattr(broker, "_devices", {})
+        # RamsesCoordinator exposes the public ``devices`` list; older
+        # revisions used the private ``_devices`` name.
+        devices = getattr(broker, "devices", None)
+        if devices is None:
+            devices = getattr(broker, "_devices", {})
 
         if isinstance(devices, list):
             for d in devices:

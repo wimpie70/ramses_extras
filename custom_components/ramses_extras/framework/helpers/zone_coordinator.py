@@ -118,6 +118,11 @@ class ZoneCoordinator:
         return self._fan_id
 
     @property
+    def zone_ids(self) -> list[str]:
+        """Return the ids of all configured zones."""
+        return list(self._zone_configs)
+
+    @property
     def is_enabled(self) -> bool:
         """Return whether coordinator is enabled."""
         return self._enabled

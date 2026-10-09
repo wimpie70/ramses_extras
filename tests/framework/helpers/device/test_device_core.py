@@ -243,7 +243,7 @@ class TestGetAllDeviceIds:
         mock_device2.id = "32:153290"
 
         mock_broker = MagicMock()
-        mock_broker._devices = [mock_device1, mock_device2]
+        mock_broker.devices = [mock_device1, mock_device2]
 
         mock_entry = MagicMock()
         mock_entry.runtime_data = mock_broker
@@ -256,7 +256,7 @@ class TestGetAllDeviceIds:
     def test_get_all_device_ids_dict_devices(self):
         """Test getting device IDs from dict of devices."""
         mock_broker = MagicMock()
-        mock_broker._devices = {"32:153289": MagicMock(), "32:153290": MagicMock()}
+        mock_broker.devices = {"32:153289": MagicMock(), "32:153290": MagicMock()}
 
         mock_entry = MagicMock()
         mock_entry.runtime_data = mock_broker
@@ -266,10 +266,27 @@ class TestGetAllDeviceIds:
         result = get_all_device_ids(self.hass)
         assert set(result) == {"32:153289", "32:153290"}
 
+    def test_get_all_device_ids_legacy_private_devices(self):
+        """Test the _devices fallback for older coordinator revisions."""
+        mock_device = MagicMock()
+        mock_device.id = "32:153289"
+
+        mock_broker = MagicMock()
+        mock_broker.devices = None
+        mock_broker._devices = [mock_device]
+
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = mock_broker
+        self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+
+        result = get_all_device_ids(self.hass)
+        assert result == ["32:153289"]
+
     def test_get_all_device_ids_unexpected_type(self):
         """Test getting device IDs with unexpected devices type."""
         mock_broker = MagicMock()
-        mock_broker._devices = "unexpected_type"
+        mock_broker.devices = "unexpected_type"
 
         mock_entry = MagicMock()
         mock_entry.runtime_data = mock_broker
@@ -286,7 +303,7 @@ class TestGetAllDeviceIds:
         del mock_device.id
 
         mock_broker = MagicMock()
-        mock_broker._devices = [mock_device]
+        mock_broker.devices = [mock_device]
 
         mock_entry = MagicMock()
         mock_entry.runtime_data = mock_broker
