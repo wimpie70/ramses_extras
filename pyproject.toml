@@ -6,7 +6,7 @@ authors = ["Willem (wimpie70)"]
 
 [tool.poetry.dependencies]
 python = ">=3.14.2,<4.0"
-homeassistant = ">=2026.8.1"
+homeassistant = ">=2026.10.0"
 
 [tool.poetry.group.dev.dependencies]
  pytest = ">=9.0.3"
@@ -20,7 +20,7 @@ homeassistant = ">=2026.8.1"
 optional = true
 
 [tool.poetry.group.test.dependencies]
- pytest-homeassistant-custom-component = ">=0.13.355"
+ pytest-homeassistant-custom-component = ">=0.13.371"
 
 [build-system]
 requires = ["setuptools", "wheel"]
