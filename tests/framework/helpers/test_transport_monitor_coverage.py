@@ -96,7 +96,10 @@ class TestTransportMonitorCoverage:
         # Build a mock coordinator/client with a pooled transport that
         # has one connected child, so _is_transport_active() returns True.
         mock_client = MagicMock()
-        mock_client._engine._transport._connected_children = [MagicMock()]
+        child = MagicMock()
+        child.removed = False
+        child.is_connected = True
+        mock_client.engine.transport.children = [child]
         entry = MagicMock(runtime_data=MagicMock(client=mock_client))
         hass.config_entries.async_entries.return_value = [entry]
         existing_task = MagicMock()
@@ -297,9 +300,9 @@ class TestTransportMonitorCoverage:
         """Test _is_transport_active with a non-pooled (single) transport."""
         monitor._coordinator = MagicMock()
         mock_client = MagicMock()
-        # A non-pooled transport has no _connected_children attribute;
-        # _is_transport_active should fall back to True.
-        mock_client._engine._transport = MagicMock(spec=[])
+        # A non-pooled transport has no children/_connected_children
+        # attribute; _is_transport_active should fall back to True.
+        mock_client.engine.transport = MagicMock(spec=[])
         monitor._coordinator.client = mock_client
 
         result = monitor._is_transport_active()

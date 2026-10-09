@@ -94,13 +94,13 @@ def test_get_all_device_ids(hass):
     dev1.id = "32:1"
     dev2 = MagicMock()
     dev2.id = "32:2"
-    mock_broker._devices = [dev1, dev2]
+    mock_broker.devices = [dev1, dev2]
     mock_entry = MagicMock()
     mock_entry.runtime_data = mock_broker
     hass.data = {"ramses_cc": {"entry_id": mock_broker}}
     hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
     assert get_all_device_ids(hass) == ["32:1", "32:2"]
-    mock_broker._devices = {"32:3": {}, "32:4": {}}
+    mock_broker.devices = {"32:3": {}, "32:4": {}}
     assert set(get_all_device_ids(hass)) == {"32:3", "32:4"}
 
 

@@ -209,8 +209,10 @@ class TestTransportMonitor:
         entry = MagicMock(
             runtime_data=MagicMock(
                 client=MagicMock(
-                    _engine=MagicMock(
-                        _transport=MagicMock(_connected_children=[MagicMock()])
+                    engine=MagicMock(
+                        transport=MagicMock(
+                            children=[MagicMock(removed=False, is_connected=True)]
+                        )
                     )
                 )
             )
@@ -250,8 +252,10 @@ class TestTransportMonitor:
         entry = MagicMock(
             runtime_data=MagicMock(
                 client=MagicMock(
-                    _engine=MagicMock(
-                        _transport=MagicMock(_connected_children=[MagicMock()])
+                    engine=MagicMock(
+                        transport=MagicMock(
+                            children=[MagicMock(removed=False, is_connected=True)]
+                        )
                     )
                 )
             )

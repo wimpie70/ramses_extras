@@ -988,8 +988,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             # Get coordinator
             coordinator = get_zone_coordinator(hass, fan_id)
 
-            # Get all zones for this FAN from coordinator's _zone_configs
-            zones = list(coordinator._zone_configs.keys())
+            # Get all zones for this FAN from the coordinator
+            zones = coordinator.zone_ids
             _LOGGER.info(
                 "Starting valve calibration for %s with %s zones", fan_id, len(zones)
             )

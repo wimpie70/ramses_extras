@@ -1232,6 +1232,45 @@ than reaching into framework internals or other features' private modules.
 | `get_ramses_message_stream(hass)` | `framework/helpers/ramses_message_stream.py` | Shared in-process stream of RAMSES RF messages |
 | `get_transport_monitor()` | `framework/helpers/transport_monitor.py` | Transport availability tracking and per-device freshness |
 
+### Zone and binding helpers
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `ZoneCoordinator` / `get_zone_coordinator` | `framework/helpers/zone_coordinator.py` | Per-FAN zone demand orchestration (`zone_ids`, `fan_id`, `is_enabled` are the public surface) |
+| `zone_adapters` / `zone_demand` / `zones` | `framework/helpers/` | Zone adapter registry, demand registry, and zone utility functions |
+| `remote_binding` | `framework/helpers/remote_binding.py` | FAN↔REM binding resolution and diagnostics |
+| `fan_speed_arbiter` | `framework/helpers/fan_speed_arbiter.py` | Arbitration between competing fan-speed demands |
+
+### Config helpers
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `config.model` / `config.migration` | `framework/helpers/config/` | Feature config dataclasses and schema migration |
+| `config.validation` / `config.import_validation` / `config.import_full` / `config.export` / `config.core` | `framework/helpers/config/` | Config validation, import/export, and core accessors |
+
+### Setup and entity internals used by features
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `platform_entities` / `base_card_manager` | `framework/base_classes/` | Entity platform and card-manager base classes |
+| `SimpleEntityManager` | `framework/helpers/entity/simple_entity_manager.py` | Entity lifecycle driven by the feature matrix |
+| `entity_id_fallbacks` | `framework/helpers/entity/` | Entity-id resolution fallbacks |
+| `websocket_base` | `framework/helpers/websocket_base.py` | Shared WebSocket command plumbing |
+
+### Upstream compat shims (private-data accesses)
+
+A few call sites must read attributes that upstream projects (ramses_cc /
+ramses_rf / HA) do not expose publicly.  These are isolated behind
+``getattr`` fallbacks and are tracked for upstream public APIs:
+
+| Access | Used in | Upstream gap |
+|--------|---------|--------------|
+| `msg._pkt` | `ramses_message_stream.py` | ramses_rf attaches the `Packet` ad-hoc in its dispatcher; no public accessor |
+| `device._SLUG` | `device/filter.py`, several feature config flows | ramses_rf exposes the device class only as a private class attr |
+| `coordinator._async_discovery_task` | `device_simulator` | ramses_cc has no public "run discovery now" API |
+| `entry._async_set_state` | `device_simulator/profile_loader.py` | HA `ConfigEntry` private; needed for the sim reload trick |
+| `device._id` | defensive fallbacks only | last-resort in `id`-resolution chains; `Address.id` is public |
+
 ### Frontend
 
 | Helper | Location | Purpose |

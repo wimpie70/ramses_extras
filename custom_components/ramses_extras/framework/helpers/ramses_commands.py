@@ -857,11 +857,22 @@ class RamsesCommands:
                 and kwargs.get("from_id", "18:000730") == "18:000730"
             ):
                 client = coordinator.client
-                engine = getattr(client, "_engine", None)
-                transport = getattr(engine, "_transport", None) if engine else None
-                # If this is a PooledTransport, let it patch the source
-                # at send time — don't override with a single HGI here.
-                if not hasattr(transport, "_connected_children"):
+                engine = getattr(client, "engine", None) or getattr(
+                    client, "_engine", None
+                )
+                transport = (
+                    getattr(engine, "transport", None)
+                    or getattr(engine, "_transport", None)
+                    if engine
+                    else None
+                )
+                # If this is a PooledTransport (public ``children``
+                # snapshot; ``_connected_children`` on older versions),
+                # let it patch the source at send time — don't override
+                # with a single HGI here.
+                if not hasattr(transport, "children") and not hasattr(
+                    transport, "_connected_children"
+                ):
                     hgi = getattr(client, "hgi", None)
                     if hgi and hgi.id:
                         kwargs["device_id"] = hgi.id

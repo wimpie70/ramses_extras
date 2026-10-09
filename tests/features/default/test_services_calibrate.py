@@ -78,7 +78,7 @@ class TestCalibrateAllValves:
             ),
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {}
+            mock_coord.zone_ids = []
             mock_get_coord.return_value = mock_coord
 
             mock_commands = MagicMock()
@@ -121,7 +121,7 @@ class TestCalibrateAllValves:
             ),
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {"01": MagicMock()}
+            mock_coord.zone_ids = ["01"]
             mock_zone_config = MagicMock()
             mock_zone_config.is_controllable = False
             mock_coord.get_zone_config.return_value = mock_zone_config
@@ -162,7 +162,7 @@ class TestCalibrateAllValves:
             ),
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {"01": MagicMock()}
+            mock_coord.zone_ids = ["01"]
 
             mock_zone_config = MagicMock()
             mock_zone_config.is_controllable = True
@@ -212,7 +212,7 @@ class TestCalibrateAllValves:
             patch("aiohttp.ClientSession"),
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {"01": MagicMock()}
+            mock_coord.zone_ids = ["01"]
 
             mock_zone_config = MagicMock()
             mock_zone_config.is_controllable = True
@@ -264,7 +264,7 @@ class TestCalibrateAllValves:
             patch.object(hass.services, "async_call", new_callable=AsyncMock),
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {"01": MagicMock()}
+            mock_coord.zone_ids = ["01"]
 
             mock_zone_config = MagicMock()
             mock_zone_config.is_controllable = True
@@ -332,7 +332,7 @@ class TestCalibrateAllValves:
             patch.object(hass.services, "async_call", new_callable=AsyncMock),
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {"01": MagicMock()}
+            mock_coord.zone_ids = ["01"]
 
             mock_zone_config = MagicMock()
             mock_zone_config.is_controllable = True
@@ -401,7 +401,7 @@ class TestCalibrateAllValves:
             ) as mock_async_call,
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {"01": MagicMock()}
+            mock_coord.zone_ids = ["01"]
 
             mock_zone_config = MagicMock()
             mock_zone_config.is_controllable = True
@@ -466,7 +466,7 @@ class TestCalibrateAllValves:
             patch.object(hass.services, "async_call", new_callable=AsyncMock),
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {"01": MagicMock()}
+            mock_coord.zone_ids = ["01"]
 
             mock_zone_config = MagicMock()
             mock_zone_config.is_controllable = True
@@ -531,7 +531,7 @@ class TestCalibrateAllValves:
             patch("aiohttp.ClientTimeout"),
         ):
             mock_coord = MagicMock()
-            mock_coord._zone_configs = {"01": MagicMock()}
+            mock_coord.zone_ids = ["01"]
 
             mock_zone_config = MagicMock()
             mock_zone_config.is_controllable = True

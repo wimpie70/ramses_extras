@@ -652,7 +652,7 @@ class TestDiscoverDevices:
         mock_broker = MagicMock()
         mock_device = MagicMock()
         mock_device.id = "32:111111"
-        mock_broker._devices = [mock_device]  # Set _devices directly on broker
+        mock_broker.devices = [mock_device]  # Set devices directly on broker
         mock_entry.runtime_data = mock_broker
 
         hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
