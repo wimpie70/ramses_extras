@@ -641,8 +641,10 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _LOGGER.info("Removed %d entities", removed_entities)
 
     # 3. Remove devices
+    from ..helpers.device.core import iter_registry_device_entries
+
     device_registry = dr.async_get(hass)
-    device_entries = list(device_registry.devices.values())
+    device_entries = list(iter_registry_device_entries(device_registry))
     entry_id = getattr(entry, "entry_id", None)
     if not isinstance(entry_id, str):
         entry_id = getattr(entry, "id", None)

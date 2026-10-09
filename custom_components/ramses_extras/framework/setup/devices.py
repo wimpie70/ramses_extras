@@ -72,6 +72,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 
 from ...const import DOMAIN, EVENT_DEVICES_UPDATED
+from ..helpers.device.core import iter_registry_device_entries
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -480,7 +481,7 @@ async def cleanup_orphaned_devices(
         return
 
     ramses_devices = []
-    for device_entry in device_registry.devices.values():
+    for device_entry in iter_registry_device_entries(device_registry):
         if any(identifier[0] == DOMAIN for identifier in device_entry.identifiers):
             ramses_devices.append(device_entry)
 

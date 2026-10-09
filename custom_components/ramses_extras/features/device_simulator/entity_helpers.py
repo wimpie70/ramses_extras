@@ -58,7 +58,9 @@ def get_device_entities(hass: HomeAssistant, device_id: str) -> list[dict[str, A
     if hasattr(device_reg, "async_get_devices"):
         devices_iter = device_reg.async_get_devices()
     elif hasattr(device_reg, "devices"):
-        devices_iter = device_reg.devices.values()
+        from ...framework.helpers.device.core import iter_registry_device_entries
+
+        devices_iter = iter_registry_device_entries(device_reg)
     else:
         return []
 
