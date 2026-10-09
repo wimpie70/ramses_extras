@@ -324,6 +324,19 @@ class RamsesCommands:
         "fan_disable": "off",
     }
 
+    # Mapping of fan_bypass_* command names to SET_BYPASS_POSITION mode
+    # names.  Used by _dispatch_command to route 22F7 bypass commands
+    # through the ramses_rf intent/dispatcher layer when the upstream
+    # builder emits a valid 3-byte payload (fixed in ramses_rf 0.60.10;
+    # older builders emit a 2-byte payload the parser rejects — see
+    # https://github.com/ramses-rf/ramses_cc/issues/1298).  The raw
+    # packet path remains as fallback for older ramses_rf versions.
+    _BYPASS_COMMAND_TO_MODE: dict[str, str] = {
+        "fan_bypass_open": "on",
+        "fan_bypass_close": "off",
+        "fan_bypass_auto": "auto",
+    }
+
     async def send_fan_command(self, device_id: str, command: str) -> CommandResult:
         """Send a fan command to a Ramses RF device.
 
@@ -389,6 +402,103 @@ class RamsesCommands:
         except Exception as e:
             _LOGGER.warning(
                 "Strategy-based set_fan_mode('%s') failed for %s: %s, "
+                "falling back to raw packet",
+                mode_name,
+                device_id,
+                e,
+            )
+            return None
+
+    async def _send_bypass_via_intent(
+        self, device_id: str, mode_name: str
+    ) -> CommandResult | None:
+        """Send a bypass command via the SET_BYPASS_POSITION intent path.
+
+        Returns a CommandResult if the intent path was used, or None if it
+        is unavailable (imports missing, device not found, no dispatcher,
+        or a ramses_rf builder that still emits the broken 2-byte 22F7
+        payload) — in which case the caller falls back to raw packet
+        sending.
+
+        :param device_id: Device identifier (e.g., "32_153289")
+        :param mode_name: Bypass mode name ("on", "off", "auto")
+        :return: CommandResult if intent path used, None if unavailable
+        """
+        try:
+            from ramses_rf.address import Address
+            from ramses_rf.commands.builders.hvac import (
+                build_set_bypass_position,
+            )
+            from ramses_rf.commands.core import Command as Intent
+            from ramses_rf.enums import Action
+            from ramses_tx import Priority
+            from ramses_tx.typing import DeviceIdT
+        except ImportError:
+            return None
+
+        try:
+            device_id_formatted = device_id.replace("_", ":")
+
+            coordinator = await self._get_ramses_cc_coordinator()
+            if not coordinator or not coordinator.client:
+                return None
+
+            # Resolve the HvacVentilator from the gateway's device registry
+            device_registry = getattr(coordinator.client, "device_registry", None)
+            if device_registry is None:
+                return None
+
+            device = getattr(device_registry, "device_by_id", {}).get(
+                device_id_formatted
+            )
+            if device is None:
+                return None
+
+            dispatcher = getattr(coordinator.client, "dispatcher", None)
+            if dispatcher is None:
+                return None
+
+            # 22F7 commands to a FAN typically must originate from a bound
+            # Remote (REM); fall back to the gateway HGI — the same source
+            # resolution ramses_rf's set_fan_mode() applies.
+            src_id = None
+            get_bound_rem = getattr(device, "get_bound_rem", None)
+            if callable(get_bound_rem):
+                src_id = get_bound_rem()
+            if not src_id:
+                src_id = getattr(getattr(device, "hgi", None), "id", None)
+            if not src_id:
+                return None
+
+            intent = Intent(
+                src=Address(DeviceIdT(src_id)),
+                dst=Address(DeviceIdT(device_id_formatted)),
+                action=Action.SET_BYPASS_POSITION,
+                data={"bypass_mode": mode_name},
+            )
+
+            # ramses_rf < 0.60.10 builds a 2-byte 22F7 payload that its own
+            # parser rejects; only use the intent path when the builder
+            # produces the valid 3-byte form (00{pos}EF).
+            if len(build_set_bypass_position(intent).payload) != 6:
+                return None
+
+            _LOGGER.debug(
+                "Sending bypass '%s' to %s via SET_BYPASS_POSITION intent",
+                mode_name,
+                device_id_formatted,
+            )
+            # Ventilators do not ack 22F7 commands — fire-and-forget.
+            await dispatcher.send(intent, priority=Priority.HIGH, wait_for_reply=False)
+
+            # Notify transport monitor
+            get_transport_monitor().notify_command_sent(device_id_formatted)
+
+            return CommandResult(success=True)
+
+        except Exception as e:
+            _LOGGER.warning(
+                "Intent-based bypass '%s' failed for %s: %s, "
                 "falling back to raw packet",
                 mode_name,
                 device_id,
@@ -493,19 +603,18 @@ class RamsesCommands:
         cmd_def: dict[str, Any],
         command_name: str | None = None,
     ) -> bool:
-        """Dispatch a command: strategy-aware for 22F1 fan modes, raw otherwise.
+        """Dispatch a command: intent/strategy-aware, raw otherwise.
 
         22F1 fan mode commands route through ``device.set_fan_mode()`` so
         ramses_rf's vendor strategy (Orcon, Itho, Vasco, Nuaire, ClimaRad)
         translates the semantic mode name into the correct payload.
-        Everything else — bypass (22F7), filter reset (10D0), timers (22F3),
+        22F7 bypass commands route through the ``SET_BYPASS_POSITION``
+        intent path when the upstream builder emits a valid 3-byte
+        payload (ramses_rf >= 0.60.10;
+        https://github.com/ramses-rf/ramses_cc/issues/1298).
+        Everything else — filter reset (10D0), timers (22F3),
         RQ requests — keeps the raw ``create_cmd``/``async_send_raw_command``
-        path: ramses_rf has no intent action for those, and its
-        ``SET_BYPASS_POSITION`` builder emits a 2-byte 22F7 payload that its
-        own parser rejects (the parser requires >= 3 bytes; the real command
-        uses e.g. ``00C8EF``).  Tracked upstream in
-        https://github.com/ramses-rf/ramses_cc/issues/1298 — switch bypass to
-        the intent path once the builder emits a valid 3-byte payload.
+        path: ramses_rf has no intent action for those.
 
         :param device_id: Target device identifier
         :param cmd_def: Command definition with code, verb, payload
@@ -515,6 +624,11 @@ class RamsesCommands:
         mode_name = self._FAN_COMMAND_TO_STRATEGY_MODE.get(command_name or "")
         if mode_name is not None:
             result = await self._send_fan_mode_via_strategy(device_id, mode_name)
+            if result is not None:
+                return result.success
+        bypass_mode = self._BYPASS_COMMAND_TO_MODE.get(command_name or "")
+        if bypass_mode is not None:
+            result = await self._send_bypass_via_intent(device_id, bypass_mode)
             if result is not None:
                 return result.success
         return await self._send_packet(device_id, cmd_def)

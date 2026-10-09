@@ -189,32 +189,27 @@ except Exception as e:
 
         wait_for_schema_populated(timeout=20)
 
-        # Inject a 30C9 I packet from the CTL (01:150000) for zone 03
-        #    payload: 03 + hex_for_temp(22.0)
-        #    22.0°C = 0x0AC0 → "030AC0"
-        # NOTE: We inject from the CTL (01:150000), not the zone sensor
-        # (01:150003), because the dispatcher's _resolve_logical_targets
-        # looks up zones via the source device's TCS.  The zone sensor
-        # (01:150003) is classed as CTL and has its own (empty) TCS, so
-        # a 30C9 from it would not reach zone 03 in the main TCS.
-        # In PR 926, the DiscoveryService polled the CTL for 30C9, which
-        # set zone temps via RQ/RP.  PR 927 removed DiscoveryService,
-        # exposing this pre-existing routing gap.  Injecting from the CTL
-        # works because the CTL's TCS has zone 03.
-        # TODO: fix _resolve_logical_targets to look up zones by sensor ID.
+        # Inject a 30C9 I packet from the zone sensor (01:150003)
+        #    payload: 00 + hex_for_temp(22.0)
+        #    22.0°C = 0x0898 → "000898"
+        # The zone sensor (01:150003) is classed as CTL and has its own
+        # (empty) TCS, so the dispatcher cannot route its 30C9 to zone 03
+        # via the source device's TCS or a _parent link (the CTL-class
+        # sensor binding is refused).  ramses_rf resolves the zone by the
+        # sensor id declared in the schema (issue 241 item 2.6).
         # Poll until the 30C9 packet is processed and the climate entity
         # for zone 03 exists.  Re-inject + force_update periodically because
         # the scan engine may drop packets under parallel load.
-        print("  Injecting 30C9 I from 01:150000 (zone 03, 22.0°C)...")
+        print("  Injecting 30C9 I from 01:150003 (zone 03 sensor, 22.0°C)...")
         try:
             call_service(
                 ctx.token,
                 "ramses_extras",
                 "device_simulator_inject_message",
                 {
-                    "source_id": "01:150000",
+                    "source_id": "01:150003",
                     "code": "30C9",
-                    "payload": "030AC0",
+                    "payload": "000898",
                     "verb": "I",
                 },
             )
@@ -242,9 +237,9 @@ except Exception as e:
                         "ramses_extras",
                         "device_simulator_inject_message",
                         {
-                            "source_id": "01:150000",
+                            "source_id": "01:150003",
                             "code": "30C9",
-                            "payload": "030AC0",
+                            "payload": "000898",
                             "verb": "I",
                         },
                     )
@@ -264,21 +259,14 @@ except Exception as e:
             floor=30.0,
         )
 
-        # Read final state
-        entities = get_entities(ctx.token)
-        zone_climate = None
-        for e in entities:
-            if not e["entity_id"].startswith("climate."):
-                continue
-            attrs = e.get("attributes", {})
-            if attrs.get("zone_index") == "03":
-                zone_climate = e
-                break
-
-        temp = (
-            zone_climate.get("attributes", {}).get("current_temperature")
-            if zone_climate
-            else None
+        zone_climate = next(
+            (
+                e
+                for e in get_entities(ctx.token)
+                if e["entity_id"].startswith("climate.")
+                and e.get("attributes", {}).get("zone_index") == "03"
+            ),
+            None,
         )
 
         ctx.check(
@@ -288,25 +276,36 @@ except Exception as e:
         )
 
         if zone_climate:
-            # NOTE: current_temperature hydration requires ramses_rf's
-            # dispatcher to route 30C9 packets from the CTL to the zone.
-            # The dispatcher currently logs these as "unknown_30C9" — a
-            # pre-existing ramses_rf routing gap (_resolve_logical_targets
-            # doesn't handle 30C9 from CTL).  This is tracked as a
-            # ramses_rf issue, not a ramses_cc schema issue.
-            if temp is not None:
-                ctx.check(
-                    "zone 03 climate has current_temperature after 30C9 RX",
-                    True,
-                    "",
-                )
-            else:
-                print(
-                    "  WARN: current_temperature=None — ramses_rf dispatcher "
-                    "logs unknown_30C9 (pre-existing routing gap)"
-                )
-                ctx.check(
-                    "zone 03 climate has current_temperature after 30C9 RX",
-                    True,
-                    "skipped — ramses_rf dispatcher routing gap (unknown_30C9)",
-                )
+            # current_temperature hydration requires ramses_rf's
+            # state_projector to route the sensor-sourced 30C9 to zone 03.
+            # The sensor (01:150003) is CTL-classed so no zone binding or
+            # _parent link exists — the zone is resolved by the sensor id
+            # declared in the schema (issue 241 item 2.6).  The zone
+            # entity is a virtual twin: it re-reads its state on the
+            # coordinator refresh, not on a packet signal, so poll with
+            # force_update until the temperature shows.
+            def _zone_temp_hydrated() -> bool:
+                try:
+                    call_service(ctx.token, "ramses_cc", "force_update")
+                except RuntimeError:
+                    pass
+                for e in get_entities(ctx.token):
+                    if not e["entity_id"].startswith("climate."):
+                        continue
+                    attrs = e.get("attributes", {})
+                    if attrs.get("zone_index") == "03":
+                        return attrs.get("current_temperature") is not None
+                return False
+
+            hydrated = wait_for(
+                _zone_temp_hydrated,
+                timeout=90,
+                interval=5,
+                msg="for zone 03 climate current_temperature after 30C9 RX",
+                floor=10.0,
+            )
+            ctx.check(
+                "zone 03 climate has current_temperature after 30C9 RX",
+                hydrated,
+                "current_temperature stayed None",
+            )

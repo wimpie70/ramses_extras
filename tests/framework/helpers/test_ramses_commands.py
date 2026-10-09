@@ -583,6 +583,131 @@ class TestRamsesCommands:
         mock_strategy.assert_not_called()
         mock_packet.assert_called_once_with("32_123456", cmd_def)
 
+    @pytest.mark.asyncio
+    async def test_send_command_bypass_via_intent(self, ramses_commands, hass):
+        """fan_bypass_* routes through the SET_BYPASS_POSITION intent when
+        the ramses_rf builder emits a valid 3-byte 22F7 payload."""
+        from ramses_rf.commands.builders.hvac import build_set_bypass_position
+        from ramses_rf.enums import Action
+
+        mock_device = MagicMock()
+        mock_device.get_bound_rem.return_value = "37:170000"
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.device_by_id = {"32:153289": mock_device}
+
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.send = AsyncMock()
+
+        mock_client = MagicMock()
+        mock_client.device_registry = mock_device_registry
+        mock_client.dispatcher = mock_dispatcher
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.client = mock_client
+
+        with patch.object(
+            ramses_commands,
+            "_get_ramses_cc_coordinator",
+            return_value=mock_coordinator,
+        ):
+            result = await ramses_commands.send_command("32_153289", "fan_bypass_open")
+
+        assert result.success is True
+        mock_dispatcher.send.assert_called_once()
+        intent = mock_dispatcher.send.call_args.args[0]
+        assert intent.action == Action.SET_BYPASS_POSITION
+        assert intent.data["bypass_mode"] == "on"
+        assert intent.src.id == "37:170000"
+        assert intent.dst.id == "32:153289"
+        # The builder must produce the valid 3-byte 22F7 payload
+        assert build_set_bypass_position(intent).payload == "00C8EF"
+        mock_client.async_send_raw_command.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_command_bypass_intent_uses_hgi_fallback_src(
+        self, ramses_commands, hass
+    ):
+        """Without a bound REM, the bypass intent sources from the HGI."""
+        mock_device = MagicMock()
+        mock_device.get_bound_rem.return_value = None
+        mock_device.hgi.id = "18:000001"
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.device_by_id = {"32:153289": mock_device}
+
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.send = AsyncMock()
+
+        mock_client = MagicMock()
+        mock_client.device_registry = mock_device_registry
+        mock_client.dispatcher = mock_dispatcher
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.client = mock_client
+
+        with patch.object(
+            ramses_commands,
+            "_get_ramses_cc_coordinator",
+            return_value=mock_coordinator,
+        ):
+            result = await ramses_commands.send_command("32_153289", "fan_bypass_auto")
+
+        assert result.success is True
+        mock_dispatcher.send.assert_called_once()
+        intent = mock_dispatcher.send.call_args.args[0]
+        assert intent.data["bypass_mode"] == "auto"
+        assert intent.src.id == "18:000001"
+
+    @pytest.mark.asyncio
+    async def test_send_command_bypass_intent_fallback_old_builder(
+        self, ramses_commands, hass
+    ):
+        """bypass falls back to raw packet when the builder still emits a
+        2-byte 22F7 payload (ramses_rf < 0.60.10)."""
+        mock_device = MagicMock()
+        mock_device.get_bound_rem.return_value = "37:170000"
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.device_by_id = {"32:123456": mock_device}
+
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.send = AsyncMock()
+
+        mock_client = MagicMock()
+        mock_client.create_cmd = MagicMock(return_value=MagicMock())
+        mock_client.async_send_raw_command = AsyncMock()
+        del mock_client.async_send_cmd
+        mock_client.hgi.id = "18:000001"
+        mock_client.device_registry = mock_device_registry
+        mock_client.dispatcher = mock_dispatcher
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.client = mock_client
+
+        short_dto = MagicMock()
+        short_dto.payload = "00C8"  # the broken 2-byte payload
+
+        with (
+            patch.object(
+                ramses_commands,
+                "_get_ramses_cc_coordinator",
+                return_value=mock_coordinator,
+            ),
+            patch(
+                "ramses_rf.commands.builders.hvac.build_set_bypass_position",
+                return_value=short_dto,
+            ),
+            patch.object(
+                ramses_commands, "_get_bound_rem_device", return_value="18:111111"
+            ),
+        ):
+            result = await ramses_commands.send_command("32_123456", "fan_bypass_open")
+
+        assert result.success is True
+        mock_dispatcher.send.assert_not_called()
+        mock_client.async_send_raw_command.assert_called_once()
+
 
 class TestGetRamsesCommands:
     """Test the shared RamsesCommands instance helper."""
