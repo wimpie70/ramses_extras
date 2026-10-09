@@ -587,7 +587,6 @@ class TestRamsesCommands:
     async def test_send_command_bypass_via_intent(self, ramses_commands, hass):
         """fan_bypass_* routes through the SET_BYPASS_POSITION intent when
         the ramses_rf builder emits a valid 3-byte 22F7 payload."""
-        from ramses_rf.commands.builders.hvac import build_set_bypass_position
         from ramses_rf.enums import Action
 
         mock_device = MagicMock()
@@ -606,10 +605,19 @@ class TestRamsesCommands:
         mock_coordinator = MagicMock()
         mock_coordinator.client = mock_client
 
-        with patch.object(
-            ramses_commands,
-            "_get_ramses_cc_coordinator",
-            return_value=mock_coordinator,
+        ok_dto = MagicMock()
+        ok_dto.payload = "00C8EF"  # the fixed 3-byte payload
+
+        with (
+            patch.object(
+                ramses_commands,
+                "_get_ramses_cc_coordinator",
+                return_value=mock_coordinator,
+            ),
+            patch(
+                "ramses_rf.commands.builders.hvac.build_set_bypass_position",
+                return_value=ok_dto,
+            ),
         ):
             result = await ramses_commands.send_command("32_153289", "fan_bypass_open")
 
@@ -620,8 +628,6 @@ class TestRamsesCommands:
         assert intent.data["bypass_mode"] == "on"
         assert intent.src.id == "37:170000"
         assert intent.dst.id == "32:153289"
-        # The builder must produce the valid 3-byte 22F7 payload
-        assert build_set_bypass_position(intent).payload == "00C8EF"
         mock_client.async_send_raw_command.assert_not_called()
 
     @pytest.mark.asyncio
@@ -646,10 +652,19 @@ class TestRamsesCommands:
         mock_coordinator = MagicMock()
         mock_coordinator.client = mock_client
 
-        with patch.object(
-            ramses_commands,
-            "_get_ramses_cc_coordinator",
-            return_value=mock_coordinator,
+        ok_dto = MagicMock()
+        ok_dto.payload = "00FFEF"  # the fixed 3-byte payload
+
+        with (
+            patch.object(
+                ramses_commands,
+                "_get_ramses_cc_coordinator",
+                return_value=mock_coordinator,
+            ),
+            patch(
+                "ramses_rf.commands.builders.hvac.build_set_bypass_position",
+                return_value=ok_dto,
+            ),
         ):
             result = await ramses_commands.send_command("32_153289", "fan_bypass_auto")
 

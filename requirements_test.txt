@@ -18,7 +18,7 @@
 
   aiousbwatcher         >= 1.1.2                 # as per: manifest.json latest: 1.1.2
   pyserial-asyncio-fast >= 0.16                  # as per: manifest.json latest: 0.16
-  ramses_rf             == 0.60.1                # latest: 0.60.1 (as of 2026-08-28)
+  ramses_rf             == 0.60.10               # as per: ramses_cc manifest.json
 
 # libraries required for development (lint/type/test)...
 
