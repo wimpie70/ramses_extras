@@ -70,7 +70,7 @@ class TestOrphanedDeviceCleanup:
     ):
         """Test that orphaned devices are removed when they have no entities."""
         # Setup mocks
-        mock_device_registry.devices.values.return_value = [mock_ramses_device]
+        mock_device_registry.devices = [mock_ramses_device]
         mock_entity_registry.entities.get.return_value = []  # No entities
         mock_device_registry.async_remove_device = AsyncMock()
 
@@ -97,7 +97,7 @@ class TestOrphanedDeviceCleanup:
     ):
         """Test that devices with entities are not removed."""
         # Setup mocks - device has entities
-        mock_device_registry.devices.values.return_value = [mock_ramses_device]
+        mock_device_registry.devices = [mock_ramses_device]
         mock_entity_registry.entities.get.return_value = [
             "entity_1",
             "entity_2",
@@ -122,7 +122,7 @@ class TestOrphanedDeviceCleanup:
     ):
         """Test that devices from other integrations are ignored."""
         # Setup mocks - device from other integration
-        mock_device_registry.devices.values.return_value = [mock_other_device]
+        mock_device_registry.devices = [mock_other_device]
         mock_entity_registry.entities.get.return_value = []  # No entities
         mock_device_registry.async_remove_device = AsyncMock()
 
@@ -146,7 +146,7 @@ class TestOrphanedDeviceCleanup:
         # Setup mocks - device belongs to different config entry
         mock_ramses_device.config_entries = {"other_entry_id"}
         mock_ramses_device.config_entry_id = "other_entry_id"
-        mock_device_registry.devices.values.return_value = [mock_ramses_device]
+        mock_device_registry.devices = [mock_ramses_device]
         mock_entity_registry.entities.get.return_value = []  # No entities
         mock_device_registry.async_remove_device = AsyncMock()
 
@@ -176,7 +176,7 @@ class TestOrphanedDeviceCleanup:
         mock_ramses_device_with_entities.identifiers = {(DOMAIN, "18:149488")}
 
         # Setup mocks
-        mock_device_registry.devices.values.return_value = [
+        mock_device_registry.devices = [
             mock_ramses_device,  # Orphaned (no entities)
             mock_other_device,  # Other integration (ignored)
             mock_ramses_device_with_entities,  # Has entities (not orphaned)
@@ -223,7 +223,7 @@ class TestOrphanedDeviceCleanup:
     ):
         """Test that cleanup handles exceptions gracefully."""
         # Setup mocks - removal fails
-        mock_device_registry.devices.values.return_value = [mock_ramses_device]
+        mock_device_registry.devices = [mock_ramses_device]
         mock_entity_registry.entities.get.return_value = []  # No entities
         mock_device_registry.async_remove_device.side_effect = Exception(
             "Removal failed"
@@ -248,7 +248,7 @@ class TestOrphanedDeviceCleanup:
     ):
         """Test cleanup when no ramses_extras devices are found."""
         # Setup mocks - no devices
-        mock_device_registry.devices.values.return_value = []
+        mock_device_registry.devices = []
         mock_device_registry.async_remove_device = AsyncMock()
 
         await cleanup_orphaned_devices(
