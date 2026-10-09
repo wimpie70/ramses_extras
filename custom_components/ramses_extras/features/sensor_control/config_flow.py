@@ -15,6 +15,7 @@ from ...framework.helpers.config.migration import get_migrated_feature_section
 from ...framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
     SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
+    SENSOR_CONTROL_AGGREGATION_KEY,
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     SENSOR_CONTROL_SOURCES_KEY,
     get_remote_binding_rems,
@@ -30,7 +31,11 @@ from ...framework.helpers.config.validation import (
     FEATURE_ZONES,
 )
 from ...framework.helpers.device.filter import DeviceFilter
-from .const import SUPPORTED_METRICS
+from .const import (
+    AGGREGATION_STRATEGIES,
+    DEFAULT_AGGREGATION_STRATEGY,
+    SUPPORTED_METRICS,
+)
 from .device_types import DEVICE_TYPE_HANDLERS
 from .zones_yaml import (
     export_zones_to_yaml,
@@ -79,6 +84,7 @@ def _build_legacy_sensor_control_section(
             SENSOR_CONTROL_SOURCES_KEY,
             SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
             SENSOR_CONTROL_AREA_SENSORS_KEY,
+            SENSOR_CONTROL_AGGREGATION_KEY,
         ):
             value = device_section.get(section_key)
             if value is not None:
@@ -179,6 +185,9 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
         details.append(spike_desc)
     if trigger_on_high_humidity:
         details.append("max RH trigger")
+    weight = area_sensor.get("weight")
+    if weight is not None and float(weight) != 1.0:
+        details.append(f"weight: {float(weight):g}")
     if area_co2_enabled:
         threshold_desc = f"{co2_threshold}ppm"
         if co2_threshold_entity:
@@ -961,6 +970,7 @@ async def async_step_sensor_control_config(
                 "trigger_on_high_humidity": bool(
                     user_input.get("trigger_on_high_humidity", False)
                 ),
+                "weight": float(user_input.get("weight") or 1.0),
                 "spike_rise_percent": float(user_input.get("spike_rise_percent") or 0),
                 "spike_window_minutes": int(
                     user_input.get("spike_window_minutes") or 1
@@ -1148,6 +1158,21 @@ async def async_step_sensor_control_config(
                     ),
                 ): bool,
                 vol.Required(
+                    "weight",
+                    default=float(
+                        selected_area_sensor.get("weight", 1.0)
+                        if selected_area_sensor
+                        else 1.0
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0.1,
+                        max=10,
+                        step=0.1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Required(
                     "spike_rise_percent",
                     default=float(
                         selected_area_sensor.get("spike_rise_percent", 10.0)
@@ -1217,6 +1242,82 @@ async def async_step_sensor_control_config(
                 description_placeholders={"info": info_text},
                 errors=errors,
             )
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    # ------------------------------------------------------------------
+    # Multi-source aggregation strategy (device level)
+    # ------------------------------------------------------------------
+    if group_stage == "aggregation":
+        if user_input is not None:
+            strategy = str(
+                user_input.get("aggregation_strategy") or DEFAULT_AGGREGATION_STRATEGY
+            )
+            if strategy not in AGGREGATION_STRATEGIES:
+                strategy = DEFAULT_AGGREGATION_STRATEGY
+            device_section = deepcopy(devices_config.get(norm_device_id) or {})
+            device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
+            device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = device_abs_inputs
+            device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = device_area_sensors
+            if strategy == DEFAULT_AGGREGATION_STRATEGY:
+                # Omit the default so legacy output stays unchanged
+                device_section.pop(SENSOR_CONTROL_AGGREGATION_KEY, None)
+            else:
+                device_section[SENSOR_CONTROL_AGGREGATION_KEY] = strategy
+            devices_config[norm_device_id] = device_section
+            sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
+            _persist_sensor_control_section(
+                flow,
+                options,
+                sensor_control_section,
+            )
+            flow._sensor_control_group_stage = "select_group"
+            return await async_step_sensor_control_config(flow, None)
+
+        current_strategy = str(
+            device_section.get(SENSOR_CONTROL_AGGREGATION_KEY)
+            or DEFAULT_AGGREGATION_STRATEGY
+        )
+        if current_strategy not in AGGREGATION_STRATEGIES:
+            current_strategy = DEFAULT_AGGREGATION_STRATEGY
+
+        strategy_labels = {
+            "first_valid": "Primary sensor only (default)",
+            "max": "Highest reading wins",
+            "avg": "Average of all sensors",
+            "weighted": "Weighted average",
+        }
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    "aggregation_strategy",
+                    default=current_strategy,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value=strategy,
+                                label=strategy_labels.get(strategy, strategy),
+                            )
+                            for strategy in AGGREGATION_STRATEGIES
+                        ],
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                )
+            }
+        )
+
+        info_text = (
+            "🧭 **FAN Configuration**\n\n"
+            f"Configuring device: `{selected_device_id}`\n\n"
+            "Choose how multiple indoor humidity sources are combined for "
+            "humidity control. The internal sensor and all enabled area "
+            "sensors participate. Area sensors can set a per-source weight "
+            "for the weighted average."
+        )
         return flow.async_show_form(
             step_id="feature_config",
             data_schema=schema,

@@ -53,7 +53,12 @@ from homeassistant.helpers import entity_registry as er
 from ...const import DOMAIN
 from ...framework.helpers.config.model import get_sensor_control_device_section
 from ...framework.helpers.entity.entity_id_fallbacks import iter_ramses_cc_entity_ids
-from .const import INTERNAL_SENSOR_MAPPINGS, SUPPORTED_METRICS
+from .const import (
+    AGGREGATION_STRATEGIES,
+    DEFAULT_AGGREGATION_STRATEGY,
+    INTERNAL_SENSOR_MAPPINGS,
+    SUPPORTED_METRICS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +91,7 @@ class SensorControlResolver:
             - raw_internal: Raw internal mappings (optional)
             - abs_humidity_inputs: Absolute humidity input mappings
             - area_sensors: Validated area sensor summaries
+            - aggregation: Multi-source aggregation strategy for consumers
         """
         # Get sensor control configuration
         sensor_control_config = self._get_sensor_control_config(device_id)
@@ -104,7 +110,15 @@ class SensorControlResolver:
             "raw_internal": internal_mappings,
             "abs_humidity_inputs": {},
             "area_sensors": [],
+            "aggregation": DEFAULT_AGGREGATION_STRATEGY,
         }
+
+        # Multi-source aggregation strategy for consumers that combine the
+        # baseline sensor with area sensors (currently humidity_control).
+        # Invalid values fail closed to the historical single-source mode.
+        aggregation = str(device_section.get("aggregation") or "").strip()
+        if aggregation in AGGREGATION_STRATEGIES:
+            result["aggregation"] = aggregation
 
         # Get device-specific overrides if available
         device_overrides = device_section.get("sources", {})
@@ -269,6 +283,7 @@ class SensorControlResolver:
                 "trigger_on_high_humidity": bool(
                     item.get("trigger_on_high_humidity", False)
                 ),
+                "weight": self._coerce_weight(item.get("weight")),
                 "valid": valid,
             }
             if zone_id:
@@ -277,6 +292,15 @@ class SensorControlResolver:
             resolved.append(resolved_item)
 
         return resolved
+
+    @staticmethod
+    def _coerce_weight(value: Any) -> float:
+        """Coerce a configured source weight to a non-negative float."""
+        try:
+            weight = float(value)
+        except TypeError, ValueError:
+            return 1.0
+        return weight if weight > 0 else 1.0
 
     def _get_sensor_control_config(
         self,
