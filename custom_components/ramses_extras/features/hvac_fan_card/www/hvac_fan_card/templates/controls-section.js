@@ -50,28 +50,33 @@ export function createControlsSection(
     <div class="r-xtrs-hvac-fan-controls-container">
       <!-- Row 1: Fan Modes -->
       <div class="r-xtrs-hvac-fan-control-row">
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_away" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_away" data-device-id="${config.device_id}"
+             title="${tr('tooltips.fan_away', 'Set the fan to away mode')}">
           <div class="r-xtrs-hvac-fan-control-icon">🏠</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('status.away', 'Away')}</div>
         </div>
-        <div class="${autoButtonClasses}" data-command="fan_auto" data-device-id="${config.device_id}">
+        <div class="${autoButtonClasses}" data-command="fan_auto" data-device-id="${config.device_id}"
+             title="${tr('tooltips.extras_auto', 'Automatic mode — extras automation (humidity/CO₂/temp) may steer the fan')}">
           <div class="r-xtrs-hvac-fan-control-icon">🌀</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('status.auto2', 'Auto')} · ${autoStatus}</div>
         </div>
         ${dehumEntitiesAvailable ? `
-        <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-dehumidify" data-entity-id="${config.dehum_mode_entity || 'switch.dehumidify_' + config.device_id.replace(/:/g, '_')}">
+        <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-dehumidify" data-entity-id="${config.dehum_mode_entity || 'switch.dehumidify_' + config.device_id.replace(/:/g, '_')}"
+             title="${tr('tooltips.dehumidify_button', 'Toggle the humidity-balance (dehumidify) automation')}">
           <div class="r-xtrs-hvac-fan-control-icon">💧</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.dehumidify', 'Balance')}</div>
         </div>
         ` : ''}
         ${co2ControlEntitiesAvailable ? `
-        <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-co2-control" data-entity-id="${config.co2_control_entity || 'switch.co2_control_' + config.device_id.replace(/:/g, '_')}">
+        <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-co2-control" data-entity-id="${config.co2_control_entity || 'switch.co2_control_' + config.device_id.replace(/:/g, '_')}"
+             title="${tr('tooltips.co2_button', 'Toggle CO₂-based ventilation')}">
           <div class="r-xtrs-hvac-fan-control-icon">🌫️</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.co2_control', 'CO2')}</div>
         </div>
         ` : ''}
         ${tempControlEntitiesAvailable && config.temp_control_entity ? `
-        <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-temp-control" data-entity-id="${config.temp_control_entity}">
+        <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-temp-control" data-entity-id="${config.temp_control_entity}"
+             title="${tr('tooltips.temp_button', 'Toggle temperature control')}">
           <div class="r-xtrs-hvac-fan-control-icon">🌡️</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.temp_control', 'Temp control')}</div>
         </div>
@@ -80,15 +85,18 @@ export function createControlsSection(
 
       <!-- Row 2: Fan Speeds -->
       <div class="r-xtrs-hvac-fan-control-row">
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_low" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_low" data-device-id="${config.device_id}"
+             title="${tr('tooltips.fan_low', 'Set the fan to low speed')}">
           <div class="r-xtrs-hvac-fan-control-icon">🌀</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('status.low', 'Low')}</div>
         </div>
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_medium" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_medium" data-device-id="${config.device_id}"
+             title="${tr('tooltips.fan_medium', 'Set the fan to medium speed')}">
           <div class="r-xtrs-hvac-fan-control-icon">🌀</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('status.medium', 'Medium')}</div>
         </div>
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_high" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_high" data-device-id="${config.device_id}"
+             title="${tr('tooltips.fan_high', 'Set the fan to high speed')}">
           <div class="r-xtrs-hvac-fan-control-icon">🌀</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('status.high', 'High')}</div>
         </div>
@@ -96,15 +104,18 @@ export function createControlsSection(
 
       <!-- Row 3: Timer -->
       <div class="r-xtrs-hvac-fan-control-row">
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_timer_15min" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_timer_15min" data-device-id="${config.device_id}"
+             title="${tr('tooltips.timer_15', 'Boost the fan for 15 minutes')}">
           <div class="r-xtrs-hvac-fan-control-icon">⏱️</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.timer_15', '15m')}</div>
         </div>
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_timer_30min" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_timer_30min" data-device-id="${config.device_id}"
+             title="${tr('tooltips.timer_30', 'Boost the fan for 30 minutes')}">
           <div class="r-xtrs-hvac-fan-control-icon">⏰</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.timer_30', '30m')}</div>
         </div>
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_timer_60min" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_timer_60min" data-device-id="${config.device_id}"
+             title="${tr('tooltips.timer_60', 'Boost the fan for 60 minutes')}">
           <div class="r-xtrs-hvac-fan-control-icon">⏳</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.timer_60', '60m')}</div>
         </div>
@@ -112,15 +123,18 @@ export function createControlsSection(
 
       <!-- Row 4: Bypass -->
       <div class="r-xtrs-hvac-fan-control-row">
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_bypass_auto" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_bypass_auto" data-device-id="${config.device_id}"
+             title="${tr('tooltips.bypass_auto', 'Bypass valve: automatic control')}">
           <div class="r-xtrs-hvac-fan-control-icon">🔄</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.bypass_auto', 'Bypass Auto')}</div>
         </div>
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_bypass_close" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_bypass_close" data-device-id="${config.device_id}"
+             title="${tr('tooltips.bypass_close', 'Bypass valve: fully closed (maximum heat recovery)')}">
           <div class="r-xtrs-hvac-fan-control-icon">⊞</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.bypass_close', 'Bypass Close')}</div>
         </div>
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_bypass_open" data-device-id="${config.device_id}">
+        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_bypass_open" data-device-id="${config.device_id}"
+             title="${tr('tooltips.bypass_open', 'Bypass valve: fully open (no heat recovery — free cooling)')}">
           <div class="r-xtrs-hvac-fan-control-icon">⊟</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.bypass_open', 'Bypass Open')}</div>
         </div>

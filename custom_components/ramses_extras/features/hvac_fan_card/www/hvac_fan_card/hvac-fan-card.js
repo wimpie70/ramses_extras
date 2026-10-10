@@ -946,6 +946,21 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   /**
+   * Translate a key, falling back to the given string when missing.
+   * @param {string} key - Translation key
+   * @param {string} fallback - Fallback string
+   * @returns {string} Translated or fallback string
+   */
+  _tr(key, fallback) {
+    try {
+      const value = this.t(key);
+      return typeof value === 'string' && value !== '' ? value : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  /**
    * Create balance status section for main card.
    * @returns {string} HTML string for balance status section.
    */
@@ -985,7 +1000,8 @@ class HvacFanCard extends RamsesBaseCard {
       <div class="r-xtrs-hvac-fan-balance-divider"></div>
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
-          <div class="r-xtrs-hvac-fan-balance-info-row ${isActive ? 'active-temp' : ''}">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${isActive ? 'active-temp' : ''}"
+               title="${this._tr('tooltips.temp_status', 'Temperature control — Idle = monitoring; Cooling = boosting airflow to cool; Retain Heat = reducing ventilation to keep warmth inside')}">
             <span>🌡️ ${tempStatus}</span>
           </div>
         </div>
@@ -1016,7 +1032,8 @@ class HvacFanCard extends RamsesBaseCard {
       ${includeDivider ? '<div class="r-xtrs-hvac-fan-balance-divider"></div>' : ''}
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
-          <div class="r-xtrs-hvac-fan-balance-info-row ${balanceTriggered ? 'active-humidity' : ''}">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${balanceTriggered ? 'active-humidity' : ''}"
+               title="${this._tr('tooltips.balance_status', 'Balance (humidity) automation — On = armed; Active = extracting on humidity demand; Passive = armed, waiting; Manual = fan speed set by hand')}">
             <span>💧 ${balanceStatus}</span>
           </div>
         </div>
