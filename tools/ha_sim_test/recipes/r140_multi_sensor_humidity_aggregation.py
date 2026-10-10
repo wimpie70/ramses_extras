@@ -5,13 +5,18 @@ sensor_control supports a device-level ``aggregation`` strategy
 area sensors with ``trigger_on_high_humidity`` produce a static high-RH
 demand (no spike history needed).
 
-This recipe wires a fake bathroom temperature+humidity pair into the
-FAN's sensor_control config, enables ``humidity_control``, and verifies:
+This recipe wires two fake temperature+humidity pairs (bathroom +
+kitchen) into the FAN's sensor_control config, enables
+``humidity_control``, and verifies:
 
-1. Dehumidifying stays off while the area is below max RH.
-2. Raising the area RH above ``max_humidity`` turns dehumidifying on and
-   attributes the trigger to the area (``active_trigger_source_ids``).
+1. Dehumidifying stays off while all areas are below max RH.
+2. Raising the bathroom RH above ``max_humidity`` turns dehumidifying on
+   and attributes the trigger to the bathroom area
+   (``active_trigger_source_ids``).
 3. Dropping back below max clears the demand.
+4. Raising the kitchen RH (with bathroom at baseline) triggers
+   dehumidify again, attributed to the kitchen area — proving each
+   configured source drives the decision independently.
 
 The extras config entry lives in ``core.config_entries``, which HA only
 reads at startup and overwrites on shutdown — so the recipe edits it on
@@ -46,6 +51,8 @@ from ..profile import minimal_hvac_yaml
 
 _BATH_TEMP = "sensor.sim_bathroom_temperature"
 _BATH_HUM = "sensor.sim_bathroom_humidity"
+_KITCH_TEMP = "sensor.sim_kitchen_temperature"
+_KITCH_HUM = "sensor.sim_kitchen_humidity"
 # Real FAN sensors — posted to so indoor/outdoor absolute humidity can be
 # computed (the minimal HVAC profile does not generate temp/hum packets).
 _FAN_IN_TEMP = "sensor.fan_32_150000_indoor_temperature"
@@ -133,7 +140,17 @@ def _write_extras_options(enable: bool) -> None:
                         "spike_rise_percent": 90.0,
                         "spike_window_minutes": 5,
                         "check_interval_minutes": 1,
-                    }
+                    },
+                    {
+                        "area_id": "kitchen",
+                        "enabled": True,
+                        "temperature_entity": _KITCH_TEMP,
+                        "humidity_entity": _KITCH_HUM,
+                        "trigger_on_high_humidity": True,
+                        "spike_rise_percent": 90.0,
+                        "spike_window_minutes": 5,
+                        "check_interval_minutes": 1,
+                    },
                 ],
             }
         else:
@@ -283,6 +300,18 @@ class R140MultiSensorHumidityAggregation(Recipe):
                 "50.0",
                 {"device_class": "humidity", "unit_of_measurement": "%"},
             )
+            _set_entity_state(
+                ctx.token,
+                _KITCH_TEMP,
+                "21.0",
+                {"device_class": "temperature", "unit_of_measurement": "°C"},
+            )
+            _set_entity_state(
+                ctx.token,
+                _KITCH_HUM,
+                "50.0",
+                {"device_class": "humidity", "unit_of_measurement": "%"},
+            )
 
             # Let the derived absolute-humidity sensors settle
             wait_for(
@@ -418,6 +447,70 @@ class R140MultiSensorHumidityAggregation(Recipe):
             ctx.check(
                 "dehumidifying clears when area RH recovers",
                 cleared,
+                f"state={(_get_state(ctx.token, _DEHUMIDIFYING) or {}).get('state')}",
+            )
+
+            # --- second source: kitchen triggers independently ---------
+            # With bathroom back at baseline, raising the kitchen RH must
+            # produce a new demand attributed to the kitchen area — the
+            # "any zone spikes -> ventilate" behaviour from issue 276.
+            _set_entity_state(
+                ctx.token,
+                _KITCH_HUM,
+                "80.0",
+                {"device_class": "humidity", "unit_of_measurement": "%"},
+            )
+            time.sleep(3)
+
+            nudge_k = {"v": 50.0}
+
+            def _kitchen_on() -> bool:
+                nudge_k["v"] = 50.1 if nudge_k["v"] == 50.0 else 50.0
+                _set_entity_state(ctx.token, _FAN_IN_HUM, str(nudge_k["v"]))
+                return (_get_state(ctx.token, _DEHUMIDIFYING) or {}).get(
+                    "state"
+                ) == "on"
+
+            on_kitchen = wait_for(
+                _kitchen_on,
+                timeout=120,
+                interval=3,
+                msg="for dehumidifying on high kitchen RH",
+                floor=60.0,
+            )
+            ctx.check(
+                "second area sensor (kitchen) triggers dehumidify",
+                on_kitchen,
+                f"state={(_get_state(ctx.token, _DEHUMIDIFYING) or {}).get('state')}",
+            )
+
+            attrs = (_get_state(ctx.token, _DEHUMIDIFYING) or {}).get("attributes", {})
+            ctx.check(
+                "trigger attributed to kitchen area",
+                "kitchen" in str(attrs.get("active_trigger_source_ids") or "")
+                or "kitchen" in str(attrs.get("active_triggers") or "").lower(),
+                f"attrs={attrs}",
+            )
+
+            # --- final recovery ------------------------------------------
+            _set_entity_state(
+                ctx.token,
+                _KITCH_HUM,
+                "50.0",
+                {"device_class": "humidity", "unit_of_measurement": "%"},
+            )
+            time.sleep(3)
+
+            cleared2 = wait_for(
+                _recovered,
+                timeout=120,
+                interval=3,
+                msg="for dehumidifying to clear after kitchen recovery",
+                floor=60.0,
+            )
+            ctx.check(
+                "dehumidifying clears when kitchen RH recovers",
+                cleared2,
                 f"state={(_get_state(ctx.token, _DEHUMIDIFYING) or {}).get('state')}",
             )
         finally:
