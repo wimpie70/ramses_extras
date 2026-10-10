@@ -56,7 +56,8 @@ export function createTopSection(data, t) {
       <!-- Top Section with airflow -->
       <div class="r-xtrs-hvac-fan-top-section">
         <!-- Timer -->
-        <div class="r-xtrs-hvac-fan-timer-display">
+        <div class="r-xtrs-hvac-fan-timer-display"
+             title="${tr('tooltips.timer', 'Time left on the boost timer')}">
           <svg class="r-xtrs-hvac-fan-timer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M12 6v6l4 2"></path>
@@ -73,41 +74,50 @@ export function createTopSection(data, t) {
         <!-- Corner Values -->
         <div class="r-xtrs-hvac-fan-corner-value top-left">
           <div class="r-xtrs-hvac-fan-corner-row">
-            <div class="r-xtrs-hvac-fan-temp-value outside-edge">
+            <div class="r-xtrs-hvac-fan-temp-value outside-edge"
+                 title="${tr('tooltips.outdoor_temp', 'Outdoor temperature')}">
               <span id="outdoorTemp">${outdoorTemp} °C</span>
               <span>🌡️</span>
             </div>
-            <div class="r-xtrs-hvac-fan-icon-circle blue">☁️</div>
+            <div class="r-xtrs-hvac-fan-icon-circle blue"
+                 title="${tr('tooltips.outdoor_air', 'Outside air')}">☁️</div>
           </div>
           <div class="r-xtrs-hvac-fan-humidity-row">
-            <span id="outdoorHumidity">${outdoorHumidity}%</span>
+            <span id="outdoorHumidity"
+                  title="${tr('tooltips.outdoor_rh', 'Outdoor relative humidity')}">${outdoorHumidity}%</span>
             <span class="r-xtrs-hvac-fan-arrow">→</span>
-            <span id="outdoorAbsHumidity">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
+            <span id="outdoorAbsHumidity"
+                  title="${tr('tooltips.abs_humidity', 'Absolute humidity (g of water per m³ of air) — indoor vs outdoor decides whether ventilating reduces moisture')}">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
             <span>💧</span>
           </div>
           <div class="r-xtrs-hvac-fan-info-stack">
-            <div>📊 ${efficiency}%</div>
-            <div>🫧 <span class="${co2LevelClass || ''}">${co2Level}</span> ppm</div>
-            <div id="filterDaysRemaining">📅 ${safeFilterDaysRemaining}d</div>
+            <div title="${tr('tooltips.efficiency', 'Heat recovery efficiency — how much warmth the unit keeps inside')}">📊 ${efficiency}%</div>
+            <div title="${tr('tooltips.co2', 'Indoor CO₂ level')}">🫧 <span class="${co2LevelClass || ''}">${co2Level}</span> ppm</div>
+            <div id="filterDaysRemaining"
+                 title="${tr('tooltips.filter_days', 'Days until the filter needs replacement')}">📅 ${safeFilterDaysRemaining}d</div>
           </div>
         </div>
 
         <div class="r-xtrs-hvac-fan-corner-value top-right">
           <div class="r-xtrs-hvac-fan-corner-row">
-            <div class="r-xtrs-hvac-fan-icon-circle red">🏠</div>
-            <div class="r-xtrs-hvac-fan-temp-value outside-edge">
+            <div class="r-xtrs-hvac-fan-icon-circle red"
+                 title="${tr('tooltips.indoor_air', 'Inside air')}">🏠</div>
+            <div class="r-xtrs-hvac-fan-temp-value outside-edge"
+                 title="${tr('tooltips.indoor_temp', 'Indoor temperature')}">
               <span>🌡️</span>
               <span id="indoorTemp">${indoorTemp} °C</span>
             </div>
           </div>
           <div class="r-xtrs-hvac-fan-humidity-row">
             <span>💧</span>
-            <span id="indoorHumidity" class="${indoorHumidityClass || ''}">${indoorHumidity}%</span>
+            <span id="indoorHumidity" class="${indoorHumidityClass || ''}"
+                  title="${tr('tooltips.indoor_rh', 'Indoor relative humidity — balance mode activates above the configured maximum')}">${indoorHumidity}%</span>
             <span class="r-xtrs-hvac-fan-arrow">→</span>
-            <span id="indoorAbsHumidity">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
+            <span id="indoorAbsHumidity"
+                  title="${tr('tooltips.abs_humidity', 'Absolute humidity (g of water per m³ of air) — indoor vs outdoor decides whether ventilating reduces moisture')}">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
           </div>
           <div class="r-xtrs-hvac-fan-info-stack">
-            <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
+            <div title="${tr('tooltips.comfort_temp', 'Comfort temperature — target for temperature control (configured in Sensor Control settings)')}">🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
           </div>
 
           <!-- Balance Triggers & CO2 Zones Section (RIGHT panel) -->
@@ -118,14 +128,16 @@ export function createTopSection(data, t) {
 
 
         <div class="r-xtrs-hvac-fan-corner-value bottom-right">
-          <div class="r-xtrs-hvac-fan-temp-value">
+          <div class="r-xtrs-hvac-fan-temp-value"
+               title="${tr('tooltips.supply_temp', 'Supply temperature — air blown into the house (after heat recovery)')}">
             <span>🌡️</span>
             <span id="supplyTemp">${supplyTemp} °C</span>
           </div>
         </div>
 
         <div class="r-xtrs-hvac-fan-corner-value bottom-left">
-          <div class="r-xtrs-hvac-fan-temp-value">
+          <div class="r-xtrs-hvac-fan-temp-value"
+               title="${tr('tooltips.exhaust_temp', 'Exhaust temperature — air expelled outside')}">
             <span>🌡️</span>
             <span id="exhaustTemp">${exhaustTemp} °C</span>
           </div>
@@ -139,11 +151,14 @@ export function createTopSection(data, t) {
         <!-- Bottom Stats -->
         <div class="r-xtrs-hvac-fan-bottom-stats">
           <div class="r-xtrs-hvac-fan-stats-top">
-            <div class="r-xtrs-hvac-fan-fanmode" id="fanMode">${fanMode}</div>
+            <div class="r-xtrs-hvac-fan-fanmode" id="fanMode"
+                 title="${tr('tooltips.fan_mode', 'Current fan mode')}">${fanMode}</div>
             <div
               class="r-xtrs-hvac-fan-connection-status ${isCalibrating ? 'calibrating' : 'connected'}"
               id="fanControlMode"
-              title="${isCalibrating ? 'Valve calibration in progress' : 'Current backend control source'}"
+              title="${isCalibrating
+                ? tr('tooltips.calibrating', 'Valve calibration in progress')
+                : tr('tooltips.control_source', 'Who is steering the fan (e.g. Extras auto, Manual, Schedule)')}"
             >
               <span class="r-xtrs-hvac-fan-connection-text">${fanControlModeLabel}</span>
             </div>
@@ -160,11 +175,13 @@ export function createTopSection(data, t) {
             </div>
           </div>
           <div class="r-xtrs-hvac-fan-stats-bottom">
-            <div class="r-xtrs-hvac-fan-stat-item left">
+            <div class="r-xtrs-hvac-fan-stat-item left"
+                 title="${tr('tooltips.exhaust_fan', 'Exhaust fan — speed (%) and airflow out of the house')}">
               <div class="r-xtrs-hvac-fan-speed-display" id="exhaustFanSpeed">${exhaustFanSpeed}</div>
               <span id="exhaustFlowRate">${exhaustFlowRate} L/s</span>
             </div>
-            <div class="r-xtrs-hvac-fan-stat-item right">
+            <div class="r-xtrs-hvac-fan-stat-item right"
+                 title="${tr('tooltips.supply_fan', 'Supply fan — speed (%) and airflow into the house')}">
               <div class="r-xtrs-hvac-fan-speed-display" id="supplyFanSpeed">${supplyFanSpeed}</div>
               <span id="supplyFlowRate">${supplyFlowRate} L/s</span>
             </div>

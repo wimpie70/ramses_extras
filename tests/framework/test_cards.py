@@ -309,3 +309,51 @@ async def test_expose_feature_config_with_poll_ms_option(hass, tmp_path) -> None
     assert dest.exists()
     content = dest.read_text()
     assert '"ramses_debugger_default_poll_ms": 5000' in content
+
+
+def test_stamp_js_import_versions_stamps_relative_imports(tmp_path) -> None:
+    card_dir = tmp_path / "card"
+    (card_dir / "templates").mkdir(parents=True)
+    (card_dir / "card.js").write_text(
+        "import { a } from '../../helpers/logger.js';\n"
+        "import './editor.js';\n"
+        "const m = await import('./dyn.js');\n"
+        "export { b } from './templates/barrel.js';\n"
+        "import { c } from 'https://unpkg.com/lib.js';\n"
+        "import { d } from 'lit';\n"
+        "const p = './plain-string.js';\n"
+    )
+    (card_dir / "templates" / "barrel.js").write_text(
+        "export { e } from './top-section.js';\n"
+    )
+
+    stamped = cards._stamp_js_import_versions(card_dir, "1.2.3")
+
+    assert stamped == 5
+    content = (card_dir / "card.js").read_text()
+    assert "from '../../helpers/logger.js?v=1.2.3'" in content
+    assert "import './editor.js?v=1.2.3'" in content
+    assert "import('./dyn.js?v=1.2.3')" in content
+    assert "from './templates/barrel.js?v=1.2.3'" in content
+    assert "unpkg.com/lib.js'" in content
+    assert "from 'lit'" in content
+    assert "'./plain-string.js'" in content
+    barrel = (card_dir / "templates" / "barrel.js").read_text()
+    assert "from './top-section.js?v=1.2.3'" in barrel
+
+
+def test_stamp_js_import_versions_idempotent_and_clean(tmp_path) -> None:
+    card_dir = tmp_path / "card"
+    card_dir.mkdir()
+    no_imports = card_dir / "plain.js"
+    no_imports.write_text("const x = 1;\n")
+
+    assert cards._stamp_js_import_versions(card_dir, "1.2.3") == 0
+    assert no_imports.read_text() == "const x = 1;\n"
+
+    (card_dir / "has.js").write_text("import { a } from './a.js';\n")
+    assert cards._stamp_js_import_versions(card_dir, "1.2.3") == 1
+    # Source files are re-copied unstamped on each deploy, but re-running on
+    # already-stamped output must not double-stamp.
+    assert cards._stamp_js_import_versions(card_dir, "1.2.3") == 0
+    assert (card_dir / "has.js").read_text() == "import { a } from './a.js?v=1.2.3';\n"

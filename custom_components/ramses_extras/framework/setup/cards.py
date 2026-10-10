@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -80,6 +81,37 @@ from ..helpers.paths import DEPLOYMENT_PATHS
 _LOGGER = logging.getLogger(__name__)
 
 INTEGRATION_DIR = Path(__file__).resolve().parents[2]
+
+# Relative .js specifiers in static imports/re-exports and dynamic import()
+# calls. Browsers cache /local/ responses for ~31 days and only the card
+# entry module is registered with a ?v= param, so nested module changes
+# would otherwise go stale until cache expiry.
+_JS_IMPORT_SPECIFIER_RE = re.compile(
+    r"(\bfrom\s+['\"]|\bimport\s*\(\s*['\"]|\bimport\s+['\"])(\.{1,2}/[^'\"]+?\.js)(['\"])"
+)
+
+
+def _stamp_js_import_versions(directory: Path, version: str) -> int:
+    """Append ``?v={version}`` to relative .js import specifiers in a copied dir.
+
+    :param directory: Destination directory of copied card/helper files
+    :param version: Integration version used as the cache-bust key
+
+    :return: Number of specifiers stamped
+    """
+    stamped = 0
+    for js_file in directory.rglob("*.js"):
+        try:
+            text = js_file.read_text(encoding="utf-8")
+            new_text, count = _JS_IMPORT_SPECIFIER_RE.subn(
+                rf"\g<1>\g<2>?v={version}\g<3>", text
+            )
+            if count:
+                js_file.write_text(new_text, encoding="utf-8")
+                stamped += count
+        except OSError as e:
+            _LOGGER.warning("Could not stamp imports in %s: %s", js_file, e)
+    return stamped
 
 
 async def async_get_integration_version(hass: HomeAssistant) -> str:
@@ -214,6 +246,13 @@ async def copy_all_card_files(
                     dirs_exist_ok=True,
                 )
                 _LOGGER.info("Card file copied: %s -> %s", source_dir, destination_dir)
+
+                stamped = await asyncio.to_thread(
+                    _stamp_js_import_versions, destination_dir, version
+                )
+                _LOGGER.debug(
+                    "Stamped %d import specifiers in %s", stamped, destination_dir
+                )
             else:
                 _LOGGER.warning("Card source directory not found: %s", source_dir)
 
@@ -276,6 +315,13 @@ async def copy_helper_files(hass: HomeAssistant) -> None:
                 dirs_exist_ok=True,
             )
             _LOGGER.debug("Copied helpers subdirectory")
+
+        stamped = await asyncio.to_thread(
+            _stamp_js_import_versions, destination_helpers_dir, version
+        )
+        _LOGGER.debug(
+            "Stamped %d import specifiers in %s", stamped, destination_helpers_dir
+        )
 
         _LOGGER.info("Helper files copied successfully")
 
