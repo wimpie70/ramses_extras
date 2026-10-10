@@ -126,6 +126,9 @@
     "timer_60": "Boost gedurende 60 minuten",
     "bypass_auto": "Bypassklep: automatische regeling",
     "bypass_close": "Bypassklep: volledig dicht (maximale warmteterugwinning)",
-    "bypass_open": "Bypassklep: volledig open (geen warmteterugwinning — gratis koelen)"
+    "bypass_open": "Bypassklep: volledig open (geen warmteterugwinning — gratis koelen)",
+    "co2_status": "CO₂-regeling — On = gewapend; Active = ventileert nu wegens CO₂; Passive = gewapend, wachtend; Manual = handmatig ingesteld",
+    "control_source": "Wie stuurt de ventilator aan (bijv. Extras auto, Manual, Schedule)",
+    "calibrating": "Kleppenkalibratie bezig"
   }
 }

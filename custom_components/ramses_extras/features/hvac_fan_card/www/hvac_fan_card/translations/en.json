@@ -126,6 +126,9 @@
     "timer_60": "Boost the fan for 60 minutes",
     "bypass_auto": "Bypass valve: automatic control",
     "bypass_close": "Bypass valve: fully closed (maximum heat recovery)",
-    "bypass_open": "Bypass valve: fully open (no heat recovery — free cooling)"
+    "bypass_open": "Bypass valve: fully open (no heat recovery — free cooling)",
+    "co2_status": "CO₂ control — On = armed; Active = ventilating on CO₂ demand; Passive = armed, waiting; Manual = fan speed set by hand",
+    "control_source": "Who is steering the fan (e.g. Extras auto, Manual, Schedule)",
+    "calibrating": "Valve calibration in progress"
   }
 }

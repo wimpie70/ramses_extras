@@ -1217,7 +1217,8 @@ class HvacFanCard extends RamsesBaseCard {
     return `
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
-          <div class="r-xtrs-hvac-fan-balance-info-row ${co2StatusClass}">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${co2StatusClass}"
+               title="${this._tr('tooltips.co2_status', 'CO₂ control — On = armed; Active = ventilating on CO₂ demand; Passive = armed, waiting; Manual = fan speed set by hand')}">
             <span>🌫️ ${co2Status}</span>
           </div>
         </div>

@@ -156,7 +156,9 @@ export function createTopSection(data, t) {
             <div
               class="r-xtrs-hvac-fan-connection-status ${isCalibrating ? 'calibrating' : 'connected'}"
               id="fanControlMode"
-              title="${isCalibrating ? 'Valve calibration in progress' : 'Current backend control source'}"
+              title="${isCalibrating
+                ? tr('tooltips.calibrating', 'Valve calibration in progress')
+                : tr('tooltips.control_source', 'Who is steering the fan (e.g. Extras auto, Manual, Schedule)')}"
             >
               <span class="r-xtrs-hvac-fan-connection-text">${fanControlModeLabel}</span>
             </div>
