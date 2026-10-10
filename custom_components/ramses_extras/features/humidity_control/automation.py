@@ -556,6 +556,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 "raw_internal": sensor_result.get("raw_internal"),
                 "abs_humidity_inputs": sensor_result.get("abs_humidity_inputs", {}),
                 "area_sensors": sensor_result.get("area_sensors", []),
+                "aggregation": sensor_result.get("aggregation"),
             }
         except Exception as err:
             _LOGGER.error(
@@ -816,31 +817,39 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def _sync_zone_demands(
         self, device_id: str, decision: dict[str, Any] | None
     ) -> None:
+        # TODO(zones): zone-steering (area trigger -> zone_id -> zone demand)
+        # is verified by unit tests and code review only — it still needs
+        # validation against real DIY-zone hardware measurements before the
+        # zoned path can be considered field-proven.
         new_zones: set[str] = set()
         triggers: Any = None
         if isinstance(decision, dict):
             triggers = decision.get("active_triggers")
 
         triggers_list: list[dict[str, Any]] = []
+        fan_zone_ids: set[str] = set()
         if isinstance(triggers, list):
-            zone_ids_from_triggers: set[str] = set()
+            has_unzoned_trigger = False
             for item in triggers:
                 if not isinstance(item, dict):
                     continue
                 triggers_list.append(item)
                 zone_id = str(item.get("zone_id") or "").strip()
                 if zone_id:
-                    zone_ids_from_triggers.add(zone_id)
+                    new_zones.add(zone_id)
+                else:
+                    has_unzoned_trigger = True
 
-            if zone_ids_from_triggers:
-                new_zones = zone_ids_from_triggers
-            elif triggers:
+            # An unzoned trigger is a house-level demand: it applies to
+            # every configured zone, even alongside zoned triggers.
+            if has_unzoned_trigger:
                 zone_registry = get_zone_registry(self.hass)
                 all_zones = zone_registry.get_zones_for_fan(device_id)
                 for zone in all_zones:
                     zid = str(zone.get("zone_id") or "").strip()
                     if zid:
-                        new_zones.add(zid)
+                        fan_zone_ids.add(zid)
+                new_zones.update(fan_zone_ids)
 
         prev_zones = self._humidity_demand_zones.get(device_id, set())
         for zone_id in sorted(prev_zones - new_zones):
@@ -879,7 +888,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 )
                 continue
 
-            for zid in sorted(new_zones):
+            for zid in sorted(fan_zone_ids):
                 self._zone_demand_registry.set_demand(
                     device_id,
                     zid,
@@ -985,6 +994,22 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         :param offset: Humidity offset adjustment
         :return: Decision dictionary with action and reasoning
         """
+        # Read all configured area sensors up front so the effective indoor
+        # values can be aggregated before the threshold checks below.
+        area_sensor_states = self._get_area_sensor_states(device_id)
+        self._update_area_sensor_history(device_id, area_sensor_states)
+
+        # Keep the pre-aggregation baseline: per-source spike/high-humidity
+        # detection compares each area against "the rest of the house", so it
+        # must not use the aggregated value (which may BE the area's own
+        # reading under max/weighted strategies).
+        baseline_indoor_rh = indoor_rh
+        baseline_indoor_abs = indoor_abs
+
+        indoor_rh, indoor_abs, indoor_source = self._aggregate_indoor_values(
+            device_id, indoor_rh, indoor_abs, area_sensor_states
+        )
+
         humidity_diff = outdoor_abs - indoor_abs
         adjusted_diff = humidity_diff + offset
         decision: dict[str, Any] = {
@@ -993,6 +1018,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "values": {
                 "indoor_rh": indoor_rh,
                 "indoor_abs": indoor_abs,
+                "indoor_source": indoor_source,
                 "outdoor_abs": outdoor_abs,
                 "humidity_diff": humidity_diff,  # outdoor - indoor
                 "adjusted_diff": adjusted_diff,
@@ -1093,9 +1119,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 f"High indoor absolute humidity: {indoor_abs:.1f} g/m³"
             )
 
-        area_sensor_states = self._get_area_sensor_states(device_id)
-        self._update_area_sensor_history(device_id, area_sensor_states)
-
         # Get indoor humidity spike configuration from sensor_control context
         sensor_ctx = self._latest_sensor_control_context.get(device_id) or {}
         sources = sensor_ctx.get("sources", {})
@@ -1113,7 +1136,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             ),
         }
 
-        # Evaluate area spikes
+        # Evaluate area spikes (against the baseline indoor reading, not the
+        # aggregated value — see comment above).
         active_spikes = self._evaluate_active_area_spikes(
             device_id=device_id,
             outdoor_abs=outdoor_abs,
@@ -1123,19 +1147,31 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         )
         detected_spikes = self._detect_area_spikes(
             device_id=device_id,
-            indoor_abs=indoor_abs,
+            indoor_abs=baseline_indoor_abs,
             outdoor_abs=outdoor_abs,
             offset=offset,
             max_humidity=max_humidity,
             area_sensor_states=area_sensor_states,
         )
-        combined_spikes = self._merge_area_spikes(active_spikes, detected_spikes)
+        detected_high_humidity = self._detect_area_high_humidity(
+            device_id=device_id,
+            indoor_abs=baseline_indoor_abs,
+            outdoor_abs=outdoor_abs,
+            offset=offset,
+            max_humidity=max_humidity,
+            area_sensor_states=area_sensor_states,
+        )
+        combined_spikes = self._merge_area_spikes(
+            active_spikes, [*detected_spikes, *detected_high_humidity]
+        )
 
-        # Evaluate indoor humidity spike
+        # Evaluate indoor humidity spike — the spike trackers and history
+        # belong to the primary (baseline) source, so use pre-aggregation
+        # values here as well.
         active_indoor_spike = self._evaluate_active_indoor_spike(
             device_id=device_id,
-            indoor_abs=indoor_abs,
-            indoor_rh=indoor_rh,
+            indoor_abs=baseline_indoor_abs,
+            indoor_rh=baseline_indoor_rh,
             outdoor_abs=outdoor_abs,
             offset=offset,
             max_humidity=max_humidity,
@@ -1143,8 +1179,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         )
         detected_indoor_spike = self._detect_indoor_spike(
             device_id=device_id,
-            indoor_abs=indoor_abs,
-            indoor_rh=indoor_rh,
+            indoor_abs=baseline_indoor_abs,
+            indoor_rh=baseline_indoor_rh,
             outdoor_abs=outdoor_abs,
             offset=offset,
             max_humidity=max_humidity,
@@ -1196,22 +1232,32 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 str(item.get("label") or item.get("area_id"))
                 for item in combined_spikes
             ]
+            if primary_spike.get("trigger_kind") == "high_humidity":
+                primary_detail = (
+                    f"{primary_spike['label']} RH "
+                    f"{float(primary_spike['current_rh']):.1f}% exceeds max "
+                    f"{max_humidity:.1f}%"
+                )
+            else:
+                primary_detail = (
+                    f"{primary_spike['label']} is "
+                    f"{primary_spike['rise_percent']:.1f}% above baseline"
+                )
             decision = {
                 "action": "dehumidify",
                 "reasoning": [
                     (
-                        "Area spike active for "
+                        "Area humidity demand for "
                         f"{', '.join(trigger_labels)}; primary trigger "
-                        f"{primary_spike['label']} is "
-                        f"{primary_spike['rise_percent']:.1f}% above baseline"
+                        f"{primary_detail}"
                     )
                 ],
                 "values": {
                     **decision["values"],
                     "active_area_sensor": primary_spike.get("area_id"),
                     "active_area_abs": primary_spike["current_abs"],
-                    "active_area_baseline_abs": primary_spike["baseline_abs"],
-                    "active_area_rise_percent": primary_spike["rise_percent"],
+                    "active_area_baseline_abs": primary_spike.get("baseline_abs"),
+                    "active_area_rise_percent": primary_spike.get("rise_percent"),
                 },
                 "confidence": 1.0,
                 "control_mode": "spike_boost",
@@ -1299,6 +1345,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                         device_id,
                         entity_states.get("dehumidify"),
                     )
+                    # An explicit switch toggle must not be swallowed by the
+                    # processing cooldown of an unrelated sensor update.
+                    self._last_processed_time.pop(device_id, None)
                     await self._process_automation_logic(device_id, entity_states)
                     self._cancel_balance_switch_retry(device_id)
                 except ValueError as err:
@@ -1887,6 +1936,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     "current_abs": float(current_abs),
                     "current_rh": float(current_rh),
                     "rise_percent": rise_percent,
+                    "trigger_kind": "area_spike",
                     "spike_window_minutes": window_minutes,
                     "check_interval_minutes": int(
                         item.get("check_interval_minutes") or 1
@@ -1925,6 +1975,139 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             area_sensor_states=area_sensor_states,
         )
         return spikes[0] if spikes else None
+
+    def _detect_area_high_humidity(
+        self,
+        device_id: str,
+        indoor_abs: float,
+        outdoor_abs: float,
+        offset: float,
+        max_humidity: float,
+        area_sensor_states: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Detect static high-humidity triggers from flagged area sensors.
+
+        Area sensors with ``trigger_on_high_humidity`` enabled demand
+        dehumidification whenever their RH exceeds ``max_humidity`` — no
+        historical rise is required.  The same absolute-humidity safety
+        comparison used for spikes applies: the area must be wetter than
+        both the indoor baseline and the outdoors (plus offset), unless
+        ``spike_ignore_outdoor`` skips the outdoor comparison.
+        """
+        triggers: list[dict[str, Any]] = []
+
+        for item in area_sensor_states:
+            area_id = str(item.get("area_id") or "").strip()
+            if not area_id or not bool(item.get("enabled", True)):
+                continue
+            if not bool(item.get("trigger_on_high_humidity", False)):
+                continue
+
+            current_rh = item.get("current_rh")
+            current_abs = item.get("current_abs")
+            if current_rh is None or current_abs is None:
+                continue
+            if float(current_rh) <= max_humidity:
+                continue
+            if bool(item.get("spike_ignore_outdoor", False)):
+                if float(current_abs) <= indoor_abs:
+                    continue
+            elif float(current_abs) <= max(indoor_abs, outdoor_abs + offset):
+                continue
+
+            triggers.append(
+                {
+                    "area_id": area_id,
+                    "label": str(item.get("label") or area_id),
+                    "baseline_abs": None,
+                    "current_abs": float(current_abs),
+                    "current_rh": float(current_rh),
+                    "rise_percent": None,
+                    "trigger_kind": "high_humidity",
+                    "check_interval_minutes": int(
+                        item.get("check_interval_minutes") or 1
+                    ),
+                    "temperature_entity": item.get("temperature_entity"),
+                    "humidity_entity": item.get("humidity_entity"),
+                    "zone_id": item.get("zone_id"),
+                    "triggered_at": time.time(),
+                }
+            )
+
+        return sorted(
+            triggers,
+            key=lambda item: float(item.get("current_rh") or 0.0),
+            reverse=True,
+        )
+
+    def _aggregate_indoor_values(
+        self,
+        device_id: str,
+        indoor_rh: float,
+        indoor_abs: float,
+        area_sensor_states: list[dict[str, Any]],
+    ) -> tuple[float, float, str]:
+        """Combine the baseline indoor reading with enabled area sensors.
+
+        The strategy comes from the sensor_control device config
+        (``aggregation``).  ``first_valid`` (the default) preserves the
+        historical behaviour: only the primary mapping is used.  ``max``
+        selects the source with the highest RH, ``avg`` averages all valid
+        sources and ``weighted`` applies per-source ``weight`` values.
+        Unavailable or invalid sources never contribute.
+
+        :return: (effective_rh, effective_abs, source_label)
+        """
+        sensor_ctx = self._latest_sensor_control_context.get(device_id) or {}
+        strategy = str(sensor_ctx.get("aggregation") or "first_valid")
+
+        sources: list[tuple[float, float, float, str]] = [
+            (indoor_rh, indoor_abs, 1.0, "internal")
+        ]
+        for item in area_sensor_states:
+            if not bool(item.get("enabled", True)) or not bool(item.get("valid", True)):
+                continue
+            rh = item.get("current_rh")
+            absh = item.get("current_abs")
+            if rh is None or absh is None:
+                continue
+            try:
+                weight = float(item.get("weight") or 1.0)
+            except TypeError, ValueError:
+                weight = 1.0
+            sources.append(
+                (
+                    float(rh),
+                    float(absh),
+                    weight if weight > 0 else 1.0,
+                    str(item.get("label") or item.get("area_id") or "area"),
+                )
+            )
+
+        if strategy == "max":
+            winner = max(sources, key=lambda s: s[0])
+            return winner[0], winner[1], winner[3]
+
+        if strategy == "avg":
+            count = len(sources)
+            avg_rh = sum(s[0] for s in sources) / count
+            avg_abs = sum(s[1] for s in sources) / count
+            return avg_rh, avg_abs, f"avg of {count} sources"
+
+        if strategy == "weighted":
+            total_weight = sum(s[2] for s in sources)
+            if total_weight <= 0:
+                return indoor_rh, indoor_abs, "internal"
+            weighted_rh = sum(s[0] * s[2] for s in sources) / total_weight
+            weighted_abs = sum(s[1] * s[2] for s in sources) / total_weight
+            return (
+                weighted_rh,
+                weighted_abs,
+                f"weighted avg of {len(sources)} sources",
+            )
+
+        # first_valid (and unknown strategies): baseline source wins
+        return indoor_rh, indoor_abs, "internal"
 
     def _get_active_area_spikes(self, device_id: str) -> list[dict[str, Any]]:
         active_spikes = self._active_area_spikes.get(device_id)

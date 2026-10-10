@@ -750,3 +750,115 @@ class TestSensorControlResolver:
         )
 
         assert result["sources"]["indoor_humidity"]["spike_ignore_outdoor"] is False
+
+    @pytest.mark.asyncio
+    async def test_resolve_aggregation_default_first_valid(self):
+        """aggregation defaults to first_valid when not configured."""
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert result["aggregation"] == "first_valid"
+
+    @pytest.mark.asyncio
+    async def test_resolve_aggregation_passthrough(self):
+        """Configured aggregation strategy is exposed in the result."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            self.device_id: {
+                                "sources": {},
+                                "aggregation": "weighted",
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert result["aggregation"] == "weighted"
+
+    @pytest.mark.asyncio
+    async def test_resolve_aggregation_invalid_falls_back(self):
+        """Unknown aggregation values fail closed to first_valid."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            self.device_id: {
+                                "sources": {},
+                                "aggregation": "median",
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert result["aggregation"] == "first_valid"
+
+    @pytest.mark.asyncio
+    async def test_resolve_area_sensor_weight(self):
+        """Area sensor weight passes through, coerced to a positive float."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            self.device_id: {
+                                "sources": {},
+                                "area_sensors": [
+                                    {
+                                        "area_id": "bath",
+                                        "temperature_entity": "sensor.t1",
+                                        "humidity_entity": "sensor.h1",
+                                        "weight": 2.5,
+                                    },
+                                    {
+                                        "area_id": "kitchen",
+                                        "temperature_entity": "sensor.t2",
+                                        "humidity_entity": "sensor.h2",
+                                    },
+                                    {
+                                        "area_id": "cellar",
+                                        "temperature_entity": "sensor.t3",
+                                        "humidity_entity": "sensor.h3",
+                                        "weight": -3,
+                                    },
+                                ],
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+        self.resolver._entity_exists = MagicMock(return_value=True)
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        weights = {a["area_id"]: a["weight"] for a in result["area_sensors"]}
+        assert weights["bath"] == 2.5
+        assert weights["kitchen"] == 1.0  # default
+        assert weights["cellar"] == 1.0  # non-positive coerced to 1.0

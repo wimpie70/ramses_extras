@@ -2263,3 +2263,32 @@ class TestHumidityAutomationManager:
         assert result is not None
         assert result["area_id"] == "indoor_humidity"
         assert result["current_abs"] == 11.5
+
+    async def test_balance_switch_change_bypasses_process_cooldown(self):
+        """An explicit balance-switch toggle must be processed even when a
+        sensor-triggered run just completed inside the cooldown window."""
+        device_id = "32_123456"
+        self.manager._automation_active = True
+        # Simulate a sensor-triggered run that finished moments ago
+        self.manager._last_processed_time[device_id] = time.monotonic()
+
+        old_state = State("switch.dehumidify_32_123456", STATE_OFF)
+        new_state = State("switch.dehumidify_32_123456", STATE_ON)
+
+        with (
+            patch.object(self.manager, "_is_feature_enabled", return_value=True),
+            patch.object(
+                self.manager,
+                "_get_device_entity_states",
+                new=AsyncMock(return_value={"dehumidify": True}),
+            ),
+            patch.object(
+                self.manager,
+                "_process_automation_logic_inner",
+                new=AsyncMock(),
+            ) as inner,
+        ):
+            await self.manager._async_handle_state_change(
+                "switch.dehumidify_32_123456", old_state, new_state
+            )
+            inner.assert_awaited_once()

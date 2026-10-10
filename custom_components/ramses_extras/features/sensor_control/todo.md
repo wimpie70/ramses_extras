@@ -42,3 +42,10 @@
 
 - Full local CI:
   - `bash -c "source ~/venvs/extras/bin/activate && make local-ci"`
+
+## Open items
+
+- [ ] Validate DIY-zone humidity steering against real measurements
+      (area trigger -> `zone_id` -> `DemandSource.HUMIDITY` -> zone valve
+      position). Wiring is covered by unit tests and code review only;
+      needs a real zoned install to confirm valves actually track demand.

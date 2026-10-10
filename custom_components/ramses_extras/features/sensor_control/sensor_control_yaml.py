@@ -17,8 +17,10 @@ from ...framework.helpers.config.import_validation import (
 
 # Import schemas from const
 from .const import (
+    AGGREGATION_STRATEGIES,
     FEATURE_ID,
     SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
+    SENSOR_CONTROL_AGGREGATION_KEY,
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     SENSOR_CONTROL_SOURCES_KEY,
 )
@@ -39,6 +41,7 @@ _AREA_SENSOR_SCHEMA_V2 = vol.Schema(
         vol.Optional("spike_rise_percent"): vol.All(float, vol.Range(min=0)),
         vol.Optional("spike_window_minutes"): vol.All(int, vol.Range(min=1)),
         vol.Optional("trigger_on_high_humidity", default=False): bool,
+        vol.Optional("weight"): vol.All(vol.Coerce(float), vol.Range(min=0.0)),
         vol.Optional("co2_threshold_entity"): str,
         vol.Optional("comfort_temperature_entity"): str,
     }
@@ -57,6 +60,7 @@ _AREA_SENSOR_SCHEMA_LEGACY = vol.Schema(
         vol.Optional("spike_rise_percent"): vol.All(float, vol.Range(min=0)),
         vol.Optional("spike_window_minutes"): vol.All(int, vol.Range(min=1)),
         vol.Optional("trigger_on_high_humidity", default=False): bool,
+        vol.Optional("weight"): vol.All(vol.Coerce(float), vol.Range(min=0.0)),
         vol.Optional("co2_threshold_entity"): str,
         vol.Optional("comfort_temperature_entity"): str,
     }
@@ -97,6 +101,7 @@ SOURCE_SCHEMA = vol.Schema(
 FAN_CONFIG_SCHEMA = vol.Schema(
     {
         vol.Required("sources"): {str: SOURCE_SCHEMA},
+        vol.Optional(SENSOR_CONTROL_AGGREGATION_KEY): vol.In(AGGREGATION_STRATEGIES),
         vol.Optional(SENSOR_CONTROL_AREA_SENSORS_KEY): [AREA_SENSOR_SCHEMA],
         vol.Optional(SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY): {
             vol.Optional(str): ABS_HUMIDITY_INPUT_SCHEMA
