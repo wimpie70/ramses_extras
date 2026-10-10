@@ -9,6 +9,14 @@ import * as logger from './logger.js';
 const translationFileCache = new Map();
 const translationFilePromiseCache = new Map();
 
+// Browsers cache /local/ responses for ~31 days; append the integration
+// version so updated translation files are fetched after each release.
+function translationCacheBustSuffix() {
+  const version =
+    typeof window !== 'undefined' ? window.ramsesExtras?.version : undefined;
+  return version ? `?v=${encodeURIComponent(version)}` : '';
+}
+
 async function fetchTranslationFileJson(translationPath, originalPath = null) {
   if (translationFileCache.has(translationPath)) {
     return translationFileCache.get(translationPath);
@@ -19,12 +27,13 @@ async function fetchTranslationFileJson(translationPath, originalPath = null) {
   }
 
   const promise = (async () => {
-    let response = await fetch(translationPath);
+    const cacheBust = translationCacheBustSuffix();
+    let response = await fetch(translationPath + cacheBust);
 
     // If versioned path fails and we have an original path, try that as fallback
     if (!response.ok && originalPath && translationPath !== originalPath) {
       logger.warn(`Translation file not found at versioned path, trying original: ${originalPath}`);
-      response = await fetch(originalPath);
+      response = await fetch(originalPath + cacheBust);
     }
 
     if (!response.ok) {
