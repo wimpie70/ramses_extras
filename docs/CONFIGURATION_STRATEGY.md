@@ -489,9 +489,9 @@ The hybrid configuration strategy has been largely implemented:
 
 This document should inform:
 
-- `docs/REMOTE_BINDING_IMPLEMENTATION_PLAN.md`
+- `docs/archive/REMOTE_BINDING_IMPLEMENTATION_PLAN.md`
 - `docs/FAN_CONFIGURATION_SCHEMA_DRAFT.md`
-- `docs/ZONES_IMPLEMENTATION_PLAN.md`
+- `docs/archive/ZONES_IMPLEMENTATION_PLAN.md`
 - `docs/FAN_CONTROL_ARCHITECTURE.md`
 
 The fan-control architecture remains the source of truth for control policy.
