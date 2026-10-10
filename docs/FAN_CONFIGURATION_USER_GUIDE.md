@@ -432,7 +432,7 @@ For detailed troubleshooting, see `TROUBLESHOOTING.md`.
 ## Related Documentation
 
 - `FAN_CONTROL_ARCHITECTURE.md` - Technical details of fan speed arbitration
-- `ZONES_IMPLEMENTATION_PLAN.md` - Zone feature design and capabilities
+- `archive/ZONES_IMPLEMENTATION_PLAN.md` - Zone feature design and capabilities
 - `REMOTE_BINDING_EXAMPLES.md` - YAML configuration examples
 - `CONFIGURATION_STRATEGY.md` - Overall configuration architecture
 

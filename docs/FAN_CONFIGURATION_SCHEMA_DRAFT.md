@@ -5,8 +5,8 @@
 This document is the first concrete schema draft following:
 
 - `docs/CONFIGURATION_STRATEGY.md`
-- `docs/REMOTE_BINDING_IMPLEMENTATION_PLAN.md`
-- `docs/ZONES_IMPLEMENTATION_PLAN.md`
+- `docs/archive/REMOTE_BINDING_IMPLEMENTATION_PLAN.md`
+- `docs/archive/ZONES_IMPLEMENTATION_PLAN.md`
 - `docs/FAN_CONTROL_ARCHITECTURE.md`
 
 It turns the configuration strategy into an actionable direction for implementation.
