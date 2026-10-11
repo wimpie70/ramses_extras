@@ -129,7 +129,7 @@ def check(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
     results.append({"name": name, "status": status, "detail": detail})
 
-# Behavioral check: call _extract_pool_hgis_from_schema directly
+# Behavioral check: call extract_pool_hgis_from_schema directly
 # with a synthetic schema containing an HGI with _preferred_type:
 # "mqtt" and verify it's included in the returned list.
 from custom_components.ramses_cc.coordinator import RamsesCoordinator
@@ -155,7 +155,7 @@ mock_self.entry = _MockEntry({
     },
 })
 
-hgis = RamsesCoordinator._extract_pool_hgis_from_schema(mock_self)
+hgis = RamsesCoordinator.extract_pool_hgis_from_schema(mock_self)
 check(
     "MQTT-preferred HGI included in pool list",
     "18:001111" in hgis,

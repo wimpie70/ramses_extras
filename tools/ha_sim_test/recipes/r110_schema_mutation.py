@@ -225,7 +225,7 @@ async def run_tests():
         )
 
         # Use the coordinator's instance method
-        pool_hgis = RamsesCoordinator._extract_pool_hgis_from_schema(coord)
+        pool_hgis = RamsesCoordinator.extract_pool_hgis_from_schema(coord)
 
         check(
             "Coordinator: _removed_from_pool HGI excluded from pool",
@@ -261,7 +261,7 @@ async def run_tests():
             }
         }
 
-        pool_hgis2 = RamsesCoordinator._extract_pool_hgis_from_schema(coord2)
+        pool_hgis2 = RamsesCoordinator.extract_pool_hgis_from_schema(coord2)
 
         check(
             "Corrupt schema: non-dict entries handled gracefully",
@@ -289,7 +289,7 @@ async def run_tests():
             CONF_SCHEMA: {SZ_OWNER: "me"},
         }
 
-        pool_hgis3 = RamsesCoordinator._extract_pool_hgis_from_schema(coord3)
+        pool_hgis3 = RamsesCoordinator.extract_pool_hgis_from_schema(coord3)
 
         check(
             "Empty schema: no HGIs extracted",
@@ -325,7 +325,7 @@ async def run_tests():
             }
         }
 
-        pool_hgis4 = RamsesCoordinator._extract_pool_hgis_from_schema(coord4)
+        pool_hgis4 = RamsesCoordinator.extract_pool_hgis_from_schema(coord4)
 
         check(
             "Invalid HGI: non-18: device with _class HGI ignored",
@@ -366,7 +366,7 @@ async def run_tests():
             }
         }
 
-        pool_hgis5 = RamsesCoordinator._extract_pool_hgis_from_schema(coord5)
+        pool_hgis5 = RamsesCoordinator.extract_pool_hgis_from_schema(coord5)
 
         check(
             "Foreign HGI: excluded from pool members",
@@ -405,7 +405,7 @@ async def run_tests():
             }
         }
 
-        pool_hgis6 = RamsesCoordinator._extract_pool_hgis_from_schema(coord6)
+        pool_hgis6 = RamsesCoordinator.extract_pool_hgis_from_schema(coord6)
 
         check(
             "Disabled HGI: excluded from pool",
