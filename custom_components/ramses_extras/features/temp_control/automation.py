@@ -583,9 +583,16 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
         def _as_float(entity_id: str) -> float:
             raw = _get_state(entity_id)
-            if raw in (None, "unavailable", "unknown"):
-                raise ValueError(f"Entity {entity_id} state unavailable")
-            return float(raw)
+            if raw is None:
+                raise ValueError(f"Entity {entity_id} not found")
+            if raw in ("unavailable", "unknown"):
+                raise ValueError(f"Entity {entity_id} state {raw}")
+            try:
+                return float(raw)
+            except TypeError, ValueError:
+                raise ValueError(
+                    f"Entity {entity_id} state {raw!r} is not numeric"
+                ) from None
 
         def _as_float_optional(entity_id: str) -> float | None:
             """Like _as_float but returns None for unavailable/missing entities."""
@@ -607,10 +614,8 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         resolved["supply_temp"] = _as_float_optional(mappings["supply_temp"])
         try:
             resolved["comfort_temp"] = _as_float(mappings["comfort_temp"])
-        except ValueError:
-            raise ComfortTempUnavailableError(
-                f"Comfort temp entity {mappings['comfort_temp']} unavailable"
-            ) from None
+        except ValueError as err:
+            raise ComfortTempUnavailableError(f"Comfort temp: {err}") from None
 
         # Humidity — indoor_rh is optional: it is only used by the
         # dewpoint guard (which is disabled by default).  Devices like
@@ -1056,7 +1061,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         self._set_active_indicator(device_id, False, attrs)
         self._set_status_sensor(device_id, "waiting_for_sensors", attrs)
         _LOGGER.warning(
-            "Temp_control for %s: required sensor unavailable, "
+            "Temp_control for %s: required sensor missing or not usable, "
             "setting status to waiting_for_sensors: %s",
             device_id,
             err,
