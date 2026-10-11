@@ -341,10 +341,10 @@ async def run_tests():
         }
         coord.options = coord.entry.options
         coord._get_primary_hgi_id = MagicMock(return_value="18:001111")
-        coord._suppress_reload = 0
+        coord.suppress_reload = 0
         coord.hass.config_entries.async_update_entry = MagicMock()
-        coord._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, coord
+        coord.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, coord
         )
 
         # ESP32-S3 learned via !I, HGI80 via configured_hgi_id
@@ -410,10 +410,10 @@ async def run_tests():
         }
         coord2.options = coord2.entry.options
         coord2._get_primary_hgi_id = MagicMock(return_value="18:001111")
-        coord2._suppress_reload = 0
+        coord2.suppress_reload = 0
         coord2.hass.config_entries.async_update_entry = MagicMock()
-        coord2._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, coord2
+        coord2.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, coord2
         )
 
         # Serial child (ESP32-S3) + MQTT child
@@ -474,10 +474,10 @@ async def run_tests():
         }
         coord3.options = coord3.entry.options
         coord3._get_primary_hgi_id = MagicMock(return_value="18:001111")
-        coord3._suppress_reload = 0
+        coord3.suppress_reload = 0
         coord3.hass.config_entries.async_update_entry = MagicMock()
-        coord3._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, coord3
+        coord3.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, coord3
         )
 
         # ESP32-S3 + nanoCUL + HGI80 all in one pool
@@ -592,10 +592,10 @@ async def run_tests():
             },
         }
         mock_coord.options = mock_coord.entry.options
-        mock_coord._suppress_reload = 0
+        mock_coord.suppress_reload = 0
         mock_coord.hass.config_entries.async_update_entry = MagicMock()
-        mock_coord._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, mock_coord
+        mock_coord.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, mock_coord
         )
 
         cb = _MqttHgiDiscoveryCallback(mock_coord)

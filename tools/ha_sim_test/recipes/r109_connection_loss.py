@@ -146,11 +146,13 @@ async def run_tests():
 
         # Simulate pool children: child 0 connected, child 1 disconnected
         child0 = MagicMock()
+        child0.removed = False  # live (not tombstoned)
         child0.hgi_id = "18:149488"
         child0.callback_driven = False
         child0.is_connected = True
 
         child1 = MagicMock()
+        child1.removed = False  # live (not tombstoned)
         child1.hgi_id = "18:130236"
         child1.callback_driven = False
         child1.is_connected = False  # Disconnected
@@ -294,10 +296,12 @@ async def run_tests():
         pool._extra = {}
 
         child1 = MagicMock()
+        child1.removed = False  # live (not tombstoned)
         child1.is_connected = False  # Disconnected
         child1.hgi_id = "18:130236"
 
         child2 = MagicMock()
+        child2.removed = False  # live (not tombstoned)
         child2.is_connected = True  # Still connected
         child2.hgi_id = "18:149488"
 
@@ -329,10 +333,12 @@ async def run_tests():
         pool2._extra = {}
 
         child_a = MagicMock()
+        child_a.removed = False  # live (not tombstoned)
         child_a.is_connected = False
         child_a.hgi_id = "18:130236"
 
         child_b = MagicMock()
+        child_b.removed = False  # live (not tombstoned)
         child_b.is_connected = False
         child_b.hgi_id = "18:149488"
 
@@ -362,14 +368,17 @@ async def run_tests():
         pool3._extra = {}
 
         child_x = MagicMock()
+        child_x.removed = False  # live (not tombstoned)
         child_x.is_connected = True
         child_x.hgi_id = "18:130236"
 
         child_y = MagicMock()
+        child_y.removed = False  # live (not tombstoned)
         child_y.is_connected = False  # Disconnected
         child_y.hgi_id = "18:333333"
 
         child_z = MagicMock()
+        child_z.removed = False  # live (not tombstoned)
         child_z.is_connected = True
         child_z.hgi_id = "18:149488"
 
@@ -427,10 +436,10 @@ async def run_tests():
         }
         coord4.options = coord4.entry.options
         coord4._get_primary_hgi_id = MagicMock(return_value="18:001111")
-        coord4._suppress_reload = 0
+        coord4.suppress_reload = 0
         coord4.hass.config_entries.async_update_entry = MagicMock()
-        coord4._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, coord4
+        coord4.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, coord4
         )
 
         # Transport only reports 18:149488 (18:130236 disconnected)

@@ -75,10 +75,10 @@ async def run_tests():
         }
         coord.options = coord.entry.options
         coord._get_primary_hgi_id = MagicMock(return_value="18:001111")
-        coord._suppress_reload = 0
+        coord.suppress_reload = 0
         coord.hass.config_entries.async_update_entry = MagicMock()
-        coord._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, coord
+        coord.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, coord
         )
 
         # Simulate 2 USB ports found
@@ -134,10 +134,10 @@ async def run_tests():
         }
         coord.options = coord.entry.options
         coord._get_primary_hgi_id = MagicMock(return_value="18:001111")
-        coord._suppress_reload = 0
+        coord.suppress_reload = 0
         coord.hass.config_entries.async_update_entry = MagicMock()
-        coord._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, coord
+        coord.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, coord
         )
 
         # Simulate a pool transport with a discovered child HGI
@@ -202,10 +202,10 @@ async def run_tests():
         }
         coord.options = coord.entry.options
         coord._get_primary_hgi_id = MagicMock(return_value="18:001111")
-        coord._suppress_reload = 0
+        coord.suppress_reload = 0
         coord.hass.config_entries.async_update_entry = MagicMock()
-        coord._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, coord
+        coord.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, coord
         )
 
         # Simulate a pool transport with NO HGI IDs (modbus doesn't

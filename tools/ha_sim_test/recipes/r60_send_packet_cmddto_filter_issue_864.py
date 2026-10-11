@@ -316,7 +316,7 @@ sys.path.insert(0, "/config/custom_components")
 try:
     from ramses_cc.coordinator import RamsesCoordinator
     schema = {repr(schema)}
-    result = RamsesCoordinator._derive_known_list_from_schema(schema)
+    result = RamsesCoordinator.derive_known_list_from_schema(schema)
     print(json.dumps({{
         "faked_in_known_list": {repr(FAKED_THM)} in result,
         "faked_traits": result.get({repr(FAKED_THM)}),
