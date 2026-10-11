@@ -160,7 +160,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             entity_states = await self._get_device_entity_states(device_id)
         except ValueError as err:
             msg = str(err)
-            if "state unavailable" in msg or "not found" in msg:
+            if any(
+                k in msg for k in ("not found", "state unavailable", "state unknown")
+            ):
                 _LOGGER.debug(
                     "Balance switch retry for %s deferred (entities not ready): %s",
                     device_id,
@@ -437,7 +439,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 raise ValueError(f"Entity {entity_id} not found")
 
             if state.state in ["unavailable", "unknown"]:
-                raise ValueError(f"Entity {entity_id} state unavailable")
+                raise ValueError(f"Entity {entity_id} state {state.state}")
 
             entity_type = self._extract_entity_type_from_id(entity_id)
             value = self._convert_entity_state(entity_type, state.state)
@@ -1352,7 +1354,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     self._cancel_balance_switch_retry(device_id)
                 except ValueError as err:
                     msg = str(err)
-                    if "state unavailable" in msg or "not found" in msg:
+                    if any(
+                        k in msg
+                        for k in ("not found", "state unavailable", "state unknown")
+                    ):
                         _LOGGER.debug(
                             "Balance switch change for %s deferred "
                             "(entities not ready): %s",
