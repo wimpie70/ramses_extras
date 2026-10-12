@@ -25,6 +25,9 @@ REM_ENTRY_SCHEMA = vol.Schema(
         vol.Optional("source"): str,
         vol.Optional("zone_id"): str,
         vol.Optional("area_id"): str,
+        vol.Optional("manual_timeout"): int,
+        vol.Optional("revert_mode"): vol.In(["extras_auto", "fan_auto"]),
+        vol.Optional("revert_boost"): vol.In(["extras_auto", "fan_auto"]),
     },
     extra=vol.PREVENT_EXTRA,
 )
@@ -98,6 +101,16 @@ def remote_binding_validator(section: dict, hass: Any | None = None) -> list[str
                 errors.append(
                     f"FAN '{fan_id}', REM '{rem_id}': invalid area_id '{area_id}'"
                 )
+
+            for key in ("revert_mode", "revert_boost"):
+                value = rem.get(key)
+                if value is not None and value not in (
+                    "extras_auto",
+                    "fan_auto",
+                ):
+                    errors.append(
+                        f"FAN '{fan_id}', REM '{rem_id}': invalid {key} '{value}'"
+                    )
 
     return errors
 

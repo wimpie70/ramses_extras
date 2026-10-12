@@ -19,6 +19,14 @@ from homeassistant.helpers import config_validation as cv
 
 from ...const import DOMAIN
 from ...framework.helpers.fan_speed_arbiter import get_fan_speed_arbiter
+from ...framework.helpers.override_release import (
+    REVERT_EXTRAS_AUTO,
+    REVERT_MODES,
+    async_resume_feature_control,
+    boost_release_delay,
+    clear_source_zone_demands,
+    get_override_release_manager,
+)
 from ...framework.helpers.ramses_commands import RamsesCommands, get_ramses_commands
 from ...framework.helpers.zone_coordinator import get_zone_coordinator
 from ...framework.helpers.zone_demand import DemandSource, get_zone_demand_registry
@@ -201,21 +209,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         arbiter = get_fan_speed_arbiter(hass)
         demand_registry = get_zone_demand_registry(hass)
+        release_mgr = get_override_release_manager(hass)
 
-        domain_data = hass.data.setdefault(DOMAIN, {})
-        release_handles: dict[str, asyncio.Handle] = domain_data.setdefault(
-            "_remote_override_release_handles", {}
-        )
-
-        def _get_rem_timeout_seconds() -> int:
-            """Get timeout for REM binding (0=no timeout, default=60s)."""
-            from ...framework.helpers.config.core import ExtrasConfigManager
-            from ...framework.helpers.remote_binding import get_remote_binding_registry
+        def _get_binding_override_config() -> dict[str, Any]:
+            """Return timeout/revert settings for this REM's binding."""
+            config: dict[str, Any] = {
+                "manual_timeout": 60,
+                "revert_mode": REVERT_EXTRAS_AUTO,
+                "revert_boost": REVERT_EXTRAS_AUTO,
+            }
+            from ...framework.helpers.remote_binding import (
+                get_remote_binding_registry,
+            )
 
             registry = get_remote_binding_registry(hass)
             config_manager = registry._get_config_manager()
             if config_manager is None:
-                return 60
+                return config
 
             bindings = config_manager.get_fan_remote_bindings(device_id)
             normalized_source = source_id.replace("_", ":").strip()
@@ -223,77 +233,115 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 binding_rem_id = (
                     str(binding.get("rem_id") or "").replace("_", ":").strip()
                 )
-                if binding_rem_id == normalized_source:
-                    timeout = binding.get("manual_timeout")
-                    # 0 = no timeout (persist until other demand)
-                    if isinstance(timeout, int) and timeout >= 0:
-                        return timeout
+                if binding_rem_id != normalized_source:
+                    continue
+                timeout = binding.get("manual_timeout")
+                # 0 = no timeout (persist until other demand)
+                if isinstance(timeout, int) and timeout >= 0:
+                    config["manual_timeout"] = timeout
+                else:
                     # Legacy: check for override_timeout
                     legacy_timeout = binding.get("override_timeout")
                     if isinstance(legacy_timeout, int) and legacy_timeout > 0:
-                        return legacy_timeout
-            return 60
+                        config["manual_timeout"] = legacy_timeout
+                for key in ("revert_mode", "revert_boost"):
+                    value = binding.get(key)
+                    if value in REVERT_MODES:
+                        config[key] = value
+                break
+            return config
 
-        def _cancel_remote_override_release() -> None:
-            handle = release_handles.pop(device_id, None)
-            if handle is not None and not handle.cancelled():
-                handle.cancel()
+        async def _async_apply_rem_zone_demand(
+            target_zone_id: str, demand_command: str
+        ) -> None:
+            """Set a REM zone demand and run zone actuation."""
+            _LOGGER.info(
+                "Setting zone demand for REM: %s:%s = True",
+                device_id,
+                target_zone_id,
+            )
+            demand_registry.set_demand(
+                device_id,
+                target_zone_id,
+                DemandSource.REM,
+                True,
+                metadata={"rem_id": source_id, "command": demand_command},
+            )
+            coordinator = get_zone_coordinator(hass, device_id)
+            from ...framework.helpers.zones import get_zone_registry
 
-        async def _async_release_remote_override() -> None:
-            try:
-                _cancel_remote_override_release()
-                arbiter.clear_manual_override_state(device_id)
-                await arbiter.async_commit_state(device_id, apply=False)
-                _clear_rem_zone_demands()
-                coordinator = get_zone_coordinator(hass, device_id)
-                await coordinator.async_run_zone_actuation_cycle()
-                await _async_resume_feature_control(device_id)
-            except Exception as e:
-                _LOGGER.exception(
-                    "Error releasing remote override for %s: %s", device_id, e
+            zone_registry = get_zone_registry(hass)
+            zone_cfg = zone_registry.get_zone(device_id, target_zone_id)
+            _LOGGER.info(
+                "Zone config lookup: %s:%s -> %s",
+                device_id,
+                target_zone_id,
+                zone_cfg,
+            )
+            if isinstance(zone_cfg, dict):
+                zone_type = str(
+                    zone_cfg.get("type") or zone_cfg.get("source_type") or ""
+                ).strip()
+                inlet_entity = zone_cfg.get("inlet_valve_entity")
+                outlet_entity = zone_cfg.get("outlet_valve_entity")
+                min_position = zone_cfg.get("min_position")
+                max_position = zone_cfg.get("max_position")
+                actuation_priority = zone_cfg.get("actuation_priority")
+
+                _LOGGER.info(
+                    "Configuring zone %s: type=%s inlet=%s outlet=%s min=%s max=%s",
+                    target_zone_id,
+                    zone_type,
+                    inlet_entity,
+                    outlet_entity,
+                    min_position,
+                    max_position,
                 )
 
-        def _schedule_remote_override_release(
-            timeout_seconds: int | None = None,
-        ) -> None:
-            if timeout_seconds is not None:
-                effective_timeout = timeout_seconds
+                coordinator.configure_zone(
+                    zone_id=target_zone_id,
+                    zone_type=zone_type or None,
+                    inlet_valve_entity=str(inlet_entity).strip()
+                    if isinstance(inlet_entity, str) and inlet_entity.strip()
+                    else None,
+                    outlet_valve_entity=str(outlet_entity).strip()
+                    if isinstance(outlet_entity, str) and outlet_entity.strip()
+                    else None,
+                    min_position=int(min_position)
+                    if isinstance(min_position, int)
+                    else None,
+                    max_position=int(max_position)
+                    if isinstance(max_position, int)
+                    else None,
+                    is_controllable=True,
+                    actuation_priority=int(actuation_priority)
+                    if isinstance(actuation_priority, int)
+                    else None,
+                )
             else:
-                effective_timeout = _get_rem_timeout_seconds()
-            _cancel_remote_override_release()
-
-            # 0 = no timeout (persist until other demand takes over)
-            if effective_timeout == 0:
-                return
-
-            def _callback() -> None:
-                hass.async_create_task(_async_release_remote_override())
-
-            release_handles[device_id] = hass.loop.call_later(
-                effective_timeout,
-                _callback,
-            )
-
-        def _clear_rem_zone_demands() -> None:
-            for zid, sources in demand_registry.get_all_demands_for_fan(
-                device_id
-            ).items():
-                if DemandSource.REM in sources:
-                    demand_registry.clear_demand(device_id, zid, DemandSource.REM)
+                _LOGGER.warning(
+                    "Zone %s:%s not found in registry, using bare config",
+                    device_id,
+                    target_zone_id,
+                )
+                coordinator.configure_zone(target_zone_id)
+            _LOGGER.debug("Running zone actuation cycle for %s", device_id)
+            await coordinator.async_run_zone_actuation_cycle()
 
         if command == "fan_auto":
-            _cancel_remote_override_release()
+            release_mgr.cancel_release(device_id)
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
-            _clear_rem_zone_demands()
+            clear_source_zone_demands(hass, device_id, DemandSource.REM)
             coordinator = get_zone_coordinator(hass, device_id)
             await coordinator.async_run_zone_actuation_cycle()
-            await _async_resume_feature_control(device_id)
+            await async_resume_feature_control(hass, device_id)
             return
 
-        if command in {"fan_low", "fan_medium", "fan_high"}:
-            timeout = _get_rem_timeout_seconds()
+        if command in {"fan_low", "fan_medium", "fan_high", "fan_boost"}:
+            binding_cfg = _get_binding_override_config()
+            timeout = binding_cfg["manual_timeout"]
             _LOGGER.info(
                 "Applying REM speed command: %s for %s (zone=%s, timeout=%ss)",
                 command,
@@ -301,7 +349,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 zone_id,
                 timeout,
             )
-            _schedule_remote_override_release()
+            if timeout:
+                release_mgr.schedule_release(
+                    device_id,
+                    timeout,
+                    revert_mode=binding_cfg["revert_mode"],
+                )
+            else:
+                release_mgr.cancel_release(device_id)
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.set_manual_override_state(
                 device_id,
@@ -312,85 +367,50 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             )
             await arbiter.async_commit_state(device_id, apply=False)
 
-            _clear_rem_zone_demands()
+            clear_source_zone_demands(hass, device_id, DemandSource.REM)
             if zone_id:
-                _LOGGER.info(
-                    "Setting zone demand for REM: %s:%s = True", device_id, zone_id
-                )
-                demand_registry.set_demand(
-                    device_id,
-                    zone_id,
-                    DemandSource.REM,
-                    True,
-                    metadata={"rem_id": source_id, "command": command},
-                )
-                coordinator = get_zone_coordinator(hass, device_id)
-                from ...framework.helpers.zones import get_zone_registry
-
-                zone_registry = get_zone_registry(hass)
-                zone_cfg = zone_registry.get_zone(device_id, zone_id)
-                _LOGGER.info(
-                    "Zone config lookup: %s:%s -> %s", device_id, zone_id, zone_cfg
-                )
-                if isinstance(zone_cfg, dict):
-                    zone_type = str(
-                        zone_cfg.get("type") or zone_cfg.get("source_type") or ""
-                    ).strip()
-                    inlet_entity = zone_cfg.get("inlet_valve_entity")
-                    outlet_entity = zone_cfg.get("outlet_valve_entity")
-                    min_position = zone_cfg.get("min_position")
-                    max_position = zone_cfg.get("max_position")
-                    actuation_priority = zone_cfg.get("actuation_priority")
-
-                    _LOGGER.info(
-                        "Configuring zone %s: type=%s inlet=%s outlet=%s min=%s max=%s",
-                        zone_id,
-                        zone_type,
-                        inlet_entity,
-                        outlet_entity,
-                        min_position,
-                        max_position,
-                    )
-
-                    coordinator.configure_zone(
-                        zone_id=zone_id,
-                        zone_type=zone_type or None,
-                        inlet_valve_entity=str(inlet_entity).strip()
-                        if isinstance(inlet_entity, str) and inlet_entity.strip()
-                        else None,
-                        outlet_valve_entity=str(outlet_entity).strip()
-                        if isinstance(outlet_entity, str) and outlet_entity.strip()
-                        else None,
-                        min_position=int(min_position)
-                        if isinstance(min_position, int)
-                        else None,
-                        max_position=int(max_position)
-                        if isinstance(max_position, int)
-                        else None,
-                        is_controllable=True,
-                        actuation_priority=int(actuation_priority)
-                        if isinstance(actuation_priority, int)
-                        else None,
-                    )
-                else:
-                    _LOGGER.warning(
-                        "Zone %s:%s not found in registry, using bare config",
-                        device_id,
-                        zone_id,
-                    )
-                    coordinator.configure_zone(zone_id)
-                _LOGGER.debug("Running zone actuation cycle for %s", device_id)
-                await coordinator.async_run_zone_actuation_cycle()
+                await _async_apply_rem_zone_demand(zone_id, command)
             else:
                 _LOGGER.warning("No zone_id bound for REM command on %s", device_id)
             return
 
-        if command == "fan_away" or command.startswith("fan_timer_"):
-            _cancel_remote_override_release()
+        if command == "fan_away":
+            release_mgr.cancel_release(device_id)
             arbiter.set_extras_control_enabled(device_id, False)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
-            _clear_rem_zone_demands()
+            clear_source_zone_demands(hass, device_id, DemandSource.REM)
+            return
+
+        if command.startswith("fan_timer_"):
+            binding_cfg = _get_binding_override_config()
+            delay = boost_release_delay(command)
+            _LOGGER.info(
+                "Applying REM timed boost: %s for %s (zone=%s, release=%ss)",
+                command,
+                device_id,
+                zone_id,
+                delay,
+            )
+            if delay is not None:
+                release_mgr.schedule_release(
+                    device_id,
+                    delay,
+                    revert_mode=binding_cfg["revert_boost"],
+                )
+            arbiter.set_extras_control_enabled(device_id, True)
+            arbiter.set_manual_override_state(
+                device_id,
+                source_id=source_id,
+                requested_speed="fan_high",
+                reason="manual_remote_boost",
+                metadata={"origin": "remote", "boost": command},
+            )
+            await arbiter.async_commit_state(device_id, apply=False)
+            clear_source_zone_demands(hass, device_id, DemandSource.REM)
+            if zone_id:
+                await _async_apply_rem_zone_demand(zone_id, command)
+            return
 
     async def _async_handle_observed_remote_packet(
         src: object,
@@ -535,14 +555,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             command,
         )
 
+        release_mgr = get_override_release_manager(hass)
+
         if command == "fan_auto":
+            release_mgr.cancel_release(device_id)
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
-            await _async_resume_feature_control(device_id)
+            await async_resume_feature_control(hass, device_id)
             return
 
-        if command in {"fan_low", "fan_medium", "fan_high"}:
+        if command in {"fan_low", "fan_medium", "fan_high", "fan_boost"}:
+            release_mgr.cancel_release(device_id)
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.set_manual_override_state(
                 device_id,
@@ -554,10 +578,29 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             await arbiter.async_commit_state(device_id, apply=False)
             return
 
-        if command == "fan_away" or command.startswith("fan_timer_"):
+        if command == "fan_away":
+            release_mgr.cancel_release(device_id)
             arbiter.set_extras_control_enabled(device_id, False)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
+            return
+
+        if command.startswith("fan_timer_"):
+            delay = boost_release_delay(command)
+            if delay is not None:
+                release_mgr.schedule_release(
+                    device_id, delay, revert_mode=REVERT_EXTRAS_AUTO
+                )
+            arbiter.set_extras_control_enabled(device_id, True)
+            arbiter.set_manual_override_state(
+                device_id,
+                source_id=src_id,
+                requested_speed="fan_high",
+                reason="manual_external_boost",
+                metadata={"origin": "external", "boost": command},
+            )
+            await arbiter.async_commit_state(device_id, apply=False)
+            return
 
     def _schedule_observed_remote_packet(
         src: object,
@@ -653,34 +696,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         hass.loop.call_later(1, _retry)
 
-    async def _async_resume_feature_control(device_id: str) -> None:
-        domain_data = hass.data.get(DOMAIN, {})
-        features = domain_data.get("features", {})
-        if not isinstance(features, dict):
-            return
-
-        humidity_feature = features.get("humidity_control")
-        if isinstance(humidity_feature, dict):
-            automation = humidity_feature.get("automation")
-            if automation is not None and hasattr(
-                automation, "_reconcile_startup_states"
-            ):
-                await automation._reconcile_startup_states()
-
-        co2_feature = features.get("co2_control")
-        if isinstance(co2_feature, dict):
-            automation = co2_feature.get("automation")
-            if automation is not None and hasattr(automation, "_evaluate_co2_control"):
-                await automation._evaluate_co2_control(device_id)
-
-        temp_feature = features.get("temp_control")
-        if isinstance(temp_feature, dict):
-            automation = temp_feature.get("automation")
-            if automation is not None and hasattr(
-                automation, "_reconcile_startup_states"
-            ):
-                await automation._reconcile_startup_states(device_id)
-
     async def _async_disable_temp_control_for_bypass(device_id: str) -> None:
         """Turn off the temp_control switch when the user manually moves the bypass.
 
@@ -729,13 +744,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         device_id = data["device_id"]
         command = data["command"]
         arbiter = get_fan_speed_arbiter(hass)
+        release_mgr = get_override_release_manager(hass)
 
         if command == "fan_auto":
+            release_mgr.cancel_release(device_id)
             if arbiter.is_manual_override_active(device_id):
                 arbiter.set_extras_control_enabled(device_id, True)
                 arbiter.clear_manual_override_state(device_id)
                 await arbiter.async_commit_state(device_id)
-                await _async_resume_feature_control(device_id)
+                await async_resume_feature_control(hass, device_id)
                 return
 
             if arbiter.is_extras_control_enabled(device_id):
@@ -747,10 +764,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id)
-            await _async_resume_feature_control(device_id)
+            await async_resume_feature_control(hass, device_id)
             return
 
-        if command in {"fan_low", "fan_medium", "fan_high"}:
+        if command in {"fan_low", "fan_medium", "fan_high", "fan_boost"}:
+            release_mgr.cancel_release(device_id)
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.set_manual_override_state(
                 device_id,
@@ -763,10 +781,31 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             await arbiter.async_commit_state(device_id)
             return
 
-        if command == "fan_away" or command.startswith("fan_timer_"):
+        if command == "fan_away":
+            release_mgr.cancel_release(device_id)
             arbiter.set_extras_control_enabled(device_id, False)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
+            commands = get_ramses_commands(hass)
+            await commands.send_command(device_id, command)
+            return
+
+        if command.startswith("fan_timer_"):
+            arbiter.set_extras_control_enabled(device_id, True)
+            arbiter.set_manual_override_state(
+                device_id,
+                source_id="default_service",
+                requested_speed="fan_high",
+                reason="manual_card_boost",
+                metadata={"origin": "service", "boost": command},
+            )
+            await _async_clear_feature_fan_demands(device_id)
+            await arbiter.async_commit_state(device_id, apply=False)
+            delay = boost_release_delay(command)
+            if delay is not None:
+                release_mgr.schedule_release(
+                    device_id, delay, revert_mode=REVERT_EXTRAS_AUTO
+                )
             commands = get_ramses_commands(hass)
             await commands.send_command(device_id, command)
             return
@@ -787,7 +826,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             # feature control so temp_control (and humidity/co2) can
             # re-evaluate and drive the bypass again.  This mirrors
             # fan_auto's behaviour for fan speed.
-            await _async_resume_feature_control(device_id)
+            await async_resume_feature_control(hass, device_id)
             commands = get_ramses_commands(hass)
             await commands.send_command(device_id, command)
             return
