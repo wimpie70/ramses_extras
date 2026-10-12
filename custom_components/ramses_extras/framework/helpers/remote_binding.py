@@ -337,6 +337,14 @@ class RemoteBindingRegistry:
                     rem_entry["revert_mode"] = binding["revert_mode"]
                 if "revert_boost" in binding:
                     rem_entry["revert_boost"] = binding["revert_boost"]
+                if "role" in binding:
+                    rem_entry["role"] = binding["role"]
+                if "entity_id" in binding:
+                    rem_entry["entity_id"] = binding["entity_id"]
+                if "demand_target" in binding:
+                    rem_entry["demand_target"] = binding["demand_target"]
+                if "demand_speed" in binding:
+                    rem_entry["demand_speed"] = binding["demand_speed"]
                 fans_section[fan_id]["REMs"].append(rem_entry)
 
         # Use JSON as a simple YAML-compatible serialization

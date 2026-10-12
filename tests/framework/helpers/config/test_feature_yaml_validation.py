@@ -1462,7 +1462,7 @@ class TestRemoteBindingYAML:
 
         errors = remote_binding_validator(section)
         assert len(errors) == 1
-        assert "FAN '32:123456': REM missing rem_id" in errors[0]
+        assert "missing rem_id and entity_id" in errors[0]
 
     def test_export_remote_binding_to_yaml(self):
         """Test export remote binding to YAML."""

@@ -872,8 +872,12 @@ class TestObservedCommandFromPacket:
 
             await _drain_pending(hass)
 
-            # record_remote_activity should NOT be called since command is None
-            mock_bind.return_value.record_remote_activity.assert_not_called()
+            # Activity IS recorded even without a decodable command — it
+            # feeds unmatched-sender binding suggestions (issue 289).
+            mock_bind.return_value.record_remote_activity.assert_called_once()
+            call_kwargs = mock_bind.return_value.record_remote_activity.call_args.kwargs
+            assert call_kwargs["command"] == "<unparsed>"
+            assert call_kwargs["matched"] is False
 
     @pytest.mark.asyncio
     async def test_non_string_code_returns_none(self, hass):
@@ -909,7 +913,10 @@ class TestObservedCommandFromPacket:
 
             await _drain_pending(hass)
 
-            mock_bind.return_value.record_remote_activity.assert_not_called()
+            # Recorded for suggestions even without a decodable command
+            mock_bind.return_value.record_remote_activity.assert_called_once()
+            call_kwargs = mock_bind.return_value.record_remote_activity.call_args.kwargs
+            assert call_kwargs["command"] == "<unparsed>"
 
     @pytest.mark.asyncio
     async def test_verb_rq_returns_early(self, hass):
@@ -2174,3 +2181,130 @@ class TestExternalFanCommands:
             mock_arb_inst.set_extras_control_enabled.assert_called_once_with(
                 "32:123456", False
             )
+
+
+class TestDemandInputSenders:
+    """Bound switch/contact senders: any packet is an activation (issue 289)."""
+
+    @pytest.mark.asyncio
+    async def test_bound_switch_sender_packet_activates_demand(self, hass):
+        """A matched binding with role=switch calls the demand-input path."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        binding = {
+            "rem_id": "29_176861",
+            "role": "switch",
+            "demand_speed": "fan_high",
+            "manual_timeout": 300,
+        }
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+            patch(
+                "custom_components.ramses_extras.features.default.services.async_apply_demand_input",
+                new=AsyncMock(),
+            ) as mock_apply,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = ["29:176861"]
+            mock_bind.return_value.get_bindings_for_fan.return_value = [binding]
+            mock_bind.return_value.record_remote_activity = MagicMock()
+
+            # Any packet counts — use an unparsed code
+            msg = _make_msg(
+                {
+                    "src": "29_176861",
+                    "dst": "32_123456",
+                    "code": "31D9",
+                    "payload": "000001",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_apply.assert_awaited_once()
+            call = mock_apply.call_args
+            assert call.args[1] == "32:123456"
+            assert call.args[2] is binding
+            assert call.kwargs == {"active": True, "timed": True}
+
+    @pytest.mark.asyncio
+    async def test_remote_role_unparsed_packet_still_ignored(self, hass):
+        """role=remote bindings still require a decodable command."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+            patch(
+                "custom_components.ramses_extras.features.default.services.async_apply_demand_input",
+                new=AsyncMock(),
+            ) as mock_apply,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = ["29:176861"]
+            mock_bind.return_value.get_bindings_for_fan.return_value = [
+                {"rem_id": "29_176861", "role": "remote"}
+            ]
+            mock_bind.return_value.record_remote_activity = MagicMock()
+
+            msg = _make_msg(
+                {
+                    "src": "29_176861",
+                    "dst": "32_123456",
+                    "code": "31D9",
+                    "payload": "000001",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_apply.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_demand_input_sender_repress_rearms(self, hass):
+        """Repeated packets beyond the debounce window each activate."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        binding = {"rem_id": "29_176861", "role": "contact"}
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+            patch(
+                "custom_components.ramses_extras.features.default.services.async_apply_demand_input",
+                new=AsyncMock(),
+            ) as mock_apply,
+            patch(
+                "custom_components.ramses_extras.features.default.services.time.monotonic"
+            ) as mock_time,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = ["29:176861"]
+            mock_bind.return_value.get_bindings_for_fan.return_value = [binding]
+            mock_bind.return_value.record_remote_activity = MagicMock()
+
+            msg = _make_msg(
+                {
+                    "src": "29_176861",
+                    "dst": "32_123456",
+                    "code": "31D9",
+                    "payload": "000001",
+                    "verb": "I",
+                }
+            )
+            mock_time.return_value = 100.0
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_time.return_value = 105.0  # past the 1.5s debounce
+            handler(msg)
+            await _drain_pending(hass)
+
+            assert mock_apply.await_count == 2

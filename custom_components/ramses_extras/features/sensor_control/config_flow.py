@@ -206,7 +206,8 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
 
 def _describe_remote_binding(rem: dict[str, Any]) -> str:
     rem_id = str(rem.get("rem_id") or "missing")
-    role = str(rem.get("role") or "unknown")
+    role = str(rem.get("role") or "remote")
+    entity_id = str(rem.get("entity_id") or "").strip()
     enabled = bool(rem.get("enabled", True))
     zone_id = str(rem.get("zone_id") or "").strip()
     area_id = str(rem.get("area_id") or "").strip()
@@ -219,6 +220,12 @@ def _describe_remote_binding(rem: dict[str, Any]) -> str:
         f"role: {role}",
         "enabled" if enabled else "disabled",
     ]
+    if entity_id:
+        parts.append(f"entity: {entity_id}")
+    if role != "remote":
+        target = str(rem.get("demand_target") or "fan")
+        speed = str(rem.get("demand_speed") or "fan_high")
+        parts.append(f"demand: {speed} -> {target}")
     if zone_id:
         parts.append(f"zone_id: {zone_id}")
     if area_id:
@@ -2580,13 +2587,20 @@ async def _async_handle_rems_edit(
 
     if user_input is not None:
         rem_id = normalize_device_id(str(user_input.get("rem_id") or "").strip())
+        entity_id = str(user_input.get("entity_id") or "").strip()
+        role = str(user_input.get("role") or "remote")
         enabled = bool(user_input.get("enabled", True))
         zone_id = str(user_input.get("zone_id") or "").strip()
         area_id = str(user_input.get("area_id") or "").strip()
 
-        if not rem_id:
+        if role == "remote" and not rem_id:
             errors["rem_id"] = translations.get("errors", {}).get(
                 "rem_id_required", "REM ID is required"
+            )
+        elif role != "remote" and not rem_id and not entity_id:
+            errors["rem_id"] = translations.get("errors", {}).get(
+                "input_id_required",
+                "A sender device ID or HA entity is required",
             )
 
         if rem_id and (editing_rem_id is None or rem_id != editing_rem_id):
@@ -2605,10 +2619,20 @@ async def _async_handle_rems_edit(
             manual_timeout = int(user_input.get("manual_timeout") or 60)
             revert_mode = str(user_input.get("revert_mode") or "extras_auto")
             revert_boost = str(user_input.get("revert_boost") or "extras_auto")
+            demand_target = str(user_input.get("demand_target") or "fan")
+            demand_speed = str(user_input.get("demand_speed") or "fan_high")
             updated_rem: dict[str, Any] = {
                 "rem_id": rem_id,
                 "enabled": enabled,
             }
+            if role != "remote":
+                updated_rem["role"] = role
+            if entity_id:
+                updated_rem["entity_id"] = entity_id
+            if role != "remote" and demand_target != "fan":
+                updated_rem["demand_target"] = demand_target
+            if role != "remote" and demand_speed != "fan_high":
+                updated_rem["demand_speed"] = demand_speed
             if zone_id:
                 updated_rem["zone_id"] = zone_id
             if area_id:
@@ -2645,9 +2669,23 @@ async def _async_handle_rems_edit(
             return await async_step_sensor_control_config(flow, None)
 
     rem_id_default = str(existing_rem.get("rem_id") if existing_rem else "").strip()
+    entity_id_default = (
+        str(existing_rem.get("entity_id") if existing_rem else "").strip() or None
+    )
+    role_default = (
+        str(existing_rem.get("role") or "remote") if existing_rem else "remote"
+    )
     enabled_default = bool(existing_rem.get("enabled", True)) if existing_rem else True
     zone_default = str(existing_rem.get("zone_id") if existing_rem else "").strip()
     area_default = str(existing_rem.get("area_id") if existing_rem else "").strip()
+    demand_target_default = (
+        str(existing_rem.get("demand_target") or "fan") if existing_rem else "fan"
+    )
+    demand_speed_default = (
+        str(existing_rem.get("demand_speed") or "fan_high")
+        if existing_rem
+        else "fan_high"
+    )
     manual_timeout_default = (
         int(existing_rem.get("manual_timeout") or 60) if existing_rem else 60
     )
@@ -2686,13 +2724,41 @@ async def _async_handle_rems_edit(
     # Get area_id options from configured area sensors
     area_id_options = _get_area_id_options(options, selected_device_id)
 
+    entity_key: Any = vol.Optional("entity_id")
+    if entity_id_default:
+        entity_key = vol.Optional("entity_id", default=entity_id_default)
+
     schema = vol.Schema(
         {
-            vol.Required("rem_id", default=rem_id_default): selector.SelectSelector(
+            vol.Optional(
+                "role",
+                default=role_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(
+                            value="remote", label="remote (speed commands)"
+                        ),
+                        selector.SelectOptionDict(
+                            value="switch", label="switch (momentary demand)"
+                        ),
+                        selector.SelectOptionDict(
+                            value="contact", label="contact (demand while active)"
+                        ),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional("rem_id", default=rem_id_default): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=rem_options,
                     mode=selector.SelectSelectorMode.DROPDOWN,
                     custom_value=True,
+                )
+            ),
+            entity_key: selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain=["binary_sensor", "switch", "input_boolean"]
                 )
             ),
             vol.Required(
@@ -2721,6 +2787,35 @@ async def _async_handle_rems_edit(
                     step=1,
                     unit_of_measurement="s",
                     mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                "demand_target",
+                default=demand_target_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(
+                            value="fan", label="fan speed demand"
+                        ),
+                        selector.SelectOptionDict(value="zone", label="zone demand"),
+                        selector.SelectOptionDict(value="both", label="fan + zone"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                "demand_speed",
+                default=demand_speed_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="fan_low", label="low"),
+                        selector.SelectOptionDict(value="fan_medium", label="medium"),
+                        selector.SelectOptionDict(value="fan_high", label="high"),
+                        selector.SelectOptionDict(value="fan_boost", label="boost"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Optional(

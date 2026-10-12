@@ -251,11 +251,11 @@ class TestConfigFlowFullCoverage:
         assert "32:153290" in result
         assert "primary" in result
 
-        # Test with minimal data
+        # Test with minimal data (role defaults to remote)
         minimal_rem = {"rem_id": "32:153290"}
         result = config_flow._describe_remote_binding(minimal_rem)
         assert "32:153290" in result
-        assert "unknown" in result
+        assert "remote" in result
 
         # Test describe_zone - the format may not include name
         zone = {

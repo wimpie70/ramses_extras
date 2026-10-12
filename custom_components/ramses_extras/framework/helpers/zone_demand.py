@@ -27,6 +27,8 @@ class DemandSource(Enum):
     CO2 = auto()
     MANUAL = auto()
     REM = auto()
+    SWITCH = auto()
+    CONTACT = auto()
     SCHEDULE = auto()
     OTHER = auto()
 

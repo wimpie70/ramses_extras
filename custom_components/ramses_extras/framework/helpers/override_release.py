@@ -110,6 +110,7 @@ class OverrideReleaseManager:
         *,
         revert_mode: str = REVERT_EXTRAS_AUTO,
         clear_zone_source: DemandSource | None = DemandSource.REM,
+        override_source_id: str | None = None,
     ) -> None:
         """Schedule a timed release for a device.
 
@@ -121,6 +122,10 @@ class OverrideReleaseManager:
         :param revert_mode: ``extras_auto`` or ``fan_auto``
         :param clear_zone_source: Zone demand source to clear on release,
                or None to leave zone demands untouched
+        :param override_source_id: When set, only that source's
+               ``manual_override`` demand is cleared on release (demand
+               inputs); None clears all manual-override demands (REM
+               semantics — last command wins).
         """
         normalized = self._normalize(device_id)
         self.cancel_release(normalized)
@@ -132,6 +137,7 @@ class OverrideReleaseManager:
                     normalized,
                     revert_mode=revert_mode,
                     clear_zone_source=clear_zone_source,
+                    override_source_id=override_source_id,
                 )
             )
 
@@ -143,13 +149,21 @@ class OverrideReleaseManager:
         *,
         revert_mode: str = REVERT_EXTRAS_AUTO,
         clear_zone_source: DemandSource | None = DemandSource.REM,
+        override_source_id: str | None = None,
     ) -> None:
         """Release a manual override and apply the revert mode."""
         normalized = self._normalize(device_id)
         self.cancel_release(normalized)
         try:
             arbiter = get_fan_speed_arbiter(self._hass)
-            arbiter.clear_manual_override_state(normalized)
+            if override_source_id is None:
+                arbiter.clear_manual_override_state(normalized)
+            else:
+                arbiter.clear_demand_state(
+                    normalized,
+                    feature_id="manual_override",
+                    source_id=override_source_id,
+                )
             arbiter.set_extras_control_enabled(
                 normalized, revert_mode != REVERT_FAN_AUTO
             )

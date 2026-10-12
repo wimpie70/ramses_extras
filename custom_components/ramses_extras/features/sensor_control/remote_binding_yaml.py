@@ -28,6 +28,12 @@ REM_ENTRY_SCHEMA = vol.Schema(
         vol.Optional("manual_timeout"): int,
         vol.Optional("revert_mode"): vol.In(["extras_auto", "fan_auto"]),
         vol.Optional("revert_boost"): vol.In(["extras_auto", "fan_auto"]),
+        vol.Optional("role"): vol.In(["remote", "switch", "contact"]),
+        vol.Optional("entity_id"): str,
+        vol.Optional("demand_target"): vol.In(["fan", "zone", "both"]),
+        vol.Optional("demand_speed"): vol.In(
+            ["fan_low", "fan_medium", "fan_high", "fan_boost"]
+        ),
     },
     extra=vol.PREVENT_EXTRA,
 )
@@ -82,13 +88,37 @@ def remote_binding_validator(section: dict, hass: Any | None = None) -> list[str
                 continue
 
             rem_id = rem.get("rem_id")
-            if not rem_id:
-                errors.append(f"FAN '{fan_id}': REM missing rem_id")
+            entity_id = rem.get("entity_id")
+            role = rem.get("role", "remote")
+            if role not in ("remote", "switch", "contact"):
+                errors.append(f"FAN '{fan_id}', REM '{rem_id}': invalid role '{role}'")
+            if not rem_id and not entity_id:
+                errors.append(f"FAN '{fan_id}': binding missing rem_id and entity_id")
                 continue
 
-            if rem_id in seen_rems:
-                errors.append(f"REM '{rem_id}' assigned to multiple FANs")
-            seen_rems.add(rem_id)
+            if rem_id:
+                if rem_id in seen_rems:
+                    errors.append(f"REM '{rem_id}' assigned to multiple FANs")
+                seen_rems.add(rem_id)
+
+            if role != "remote":
+                target = rem.get("demand_target")
+                if target is not None and target not in ("fan", "zone", "both"):
+                    errors.append(
+                        f"FAN '{fan_id}', REM '{rem_id}': invalid "
+                        f"demand_target '{target}'"
+                    )
+                speed = rem.get("demand_speed")
+                if speed is not None and speed not in (
+                    "fan_low",
+                    "fan_medium",
+                    "fan_high",
+                    "fan_boost",
+                ):
+                    errors.append(
+                        f"FAN '{fan_id}', REM '{rem_id}': invalid "
+                        f"demand_speed '{speed}'"
+                    )
 
             zone_id = rem.get("zone_id")
             if zone_id is not None and (not isinstance(zone_id, str) or not zone_id):

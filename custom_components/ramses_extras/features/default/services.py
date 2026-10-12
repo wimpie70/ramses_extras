@@ -18,6 +18,12 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
 from ...const import DOMAIN
+from ...framework.helpers.demand_inputs import (
+    async_apply_demand_input,
+    async_apply_zone_demand,
+    async_attach_demand_input_listeners,
+    is_demand_input_binding,
+)
 from ...framework.helpers.fan_speed_arbiter import get_fan_speed_arbiter
 from ...framework.helpers.override_release import (
     REVERT_EXTRAS_AUTO,
@@ -227,7 +233,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             zone_id,
         )
         arbiter = get_fan_speed_arbiter(hass)
-        demand_registry = get_zone_demand_registry(hass)
         release_mgr = get_override_release_manager(hass)
 
         def _get_binding_override_config() -> dict[str, Any]:
@@ -274,78 +279,16 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             target_zone_id: str, demand_command: str
         ) -> None:
             """Set a REM zone demand and run zone actuation."""
-            _LOGGER.info(
-                "Setting zone demand for REM: %s:%s = True",
-                device_id,
-                target_zone_id,
-            )
-            demand_registry.set_demand(
+            await async_apply_zone_demand(
+                hass,
                 device_id,
                 target_zone_id,
                 DemandSource.REM,
-                True,
-                metadata={"rem_id": source_id, "command": demand_command},
+                source_id,
+                demand_command,
+                demand_registry=get_zone_demand_registry(hass),
+                coordinator=get_zone_coordinator(hass, device_id),
             )
-            coordinator = get_zone_coordinator(hass, device_id)
-            from ...framework.helpers.zones import get_zone_registry
-
-            zone_registry = get_zone_registry(hass)
-            zone_cfg = zone_registry.get_zone(device_id, target_zone_id)
-            _LOGGER.info(
-                "Zone config lookup: %s:%s -> %s",
-                device_id,
-                target_zone_id,
-                zone_cfg,
-            )
-            if isinstance(zone_cfg, dict):
-                zone_type = str(
-                    zone_cfg.get("type") or zone_cfg.get("source_type") or ""
-                ).strip()
-                inlet_entity = zone_cfg.get("inlet_valve_entity")
-                outlet_entity = zone_cfg.get("outlet_valve_entity")
-                min_position = zone_cfg.get("min_position")
-                max_position = zone_cfg.get("max_position")
-                actuation_priority = zone_cfg.get("actuation_priority")
-
-                _LOGGER.info(
-                    "Configuring zone %s: type=%s inlet=%s outlet=%s min=%s max=%s",
-                    target_zone_id,
-                    zone_type,
-                    inlet_entity,
-                    outlet_entity,
-                    min_position,
-                    max_position,
-                )
-
-                coordinator.configure_zone(
-                    zone_id=target_zone_id,
-                    zone_type=zone_type or None,
-                    inlet_valve_entity=str(inlet_entity).strip()
-                    if isinstance(inlet_entity, str) and inlet_entity.strip()
-                    else None,
-                    outlet_valve_entity=str(outlet_entity).strip()
-                    if isinstance(outlet_entity, str) and outlet_entity.strip()
-                    else None,
-                    min_position=int(min_position)
-                    if isinstance(min_position, int)
-                    else None,
-                    max_position=int(max_position)
-                    if isinstance(max_position, int)
-                    else None,
-                    is_controllable=True,
-                    actuation_priority=int(actuation_priority)
-                    if isinstance(actuation_priority, int)
-                    else None,
-                )
-            else:
-                _LOGGER.warning(
-                    "Zone %s:%s not found in registry, using bare config",
-                    device_id,
-                    target_zone_id,
-                )
-                coordinator.configure_zone(target_zone_id)
-            _LOGGER.debug("Running zone actuation cycle for %s", device_id)
-            await coordinator.async_run_zone_actuation_cycle()
 
         if command == "fan_auto":
             release_mgr.cancel_release(device_id)
@@ -458,22 +401,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         normalized_src = _normalize_id(src)
         normalized_dst = _normalize_id(dst)
         command = _observed_command_from_packet(code, payload)
-        if not normalized_src or not normalized_dst or not command:
+        if not normalized_src or not normalized_dst:
             return
 
         # Ignore echoes of commands we sent ourselves: outbound packets use
         # a spoofed bound-REM source address, so without this check our own
         # sends come back looking like external remote presses and would
         # register spurious manual overrides / disable extras control.
-        commands = get_ramses_commands(hass)
-        if commands.was_command_recently_sent(normalized_dst, command):
-            return
+        if command:
+            commands = get_ramses_commands(hass)
+            if commands.was_command_recently_sent(normalized_dst, command):
+                return
 
         from ...framework.helpers.remote_binding import get_remote_binding_registry
 
         registry = get_remote_binding_registry(hass)
 
-        # Get all REMs bound to this FAN for multi-remote support
+        # Get all senders bound to this FAN (REMs and demand inputs)
         all_bound_rems = registry.get_all_rem_ids_for_fan(normalized_dst)
 
         # Record activity for diagnostics
@@ -481,18 +425,39 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         registry.record_remote_activity(
             rem_id=normalized_src,
             fan_id=normalized_dst,
-            command=command,
+            command=command or "<unparsed>",
             matched=is_matched,
         )
 
+        matched_binding: dict[str, Any] | None = None
+        if is_matched:
+            for binding in registry.get_bindings_for_fan(normalized_dst):
+                binding_rem_id = (
+                    str(binding.get("rem_id") or "").replace("_", ":").strip()
+                )
+                if binding_rem_id == normalized_src:
+                    matched_binding = binding
+                    break
+
         domain_data = hass.data.setdefault(DOMAIN, {})
         recent = domain_data.setdefault("_fan_remote_last_seen", {})
-        key = (normalized_dst, command)
+        key = (normalized_dst, command or f"src:{normalized_src}")
         now = time.monotonic()
         last_seen = recent.get(key, 0.0)
         if now - last_seen < 1.5:
             return
         recent[key] = now
+
+        if matched_binding is not None and is_demand_input_binding(matched_binding):
+            # Switch/contact sender: any observed packet is an activation.
+            # RF has no "released" edge, so always use timed semantics.
+            await async_apply_demand_input(
+                hass, normalized_dst, matched_binding, active=True, timed=True
+            )
+            return
+
+        if not command:
+            return
 
         if not is_matched:
             # The command did not come from a bound REM, but it can still
@@ -505,16 +470,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             return
 
         bound_zone_id: str | None = None
-        for binding in registry.get_bindings_for_fan(normalized_dst):
-            if (
-                str(binding.get("rem_id") or "").replace("_", ":").strip()
-                != normalized_src
-            ):
-                continue
-            zone_candidate = str(binding.get("zone_id") or "").strip()
+        if matched_binding is not None:
+            zone_candidate = str(matched_binding.get("zone_id") or "").strip()
             if zone_candidate:
                 bound_zone_id = zone_candidate
-            break
 
         await _async_apply_observed_remote_command(
             normalized_dst,
@@ -888,6 +847,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         domain_data["_fan_remote_listener_started"] = True
         commands = get_ramses_commands(hass)
         await _async_attach_remote_listener(domain_data, commands)
+
+    # (Re)attach HA-entity demand-input listeners — rebuilt from current
+    # bindings on every service (re)registration so config changes in the
+    # binding editor take effect on reload.
+    for unsub in domain_data.pop("_demand_input_listener_unsubs", []):
+        try:
+            unsub()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Demand input listener unsubscribe failed", exc_info=True)
+    domain_data["_demand_input_listener_unsubs"] = async_attach_demand_input_listeners(
+        hass, domain_data
+    )
 
     if not hass.services.has_service(DOMAIN, SVC_SEND_FAN_COMMAND):
         hass.services.async_register(
