@@ -829,9 +829,9 @@ async def _reload_ramses_cc(
                     slug=slug,
                     variant_id="default",
                     excluded_codes=["1FC9"],
-                    suppress_autonomous=False,
-                    suppress_responses=False,
-                    enabled=True,
+                    suppress_autonomous=bool(dev_cfg.get("suppress_autonomous", False)),
+                    suppress_responses=bool(dev_cfg.get("suppress_responses", False)),
+                    enabled=bool(dev_cfg.get("enabled", True)),
                     origin="profile",
                 )
                 devices_to_activate.append((device, slug))
