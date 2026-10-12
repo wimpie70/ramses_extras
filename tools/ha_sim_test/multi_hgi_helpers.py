@@ -119,7 +119,7 @@ for e in d['data']['entries']:
     for dev_id in list(schema):
         if dev_id.startswith('18:') and dev_id not in desired_hgis:
             schema.pop(dev_id)
-    # Set root _owner (required by _extract_pool_hgis_from_schema)
+    # Set root _owner (required by extract_pool_hgis_from_schema)
     schema['_owner'] = 'me'
     # Add both HGIs with _owner and _preferred_type, even after a
     # clean-schema recipe removed the primary entry.
@@ -327,7 +327,7 @@ for e in d['data']['entries']:
     if e['domain'] != 'ramses_cc':
         continue
     schema = dict(e['options'].get('schema', {{}}))
-    # Set root _owner (required by _extract_pool_hgis_from_schema)
+    # Set root _owner (required by extract_pool_hgis_from_schema)
     schema['_owner'] = 'me'
     if '{hgi_id}' in schema and isinstance(schema['{hgi_id}'], dict):
         schema['{hgi_id}']['_preferred_type'] = '{ptype}'

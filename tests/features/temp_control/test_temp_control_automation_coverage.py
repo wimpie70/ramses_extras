@@ -690,6 +690,50 @@ class TestGetDeviceEntityStates:
                 await automation_manager._get_device_entity_states("32:153289")
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("entity_state", "expected_msg"),
+        [
+            (None, "not found"),
+            ("unknown", "state unknown"),
+            ("unavailable", "state unavailable"),
+            ("eco", "is not numeric"),
+        ],
+    )
+    async def test_required_sensor_error_names_actual_state(
+        self, automation_manager, entity_state, expected_msg
+    ):
+        """Error text distinguishes missing, unknown, unavailable, and
+        non-numeric entities instead of a blanket "state unavailable"."""
+        if entity_state is None:
+            automation_manager.hass.states.get = MagicMock(return_value=None)
+        else:
+            s = MagicMock()
+            s.state = entity_state
+            automation_manager.hass.states.get = MagicMock(return_value=s)
+        automation_manager._get_sensor_control_context = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers."
+            "entity.core.get_feature_entity_mappings",
+            new_callable=AsyncMock,
+        ) as mock_mappings:
+            mock_mappings.return_value = {
+                "temp_control": "switch.temp_control_32_153289",
+                "indoor_temp": "sensor.32_153289_indoor_temp",
+                "outdoor_temp": "sensor.32_153289_outdoor_temp",
+                "supply_temp": "sensor.32_153289_supply_temp",
+                "comfort_temp": "number.32_153289_param_75",
+                "indoor_rh": "sensor.32_153289_indoor_humidity",
+                "min_rh": "number.relative_humidity_minimum_32_153289",
+                "max_rh": "number.relative_humidity_maximum_32_153289",
+                "dehumidifying_active": (
+                    "binary_sensor.dehumidifying_active_32_153289"
+                ),
+            }
+            with pytest.raises(ValueError, match=expected_msg):
+                await automation_manager._get_device_entity_states("32:153289")
+
+    @pytest.mark.asyncio
     async def test_co2_active_missing_defaults_false(self, automation_manager):
         """When co2_active entity is missing, defaults to False."""
 
