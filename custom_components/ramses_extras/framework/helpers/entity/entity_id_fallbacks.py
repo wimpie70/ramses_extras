@@ -82,6 +82,29 @@ def iter_ramses_cc_entity_ids(
     return _unique_in_order(result)
 
 
+def _extract_key_from_object_id(
+    object_id: str,
+    device_id_underscore: str,
+) -> str | None:
+    """Extract the ramses_cc key from an object_id with a device-id prefix.
+
+    Recognises the optional ``fan_``/``co2_`` slug prefixes used by older
+    ramses_cc naming schemes.
+    """
+    slug_prefixes = (
+        f"{device_id_underscore}_",
+        f"fan_{device_id_underscore}_",
+        f"co2_{device_id_underscore}_",
+    )
+
+    for slug_prefix in slug_prefixes:
+        if object_id.startswith(slug_prefix):
+            key = object_id[len(slug_prefix) :]
+            return key or None
+
+    return None
+
+
 def iter_ramses_cc_entity_id_fallbacks(
     entity_id: str,
     *,
@@ -102,18 +125,7 @@ def iter_ramses_cc_entity_id_fallbacks(
     else:
         device_id_underscore = device_id_underscore.lower()
 
-    slug_prefixes = (
-        f"{device_id_underscore}_",
-        f"fan_{device_id_underscore}_",
-        f"co2_{device_id_underscore}_",
-    )
-
-    key: str | None = None
-    for slug_prefix in slug_prefixes:
-        if object_id.startswith(slug_prefix):
-            key = object_id[len(slug_prefix) :]
-            break
-
+    key = _extract_key_from_object_id(object_id, device_id_underscore)
     if not key:
         return []
 
@@ -124,6 +136,52 @@ def iter_ramses_cc_entity_id_fallbacks(
     )
 
     return [c for c in candidates if c != entity_id]
+
+
+def iter_ramses_cc_unique_id_fallbacks(
+    entity_id: str,
+    *,
+    device_id: str | None = None,
+    device_id_underscore: str | None = None,
+) -> list[str]:
+    """Candidate ramses_cc unique_ids for a template entity_id.
+
+    ramses_cc sets ``unique_id = f"{device.id}-{description.key}"`` (e.g.
+    ``32:136723-indoor_temp``).  With ``has_entity_name=True`` the
+    entity_id is derived from the *device and entity names* (e.g.
+    ``sensor.orcon_hrc400_wtw_indoor_temperature``), which cannot be
+    guessed — the registry unique_id is the only stable handle.
+
+    :param entity_id: Template entity_id like
+        ``sensor.32_136723_indoor_temperature``
+    :param device_id: Device ID with colons (e.g. ``32:136723``)
+    :param device_id_underscore: Device ID with underscores
+        (e.g. ``32_136723``)
+    :returns: Candidate unique_ids in preferred order (e.g.
+        ``["32:136723-indoor_temperature", "32:136723-indoor_temp"]``)
+    """
+    if not isinstance(entity_id, str) or "." not in entity_id:
+        return []
+
+    domain, object_id = entity_id.split(".", 1)
+    if not domain or not object_id:
+        return []
+
+    if device_id_underscore is None:
+        if not device_id:
+            return []
+        device_id_underscore = _device_id_to_underscore(device_id)
+    else:
+        device_id_underscore = device_id_underscore.lower()
+
+    key = _extract_key_from_object_id(object_id, device_id_underscore)
+    if not key:
+        return []
+
+    device_id_colon = device_id_underscore.replace("_", ":")
+    return _unique_in_order(
+        [f"{device_id_colon}-{key_variant}" for key_variant in _iter_key_variants(key)]
+    )
 
 
 def extract_unique_id_from_param_entity(

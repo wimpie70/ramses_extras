@@ -15,6 +15,7 @@ from .core import (
 from .entity_id_fallbacks import (
     iter_ramses_cc_entity_id_fallbacks,
     iter_ramses_cc_entity_ids,
+    iter_ramses_cc_unique_id_fallbacks,
 )
 from .simple_entity_manager import (
     EntityInfo,
@@ -36,4 +37,5 @@ __all__ = [
     "get_required_entities",
     "iter_ramses_cc_entity_ids",
     "iter_ramses_cc_entity_id_fallbacks",
+    "iter_ramses_cc_unique_id_fallbacks",
 ]

@@ -150,10 +150,6 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 entity_id_fallbacks as _fb,
             )
 
-            extract_unique_id_from_param_entity = (
-                _fb.extract_unique_id_from_param_entity
-            )
-
             registry = er.async_get(self.hass)
             for device_id in self._iter_candidate_device_ids():
                 template_entity = f"number.{device_id.replace(':', '_')}_param_75"
@@ -161,14 +157,16 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 # already covers it — skip the registry lookup.
                 if registry.async_get(template_entity) is not None:
                     continue
-                unique_id = extract_unique_id_from_param_entity(
-                    template_entity,
-                    device_id=device_id,
+                unique_ids = set(
+                    _fb.iter_ramses_cc_unique_id_fallbacks(
+                        template_entity,
+                        device_id=device_id,
+                    )
                 )
-                if not unique_id:
+                if not unique_ids:
                     continue
                 for entry in registry.entities.values():
-                    if entry.unique_id == unique_id:
+                    if entry.unique_id in unique_ids:
                         if entry.entity_id not in patterns:
                             patterns.append(entry.entity_id)
                         break
@@ -1191,18 +1189,16 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
                 entity_id_fallbacks as _fb,
             )
 
-            extract_unique_id_from_param_entity = (
-                _fb.extract_unique_id_from_param_entity
-            )
-
             registry = er.async_get(self.hass)
-            unique_id = extract_unique_id_from_param_entity(
-                template_entity,
-                device_id=device_id,
+            unique_ids = set(
+                _fb.iter_ramses_cc_unique_id_fallbacks(
+                    template_entity,
+                    device_id=device_id,
+                )
             )
-            if unique_id:
+            if unique_ids:
                 for entry in registry.entities.values():
-                    if entry.unique_id == unique_id:
+                    if entry.unique_id in unique_ids:
                         return str(entry.entity_id)
         except Exception:
             pass

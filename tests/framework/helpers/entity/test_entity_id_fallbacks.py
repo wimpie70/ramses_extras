@@ -7,6 +7,7 @@ from custom_components.ramses_extras.framework.helpers.entity.entity_id_fallback
     extract_unique_id_from_param_entity,
     iter_ramses_cc_entity_id_fallbacks,
     iter_ramses_cc_entity_ids,
+    iter_ramses_cc_unique_id_fallbacks,
 )
 
 
@@ -349,6 +350,88 @@ class TestIterRamsesccEntityIdFallbacks:
             device_id_underscore="32_153289",
         )
         assert result == result_upper
+
+
+class TestIterRamsesccUniqueIdFallbacks:
+    """Test cases for iter_ramses_cc_unique_id_fallbacks helper."""
+
+    def test_temperature_key_variants(self):
+        """Unique_id candidates cover both _temperature and _temp keys."""
+        result = iter_ramses_cc_unique_id_fallbacks(
+            "sensor.32_136723_indoor_temperature",
+            device_id_underscore="32_136723",
+        )
+        assert result == [
+            "32:136723-indoor_temperature",
+            "32:136723-indoor_temp",
+        ]
+
+    def test_temp_key_variant(self):
+        """A _temp template key produces the _temperature variant too."""
+        result = iter_ramses_cc_unique_id_fallbacks(
+            "sensor.32_136723_indoor_temp",
+            device_id="32:136723",
+        )
+        assert result == [
+            "32:136723-indoor_temp",
+            "32:136723-indoor_temperature",
+        ]
+
+    def test_fan_slug_prefix(self):
+        """Slug-prefixed template entity_ids strip the slug for the key."""
+        result = iter_ramses_cc_unique_id_fallbacks(
+            "sensor.fan_32_136723_indoor_temperature",
+            device_id_underscore="32_136723",
+        )
+        assert result == [
+            "32:136723-indoor_temperature",
+            "32:136723-indoor_temp",
+        ]
+
+    def test_param_entity_matches_extract_helper(self):
+        """Param entities produce the same unique_id as the legacy helper."""
+        result = iter_ramses_cc_unique_id_fallbacks(
+            "number.32_150000_param_75",
+            device_id="32:150000",
+        )
+        assert result == ["32:150000-param_75"]
+
+    def test_co2_level_variants(self):
+        """co2_level produces the carbon_dioxide variant."""
+        result = iter_ramses_cc_unique_id_fallbacks(
+            "sensor.32_136723_co2_level",
+            device_id_underscore="32_136723",
+        )
+        assert result == ["32:136723-co2_level", "32:136723-carbon_dioxide"]
+
+    def test_non_ramses_cc_pattern_returns_empty(self):
+        """Entity_ids without the device-id prefix return no candidates."""
+        result = iter_ramses_cc_unique_id_fallbacks(
+            "switch.temp_control_32_136723",
+            device_id_underscore="32_136723",
+        )
+        assert result == []
+
+    def test_renamed_device_entity_id_returns_empty(self):
+        """Name-derived entity_ids have no device-id prefix to key on."""
+        result = iter_ramses_cc_unique_id_fallbacks(
+            "sensor.orcon_hrc400_wtw_indoor_temperature",
+            device_id_underscore="32_136723",
+        )
+        assert result == []
+
+    def test_no_device_id(self):
+        """Missing device identifiers return no candidates."""
+        assert iter_ramses_cc_unique_id_fallbacks("sensor.32_136723_indoor_temp") == []
+
+    def test_invalid_entity_id(self):
+        """Invalid entity_ids return no candidates."""
+        assert (
+            iter_ramses_cc_unique_id_fallbacks(
+                "invalid", device_id_underscore="32_136723"
+            )
+            == []
+        )
 
 
 class TestExtractUniqueIdFromParamEntity:

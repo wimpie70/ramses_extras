@@ -511,6 +511,26 @@ class TestSensorControlResolver:
             if not metric.endswith("_abs_humidity"):
                 assert result[metric] is None
 
+    def test_get_internal_mappings_renamed_device_via_unique_id(self):
+        """Entities with name-derived entity_ids resolve via unique_id.
+
+        A device renamed to e.g. "Orcon HRC400 WTW" gets entity_ids like
+        ``sensor.orcon_hrc400_wtw_indoor_temperature`` — no device-id
+        based candidate can match, so the registry unique_id
+        (``32:136723-indoor_temp``) must find the real entity_id.
+        """
+        entry = MagicMock()
+        entry.unique_id = "32:136723-indoor_temp"
+        entry.entity_id = "sensor.orcon_hrc400_wtw_indoor_temperature"
+        self.entity_registry.entities = {entry.entity_id: entry}
+        self.entity_registry.async_get = MagicMock(return_value=None)
+
+        result = self.resolver._get_internal_mappings("32:136723", "FAN")
+
+        assert (
+            result["indoor_temperature"] == "sensor.orcon_hrc400_wtw_indoor_temperature"
+        )
+
     def test_apply_override_internal_kind(self):
         """Test applying internal kind override."""
         internal_entity = "sensor.fan_indoor_temp_01_145_08"

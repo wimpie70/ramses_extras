@@ -23,8 +23,8 @@ from ..common import (
     _singularize_entity_type,
 )
 from .entity_id_fallbacks import (
-    extract_unique_id_from_param_entity,
     iter_ramses_cc_entity_id_fallbacks,
+    iter_ramses_cc_unique_id_fallbacks,
 )
 
 # AVAILABLE_FEATURES import removed to avoid blocking imports
@@ -822,6 +822,7 @@ async def _async_apply_entity_id_fallbacks(
     registry = entity_registry.async_get(hass)
     device_id_underscore = device_id.replace(":", "_").lower()
     resolved: dict[str, str] = dict(entity_mappings)
+    uid_index: dict[str, str] | None = None
 
     for state_name, entity_id in entity_mappings.items():
         if not isinstance(entity_id, str) or not entity_id:
@@ -851,21 +852,27 @@ async def _async_apply_entity_id_fallbacks(
                 break
 
         # If entity_id fallbacks didn't resolve, try unique_id-based
-        # lookup for ramses_cc parameter entities.  With
-        # has_entity_name=True, the entity_id is derived from the
-        # entity name (e.g. "number.comfort_temperature_degc"), not
-        # the template pattern.  The unique_id (e.g.
-        # "32:150000-param_75") is stable, so we can search the
-        # registry by unique_id to find the actual entity_id.
+        # lookup.  With has_entity_name=True, the entity_id is derived
+        # from the device/entity *names* (e.g.
+        # "sensor.orcon_hrc400_wtw_indoor_temperature"), not the
+        # template pattern — so for renamed devices no entity_id
+        # candidate can match.  The ramses_cc unique_id
+        # ("32:150000-indoor_temp", "32:150000-param_75") is stable, so
+        # we search the registry by unique_id instead.
         if resolved[state_name] == entity_id:
-            unique_id = extract_unique_id_from_param_entity(
+            unique_ids = iter_ramses_cc_unique_id_fallbacks(
                 entity_id,
                 device_id_underscore=device_id_underscore,
             )
-            if unique_id:
-                for entry in registry.entities.values():
-                    if entry.unique_id == unique_id:
-                        resolved[state_name] = entry.entity_id
+            if unique_ids:
+                if uid_index is None:
+                    uid_index = {
+                        entry.unique_id: entry.entity_id
+                        for entry in registry.entities.values()
+                    }
+                for unique_id in unique_ids:
+                    if unique_id in uid_index:
+                        resolved[state_name] = uid_index[unique_id]
                         break
 
     return resolved

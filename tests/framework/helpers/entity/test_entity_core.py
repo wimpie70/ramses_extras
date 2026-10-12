@@ -578,3 +578,72 @@ class TestUtilityFunctions:
             result = await generate_entity_patterns_for_feature("test_feature")
 
             assert "sensor.temp_*" in result
+
+
+class TestAsyncApplyEntityIdFallbacks:
+    """Test cases for _async_apply_entity_id_fallbacks."""
+
+    @staticmethod
+    def _make_registry(entries: list[MagicMock]) -> MagicMock:
+        """Build a mock entity registry containing the given entries."""
+        registry = MagicMock()
+        registry.async_get = MagicMock(return_value=None)
+        registry.entities = {entry.entity_id: entry for entry in entries}
+        return registry
+
+    @pytest.mark.asyncio
+    async def test_resolves_renamed_device_sensor_via_unique_id(self):
+        """A renamed device produces name-derived entity_ids that no
+        template can guess; the ramses_cc unique_id must resolve them."""
+        from custom_components.ramses_extras.framework.helpers.entity import core
+
+        entry = MagicMock()
+        entry.unique_id = "32:136723-indoor_temp"
+        entry.entity_id = "sensor.orcon_hrc400_wtw_indoor_temperature"
+        registry = self._make_registry([entry])
+
+        with patch.object(core.entity_registry, "async_get", return_value=registry):
+            result = await core._async_apply_entity_id_fallbacks(
+                MagicMock(),
+                {"indoor_temp": "sensor.32_136723_indoor_temperature"},
+                "32:136723",
+            )
+
+        assert result["indoor_temp"] == "sensor.orcon_hrc400_wtw_indoor_temperature"
+
+    @pytest.mark.asyncio
+    async def test_resolves_param_entity_via_unique_id(self):
+        """Param entities keep resolving via unique_id (regression)."""
+        from custom_components.ramses_extras.framework.helpers.entity import core
+
+        entry = MagicMock()
+        entry.unique_id = "32:150000-param_75"
+        entry.entity_id = "number.orcon_hrc400_wtw_comfort_temperature_degc"
+        registry = self._make_registry([entry])
+
+        with patch.object(core.entity_registry, "async_get", return_value=registry):
+            result = await core._async_apply_entity_id_fallbacks(
+                MagicMock(),
+                {"comfort_temp": "number.32_150000_param_75"},
+                "32:150000",
+            )
+
+        assert (
+            result["comfort_temp"] == "number.orcon_hrc400_wtw_comfort_temperature_degc"
+        )
+
+    @pytest.mark.asyncio
+    async def test_leaves_unmatched_template_unchanged(self):
+        """Templates that match no registry entry stay unchanged."""
+        from custom_components.ramses_extras.framework.helpers.entity import core
+
+        registry = self._make_registry([])
+
+        with patch.object(core.entity_registry, "async_get", return_value=registry):
+            result = await core._async_apply_entity_id_fallbacks(
+                MagicMock(),
+                {"indoor_temp": "sensor.32_136723_indoor_temperature"},
+                "32:136723",
+            )
+
+        assert result["indoor_temp"] == "sensor.32_136723_indoor_temperature"
