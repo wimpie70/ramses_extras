@@ -37,6 +37,7 @@ from custom_components.ramses_extras.framework.helpers.device.core import (
 )
 from custom_components.ramses_extras.framework.helpers.entity import (
     iter_ramses_cc_entity_ids,
+    iter_ramses_cc_unique_id_fallbacks,
 )
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import (
@@ -387,6 +388,35 @@ class FanControlModeSensor(ExtrasSensorEntity):
         }
 
 
+def _find_registry_entry_by_unique_id(
+    registry: Any,
+    key: str,
+    device_id_underscore: str,
+) -> Any | None:
+    """Find a ramses_cc registry entry via its stable unique_id.
+
+    Renamed devices produce entity_ids derived from the device/entity
+    names which cannot be guessed; the unique_id (``{device_id}-{key}``)
+    is stable, so search the registry by unique_id instead.
+    """
+    unique_ids = set(
+        iter_ramses_cc_unique_id_fallbacks(
+            f"sensor.{device_id_underscore}_{key}",
+            device_id_underscore=device_id_underscore,
+        )
+    )
+    if not unique_ids:
+        return None
+    return next(
+        (
+            entry
+            for entry in registry.entities.values()
+            if entry.unique_id in unique_ids
+        ),
+        None,
+    )
+
+
 async def _check_underlying_entities_exist(
     hass: HomeAssistant, device_id: str, sensor_type: str
 ) -> bool:
@@ -437,6 +467,12 @@ async def _check_underlying_entities_exist(
             break
 
     if temp_entity_entry is None:
+        temp_entity_entry = _find_registry_entry_by_unique_id(
+            registry, temp_type, device_id_underscore
+        )
+        if temp_entity_entry is not None:
+            temp_entity = temp_entity_entry.entity_id
+    if temp_entity_entry is None:
         temp_entity = f"sensor.{device_id_underscore}_{temp_type}"
 
     # Check for humidity entity
@@ -453,6 +489,12 @@ async def _check_underlying_entities_exist(
             humidity_entity = name
             break
 
+    if humidity_entity_entry is None:
+        humidity_entity_entry = _find_registry_entry_by_unique_id(
+            registry, humidity_type, device_id_underscore
+        )
+        if humidity_entity_entry is not None:
+            humidity_entity = humidity_entity_entry.entity_id
     if humidity_entity_entry is None:
         humidity_entity = f"sensor.{device_id_underscore}_{humidity_type}"
 
@@ -617,6 +659,18 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             "outdoor_absolute_humidity",
         ] or bool(self._area_sensor)
 
+    def _find_entry_by_unique_id(
+        self, key: str, device_id_underscore: str
+    ) -> Any | None:
+        """Find the underlying ramses_cc entity via its stable unique_id."""
+        from homeassistant.helpers import entity_registry
+
+        return _find_registry_entry_by_unique_id(
+            entity_registry.async_get(self.hass),
+            key,
+            device_id_underscore,
+        )
+
     async def _setup_listeners(self) -> None:
         """Set up listeners for temperature and humidity sensor changes.
 
@@ -668,6 +722,12 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                     break
 
             if not temp_entity:
+                entry = _find_registry_entry_by_unique_id(
+                    registry, temp_type, device_id_underscore
+                )
+                if entry is not None:
+                    temp_entity = entry.entity_id
+            if not temp_entity:
                 temp_entity = EntityHelpers.generate_entity_name_from_template(
                     "sensor",
                     "{device_id}_" + temp_type,
@@ -685,6 +745,12 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                     humidity_entity = name
                     break
 
+            if not humidity_entity:
+                entry = _find_registry_entry_by_unique_id(
+                    registry, humidity_type, device_id_underscore
+                )
+                if entry is not None:
+                    humidity_entity = entry.entity_id
             if not humidity_entity:
                 humidity_entity = EntityHelpers.generate_entity_name_from_template(
                     "sensor",
@@ -837,6 +903,10 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                 break
 
         if not temp_entity:
+            entry = self._find_entry_by_unique_id(temp_type, device_id_underscore)
+            if entry is not None:
+                temp_entity = entry.entity_id
+        if not temp_entity:
             temp_entity = EntityHelpers.generate_entity_name_from_template(
                 "sensor", "{device_id}_" + temp_type, device_id=device_id_underscore
             )
@@ -854,6 +924,10 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                 humidity_entity = name
                 break
 
+        if not humidity_entity:
+            entry = self._find_entry_by_unique_id(humidity_type, device_id_underscore)
+            if entry is not None:
+                humidity_entity = entry.entity_id
         if not humidity_entity:
             humidity_entity = EntityHelpers.generate_entity_name_from_template(
                 "sensor", "{device_id}_" + humidity_type, device_id=device_id_underscore

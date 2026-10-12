@@ -52,7 +52,10 @@ from homeassistant.helpers import entity_registry as er
 
 from ...const import DOMAIN
 from ...framework.helpers.config.model import get_sensor_control_device_section
-from ...framework.helpers.entity.entity_id_fallbacks import iter_ramses_cc_entity_ids
+from ...framework.helpers.entity.entity_id_fallbacks import (
+    iter_ramses_cc_entity_ids,
+    iter_ramses_cc_unique_id_fallbacks,
+)
 from .const import (
     AGGREGATION_STRATEGIES,
     DEFAULT_AGGREGATION_STRATEGY,
@@ -441,6 +444,25 @@ class SensorControlResolver:
                 ),
                 None,
             )
+            if resolved is None and candidates:
+                # Renamed devices produce entity_ids derived from the
+                # device/entity names which cannot be guessed; the
+                # ramses_cc unique_id ("{device_id}-{key}") is stable,
+                # so search the registry by unique_id instead.
+                unique_ids = set(
+                    iter_ramses_cc_unique_id_fallbacks(
+                        candidates[0],
+                        device_id_underscore=device_id_underscore,
+                    )
+                )
+                resolved = next(
+                    (
+                        entry.entity_id
+                        for entry in registry.entities.values()
+                        if entry.unique_id in unique_ids
+                    ),
+                    None,
+                )
             result[metric] = resolved or (candidates[0] if candidates else None)
 
         # Ensure all supported metrics are present
