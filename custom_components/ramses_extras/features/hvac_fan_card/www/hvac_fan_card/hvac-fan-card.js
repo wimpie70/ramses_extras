@@ -2482,22 +2482,6 @@ class HvacFanCard extends RamsesBaseCard {
           const entityId = button.getAttribute('data-entity-id');
 
           if (command && deviceId) {
-            // Check if this is a manual fan command (mode or speed) that should disable temp_control
-            if (['fan_low', 'fan_medium', 'fan_high', 'fan_auto', 'fan_away', 'fan_boost',
-                 'fan_timer_15min', 'fan_timer_30min', 'fan_timer_60min',
-                 'fan_bypass_auto', 'fan_bypass_close', 'fan_bypass_open'].includes(command)) {
-              if (this.config.temp_control_entity) {
-                const tempControlState = this.getEntityState(this.config.temp_control_entity);
-                if (tempControlState && tempControlState.state === 'on') {
-                  try {
-                    await this._hass.callService('switch', 'turn_off', { entity_id: this.config.temp_control_entity });
-                  } catch (e) {
-                    logger.error('Failed to disable temp_control before sending command:', e);
-                  }
-                }
-              }
-            }
-
             // Fan command button
             try {
               await sendFanCommand(this._hass, deviceId, command);

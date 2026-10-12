@@ -194,6 +194,9 @@ async def test_send_fan_command_service_away_disables_extras_before_direct_send(
     hass.services.has_service.return_value = False
     await async_setup_services(hass)
 
+    hass.states = MagicMock()
+    hass.states.get = MagicMock(return_value=None)
+
     send_command_func = None
     for call in hass.services.async_register.call_args_list:
         if call.args[1] == SVC_SEND_FAN_COMMAND:
@@ -231,6 +234,55 @@ async def test_send_fan_command_service_away_disables_extras_before_direct_send(
         mock_arbiter.clear_manual_override_state.assert_called_once_with("32:123456")
         mock_arbiter.async_commit_state.assert_awaited_once_with(
             "32:123456", apply=False
+        )
+        mock_commands.send_command.assert_awaited_once_with("32:123456", "fan_away")
+
+
+async def test_send_fan_command_service_away_turns_off_temp_control_switch(hass):
+    """fan_away from the card stands temp_control down (preserved card behaviour)."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    switch_state = MagicMock()
+    switch_state.state = "on"
+    hass.states = MagicMock()
+    hass.states.get = MagicMock(return_value=switch_state)
+    hass.services.async_call = AsyncMock()
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_away"}
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+        ) as mock_get_arbiter,
+        patch(
+            "custom_components.ramses_extras.features.default.services.get_ramses_commands"
+        ) as mock_commands_class,
+    ):
+        mock_arbiter = MagicMock()
+        mock_arbiter.set_extras_control_enabled = MagicMock()
+        mock_arbiter.clear_manual_override_state = MagicMock()
+        mock_arbiter.async_commit_state = AsyncMock()
+        mock_get_arbiter.return_value = mock_arbiter
+
+        mock_commands = MagicMock()
+        mock_commands.send_command = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await send_command_func(call)
+
+        hass.services.async_call.assert_any_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.temp_control_32_123456"},
         )
         mock_commands.send_command.assert_awaited_once_with("32:123456", "fan_away")
 

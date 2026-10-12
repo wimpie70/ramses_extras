@@ -696,20 +696,21 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         hass.loop.call_later(1, _retry)
 
-    async def _async_disable_temp_control_for_bypass(device_id: str) -> None:
-        """Turn off the temp_control switch when the user manually moves the bypass.
+    async def _async_disable_temp_control(device_id: str, command: str) -> None:
+        """Turn off the temp_control switch on an explicit manual takeover.
 
-        The card's bypass buttons (fan_bypass_open / fan_bypass_close) are an
-        explicit manual override of the bypass damper.  temp_control's whole
-        job is to drive the bypass based on indoor/outdoor/supply temps, so
-        when the user takes over the damper temp_control must stand down —
-        otherwise it would re-send its own bypass command on the next
+        The bypass buttons (fan_bypass_open / fan_bypass_close) and fan_away
+        are explicit manual overrides: temp_control's whole job is to drive
+        the bypass based on indoor/outdoor/supply temps, so when the user
+        takes over the damper (or leaves the house) temp_control must stand
+        down — otherwise it would re-send its own bypass command on the next
         re-evaluation and fight the user.
 
-        This is the deterministic, explicit counterpart to temp_control's
-        inferential "external bypass change" safety net (which exists for the
-        case where the damper is moved by the physical button on the device
-        or another integration, where no service call flows through here).
+        For bypass commands this is the deterministic, explicit counterpart
+        to temp_control's inferential "external bypass change" safety net
+        (which exists for the case where the damper is moved by the physical
+        button on the device or another integration, where no service call
+        flows through here).
 
         Only turns the switch off if it currently exists and is on, so the
         common case of pressing a bypass button while temp_control is already
@@ -726,7 +727,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 {"entity_id": switch_id},
             )
             _LOGGER.info(
-                "Manual bypass command for %s; turned temp_control off (switch %s)",
+                "Manual %s for %s; turned temp_control off (switch %s)",
+                command,
                 device_id,
                 switch_id,
             )
@@ -786,6 +788,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             arbiter.set_extras_control_enabled(device_id, False)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
+            await _async_disable_temp_control(device_id, command)
             commands = get_ramses_commands(hass)
             await commands.send_command(device_id, command)
             return
@@ -816,7 +819,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             # position on its next re-evaluation.  fan_bypass_auto is
             # NOT handled here — it is the "give control back" gesture
             # and is covered by the resume path below.
-            await _async_disable_temp_control_for_bypass(device_id)
+            await _async_disable_temp_control(device_id, command)
             commands = get_ramses_commands(hass)
             await commands.send_command(device_id, command)
             return
