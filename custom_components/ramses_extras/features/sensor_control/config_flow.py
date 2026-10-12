@@ -211,6 +211,8 @@ def _describe_remote_binding(rem: dict[str, Any]) -> str:
     zone_id = str(rem.get("zone_id") or "").strip()
     area_id = str(rem.get("area_id") or "").strip()
     manual_timeout = int(rem.get("manual_timeout") or 60)
+    revert_mode = str(rem.get("revert_mode") or "extras_auto")
+    revert_boost = str(rem.get("revert_boost") or "extras_auto")
 
     parts = [
         f"rem_id: {rem_id}",
@@ -225,6 +227,10 @@ def _describe_remote_binding(rem: dict[str, Any]) -> str:
         parts.append("no timeout")
     elif manual_timeout != 60:
         parts.append(f"timeout: {manual_timeout}s")
+    if revert_mode != "extras_auto":
+        parts.append(f"revert: {revert_mode}")
+    if revert_boost != "extras_auto":
+        parts.append(f"boost revert: {revert_boost}")
     return "- " + "; ".join(parts)
 
 
@@ -2597,6 +2603,8 @@ async def _async_handle_rems_edit(
 
         if not errors:
             manual_timeout = int(user_input.get("manual_timeout") or 60)
+            revert_mode = str(user_input.get("revert_mode") or "extras_auto")
+            revert_boost = str(user_input.get("revert_boost") or "extras_auto")
             updated_rem: dict[str, Any] = {
                 "rem_id": rem_id,
                 "enabled": enabled,
@@ -2607,6 +2615,10 @@ async def _async_handle_rems_edit(
                 updated_rem["area_id"] = area_id
             if manual_timeout != 60:
                 updated_rem["manual_timeout"] = manual_timeout
+            if revert_mode != "extras_auto":
+                updated_rem["revert_mode"] = revert_mode
+            if revert_boost != "extras_auto":
+                updated_rem["revert_boost"] = revert_boost
 
             new_rems: list[dict[str, Any]] = []
             for rem in fan_rems:
@@ -2638,6 +2650,16 @@ async def _async_handle_rems_edit(
     area_default = str(existing_rem.get("area_id") if existing_rem else "").strip()
     manual_timeout_default = (
         int(existing_rem.get("manual_timeout") or 60) if existing_rem else 60
+    )
+    revert_mode_default = (
+        str(existing_rem.get("revert_mode") or "extras_auto")
+        if existing_rem
+        else "extras_auto"
+    )
+    revert_boost_default = (
+        str(existing_rem.get("revert_boost") or "extras_auto")
+        if existing_rem
+        else "extras_auto"
     )
 
     zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
@@ -2701,6 +2723,38 @@ async def _async_handle_rems_edit(
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),
+            vol.Optional(
+                "revert_mode",
+                default=revert_mode_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(
+                            value="extras_auto", label="extras auto"
+                        ),
+                        selector.SelectOptionDict(
+                            value="fan_auto", label="fan (unit) auto"
+                        ),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                "revert_boost",
+                default=revert_boost_default,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(
+                            value="extras_auto", label="extras auto"
+                        ),
+                        selector.SelectOptionDict(
+                            value="fan_auto", label="fan (unit) auto"
+                        ),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
         }
     )
 
@@ -2714,7 +2768,12 @@ async def _async_handle_rems_edit(
         "Note: When using area_id, ensure the area is actually "
         "within the selected zone_id.\n\n"
         "Manual timeout: 0 = no timeout (persist until other demand takes over), "
-        "60 = default 60 seconds."
+        "60 = default 60 seconds.\n\n"
+        "Revert mode: what happens when the manual timeout for a speed "
+        "button expires — back to extras auto, or stay on the unit's own "
+        "auto.\n\n"
+        "Revert boost: same for timed boosts (15/30/60 min); the boost "
+        "duration comes from the command itself."
     )
 
     if errors:

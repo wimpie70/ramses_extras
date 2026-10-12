@@ -465,6 +465,84 @@ class TestObservedCommandFromPacket:
             assert call_kwargs.kwargs["command"] == "fan_timer_60min"
 
     @pytest.mark.asyncio
+    async def test_string_payload_22f3_alternate_flags_15min(self, hass):
+        """22F3 with flags byte 0x02 (not 0x12) still decodes the timer.
+
+        Some remote models send 0002 0F 03040000 instead of
+        0012 0F 03040404 — the duration byte is what matters.
+        """
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_demand_registry"
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": "00020F03040000",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            await _drain_pending(hass)
+
+            call_kwargs = mock_bind.return_value.record_remote_activity.call_args
+            assert call_kwargs.kwargs["command"] == "fan_timer_15min"
+
+    @pytest.mark.asyncio
+    async def test_dict_payload_22f3_minutes(self, hass):
+        """Parsed 22F3 dict payload maps minutes -> fan_timer_*."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_demand_registry"
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": {"minutes": 30, "fan_mode": "high"},
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            await _drain_pending(hass)
+
+            call_kwargs = mock_bind.return_value.record_remote_activity.call_args
+            assert call_kwargs.kwargs["command"] == "fan_timer_30min"
+
+    @pytest.mark.asyncio
     async def test_dict_payload_fan_mode_by_name(self, hass):
         """Test dict payload with fan_mode name."""
         hass.services.has_service.return_value = False
@@ -1048,6 +1126,264 @@ class TestObservedCommandFromPacket:
             mock_arb_inst.set_extras_control_enabled.assert_called_once_with(
                 "32:123456", False
             )
+
+    @pytest.mark.asyncio
+    async def test_matched_rem_timer_boost_schedules_release(self, hass):
+        """Bound REM 22F3 timer: manual override (fan_high) + timed release."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_demand_registry"
+            ) as mock_demand,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
+            ) as mock_coord,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = ["18:123456"]
+            mock_bind.return_value.get_bindings_for_fan.return_value = [
+                {"rem_id": "18_123456", "zone_id": "01"}
+            ]
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            config_manager = mock_bind.return_value._get_config_manager.return_value
+            config_manager.get_fan_remote_bindings.return_value = [
+                {"rem_id": "18:123456", "zone_id": "01"}
+            ]
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.set_extras_control_enabled = MagicMock()
+            mock_arb_inst.set_manual_override_state = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            mock_demand.return_value.get_all_demands_for_fan.return_value = {}
+
+            mock_coord_inst = MagicMock()
+            mock_coord_inst.async_run_zone_actuation_cycle = AsyncMock()
+            mock_coord.return_value = mock_coord_inst
+
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": "00120F03040404",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            # Boost is tracked as a manual override at fan_high.
+            mock_arb_inst.set_manual_override_state.assert_called_once()
+            kwargs = mock_arb_inst.set_manual_override_state.call_args.kwargs
+            assert kwargs["requested_speed"] == "fan_high"
+            assert kwargs["reason"] == "manual_remote_boost"
+            assert kwargs["metadata"]["boost"] == "fan_timer_15min"
+            # Extras stays enabled (no longer disabled like before).
+            mock_arb_inst.set_extras_control_enabled.assert_called_once_with(
+                "32:123456", True
+            )
+            # Release scheduled at 15 min + margin.
+            hass.loop.call_later.assert_called_once()
+            assert hass.loop.call_later.call_args.args[0] == 15 * 60 + 30
+            # REM zone demand set for the bound zone.
+            mock_demand.return_value.set_demand.assert_called_once()
+            demand_args = mock_demand.return_value.set_demand.call_args
+            assert demand_args.args[:3] == (
+                "32:123456",
+                "01",
+                DemandSource.REM,
+            )
+
+    @pytest.mark.asyncio
+    async def test_matched_rem_timer_boost_revert_fan_auto(self, hass):
+        """Binding revert_boost=fan_auto: release leaves extras disabled."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_demand_registry"
+            ) as mock_demand,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
+            ) as mock_coord,
+            patch(
+                "custom_components.ramses_extras.framework.helpers."
+                "override_release.get_fan_speed_arbiter"
+            ) as mock_rel_arb,
+            patch(
+                "custom_components.ramses_extras.framework.helpers."
+                "override_release.get_zone_demand_registry"
+            ) as mock_rel_demand,
+            patch(
+                "custom_components.ramses_extras.framework.helpers."
+                "zone_coordinator.get_zone_coordinator"
+            ) as mock_rel_coord,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = ["18:123456"]
+            mock_bind.return_value.get_bindings_for_fan.return_value = [
+                {"rem_id": "18_123456"}
+            ]
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            config_manager = mock_bind.return_value._get_config_manager.return_value
+            config_manager.get_fan_remote_bindings.return_value = [
+                {"rem_id": "18:123456", "revert_boost": "fan_auto"}
+            ]
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+            mock_rel_arb.return_value = mock_arb_inst
+
+            mock_demand.return_value.get_all_demands_for_fan.return_value = {}
+            mock_rel_demand.return_value = mock_demand.return_value
+
+            mock_coord_inst = MagicMock()
+            mock_coord_inst.async_run_zone_actuation_cycle = AsyncMock()
+            mock_coord.return_value = mock_coord_inst
+            mock_rel_coord.return_value = mock_coord_inst
+
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": "00121E03040404",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            # Fire the scheduled release callback (30 min + margin).
+            assert hass.loop.call_later.call_args.args[0] == 30 * 60 + 30
+            callback = hass.loop.call_later.call_args.args[1]
+            callback()
+            await _drain_pending(hass)
+
+            # Release clears the override and disables extras (fan auto).
+            mock_arb_inst.clear_manual_override_state.assert_called_once_with(
+                "32:123456"
+            )
+            assert mock_arb_inst.set_extras_control_enabled.call_args_list[-1].args == (
+                "32:123456",
+                False,
+            )
+
+    @pytest.mark.asyncio
+    async def test_matched_rem_speed_press_timeout_zero_persists(self, hass):
+        """manual_timeout=0 on the binding: no release is scheduled."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_demand_registry"
+            ) as mock_demand,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_coordinator"
+            ) as mock_coord,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = ["18:123456"]
+            mock_bind.return_value.get_bindings_for_fan.return_value = [
+                {"rem_id": "18_123456"}
+            ]
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            config_manager = mock_bind.return_value._get_config_manager.return_value
+            config_manager.get_fan_remote_bindings.return_value = [
+                {"rem_id": "18:123456", "manual_timeout": 0}
+            ]
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            mock_demand.return_value.get_all_demands_for_fan.return_value = {}
+
+            mock_coord_inst = MagicMock()
+            mock_coord_inst.async_run_zone_actuation_cycle = AsyncMock()
+            mock_coord.return_value = mock_coord_inst
+
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000307",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_arb_inst.set_manual_override_state.assert_called_once()
+            hass.loop.call_later.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unmatched_rem_timer_boost_defaults_extras_auto(self, hass):
+        """Unbound sender 22F3: external boost still schedules a release."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_demand_registry"
+            ) as mock_demand,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            mock_demand.return_value.get_all_demands_for_fan.return_value = {}
+
+            msg = _make_msg(
+                {
+                    "src": "21_999999",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": "00123C03040404",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            kwargs = mock_arb_inst.set_manual_override_state.call_args.kwargs
+            assert kwargs["reason"] == "manual_external_boost"
+            assert kwargs["requested_speed"] == "fan_high"
+            # Default revert is extras_auto: release scheduled at 60m + margin.
+            hass.loop.call_later.assert_called_once()
+            assert hass.loop.call_later.call_args.args[0] == 60 * 60 + 30
 
     @pytest.mark.asyncio
     async def test_dedup_within_15_seconds(self, hass):
