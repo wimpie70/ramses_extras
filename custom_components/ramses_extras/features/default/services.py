@@ -131,6 +131,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     result = speed_map.get(str(speed).lower())
                     if result:
                         return result
+            if normalized_code == "22F3":
+                minutes = payload.get("minutes") or payload.get("MINUTES")
+                if isinstance(minutes, (int, float)) and minutes > 0:
+                    return f"fan_timer_{int(minutes)}min"
             return None
 
         # Handle list payloads (for fan codes like 12A0, 31DA)
@@ -191,6 +195,21 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             }.get(normalized_payload)
             if result:
                 return result
+            # Generic decode (ramses_rf HvacVentilationControlPayload):
+            # byte1 = flags, byte2 = duration; flag 0x40 means the
+            # duration is in hours rather than minutes.  Remote models
+            # differ in the flags byte (e.g. 0x12 vs 0x02), so decode
+            # instead of exact-matching whole payloads.
+            if len(normalized_payload) >= 6:
+                try:
+                    flags = int(normalized_payload[2:4], 16)
+                    minutes = int(normalized_payload[4:6], 16)
+                except ValueError:
+                    return None
+                if flags & 0x40:
+                    minutes *= 60
+                if minutes > 0:
+                    return f"fan_timer_{minutes}min"
 
         return None
 

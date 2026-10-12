@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 from ...const import DOMAIN
@@ -28,14 +29,10 @@ REVERT_EXTRAS_AUTO = "extras_auto"
 REVERT_FAN_AUTO = "fan_auto"
 REVERT_MODES = {REVERT_EXTRAS_AUTO, REVERT_FAN_AUTO}
 
-# Duration encoded in each fan_timer_* command (seconds).  The boost
+# Duration encoded in each fan_timer_* command name.  The boost
 # itself runs on the unit's own 22F3 timer; the release only governs
 # when the recorded override state is reverted.
-_BOOST_DURATION_S = {
-    "fan_timer_15min": 15 * 60,
-    "fan_timer_30min": 30 * 60,
-    "fan_timer_60min": 60 * 60,
-}
+_BOOST_TIMER_RE = re.compile(r"^fan_timer_(\d+)min$")
 
 # Extra delay so the unit's own timer finishes before extras automation
 # resumes and can steer the fan again.
@@ -44,10 +41,10 @@ _BOOST_RELEASE_MARGIN_S = 30.0
 
 def boost_release_delay(command: str) -> float | None:
     """Return the release delay for a fan_timer_* command, or None."""
-    duration = _BOOST_DURATION_S.get(command)
-    if duration is None:
+    match = _BOOST_TIMER_RE.match(command)
+    if match is None:
         return None
-    return duration + _BOOST_RELEASE_MARGIN_S
+    return int(match.group(1)) * 60 + _BOOST_RELEASE_MARGIN_S
 
 
 def clear_source_zone_demands(hass: Any, device_id: str, source: DemandSource) -> None:

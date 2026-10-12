@@ -70,7 +70,11 @@ class TestBoostReleaseDelay:
     def test_unknown_command_returns_none(self):
         assert boost_release_delay("fan_high") is None
         assert boost_release_delay("fan_away") is None
-        assert boost_release_delay("fan_timer_5min") is None
+
+    def test_arbitrary_durations_parse(self):
+        """Non-standard remote timer values still get a release delay."""
+        assert boost_release_delay("fan_timer_5min") == 5 * 60 + 30
+        assert boost_release_delay("fan_timer_120min") == 120 * 60 + 30
 
 
 class TestScheduleAndCancel:

@@ -465,6 +465,84 @@ class TestObservedCommandFromPacket:
             assert call_kwargs.kwargs["command"] == "fan_timer_60min"
 
     @pytest.mark.asyncio
+    async def test_string_payload_22f3_alternate_flags_15min(self, hass):
+        """22F3 with flags byte 0x02 (not 0x12) still decodes the timer.
+
+        Some remote models send 0002 0F 03040000 instead of
+        0012 0F 03040404 — the duration byte is what matters.
+        """
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_demand_registry"
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": "00020F03040000",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            await _drain_pending(hass)
+
+            call_kwargs = mock_bind.return_value.record_remote_activity.call_args
+            assert call_kwargs.kwargs["command"] == "fan_timer_15min"
+
+    @pytest.mark.asyncio
+    async def test_dict_payload_22f3_minutes(self, hass):
+        """Parsed 22F3 dict payload maps minutes -> fan_timer_*."""
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_zone_demand_registry"
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+
+            msg = _make_msg(
+                {
+                    "src": "18_123456",
+                    "dst": "32_123456",
+                    "code": "22F3",
+                    "payload": {"minutes": 30, "fan_mode": "high"},
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            await _drain_pending(hass)
+
+            call_kwargs = mock_bind.return_value.record_remote_activity.call_args
+            assert call_kwargs.kwargs["command"] == "fan_timer_30min"
+
+    @pytest.mark.asyncio
     async def test_dict_payload_fan_mode_by_name(self, hass):
         """Test dict payload with fan_mode name."""
         hass.services.has_service.return_value = False
