@@ -1539,6 +1539,12 @@ class ScenarioEngine:
 
         if device.device_id in self._primed_fans:
             return
+        # A device that cannot respond should not be primed — the
+        # request would also leak onto the bus as fake remote evidence
+        # for a device meant to stay silent (e.g. a standalone CO2
+        # sensor declared FAN).
+        if not device.enabled or device.suppress_responses:
+            return
 
         self._primed_fans.add(device.device_id)
 
