@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from copy import deepcopy
 
 from ..base import Recipe, RecipeContext
@@ -48,6 +49,22 @@ def _call_swallowing_errors(token: str, domain: str, service: str, data: dict) -
 
 def _packet_count(lines: list[str], fragment: str) -> int:
     return sum(1 for line in lines if fragment in line)
+
+
+def _wait_for_sweep_quiet(fragment: str, timeout: float = 30.0) -> None:
+    """Wait until no packet matching ``fragment`` is logged for ~2s.
+
+    A reload fires an automatic fan-param sweep per FAN; upstream dedupes a
+    second sweep while one runs, so checks must baseline after the in-flight
+    sweep drains or they count nothing.
+    """
+    deadline = time.monotonic() + timeout
+    last = container_log_timestamp()
+    while time.monotonic() < deadline:
+        time.sleep(2)
+        if _packet_count(log_lines_since("packet_log.log*", last), fragment) == 0:
+            return
+        last = container_log_timestamp()
 
 
 class R138FanParamServiceDelegation(Recipe):
@@ -158,6 +175,7 @@ class R138FanParamServiceDelegation(Recipe):
         )
 
         # --- update_fan_params: extras compat alias -> upstream sweep ---
+        _wait_for_sweep_quiet(rq_fragment)
         baseline = container_log_timestamp()
         _fire_and_forget(
             ctx.token, "ramses_extras", "update_fan_params", {"device_id": FAN}
@@ -181,6 +199,7 @@ class R138FanParamServiceDelegation(Recipe):
         # Let the first sweep finish — upstream dedupes overlapping sweeps
         # per device, so a second call while one runs may be merged away.
         wait(15, "for the first param sweep to complete")
+        _wait_for_sweep_quiet(rq_fragment)
 
         # --- update_fan_params: direct upstream call ---
         baseline = container_log_timestamp()

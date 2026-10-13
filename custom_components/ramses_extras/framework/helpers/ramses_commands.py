@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import Context
+from homeassistant.exceptions import ServiceNotFound
 
 from .commands.registry import get_command_registry
 from .transport_monitor import get_transport_monitor
@@ -663,6 +664,37 @@ class RamsesCommands:
                 err,
             )
 
+    async def _call_ramses_cc_service(
+        self,
+        service: str,
+        service_data: dict[str, Any],
+        *,
+        blocking: bool,
+        context: Context | None = None,
+    ) -> None:
+        """Call a ramses_cc domain service, retrying while it is unregistered.
+
+        During a ramses_cc reload there is a window where the config entry
+        exists but its domain services are not (yet) registered; a service
+        call then raises ServiceNotFound.  Retry briefly instead of failing
+        the command outright.
+        """
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                await self.hass.services.async_call(
+                    "ramses_cc",
+                    service,
+                    service_data,
+                    blocking=blocking,
+                    context=context,
+                )
+                return
+            except ServiceNotFound:
+                if time.monotonic() >= deadline:
+                    raise
+                await asyncio.sleep(0.5)
+
     async def update_fan_params(
         self,
         device_id: str,
@@ -686,7 +718,7 @@ class RamsesCommands:
         # Convert device_id format if needed (32_153289 -> 32:153289)
         device_id_formatted = device_id.replace("_", ":")
 
-        coordinator = await self._get_ramses_cc_coordinator()
+        coordinator = await self._wait_for_ramses_cc_coordinator()
         if not coordinator:
             return CommandResult(
                 success=False, error_message="ramses_cc broker not found"
@@ -721,8 +753,7 @@ class RamsesCommands:
             # The upstream sweep takes ~0.5s per schema parameter; call the
             # service non-blocking so we return immediately, matching the
             # previous fire-and-forget behaviour.
-            await self.hass.services.async_call(
-                "ramses_cc",
+            await self._call_ramses_cc_service(
                 "update_fan_params",
                 service_data,
                 blocking=False,
@@ -758,7 +789,7 @@ class RamsesCommands:
         :return: CommandResult with execution status
         """
         try:
-            coordinator = await self._get_ramses_cc_coordinator()
+            coordinator = await self._wait_for_ramses_cc_coordinator()
             if not coordinator:
                 return CommandResult(
                     success=False, error_message="ramses_cc broker not found"
@@ -773,8 +804,7 @@ class RamsesCommands:
             if from_id:
                 service_data["from_id"] = from_id.replace("_", ":")
 
-            await self.hass.services.async_call(
-                "ramses_cc",
+            await self._call_ramses_cc_service(
                 "set_fan_param",
                 service_data,
                 blocking=True,
@@ -1015,6 +1045,22 @@ class RamsesCommands:
         else:
             # Clear all failures - useful for global reset or maintenance
             self._failed_commands.clear()
+
+    async def _wait_for_ramses_cc_coordinator(
+        self, timeout: float = 10.0
+    ) -> RamsesCoordinator | None:
+        """Poll for the ramses_cc coordinator while the entry reloads.
+
+        During a ramses_cc reload there is a window where the config entry
+        exists but ``runtime_data`` (or ``coordinator.client``) is not yet
+        populated; a one-shot lookup then returns None.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            coordinator = await self._get_ramses_cc_coordinator()
+            if coordinator is not None or time.monotonic() >= deadline:
+                return coordinator
+            await asyncio.sleep(0.5)
 
     async def _get_ramses_cc_coordinator(self) -> RamsesCoordinator | None:
         """Get the ramses_cc coordinator instance.
