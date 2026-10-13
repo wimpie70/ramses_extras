@@ -6,6 +6,7 @@ from typing import Any
 from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -62,6 +63,11 @@ class CO2ControlNumber(ExtrasNumberEntity, RestoreEntity):
                 self._attr_native_value = float(last_state.state)
             except TypeError, ValueError:
                 pass
+
+    @ha_callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Opt in to in-place ``entity_id`` changes (HA 2026.11+)."""
+        super().async_entity_id_changed(old_entity_id)
 
     @property
     def native_value(self) -> float:
