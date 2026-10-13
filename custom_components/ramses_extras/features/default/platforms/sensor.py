@@ -376,6 +376,11 @@ class FanControlModeSensor(ExtrasSensorEntity):
         )
         await super().async_will_remove_from_hass()
 
+    @ha_callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Opt in to in-place ``entity_id`` changes (HA 2026.11+)."""
+        super().async_entity_id_changed(old_entity_id)
+
     def _handle_control_mode_changed(self, control_mode: str) -> None:
         self.set_native_value(control_mode)
 
@@ -652,6 +657,13 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         if self._is_absolute_humidity_sensor():
             await self._setup_listeners()
             await self._recalculate_and_update()
+
+    @ha_callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Opt in to in-place ``entity_id`` changes (HA 2026.11+)."""
+        eid_changed = getattr(super(), "async_entity_id_changed", None)
+        if eid_changed is not None:
+            eid_changed(old_entity_id)
 
     def _is_absolute_humidity_sensor(self) -> bool:
         return self._sensor_type in [

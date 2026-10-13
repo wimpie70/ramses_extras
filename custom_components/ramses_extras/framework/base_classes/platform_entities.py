@@ -22,6 +22,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, StateType
@@ -113,6 +114,18 @@ class ExtrasPlatformEntity(ExtrasBaseEntity, Entity):
     async def async_added_to_hass(self) -> None:
         """Entity added to Home Assistant."""
         await super().async_added_to_hass()
+
+    @ha_callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Opt in to in-place ``entity_id`` changes (HA 2026.11+).
+
+        Nothing on this entity is keyed on its ``entity_id``, so no
+        bookkeeping needs updating on rename.  ``Entity`` only defines
+        this hook from HA 2026.11, hence the guarded super call.
+        """
+        eid_changed = getattr(super(), "async_entity_id_changed", None)
+        if eid_changed is not None:
+            eid_changed(old_entity_id)
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from device."""
