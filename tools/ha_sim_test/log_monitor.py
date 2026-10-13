@@ -411,7 +411,7 @@ class LogMonitor:
             ],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=120,
         )
         return result.stdout + result.stderr
 

@@ -24,6 +24,8 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Awaitable, Callable
+from datetime import datetime
+from datetime import timedelta as td
 from typing import Any
 
 from .const import InstanceConfig
@@ -1158,34 +1160,43 @@ def wait_for_transport_ready(timeout: int = 30) -> bool:
     ``Subscribed to status topic`` message is NOT followed by a
     ``MQTT disconnected`` message in the log window.
     """
-    inst = get_current_instance()
 
     def _check() -> bool:
-        result = subprocess.run(
-            ["docker", "logs", "--since", "15s", inst.name],
-            capture_output=True,
-            text=True,
-            timeout=10,
+        # ``docker logs`` on a long-running container is too slow (the
+        # json log grows unbounded and every call scans it), so read the
+        # recent minutes of home-assistant.log via docker exec instead.
+        now_ts = container_log_timestamp()
+        if not now_ts:
+            return False
+        since = (datetime.fromisoformat(now_ts) - td(seconds=300)).isoformat()
+        logs = "\n".join(log_lines_since("home-assistant.log*", since))
+        # Ready iff the most recent "ready" marker postdates the most
+        # recent disconnect marker — a stably connected but idle bridge
+        # shows an old subscribe with no disconnect after it.
+        # Ready markers (newest ramses_cc first):
+        #   "MqttPoolBridge: Subscribed to broker status" — the
+        #       ramses_cc MqttPoolBridge completes its (re)subscribe
+        #   "MqttPoolBridge: RX <-"/"TX ->" — live bridge traffic, for
+        #       when the reload finished before this wait started
+        #   "MqttCallbackPool: child ... online" — ramses_tx pool
+        #       (issue 1185)
+        #   "Subscribed to status topic" — legacy ramses_tx transport
+        ready_idx = max(
+            logs.rfind(m)
+            for m in (
+                "MqttPoolBridge: RX <-",
+                "MqttPoolBridge: TX ->",
+                "MqttPoolBridge: Subscribed to broker status",
+                "MqttCallbackPool: child",
+                "Subscribed to status topic",
+            )
         )
-        if result.returncode != 0:
+        if ready_idx == -1:
             return False
-        logs = result.stderr or ""
-        # Find the last "Subscribed to status topic" line and check that
-        # no "MQTT disconnected" appears after it.  This ensures the
-        # transport is stably connected, not in a transient reconnect
-        # during the double-disconnect cycle of a profile reload.
-        # The multi-HGI pool uses MqttCallbackPool (issue 1185),
-        # which logs "MqttCallbackPool: child ... online" instead of
-        # "Subscribed to status topic".  Check for either message.
-        sub_idx = logs.rfind("Subscribed to status topic")
-        if sub_idx == -1:
-            sub_idx = logs.rfind("MqttCallbackPool: child")
-        if sub_idx == -1:
-            return False
-        after_sub = logs[sub_idx:]
-        if "MQTT disconnected" in after_sub:
-            return False
-        return True
+        down_idx = max(
+            logs.rfind(m) for m in ("MQTT disconnected", "broker disconnected, pausing")
+        )
+        return ready_idx > down_idx
 
     return wait_for(
         _check,
