@@ -809,45 +809,61 @@ async def _reload_ramses_cc(
                 "Profile load: could not delete ramses.db (preload): %s", err
             )
 
+    # Register profile devices with the ScenarioEngine *before* ramses_cc
+    # setup: FAN initialisation probes (RQ|2411, RQ|10D0) fired during
+    # async_setup must already find suppress_responses devices active so the
+    # legacy ResponseEngine defers to the ScenarioEngine instead of answering
+    # them by type-prefix (R143 startup race).
+    engine = None
+    devices_to_activate = []
+    if profile_devices:
+        engine = hass.data.get("ramses_extras", {}).get("device_simulator_engine")
+    if engine:
+        from .scenario_engine import ActiveDevice
+
+        for dev_id, dev_cfg in profile_devices.items():
+            slug = dev_cfg.get("class") or _infer_device_class_from_id(dev_id) or "FAN"
+            device = ActiveDevice(
+                device_id=dev_id,
+                slug=slug,
+                variant_id="default",
+                excluded_codes=["1FC9"],
+                suppress_autonomous=bool(dev_cfg.get("suppress_autonomous", False)),
+                suppress_responses=bool(dev_cfg.get("suppress_responses", False)),
+                enabled=bool(dev_cfg.get("enabled", True)),
+                origin="profile",
+            )
+            devices_to_activate.append((device, slug))
+
+        # Silent pre-registration: marks devices active without emitters or
+        # a startup burst, so inbound RQs during setup defer to the
+        # ScenarioEngine, which honours suppress_responses.
+        await asyncio.gather(
+            *(
+                engine.async_activate_device(
+                    device, start_emitter=False, emit_startup_burst=False
+                )
+                for device, _ in devices_to_activate
+            )
+        )
+
     await hass.config_entries.async_setup(entry_id)
 
-    if profile_devices:
-        ra = hass.data.get("ramses_extras", {})
-        engine = ra.get("device_simulator_engine")
-        if engine:
-            await asyncio.sleep(3)
-            from .scenario_engine import ActiveDevice
+    if devices_to_activate and engine:
+        await asyncio.sleep(3)
 
-            # Create all device objects first
-            devices_to_activate = []
-            for dev_id, dev_cfg in profile_devices.items():
-                slug = (
-                    dev_cfg.get("class") or _infer_device_class_from_id(dev_id) or "FAN"
+        # Re-activate devices in parallel, now starting emitters as requested
+        activation_tasks = []
+        for device, slug in devices_to_activate:
+            activation_tasks.append(
+                engine.async_activate_device(
+                    device,
+                    start_emitter=auto_start_on_reload,
+                    emit_startup_burst=False,
                 )
-                device = ActiveDevice(
-                    device_id=dev_id,
-                    slug=slug,
-                    variant_id="default",
-                    excluded_codes=["1FC9"],
-                    suppress_autonomous=bool(dev_cfg.get("suppress_autonomous", False)),
-                    suppress_responses=bool(dev_cfg.get("suppress_responses", False)),
-                    enabled=bool(dev_cfg.get("enabled", True)),
-                    origin="profile",
-                )
-                devices_to_activate.append((device, slug))
+            )
+            LOGGER.info("Profile load: registering %s (%s)", device.device_id, slug)
 
-            # Activate devices in parallel
-            activation_tasks = []
-            for device, slug in devices_to_activate:
-                activation_tasks.append(
-                    engine.async_activate_device(
-                        device,
-                        start_emitter=auto_start_on_reload,
-                        emit_startup_burst=False,
-                    )
-                )
-                LOGGER.info("Profile load: registering %s (%s)", device.device_id, slug)
-
-            await asyncio.gather(*activation_tasks)
-            await asyncio.sleep(1)
-            await _trigger_ramses_discovery(hass)
+        await asyncio.gather(*activation_tasks)
+        await asyncio.sleep(1)
+        await _trigger_ramses_discovery(hass)
