@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -86,6 +87,11 @@ class TempControlSwitch(ExtrasSwitchEntity, RestoreEntity):
         if last is not None:
             self._is_on = last.state == STATE_ON
             self.async_write_ha_state()
+
+    @ha_callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Opt in to in-place ``entity_id`` changes (HA 2026.11+)."""
+        super().async_entity_id_changed(old_entity_id)
 
 
 from custom_components.ramses_extras.const import (  # noqa: E402

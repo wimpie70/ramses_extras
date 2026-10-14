@@ -183,6 +183,11 @@ class TransportStateBinarySensor(ExtrasBinarySensorEntity):
         transport_monitor.unregister_callback(f"transport_sensor_{self._device_id}")
         await super().async_will_remove_from_hass()
 
+    @ha_callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Opt in to in-place ``entity_id`` changes (HA 2026.11+)."""
+        super().async_entity_id_changed(old_entity_id)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

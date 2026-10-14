@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
@@ -197,6 +198,11 @@ class HumidityControlNumber(ExtrasNumberEntity):
         # Call base class method first
         await super().async_added_to_hass()
         _LOGGER.debug("Number %s added to hass", self._attr_name)
+
+    @ha_callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Opt in to in-place ``entity_id`` changes (HA 2026.11+)."""
+        super().async_entity_id_changed(old_entity_id)
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""

@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -112,6 +113,11 @@ class TempControlDesiredSpeedSelect(ExtrasSelectEntity, RestoreEntity):
         if restored in set(self._attr_options or []):
             self._attr_current_option = restored
             self.async_write_ha_state()
+
+    @ha_callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Opt in to in-place ``entity_id`` changes (HA 2026.11+)."""
+        super().async_entity_id_changed(old_entity_id)
 
     def _load_value_from_config(self) -> str:
         config_entry = self.config_entry
