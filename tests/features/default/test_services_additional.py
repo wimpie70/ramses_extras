@@ -368,8 +368,8 @@ class TestServiceRegistration:
         hass.services.has_service.return_value = False
         await async_setup_services(hass)
 
-        # Should register 9 services
-        assert hass.services.async_register.call_count == 9
+        # Should register 11 services
+        assert hass.services.async_register.call_count == 11
 
         # Check that all expected services were registered
         registered_services = [

@@ -52,6 +52,32 @@ class ZoneDemandSignal:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class ZoneVetoSignal:
+    """A veto (inhibit) signal for a specific zone.
+
+    While any veto is active on a zone, the zone coordinator drives that
+    zone to its min_position regardless of positive demands — e.g. an
+    open window contact inhibiting ventilation in that room.  Vetoes are
+    cleared per-source, like demands.
+
+    Attributes:
+        fan_id: FAN device ID
+        zone_id: Zone identifier
+        source: What feature/source generated this veto
+        vetoed: True if this source currently inhibits the zone
+        timestamp: When the signal was generated
+        metadata: Optional additional context
+    """
+
+    fan_id: str
+    zone_id: str
+    source: DemandSource
+    vetoed: bool
+    timestamp: datetime = field(default_factory=datetime.now)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 class ZoneDemandRegistry:
     """Registry for tracking zone demand signals from various sources.
 
@@ -64,6 +90,8 @@ class ZoneDemandRegistry:
         self._hass = hass
         # { (fan_id, zone_id): { source: ZoneDemandSignal } }
         self._demands: dict[tuple[str, str], dict[DemandSource, ZoneDemandSignal]] = {}
+        # { (fan_id, zone_id): { source: ZoneVetoSignal } }
+        self._vetoes: dict[tuple[str, str], dict[DemandSource, ZoneVetoSignal]] = {}
 
         self._actuation_debounce_handles: dict[str, asyncio.Handle] = {}
 
@@ -273,9 +301,161 @@ class ZoneDemandRegistry:
             source for source, signal in self._demands[key].items() if signal.has_demand
         ]
 
+    def set_veto(
+        self,
+        fan_id: str,
+        zone_id: str,
+        source: DemandSource,
+        vetoed: bool,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Set veto (inhibit) state for a zone from a specific source.
+
+        While any source has ``vetoed=True`` for a zone, the zone
+        coordinator drives it to ``min_position`` regardless of demands.
+
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :param source: Source of the veto signal
+        :param vetoed: True if this source inhibits the zone
+        :param metadata: Optional context (input entity, reason, etc.)
+        """
+        key = (fan_id, zone_id)
+        if key not in self._vetoes:
+            self._vetoes[key] = {}
+
+        self._vetoes[key][source] = ZoneVetoSignal(
+            fan_id=fan_id,
+            zone_id=zone_id,
+            source=source,
+            vetoed=vetoed,
+            metadata=metadata or {},
+        )
+
+        _LOGGER.debug(
+            "Zone veto set: %s:%s source=%s vetoed=%s",
+            fan_id,
+            zone_id,
+            source.name,
+            vetoed,
+        )
+
+        bus = getattr(self._hass, "bus", None)
+        fire_event = getattr(bus, "fire", None)
+        if callable(fire_event):
+            fire_event(
+                "ramses_extras_zone_veto_changed",
+                {
+                    "fan_id": fan_id,
+                    "zone_id": zone_id,
+                    "source": source.name,
+                    "vetoed": vetoed,
+                },
+            )
+
+        self._schedule_zone_actuation(fan_id)
+
+    def clear_veto(
+        self,
+        fan_id: str,
+        zone_id: str,
+        source: DemandSource | None = None,
+    ) -> None:
+        """Clear veto for a zone.
+
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :param source: Specific source to clear, or None for all sources
+        """
+        key = (fan_id, zone_id)
+        if key not in self._vetoes:
+            return
+
+        bus = getattr(self._hass, "bus", None)
+        fire_event = getattr(bus, "fire", None)
+
+        removed_sources: list[DemandSource] = []
+
+        if source is None:
+            removed_sources = list(self._vetoes[key].keys())
+            del self._vetoes[key]
+        elif source in self._vetoes[key]:
+            del self._vetoes[key][source]
+            removed_sources = [source]
+            if not self._vetoes[key]:
+                del self._vetoes[key]
+
+        if removed_sources and callable(fire_event):
+            for removed in removed_sources:
+                fire_event(
+                    "ramses_extras_zone_veto_changed",
+                    {
+                        "fan_id": fan_id,
+                        "zone_id": zone_id,
+                        "source": removed.name,
+                        "vetoed": False,
+                    },
+                )
+
+        self._schedule_zone_actuation(fan_id)
+
+    def has_veto(self, fan_id: str, zone_id: str) -> bool:
+        """Check if a zone has any active veto.
+
+        Returns True if ANY source reports vetoed=True.
+        """
+        key = (fan_id, zone_id)
+        if key not in self._vetoes:
+            return False
+
+        return any(signal.vetoed for signal in self._vetoes[key].values())
+
+    def get_veto_breakdown(
+        self,
+        fan_id: str,
+        zone_id: str,
+    ) -> dict[DemandSource, bool]:
+        """Get veto breakdown by source for a zone.
+
+        Returns dict mapping each source to its veto state.
+        """
+        key = (fan_id, zone_id)
+        if key not in self._vetoes:
+            return {}
+
+        return {source: signal.vetoed for source, signal in self._vetoes[key].items()}
+
+    def get_all_vetoes_for_fan(
+        self, fan_id: str
+    ) -> dict[str, dict[DemandSource, bool]]:
+        """Get all zone vetoes for a FAN.
+
+        :return: Dict mapping zone_id to { source: vetoed }
+        """
+        result: dict[str, dict[DemandSource, bool]] = {}
+        for (fan, zone), sources in self._vetoes.items():
+            if fan == fan_id:
+                result[zone] = {
+                    source: signal.vetoed for source, signal in sources.items()
+                }
+        return result
+
+    def get_veto_sources(
+        self,
+        fan_id: str,
+        zone_id: str,
+    ) -> list[DemandSource]:
+        """Get list of sources currently vetoing a zone."""
+        key = (fan_id, zone_id)
+        if key not in self._vetoes:
+            return []
+
+        return [source for source, signal in self._vetoes[key].items() if signal.vetoed]
+
     def clear(self) -> None:
-        """Clear all demand signals."""
+        """Clear all demand and veto signals."""
         self._demands.clear()
+        self._vetoes.clear()
 
     def get_diagnostics(self) -> dict[str, Any]:
         """Return diagnostic information."""
@@ -291,6 +471,18 @@ class ZoneDemandRegistry:
                     for source, signal in sources.items()
                 }
                 for (fan_id, zone_id), sources in self._demands.items()
+            },
+            "veto_count": len(self._vetoes),
+            "vetoes": {
+                f"{fan_id}:{zone_id}": {
+                    source.name: {
+                        "vetoed": signal.vetoed,
+                        "timestamp": signal.timestamp.isoformat(),
+                        "metadata": signal.metadata,
+                    }
+                    for source, signal in sources.items()
+                }
+                for (fan_id, zone_id), sources in self._vetoes.items()
             },
         }
 
@@ -315,6 +507,7 @@ def get_zone_demand_registry(hass: HomeAssistant) -> ZoneDemandRegistry:
 __all__ = [
     "DemandSource",
     "ZoneDemandSignal",
+    "ZoneVetoSignal",
     "ZoneDemandRegistry",
     "get_zone_demand_registry",
 ]

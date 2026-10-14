@@ -36,8 +36,8 @@ async def test_async_setup_services(hass):
 
     await async_setup_services(hass)
 
-    # Should have registered 9 services (4 original + 3 zone testing + 2 new)
-    assert hass.services.async_register.call_count == 9
+    # Should have registered 11 services (4 original + 5 zone testing + 2 new)
+    assert hass.services.async_register.call_count == 11
     registered_services = [
         call.args[1] for call in hass.services.async_register.call_args_list
     ]

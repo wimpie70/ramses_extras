@@ -547,6 +547,8 @@ class ZoneCoordinator:
         - If zone has demand (from humidity/CO2/etc): eligible for max_position
         - With max_open_zones: highest priority zones selected for max_position
         - Otherwise: drive to min_position
+        - A vetoed zone (e.g. open window) is always driven to min_position
+          and excluded from demand selection regardless of other demands
 
         :return: Dict with results per zone {zone_id: {"target": pos, "actual": pos}}
         """
@@ -574,6 +576,15 @@ class ZoneCoordinator:
             # Get zone config
             zone_config = self._zone_configs.get(zone_id)
             if zone_config is None or not zone_config.is_controllable:
+                continue
+
+            # A vetoed zone never counts as demanding — the veto wins
+            if self._demand_registry.has_veto(self._fan_id, zone_id):
+                _LOGGER.debug(
+                    "Zone %s:%s is vetoed, excluding from demand selection",
+                    self._fan_id,
+                    zone_id,
+                )
                 continue
 
             # Check if zone has demand
@@ -642,8 +653,12 @@ class ZoneCoordinator:
             # Determine target position based on demand and priority selection
             is_selected = zone_id in selected_for_max
             has_demand = self._demand_registry.has_demand(self._fan_id, zone_id)
+            has_veto = self._demand_registry.has_veto(self._fan_id, zone_id)
 
-            if not any_zone_has_demand:
+            if has_veto:
+                target_position = zone_config.min_position
+                reason = "Zone vetoed (inhibit active)"
+            elif not any_zone_has_demand:
                 target_position = zone_config.max_position
                 reason = "No zone demand (open all)"
             elif is_selected:
@@ -674,6 +689,7 @@ class ZoneCoordinator:
                         "target_position": target_position,
                         "previous_position": current_position,
                         "has_demand": has_demand,
+                        "has_veto": has_veto,
                         "is_selected": is_selected,
                         "reason": reason,
                         "success": success,
@@ -684,6 +700,7 @@ class ZoneCoordinator:
                         "previous": current_position,
                         "success": success,
                         "has_demand": has_demand,
+                        "has_veto": has_veto,
                         "is_selected": is_selected,
                     }
 
@@ -702,6 +719,7 @@ class ZoneCoordinator:
                         "current": current_position,
                         "success": True,
                         "has_demand": has_demand,
+                        "has_veto": has_veto,
                         "is_selected": is_selected,
                         "skipped": True,
                     }
@@ -714,6 +732,7 @@ class ZoneCoordinator:
                     "error": str(e),
                     "target": target_position,
                     "has_demand": has_demand,
+                    "has_veto": has_veto,
                     "is_selected": is_selected,
                 }
 
