@@ -39,6 +39,8 @@ SVC_UPDATE_FAN_PARAMS = "update_fan_params"
 SVC_GET_QUEUE_STATISTICS = "get_queue_statistics"
 SVC_SET_ZONE_DEMAND = "set_zone_demand"
 SVC_CLEAR_ZONE_DEMAND = "clear_zone_demand"
+SVC_SET_ZONE_VETO = "set_zone_veto"
+SVC_CLEAR_ZONE_VETO = "clear_zone_veto"
 SVC_RUN_ZONE_ACTUATION = "run_zone_actuation"
 SVC_CALIBRATE_ALL_VALVES = "calibrate_all_valves"
 SVC_FORCE_ZONE_VENTILATION = "force_zone_ventilation"
@@ -996,6 +998,67 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             DOMAIN,
             SVC_CLEAR_ZONE_DEMAND,
             _async_clear_zone_demand,
+            schema=vol.Schema(
+                {
+                    vol.Required("device_id"): cv.string,
+                    vol.Optional("zone_id"): cv.string,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_SET_ZONE_VETO):
+
+        async def _async_set_zone_veto(call: ServiceCall) -> None:
+            """Set a manual zone veto (inhibit) for testing."""
+            fan_id = call.data["device_id"]
+            zone_id = call.data["zone_id"]
+            vetoed = call.data.get("vetoed", True)
+
+            demand_registry = get_zone_demand_registry(hass)
+            demand_registry.set_veto(
+                fan_id=fan_id,
+                zone_id=zone_id,
+                source=DemandSource.MANUAL,
+                vetoed=vetoed,
+            )
+            _LOGGER.info("Manual zone veto set: %s:%s = %s", fan_id, zone_id, vetoed)
+
+        hass.services.async_register(
+            DOMAIN,
+            SVC_SET_ZONE_VETO,
+            _async_set_zone_veto,
+            schema=vol.Schema(
+                {
+                    vol.Required("device_id"): cv.string,
+                    vol.Required("zone_id"): cv.string,
+                    vol.Optional("vetoed", default=True): cv.boolean,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_CLEAR_ZONE_VETO):
+
+        async def _async_clear_zone_veto(call: ServiceCall) -> None:
+            """Clear manual zone veto for testing."""
+            fan_id = call.data["device_id"]
+            zone_id = call.data.get("zone_id")
+
+            demand_registry = get_zone_demand_registry(hass)
+            if zone_id:
+                demand_registry.clear_veto(fan_id, zone_id, DemandSource.MANUAL)
+            else:
+                # Clear all manual vetoes for this FAN
+                zones = demand_registry.get_all_vetoes_for_fan(fan_id)
+                for zid in zones:
+                    demand_registry.clear_veto(fan_id, zid, DemandSource.MANUAL)
+            _LOGGER.info("Manual zone veto cleared: %s:%s", fan_id, zone_id or "all")
+
+        hass.services.async_register(
+            DOMAIN,
+            SVC_CLEAR_ZONE_VETO,
+            _async_clear_zone_veto,
             schema=vol.Schema(
                 {
                     vol.Required("device_id"): cv.string,

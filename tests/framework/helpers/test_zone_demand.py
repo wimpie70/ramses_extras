@@ -310,6 +310,252 @@ class TestZoneDemandRegistry:
         assert registry.has_demand("18:000731", "office") is False
 
 
+class TestZoneVeto:
+    """Test zone veto (inhibit) functionality."""
+
+    def test_signal_creation(self):
+        """Test creating a veto signal."""
+        from custom_components.ramses_extras.framework.helpers.zone_demand import (
+            ZoneVetoSignal,
+        )
+
+        signal = ZoneVetoSignal(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+            metadata={"input": "window_contact"},
+        )
+
+        assert signal.fan_id == "18:000730"
+        assert signal.zone_id == "bedroom"
+        assert signal.source == DemandSource.MANUAL
+        assert signal.vetoed is True
+        assert signal.metadata == {"input": "window_contact"}
+        assert isinstance(signal.timestamp, datetime)
+
+    def test_set_and_has_veto(self, registry):
+        """Test setting and checking a veto."""
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+
+        assert registry.has_veto("18:000730", "bedroom") is True
+
+    def test_has_veto_no_sources(self, registry):
+        """Test has_veto returns False when nothing registered."""
+        assert registry.has_veto("18:000730", "bedroom") is False
+
+    def test_veto_does_not_count_as_demand(self, registry):
+        """A veto must not create demand."""
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+
+        assert registry.has_veto("18:000730", "bedroom") is True
+        assert registry.has_demand("18:000730", "bedroom") is False
+
+    def test_demand_does_not_count_as_veto(self, registry):
+        """A demand must not create a veto."""
+        registry.set_demand(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.HUMIDITY,
+            has_demand=True,
+        )
+
+        assert registry.has_demand("18:000730", "bedroom") is True
+        assert registry.has_veto("18:000730", "bedroom") is False
+
+    def test_multiple_veto_sources(self, registry):
+        """Veto persists until every vetoing source releases."""
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.SCHEDULE,
+            vetoed=True,
+        )
+
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=False,
+        )
+
+        assert registry.has_veto("18:000730", "bedroom") is True  # SCHEDULE left
+
+        breakdown = registry.get_veto_breakdown("18:000730", "bedroom")
+        assert breakdown[DemandSource.MANUAL] is False
+        assert breakdown[DemandSource.SCHEDULE] is True
+
+    def test_clear_veto_specific_source(self, registry):
+        """Test clearing a veto for one source."""
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.REM,
+            vetoed=True,
+        )
+
+        registry.clear_veto("18:000730", "bedroom", DemandSource.MANUAL)
+
+        assert registry.has_veto("18:000730", "bedroom") is True  # REM still vetoes
+        sources = registry.get_veto_sources("18:000730", "bedroom")
+        assert DemandSource.REM in sources
+        assert DemandSource.MANUAL not in sources
+
+    def test_clear_veto_all_sources(self, registry):
+        """Test clearing all vetoes for a zone."""
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+
+        registry.clear_veto("18:000730", "bedroom")
+
+        assert registry.has_veto("18:000730", "bedroom") is False
+        assert registry.get_veto_breakdown("18:000730", "bedroom") == {}
+
+    def test_clear_veto_unknown_zone(self, registry):
+        """Test clear_veto on an unknown zone is a no-op."""
+        registry.clear_veto("18:000730", "unknown")
+
+    def test_get_all_vetoes_for_fan(self, registry):
+        """Test getting all vetoes for a FAN."""
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+        registry.set_veto(
+            fan_id="18:000731",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+
+        vetoes = registry.get_all_vetoes_for_fan("18:000730")
+
+        assert "bedroom" in vetoes
+        assert vetoes["bedroom"][DemandSource.MANUAL] is True
+
+    def test_clear_all_clears_vetoes(self, registry):
+        """Test registry.clear() also clears vetoes."""
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+
+        registry.clear()
+
+        assert registry.has_veto("18:000730", "bedroom") is False
+
+    def test_veto_in_diagnostics(self, registry):
+        """Test vetoes appear in diagnostics."""
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+            metadata={"input": "window_contact"},
+        )
+
+        diagnostics = registry.get_diagnostics()
+
+        assert diagnostics["veto_count"] == 1
+        veto_entry = diagnostics["vetoes"]["18:000730:bedroom"]["MANUAL"]
+        assert veto_entry["vetoed"] is True
+        assert veto_entry["metadata"] == {"input": "window_contact"}
+
+    def test_set_veto_fires_event(self, hass, registry):
+        """Test set_veto fires ramses_extras_zone_veto_changed."""
+        fired = []
+        hass.bus.fire = lambda event, data: fired.append((event, data))
+
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+
+        assert fired == [
+            (
+                "ramses_extras_zone_veto_changed",
+                {
+                    "fan_id": "18:000730",
+                    "zone_id": "bedroom",
+                    "source": "MANUAL",
+                    "vetoed": True,
+                },
+            )
+        ]
+
+    def test_clear_veto_fires_event(self, hass, registry):
+        """Test clear_veto fires a release event per source."""
+        fired = []
+        hass.bus.fire = lambda event, data: fired.append((event, data))
+
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+        fired.clear()
+
+        registry.clear_veto("18:000730", "bedroom", DemandSource.MANUAL)
+
+        assert fired == [
+            (
+                "ramses_extras_zone_veto_changed",
+                {
+                    "fan_id": "18:000730",
+                    "zone_id": "bedroom",
+                    "source": "MANUAL",
+                    "vetoed": False,
+                },
+            )
+        ]
+
+    def test_set_veto_without_bus(self, registry):
+        """Test set_veto when hass has no bus."""
+        registry._hass.bus = None
+
+        registry.set_veto(
+            fan_id="18:000730",
+            zone_id="bedroom",
+            source=DemandSource.MANUAL,
+            vetoed=True,
+        )
+
+        assert registry.has_veto("18:000730", "bedroom") is True
+
+
 class TestGetZoneDemandRegistry:
     """Test get_zone_demand_registry function."""
 

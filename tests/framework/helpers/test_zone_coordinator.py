@@ -432,6 +432,7 @@ class TestZoneCoordinator:
 
         mock_demand_registry = MagicMock()
         mock_demand_registry.has_demand = MagicMock(return_value=True)  # Has demand
+        mock_demand_registry.has_veto = MagicMock(return_value=False)
 
         with (
             patch(
@@ -478,6 +479,7 @@ class TestZoneCoordinator:
 
         mock_demand_registry = MagicMock()
         mock_demand_registry.has_demand = MagicMock(return_value=False)
+        mock_demand_registry.has_veto = MagicMock(return_value=False)
 
         with (
             patch(
@@ -524,6 +526,7 @@ class TestZoneCoordinator:
 
         mock_demand_registry = MagicMock()
         mock_demand_registry.has_demand = MagicMock(return_value=True)
+        mock_demand_registry.has_veto = MagicMock(return_value=False)
 
         with (
             patch(
@@ -552,6 +555,100 @@ class TestZoneCoordinator:
             assert results["office"]["target"] == 100
             # Should NOT call set_position since already within 5% of target
             mock_adapter.async_set_position.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_run_zone_actuation_cycle_veto_beats_demand(
+        self, hass, mock_adapter_registry
+    ):
+        """A vetoed zone drives to min_position even while it has demand."""
+        mock_adapter = MagicMock()
+        mock_adapter.zone_id = "office"
+        mock_adapter.is_available = True
+        mock_position = MagicMock()
+        mock_position.position = 100
+        mock_position.is_available = True
+        mock_adapter.async_get_position = AsyncMock(return_value=mock_position)
+        mock_adapter.async_set_position = AsyncMock(return_value=True)
+
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)
+        mock_demand_registry.has_veto = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.configure_zone(
+                "office",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+            )
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            assert "office" in results
+            assert results["office"]["success"] is True
+            assert results["office"]["target"] == 0
+            assert results["office"]["has_veto"] is True
+            mock_adapter.async_set_position.assert_called_once_with(0)
+
+    @pytest.mark.asyncio
+    async def test_async_run_zone_actuation_cycle_veto_holds_in_open_all(
+        self, hass, mock_adapter_registry
+    ):
+        """A vetoed zone stays at min even when all zones open (no demand)."""
+        mock_adapter = MagicMock()
+        mock_adapter.zone_id = "office"
+        mock_adapter.is_available = True
+        mock_position = MagicMock()
+        mock_position.position = 50
+        mock_position.is_available = True
+        mock_adapter.async_get_position = AsyncMock(return_value=mock_position)
+        mock_adapter.async_set_position = AsyncMock(return_value=True)
+
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=False)
+        mock_demand_registry.has_veto = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.configure_zone(
+                "office",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+            )
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            assert "office" in results
+            assert results["office"]["target"] == 0
+            mock_adapter.async_set_position.assert_called_once_with(0)
 
     @pytest.mark.asyncio
     async def test_async_run_zone_actuation_cycle_disabled(
@@ -612,6 +709,7 @@ class TestZoneCoordinator:
         """Test has_zone_demand delegates to registry."""
         mock_demand_registry = MagicMock()
         mock_demand_registry.has_demand = MagicMock(return_value=True)
+        mock_demand_registry.has_veto = MagicMock(return_value=False)
 
         with (
             patch(
@@ -734,6 +832,7 @@ class TestZoneCoordinator:
         # All 3 zones have demand
         mock_demand_registry = MagicMock()
         mock_demand_registry.has_demand = MagicMock(return_value=True)
+        mock_demand_registry.has_veto = MagicMock(return_value=False)
 
         with (
             patch(
@@ -806,6 +905,7 @@ class TestZoneCoordinator:
 
         mock_demand_registry = MagicMock()
         mock_demand_registry.has_demand = MagicMock(return_value=True)
+        mock_demand_registry.has_veto = MagicMock(return_value=False)
 
         with (
             patch(

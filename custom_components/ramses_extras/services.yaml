@@ -222,6 +222,53 @@ clear_zone_demand:
       selector:
         text:
 
+set_zone_veto:
+  name: Set Zone Veto
+  description: >-
+    Manually set a zone veto (inhibit) for testing. While a veto is active
+    the zone is driven to its minimum position regardless of demands.
+  fields:
+    device_id:
+      name: Device ID
+      description: FAN device ID (e.g., 32:153289)
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    zone_id:
+      name: Zone ID
+      description: Zone identifier
+      required: true
+      example: "zone 1 + 2"
+      selector:
+        text:
+    vetoed:
+      name: Vetoed
+      description: Set to true to inhibit the zone, false to release
+      required: false
+      default: true
+      selector:
+        boolean:
+
+clear_zone_veto:
+  name: Clear Zone Veto
+  description: Clear manual zone veto for testing
+  fields:
+    device_id:
+      name: Device ID
+      description: FAN device ID (e.g., 32:153289)
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    zone_id:
+      name: Zone ID
+      description: Zone identifier (optional - clears all if not provided)
+      required: false
+      example: "zone 1 + 2"
+      selector:
+        text:
+
 run_zone_actuation:
   name: Run Zone Actuation
   description: Trigger zone actuation cycle for hardware testing
