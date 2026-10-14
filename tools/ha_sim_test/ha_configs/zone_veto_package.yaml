@@ -1,0 +1,43 @@
+# Testing package for the zone demand veto path (issue 292).
+#
+# Provides a simulated zone valve: a template cover whose position is
+# backed by an input_number, so cover.set_cover_position calls from the
+# zone coordinator's custom_valve adapter are fully observable in HA
+# state without real valve hardware.
+#
+# Copied into /config/packages/ by recipe R149 for the duration of the
+# test; not part of the permanent sim config.
+
+input_number:
+  ramses_extras_sim_zone_valve_pos:
+    name: 'Sim Zone Valve Position'
+    min: 0
+    max: 100
+    step: 1
+    initial: 0
+
+template:
+  - cover:
+      - name: 'Sim Zone Valve'
+        unique_id: sim_zone_valve
+        position: >-
+          {{ states('input_number.ramses_extras_sim_zone_valve_pos')
+             | int(0) }}
+        open_cover:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.ramses_extras_sim_zone_valve_pos
+            data:
+              value: 100
+        close_cover:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.ramses_extras_sim_zone_valve_pos
+            data:
+              value: 0
+        set_cover_position:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.ramses_extras_sim_zone_valve_pos
+            data:
+              value: '{{ position }}'
