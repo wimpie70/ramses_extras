@@ -17,9 +17,12 @@ persisted schema at every phase:
      re-declaration wins over the tombstone.
   5. ``sync_topology`` purges the ``_unbound`` tombstone.
 
-No on-air unbind is exercised: no verified protocol exists yet, so the
-``on_air`` option is intentionally left unset here (the strategy stub
-always reports "unsupported").
+The FAN carries ``_scheme: orcon`` so ``on_air: true`` exercises the
+strategy-dispatched RF path too: the Orcon ``unbind_remote`` runs the
+standard 1FC9 handshake with an *empty* Confirm (payload ``00`` — the
+hardware-verified unbind discriminator, see issue comment).  A ``W``
+Accept from the FAN is injected like R135; the emitted Confirm frame is
+asserted in the docker log.
 
 See: https://github.com/ramses-rf/ramses_cc/issues/1283
 """
@@ -27,6 +30,8 @@ See: https://github.com/ramses-rf/ramses_cc/issues/1283
 from __future__ import annotations
 
 import json
+import threading
+import time
 import urllib.request
 
 from ..base import Recipe, RecipeContext
@@ -34,15 +39,20 @@ from ..const import FAN
 from ..helpers import (
     call_service,
     get_current_instance,
+    get_docker_logs,
     get_schema_retry,
     load_profile_yaml,
     wait_for,
+    wait_for_transport_ready,
 )
 from ..profile import minimal_hvac_yaml
 
 # Fresh REM id (not in any profile) — r18 uses 37:999999, keep ours
 # distinct so the two recipes cannot collide on a shared container.
 FAKED_REM = "37:001283"
+
+# FAN 32:150000 -> 0x8249F0 — the captured Orcon Accept offers 31D9+31DA
+_FAN_ACCEPT_PAYLOAD = "0031D98249F00031DA8249F0"
 
 
 class R150UnbindDeviceRoundTrip(Recipe):
@@ -61,7 +71,10 @@ class R150UnbindDeviceRoundTrip(Recipe):
         # regardless of what a previous recipe left behind.
         print("  Loading minimal_hvac profile (FAN + REM + CO2 + HGI)...")
         try:
-            await load_profile_yaml(ctx.token, minimal_hvac_yaml())
+            await load_profile_yaml(
+                ctx.token,
+                minimal_hvac_yaml({FAN: {"_class": "FAN", "_scheme": "orcon"}}),
+            )
             print("  minimal_hvac profile loaded")
         except RuntimeError as e:
             print(f"  Profile load failed: {e}")
@@ -185,8 +198,57 @@ class R150UnbindDeviceRoundTrip(Recipe):
             f"remotes={_fan().get('remotes')}",
         )
 
-        # --- Phase 3: confirmed unbind -------------------------------------
-        print(f"  Phase 3: unbind_device {FAKED_REM} (confirm: true)...")
+        # --- Phase 3: confirmed unbind, with the on-air handshake ----------
+        # The FAN is _scheme: orcon, so unbind_remote runs the real FSM:
+        # a 1FC9 Offer from the (faked) REM, a W Accept from the FAN
+        # (injected — the sim has no auto-respondent), then the empty
+        # Confirm `1FC9 001 00` that releases the FAN's slot.
+        #
+        # The faked REM is not part of the sim's device DB, so its
+        # I-frames are not echoed by the scenario engine — and without
+        # the echo the TX layer retries for 60s+.  Activate an
+        # autonomous_emissions device for it so the echo path sees an
+        # active device (mirrors a real REM on the bus).
+        print(f"  Phase 3: unbind_device {FAKED_REM} (confirm: true, on_air: true)...")
+        wait_for_transport_ready(timeout=30)
+        try:
+            call_service(
+                ctx.token,
+                "ramses_extras",
+                "device_simulator_run_scenario",
+                {
+                    "scenario_type": "autonomous_emissions",
+                    "params": {
+                        "device_id": FAKED_REM,
+                        "device_type": "REM",
+                        "excluded_codes": ["1FC9"],
+                    },
+                },
+            )
+        except RuntimeError as e:
+            print(f"  autonomous_emissions activation failed: {e}")
+
+        def _inject_fan_accept() -> None:
+            time.sleep(1.5)
+            try:
+                call_service(
+                    ctx.token,
+                    "ramses_extras",
+                    "device_simulator_inject_message",
+                    {
+                        "source_id": FAN,
+                        "dst": FAKED_REM,
+                        "code": "1FC9",
+                        "payload": _FAN_ACCEPT_PAYLOAD,
+                        "verb": "W",
+                    },
+                )
+            except RuntimeError as e:
+                print(f"  Accept inject failed: {e}")
+
+        threading.Thread(target=_inject_fan_accept, daemon=True).start()
+        log_since = ctx.log_monitor.snapshot()
+
         unbound = False
         try:
             call_service(
@@ -196,12 +258,32 @@ class R150UnbindDeviceRoundTrip(Recipe):
                 {
                     "device_id": FAKED_REM,
                     "confirm": True,
+                    "on_air": True,
                 },
             )
             unbound = True
         except RuntimeError as e:
             print(f"  unbind_device failed: {str(e)[:120]}")
         ctx.check("unbind_device service call succeeds", unbound, "")
+
+        # Verify the on-air frames: an Offer broadcast by the REM, then
+        # the empty Confirm directed at the FAN (the unbind marker).
+        raw_logs = get_docker_logs(since=log_since)
+        tx_lines = [
+            line
+            for line in raw_logs.splitlines()
+            if FAKED_REM in line and "1FC9" in line
+        ]
+        ctx.check(
+            f"on-air: 1FC9 offer sent impersonating {FAKED_REM}",
+            any(" I " in line for line in tx_lines),
+            f"tx_lines={tx_lines[-3:]}",
+        )
+        ctx.check(
+            "on-air: empty Confirm (1FC9 001 00) sent to FAN",
+            any("1FC9 001 00" in line and FAN in line for line in tx_lines),
+            f"tx_lines={tx_lines[-3:]}",
+        )
 
         if unbound:
             wait_for(
