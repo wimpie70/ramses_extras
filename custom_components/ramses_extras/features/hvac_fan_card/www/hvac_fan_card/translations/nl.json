@@ -99,6 +99,7 @@
     "outdoor_temp": "Buitentemperatuur",
     "indoor_temp": "Binnentemperatuur",
     "outdoor_rh": "Relatieve luchtvochtigheid buiten",
+    "outdoor_rh_supply": "Relatieve luchtvochtigheid — gemeten in het toevoerkanaal, na warmteterugwinning/bypass; hoort bij de toevoertemperatuur",
     "indoor_rh": "Relatieve luchtvochtigheid binnen — balance schakelt in boven het ingestelde maximum",
     "abs_humidity": "Absolute luchtvochtigheid (g water per m³ lucht) — binnen vs. buiten bepaalt of ventileren vocht afvoert",
     "co2": "CO₂-gehalte binnen",

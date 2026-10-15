@@ -421,3 +421,204 @@ def test_default_humidity_sensor_get_device_type():
     hass.data.get = MagicMock(return_value={"devices": []})
     result = sensor._get_device_type("32:123456")
     assert result is None
+
+
+def test_default_humidity_sensor_get_abs_temperature_kind():
+    """Test _get_abs_temperature_kind reads the stored sensor_control config."""
+    hass = MagicMock()
+    mock_entry = MagicMock()
+    mock_entry.data = {}
+    mock_entry.options = {}
+    hass.data = {"ramses_extras": {"config_entry": mock_entry}}
+    sensor = DefaultHumiditySensor(hass, "32:123456", "outdoor_absolute_humidity", {})
+
+    sensor_control_section = {
+        "devices": {
+            "32:123456": {
+                "abs_humidity_inputs": {
+                    "outdoor_abs_humidity": {
+                        "temperature": {"kind": "internal_supply"},
+                        "humidity": {"kind": "internal"},
+                    }
+                }
+            }
+        }
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.default.platforms.sensor.get_migrated_feature_section",
+        return_value=sensor_control_section,
+    ):
+        assert (
+            sensor._get_abs_temperature_kind("outdoor_abs_humidity")
+            == "internal_supply"
+        )
+
+    # No sensor_control section → default "internal"
+    with patch(
+        "custom_components.ramses_extras.features.default.platforms.sensor.get_migrated_feature_section",
+        return_value={},
+    ):
+        assert sensor._get_abs_temperature_kind("outdoor_abs_humidity") == "internal"
+
+
+@pytest.mark.asyncio
+async def test_default_humidity_sensor_abs_internal_supply_uses_supply_temp():
+    """internal_supply pairs the outdoor RH with the supply temperature."""
+    hass = MagicMock()
+    sensor = DefaultHumiditySensor(hass, "32:123456", "outdoor_absolute_humidity", {})
+    sensor._is_sensor_control_enabled = MagicMock(return_value=True)
+    sensor._get_device_type = MagicMock(return_value="FAN")
+    sensor._resolve_cc_sensor_entity_id = MagicMock(
+        return_value="sensor.32_123456_supply_temp"
+    )
+
+    resolver_result = {
+        "abs_humidity_inputs": {
+            "outdoor_abs_humidity": {
+                "temperature": {"kind": "internal_supply"},
+                "humidity": {"kind": "internal"},
+            }
+        },
+        "mappings": {
+            "outdoor_temperature": "sensor.32_123456_outdoor_temp",
+            "outdoor_humidity": "sensor.32_123456_outdoor_humidity",
+        },
+    }
+
+    states = {
+        "sensor.32_123456_supply_temp": MagicMock(state="14.0"),
+        "sensor.32_123456_outdoor_humidity": MagicMock(state="70"),
+    }
+    hass.states.get = MagicMock(side_effect=lambda eid: states.get(eid))
+
+    mock_resolver = MagicMock()
+    mock_resolver.resolve_entity_mappings = AsyncMock(return_value=resolver_result)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver",
+            return_value=mock_resolver,
+        ),
+        patch(
+            "custom_components.ramses_extras.framework.helpers.common.calculate_absolute_humidity",
+            return_value=9.1,
+        ) as mock_calc,
+    ):
+        result = await sensor._async_compute_abs_from_sensor_control()
+
+    assert result == 9.1
+    sensor._resolve_cc_sensor_entity_id.assert_called_once_with("supply_temp")
+    # The outdoor temperature mapping must NOT be used for the pairing
+    mock_calc.assert_called_once_with(14.0, 70.0)
+
+
+@pytest.mark.asyncio
+async def test_default_humidity_sensor_abs_internal_uses_outdoor_temp():
+    """Default internal pairing still uses the outdoor temperature."""
+    hass = MagicMock()
+    sensor = DefaultHumiditySensor(hass, "32:123456", "outdoor_absolute_humidity", {})
+    sensor._is_sensor_control_enabled = MagicMock(return_value=True)
+    sensor._get_device_type = MagicMock(return_value="FAN")
+
+    resolver_result = {
+        "abs_humidity_inputs": {
+            "outdoor_abs_humidity": {
+                "temperature": {"kind": "internal"},
+                "humidity": {"kind": "internal"},
+            }
+        },
+        "mappings": {
+            "outdoor_temperature": "sensor.32_123456_outdoor_temp",
+            "outdoor_humidity": "sensor.32_123456_outdoor_humidity",
+        },
+    }
+
+    states = {
+        "sensor.32_123456_outdoor_temp": MagicMock(state="10.0"),
+        "sensor.32_123456_outdoor_humidity": MagicMock(state="70"),
+    }
+    hass.states.get = MagicMock(side_effect=lambda eid: states.get(eid))
+
+    mock_resolver = MagicMock()
+    mock_resolver.resolve_entity_mappings = AsyncMock(return_value=resolver_result)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver",
+            return_value=mock_resolver,
+        ),
+        patch(
+            "custom_components.ramses_extras.framework.helpers.common.calculate_absolute_humidity",
+            return_value=5.4,
+        ) as mock_calc,
+    ):
+        result = await sensor._async_compute_abs_from_sensor_control()
+
+    assert result == 5.4
+    mock_calc.assert_called_once_with(10.0, 70.0)
+
+
+@pytest.mark.asyncio
+async def test_default_humidity_sensor_setup_listeners_internal_supply():
+    """_setup_listeners subscribes to supply_temp for internal_supply."""
+    hass = MagicMock()
+    sensor = DefaultHumiditySensor(hass, "32:123456", "outdoor_absolute_humidity", {})
+    sensor._area_sensor = None
+    sensor._get_abs_temperature_kind = MagicMock(return_value="internal_supply")
+
+    registry = MagicMock()
+    registry.async_get = MagicMock(return_value=MagicMock())
+
+    captured: dict = {}
+
+    def _fake_track(_hass, entities, _callback):
+        captured["entities"] = entities
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.platforms.sensor.async_track_state_change_event",
+            side_effect=_fake_track,
+        ),
+        patch(
+            "homeassistant.helpers.entity_registry.async_get",
+            return_value=registry,
+        ),
+    ):
+        await sensor._setup_listeners()
+
+    assert "sensor.32_123456_supply_temp" in captured["entities"]
+    assert "sensor.32_123456_outdoor_humidity" in captured["entities"]
+    assert sensor._listeners_set_up is True
+
+
+@pytest.mark.asyncio
+async def test_default_humidity_sensor_setup_listeners_default_outdoor():
+    """_setup_listeners keeps outdoor_temp for the default pairing."""
+    hass = MagicMock()
+    sensor = DefaultHumiditySensor(hass, "32:123456", "outdoor_absolute_humidity", {})
+    sensor._area_sensor = None
+    sensor._get_abs_temperature_kind = MagicMock(return_value="internal")
+
+    registry = MagicMock()
+    registry.async_get = MagicMock(return_value=MagicMock())
+
+    captured: dict = {}
+
+    def _fake_track(_hass, entities, _callback):
+        captured["entities"] = entities
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.platforms.sensor.async_track_state_change_event",
+            side_effect=_fake_track,
+        ),
+        patch(
+            "homeassistant.helpers.entity_registry.async_get",
+            return_value=registry,
+        ),
+    ):
+        await sensor._setup_listeners()
+
+    assert "sensor.32_123456_outdoor_temp" in captured["entities"]
+    assert "sensor.32_123456_outdoor_humidity" in captured["entities"]

@@ -29,6 +29,7 @@ from custom_components.ramses_extras.framework.helpers.config.migration import (
     get_migrated_feature_section,
 )
 from custom_components.ramses_extras.framework.helpers.config.model import (
+    SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     get_sensor_control_device_section,
 )
@@ -683,6 +684,62 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             device_id_underscore,
         )
 
+    def _resolve_cc_sensor_entity_id(self, key: str) -> str:
+        """Resolve a ramses_cc sensor entity_id for this device.
+
+        Tries, in order: live states, the entity registry via the stable
+        ramses_cc unique_id, and finally the generated template name.
+        """
+        device_id_str = extract_device_id_as_string(self._device_id)
+        device_id_underscore = device_id_str.replace(":", "_")
+
+        for name in iter_ramses_cc_entity_ids(
+            "sensor",
+            key,
+            device_id_underscore=device_id_underscore,
+            slugs=("", "fan"),
+        ):
+            if self.hass.states.get(name) is not None:
+                return name
+
+        entry = self._find_entry_by_unique_id(key, device_id_underscore)
+        if entry is not None:
+            return cast(str, entry.entity_id)
+
+        return EntityHelpers.generate_entity_name_from_template(
+            "sensor", "{device_id}_" + key, device_id=device_id_underscore
+        )
+
+    def _get_abs_temperature_kind(self, metric: str) -> str:
+        """Return the configured abs-humidity temperature kind for a metric.
+
+        Reads the sensor_control device section from the config entry.
+        Defaults to ``"internal"`` when nothing is configured.
+        """
+        try:
+            config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
+            if config_entry is None:
+                return "internal"
+
+            merged_config = dict(getattr(config_entry, "data", {}) or {})
+            merged_config.update(getattr(config_entry, "options", {}) or {})
+            sensor_control_section = get_migrated_feature_section(
+                merged_config, "sensor_control"
+            )
+            abs_inputs = get_sensor_control_device_section(
+                sensor_control_section,
+                extract_device_id_as_string(self._device_id),
+            ).get(SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY)
+            if not isinstance(abs_inputs, dict):
+                return "internal"
+
+            temp_cfg = (abs_inputs.get(metric) or {}).get("temperature") or {}
+            if not isinstance(temp_cfg, dict):
+                return "internal"
+            return str(temp_cfg.get("kind") or "internal")
+        except Exception:  # pragma: no cover - defensive
+            return "internal"
+
     async def _setup_listeners(self) -> None:
         """Set up listeners for temperature and humidity sensor changes.
 
@@ -714,6 +771,15 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             return
         else:
             temp_type, humidity_type = ENTITY_PATTERNS[self._sensor_type]
+
+            # With an "internal_supply" pairing the co-located temperature
+            # is the supply temperature, not the outdoor one — subscribe to
+            # it instead so the value stays fresh.
+            if self._sensor_type == "outdoor_absolute_humidity" and (
+                self._get_abs_temperature_kind("outdoor_abs_humidity")
+                == "internal_supply"
+            ):
+                temp_type = "supply_temp"
 
             device_id_str = extract_device_id_as_string(self._device_id)
             device_id_underscore = device_id_str.replace(":", "_")
@@ -1131,6 +1197,13 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             temp_metric = f"{side}_temperature"
             if temp_kind == "internal":
                 temp_entity_id = mappings.get(temp_metric)
+            elif temp_kind == "internal_supply":
+                # The reported RH is measured in the supply duct (after
+                # heat recovery/bypass), so pair it with the co-located
+                # supply temperature. Moisture content is conserved, so
+                # the resulting absolute humidity still describes the
+                # outdoor airstream.
+                temp_entity_id = self._resolve_cc_sensor_entity_id("supply_temp")
             elif temp_kind == "external_temp":
                 temp_entity_id = cast(str | None, temp_cfg.get("entity_id"))
             else:

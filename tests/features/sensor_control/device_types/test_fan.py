@@ -55,6 +55,9 @@ def test_abs_temp_part_from_input():
     assert _abs_temp_part_from_input({"k": "internal"}, "k", "e") == {
         "kind": "internal"
     }
+    assert _abs_temp_part_from_input({"k": "internal_supply"}, "k", "e") == {
+        "kind": "internal_supply"
+    }
     user_input = {"k": "external_temp", "e": "s.t"}
     assert _abs_temp_part_from_input(user_input, "k", "e") == {
         "kind": "external_temp",
@@ -184,6 +187,21 @@ def test_handle_group_submission_outdoor_abs():
     assert new_abs["outdoor_abs_humidity"]["humidity"] == {"kind": "none"}
 
 
+def test_handle_group_submission_outdoor_abs_internal_supply():
+    """Test outdoor_abs submission with the internal_supply pairing."""
+    sources = {}
+    abs_inputs = {}
+    user_input = {
+        "outdoor_abs_humidity_temperature_kind": "internal_supply",
+        "outdoor_abs_humidity_humidity_kind": "internal",
+    }
+    new_sources, new_abs = handle_group_submission(
+        "outdoor_abs", user_input, sources, abs_inputs
+    )
+    assert new_abs["outdoor_abs_humidity"]["temperature"] == {"kind": "internal_supply"}
+    assert new_abs["outdoor_abs_humidity"]["humidity"] == {"kind": "internal"}
+
+
 def test_handle_group_submission_indoor_abs_none_humidity():
     """Test handling indoor_abs group submission with none humidity."""
     sources = {}
@@ -247,6 +265,33 @@ def test_build_group_schema_outdoor_abs():
     assert isinstance(schema, vol.Schema)
     assert "outdoor_abs_humidity_temperature_kind" in schema.schema
     assert "outdoor_abs_humidity_humidity_kind" in schema.schema
+
+
+def _select_option_values(schema: vol.Schema, field_name: str) -> list[str]:
+    """Return the option values of a SelectSelector field in the schema."""
+    marker = next(
+        key for key in schema.schema if getattr(key, "schema", None) == field_name
+    )
+    return [opt["value"] for opt in schema.schema[marker].config["options"]]
+
+
+def test_build_group_schema_outdoor_abs_supply_option():
+    """outdoor_abs offers internal_supply; indoor_abs does not."""
+    schema, _ = build_group_schema(
+        "outdoor_abs", {}, {}, [], [], selector.EntitySelector({})
+    )
+    values = _select_option_values(schema, "outdoor_abs_humidity_temperature_kind")
+    assert "internal" in values
+    assert "internal_supply" in values
+    assert "external_temp" in values
+    assert "external_abs" in values
+
+    schema, _ = build_group_schema(
+        "indoor_abs", {}, {}, [], [], selector.EntitySelector({})
+    )
+    values = _select_option_values(schema, "indoor_abs_humidity_temperature_kind")
+    assert "internal" in values
+    assert "internal_supply" not in values
 
 
 def test_build_group_schema_invalid():
@@ -556,3 +601,64 @@ async def test_handle_internal_fan_sensors_preserves_external_abs_selection():
         "kind": "external",
         "entity_id": "sensor.outdoor_hum",
     }
+
+
+@pytest.mark.asyncio
+async def test_handle_internal_fan_sensors_persists_internal_supply():
+    """'internal_supply' for outdoor abs temperature must be saved.
+
+    Units like Orcon measure the reported "outdoor" RH in the supply
+    duct, so the pairing must be preserved through the combined form.
+    """
+    flow = MagicMock()
+    flow._config_entry = MagicMock(options={"sensor_control": {}})
+    flow.hass = MagicMock()
+    flow.hass.config_entries.async_update_entry = MagicMock()
+
+    user_input = {
+        "indoor_temperature_kind": "internal",
+        "indoor_humidity_kind": "internal",
+        "indoor_humidity_spike_enabled": False,
+        "indoor_humidity_spike_rise_percent": 10,
+        "indoor_humidity_spike_window_minutes": 5,
+        "outdoor_temperature_kind": "internal",
+        "outdoor_humidity_kind": "internal",
+        "co2_kind": "none",
+        "indoor_abs_humidity_temperature_kind": "internal",
+        "indoor_abs_humidity_humidity_kind": "internal",
+        "outdoor_abs_humidity_temperature_kind": "internal_supply",
+        "outdoor_abs_humidity_humidity_kind": "internal",
+    }
+
+    persisted_section: dict = {}
+
+    def _persist_side_effect(_flow, _options, section):
+        persisted_section.update(deepcopy(section))
+
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.helpers.config.migration.get_migrated_feature_section",
+            return_value={"devices": {}},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._persist_sensor_control_section",
+            side_effect=_persist_side_effect,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_step_sensor_control_config",
+            AsyncMock(return_value={"type": "form"}),
+        ),
+    ):
+        await handle_internal_fan_sensors(flow, "32:123456", {}, {}, user_input)
+
+    devices = persisted_section.get("devices", {})
+    device_config = devices.get("32:123456", {})
+    abs_inputs = device_config.get("abs_humidity_inputs", {})
+
+    outdoor = abs_inputs.get("outdoor_abs_humidity", {})
+    assert outdoor["temperature"] == {"kind": "internal_supply"}
+    assert outdoor["humidity"] == {"kind": "internal"}
+
+    # Indoor stays untouched by the outdoor-only option
+    indoor = abs_inputs.get("indoor_abs_humidity", {})
+    assert indoor["temperature"] == {"kind": "internal"}

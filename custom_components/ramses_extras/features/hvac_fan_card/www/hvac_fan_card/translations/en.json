@@ -99,6 +99,7 @@
     "outdoor_temp": "Outdoor temperature",
     "indoor_temp": "Indoor temperature",
     "outdoor_rh": "Outdoor relative humidity",
+    "outdoor_rh_supply": "Relative humidity — measured in the supply duct, after heat recovery/bypass; pairs with the supply temperature",
     "indoor_rh": "Indoor relative humidity — balance mode activates above the configured maximum",
     "abs_humidity": "Absolute humidity (g of water per m³ of air) — indoor vs outdoor decides whether ventilating reduces moisture",
     "co2": "Indoor CO₂ level",

@@ -390,12 +390,23 @@ class HvacFanCard extends RamsesBaseCard {
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
+    // Where the reported outdoor humidity is measured: 'supply' pairs it
+    // with the supply temperature and moves the humidity row next to it.
+    templateData.outdoorHumidityLocation = this._getOutdoorHumidityLocation();
+    const co2StatusOnLeft = templateData.outdoorHumidityLocation === 'supply';
     // Add temperature control status HTML to template data
     templateData.tempControlHtml = this._createTempControlSection();
     // Add balance triggers HTML to template data
     templateData.balanceTriggersHtml = this._createBalanceTriggersSection(!templateData.tempControlHtml);
-    // Add CO2 zones HTML to template data
-    templateData.co2ZonesHtml = co2ControlEntitiesAvailable ? this._createCO2ZonesSection() : '';
+    // Add CO2 zones HTML to template data — in the supply layout the CO2
+    // status row moves to the left panel while zone/area rows stay right.
+    templateData.co2ZonesHtml = co2ControlEntitiesAvailable
+      ? this._createCO2ZonesSection(!co2StatusOnLeft)
+      : '';
+    templateData.co2StatusHtml =
+      co2StatusOnLeft && co2ControlEntitiesAvailable
+        ? this._createCO2StatusRow()
+        : '';
 
     // Generate HTML using template functions
     const cardHtml = [
@@ -536,6 +547,7 @@ class HvacFanCard extends RamsesBaseCard {
     this._entityMappingsLoading = false;
     this._sensorSources = null;
     this._rawInternalMappings = null;
+    this._absHumidityInputs = null;
     this._areaSensors = [];
     this._cachedEntities = null;
   }
@@ -607,6 +619,10 @@ class HvacFanCard extends RamsesBaseCard {
         if (result.raw_internal) {
           this._rawInternalMappings = result.raw_internal;
         }
+
+        // Store abs-humidity input config — used to decide where the
+        // outdoor humidity row is rendered (supply vs outdoor pairing)
+        this._absHumidityInputs = result.abs_humidity_inputs || null;
 
         if (Array.isArray(result.area_sensors)) {
           this._areaSensors = result.area_sensors;
@@ -1042,21 +1058,20 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   /**
-   * Create CO2 zones section showing tracked CO2 sensors
-   * Shows: CO2 status, area labels with sensors, zone status
-   * @returns {string} HTML string for CO2 zones section
+   * Create the CO2 control status row ("CO2 → On + Active" etc).
+   * Shown separately so the status can be placed in the left panel for
+   * the supply-humidity layout while zone/area rows stay right.
+   * @returns {string} HTML string for the CO2 status row
    */
-  _createCO2ZonesSection() {
+  _createCO2StatusRow() {
     const config = this.config || {};
 
     if (!this._areaSensors || this._areaSensors.length === 0) {
       return '';
     }
 
-    // Get CO2 control status
     const co2ControlMode = this.getEntityState(config.co2_control_entity)?.state || 'off';
     const co2Active = this.getEntityState(config.co2_active_entity)?.state || 'off';
-    const co2ZoneStatus = this.getEntityState(config.co2_zone_status_entity)?.state || 'unknown';
     const fanControlMode = this.getEntityState(config.fan_control_mode_entity)?.state || null;
 
     // Create CO2 status: "CO2 → Manual", "CO2 → On + Active", or "CO2 → Off"
@@ -1075,12 +1090,44 @@ class HvacFanCard extends RamsesBaseCard {
     const activeTriggerSourceIds = Array.isArray(attrs.active_trigger_source_ids)
       ? attrs.active_trigger_source_ids
       : [];
+    const co2StatusClass = activeTriggerSourceIds.length > 0 ? 'active-co2' : '';
+
+    return `
+      <div class="r-xtrs-hvac-fan-balance-info">
+        <div class="r-xtrs-hvac-fan-balance-info-row ${co2StatusClass}"
+             title="${this._tr('tooltips.co2_status', 'CO₂ control — On = armed; Active = ventilating on CO₂ demand; Passive = armed, waiting; Manual = fan speed set by hand')}">
+          <span>🌫️ ${co2Status}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Create CO2 zones section showing tracked CO2 sensors
+   * Shows: CO2 status (unless split out), area labels with sensors,
+   * zone status
+   * @param {boolean} includeStatus Include the CO2 status header row
+   * @returns {string} HTML string for CO2 zones section
+   */
+  _createCO2ZonesSection(includeStatus = true) {
+    const config = this.config || {};
+
+    if (!this._areaSensors || this._areaSensors.length === 0) {
+      return '';
+    }
+
+    const co2ZoneStatus = this.getEntityState(config.co2_zone_status_entity)?.state || 'unknown';
+
+    const co2StatusState = this.getEntityState(config.co2_zone_status_entity);
+    const attrs = co2StatusState?.attributes || {};
+    const activeTriggerSourceIds = Array.isArray(attrs.active_trigger_source_ids)
+      ? attrs.active_trigger_source_ids
+      : [];
     const primaryTriggerSourceId = attrs.active_trigger_source_id;
     const dehumAttrs = this._getDehumidifyStatusAttributes();
     const humidityTriggerSourceIds = Array.isArray(dehumAttrs.active_trigger_source_ids)
       ? dehumAttrs.active_trigger_source_ids
       : [];
-    const co2StatusClass = activeTriggerSourceIds.length > 0 ? 'active-co2' : '';
 
     // Build area sensor items (humidity/temp and CO2 where enabled)
     const areaSensorItems = (this._areaSensors || [])
@@ -1216,17 +1263,48 @@ class HvacFanCard extends RamsesBaseCard {
 
     return `
       <div class="r-xtrs-hvac-fan-balance-triggers">
-        <div class="r-xtrs-hvac-fan-balance-info">
-          <div class="r-xtrs-hvac-fan-balance-info-row ${co2StatusClass}"
-               title="${this._tr('tooltips.co2_status', 'CO₂ control — On = armed; Active = ventilating on CO₂ demand; Passive = armed, waiting; Manual = fan speed set by hand')}">
-            <span>🌫️ ${co2Status}</span>
-          </div>
-        </div>
+        ${includeStatus ? this._createCO2StatusRow() : ''}
         ${areaSensorItems}
         ${internalItemHtml}
         ${zoneStatusHtml}
       </div>
     `;
+  }
+
+  /**
+   * Determine where the configured outdoor humidity measurement is taken.
+   *
+   * Returns 'supply' when the outdoor absolute-humidity pairing uses the
+   * FAN's supply temperature — i.e. the reported RH sensor sits in the
+   * supply duct after heat recovery/bypass (e.g. Orcon). An
+   * `external_temp` input that points at the FAN's own supply_temp
+   * entity is treated the same way (manual workaround for this).
+   * Otherwise returns 'outdoor'.
+   *
+   * @returns {string} 'supply' or 'outdoor'
+   */
+  _getOutdoorHumidityLocation() {
+    const tempCfg =
+      this._absHumidityInputs?.outdoor_abs_humidity?.temperature;
+    if (!tempCfg || typeof tempCfg !== 'object') {
+      return 'outdoor';
+    }
+    if (tempCfg.kind === 'internal_supply') {
+      return 'supply';
+    }
+    if (tempCfg.kind === 'external_temp' && tempCfg.entity_id) {
+      const deviceUnderscore = String(this._config?.device_id || '')
+        .replace(/:/g, '_')
+        .toLowerCase();
+      const entityId = String(tempCfg.entity_id).toLowerCase();
+      if (
+        entityId === `sensor.${deviceUnderscore}_supply_temp` ||
+        entityId === `sensor.${deviceUnderscore}_supply_temperature`
+      ) {
+        return 'supply';
+      }
+    }
+    return 'outdoor';
   }
 
   /**

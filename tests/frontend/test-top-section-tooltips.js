@@ -81,6 +81,61 @@ describe('createTopSection tooltips', () => {
   });
 });
 
+describe('createTopSection supply-humidity layout', () => {
+  const supplyData = {
+    ...templateData,
+    outdoorHumidityLocation: 'supply',
+    tempControlHtml: '<div class="temp-control-mock">Temp → Off</div>',
+    balanceTriggersHtml: '<div class="balance-mock">Balance → On + Passive</div>',
+    co2StatusHtml: '<div class="co2-status-mock">CO2 → Off</div>',
+    co2ZonesHtml: '<div class="co2-zones-mock">Zone status: idle</div>',
+  };
+
+  test('outdoor layout keeps the humidity row with outdoor temp', () => {
+    const html = createTopSection(templateData, noTranslations);
+    const topLeft = html.match(/top-left[\s\S]*?(?=r-xtrs-hvac-fan-corner-value top-right)/)[0];
+    expect(topLeft).toContain('id="outdoorHumidity"');
+    expect(topLeft).toContain('id="outdoorAbsHumidity"');
+
+    const bottomRight = html.match(
+      /bottom-right[\s\S]*?(?=r-xtrs-hvac-fan-corner-value bottom-left)/
+    )[0];
+    expect(bottomRight).toContain('id="supplyTemp"');
+    expect(bottomRight).not.toContain('id="outdoorHumidity"');
+  });
+
+  test('supply layout moves the humidity row to the supply corner', () => {
+    const html = createTopSection(supplyData, noTranslations);
+    const topLeft = html.match(/top-left[\s\S]*?(?=r-xtrs-hvac-fan-corner-value top-right)/)[0];
+    expect(topLeft).not.toContain('id="outdoorHumidity"');
+
+    const bottomRight = html.match(
+      /bottom-right[\s\S]*?(?=r-xtrs-hvac-fan-corner-value bottom-left)/
+    )[0];
+    expect(bottomRight).toContain('id="supplyTemp"');
+    expect(bottomRight).toContain('id="outdoorHumidity"');
+    expect(bottomRight).toContain('id="outdoorAbsHumidity"');
+    expect(bottomRight).toContain('supply duct');
+  });
+
+  test('supply layout moves feature status left, zones stay right', () => {
+    const html = createTopSection(supplyData, noTranslations);
+    const topLeft = html.match(/top-left[\s\S]*?(?=r-xtrs-hvac-fan-corner-value top-right)/)[0];
+    expect(topLeft).toContain('Temp → Off');
+    expect(topLeft).toContain('Balance → On + Passive');
+    expect(topLeft).toContain('CO2 → Off');
+    expect(topLeft).not.toContain('Zone status: idle');
+
+    const topRight = html.match(
+      /top-right[\s\S]*?(?=r-xtrs-hvac-fan-corner-value bottom-right)/
+    )[0];
+    expect(topRight).toContain('Zone status: idle');
+    expect(topRight).not.toContain('Temp → Off');
+    expect(topRight).not.toContain('Balance → On + Passive');
+    expect(topRight).not.toContain('CO2 → Off');
+  });
+});
+
 describe('createControlsSection tooltips', () => {
   const config = {
     device_id: '32:153289',
