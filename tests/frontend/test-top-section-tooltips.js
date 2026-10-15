@@ -136,6 +136,24 @@ describe('createTopSection supply-humidity layout', () => {
   });
 });
 
+describe('createTopSection bottom stats', () => {
+  test('fan mode sits on the top stats line', () => {
+    const html = createTopSection(templateData, noTranslations);
+    const statsTop = html.match(/stats-top[\s\S]*?stats-bottom/)[0];
+    expect(statsTop).toContain('id="fanMode"');
+    const statsBottom = html.match(/stats-bottom[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/)[0];
+    expect(statsBottom).not.toContain('id="fanMode"');
+  });
+
+  test('connection status is icon-only (tooltip carries the text)', () => {
+    const html = createTopSection(templateData, noTranslations);
+    const status = html.match(/id="connectionStatus"[\s\S]*?<\/div>\s*<\/div>/)[0];
+    expect(status).toContain('connection-icon');
+    expect(status).not.toContain('Online');
+    expect(status).not.toContain('Offline');
+  });
+});
+
 describe('createControlsSection tooltips', () => {
   const config = {
     device_id: '32:153289',

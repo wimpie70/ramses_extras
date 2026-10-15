@@ -395,8 +395,112 @@ async def ws_set_area_spike_ignore_outdoor(
         )
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): ("ramses_extras/sensor_control/set_abs_temperature_kind"),
+        vol.Required("device_id"): str,
+        vol.Optional("metric", default="outdoor_abs_humidity"): vol.In(
+            ["indoor_abs_humidity", "outdoor_abs_humidity"]
+        ),
+        vol.Required("kind"): vol.In(["internal", "internal_supply"]),
+    }
+)
+@websocket_api.async_response
+async def ws_set_abs_temperature_kind(
+    hass: Any,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Set the abs-humidity temperature pairing kind for a device.
+
+    Used by the humidity diagnostics card to apply the detected sensor
+    location ("internal" = FAN's outside flow, "internal_supply" = FAN's
+    supply flow) without opening the config flow.
+    """
+    device_id = str(msg.get("device_id") or "").strip()
+    if not device_id:
+        connection.send_error(msg["id"], "missing_device_id", "device_id is required")
+        return
+
+    metric = str(msg.get("metric") or "outdoor_abs_humidity")
+    kind = str(msg.get("kind"))
+
+    try:
+        from ...framework.helpers.config.migration import (
+            get_migrated_feature_section,
+        )
+        from ...framework.helpers.config.model import normalize_device_id
+
+        config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        if config_entry is None:
+            connection.send_error(
+                msg["id"], "no_config_entry", "Config entry not found"
+            )
+            return
+
+        options = dict(config_entry.options)
+        sc_section = get_migrated_feature_section(options, "sensor_control")
+        devices = sc_section.get("devices", {})
+        if not isinstance(devices, dict):
+            devices = {}
+        norm_id = normalize_device_id(device_id)
+        dev_cfg = devices.get(norm_id, {})
+        if not isinstance(dev_cfg, dict):
+            dev_cfg = {}
+        abs_inputs = dev_cfg.get("abs_humidity_inputs", {})
+        if not isinstance(abs_inputs, dict):
+            abs_inputs = {}
+        metric_cfg = abs_inputs.get(metric, {})
+        if not isinstance(metric_cfg, dict):
+            metric_cfg = {}
+        metric_cfg["temperature"] = {"kind": kind}
+        metric_cfg.setdefault("humidity", {"kind": "internal"})
+        abs_inputs[metric] = metric_cfg
+        dev_cfg["abs_humidity_inputs"] = abs_inputs
+        devices[norm_id] = dev_cfg
+        sc_section["devices"] = devices
+
+        from .config_flow import _persist_sensor_control_section
+
+        # Build a minimal flow-like object with the required attributes
+        class _FlowShim:
+            def __init__(self, hass: Any, entry: Any) -> None:
+                self.hass = hass
+                self._config_entry = entry
+
+        flow = _FlowShim(hass, config_entry)
+        _persist_sensor_control_section(flow, options, sc_section)
+
+        _LOGGER.info(
+            "Set abs_humidity_inputs[%s].temperature.kind=%s for device %s",
+            metric,
+            kind,
+            device_id,
+        )
+
+        connection.send_result(
+            msg["id"],
+            {
+                "device_id": device_id,
+                "metric": metric,
+                "kind": kind,
+                "success": True,
+            },
+        )
+
+    except Exception as err:
+        _LOGGER.error(
+            "Failed to set abs temperature kind for %s: %s",
+            device_id,
+            err,
+            exc_info=True,
+        )
+        connection.send_error(msg["id"], "set_abs_temperature_kind_failed", str(err))
+
+
 __all__ = [
     "ws_get_sensor_control_device_config",
+    "ws_set_abs_temperature_kind",
     "ws_set_comfort_temp_entity",
     "ws_set_area_spike_ignore_outdoor",
     "ws_set_spike_ignore_outdoor",

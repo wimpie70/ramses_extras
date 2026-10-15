@@ -91,7 +91,7 @@ class TestRamsesDebuggerConst:
             RAMSES_DEBUGGER_CARD_CONFIGS,
         )
 
-        assert len(RAMSES_DEBUGGER_CARD_CONFIGS) == 3
+        assert len(RAMSES_DEBUGGER_CARD_CONFIGS) == 4
 
         # Check first card - traffic analyser
         traffic_card = RAMSES_DEBUGGER_CARD_CONFIGS[0]
@@ -114,6 +114,13 @@ class TestRamsesDebuggerConst:
         assert packet_card["card_id"] == "ramses-packet-log-explorer"
         assert packet_card["card_name"] == "Ramses Packet Log Explorer"
         assert "Explore the ramses packet" in packet_card["description"]
+
+        # Check fourth card - humidity diagnostics
+        diag_card = RAMSES_DEBUGGER_CARD_CONFIGS[3]
+        assert diag_card["card_id"] == "ramses-humidity-diagnostics"
+        assert diag_card["card_name"] == "Ramses Humidity Diagnostics"
+        assert diag_card["location"] == "ramses_debugger"
+        assert diag_card["javascript_file"] == "ramses-humidity-diagnostics.js"
 
     def test_feature_definition_structure(self):
         """Test FEATURE_DEFINITION has all required keys."""
@@ -179,8 +186,8 @@ class TestRamsesDebuggerConst:
             )
             mock_registry.register_feature.assert_called_once_with(FEATURE_ID)
 
-            # Check card config registration (3 cards)
-            assert mock_registry.register_card_config.call_count == 3
+            # Check card config registration (4 cards)
+            assert mock_registry.register_card_config.call_count == 4
             mock_registry.register_card_config.assert_any_call(
                 FEATURE_ID, {"card_id": "ramses-traffic-analyser"}
             )
@@ -189,6 +196,9 @@ class TestRamsesDebuggerConst:
             )
             mock_registry.register_card_config.assert_any_call(
                 FEATURE_ID, {"card_id": "ramses-packet-log-explorer"}
+            )
+            mock_registry.register_card_config.assert_any_call(
+                FEATURE_ID, {"card_id": "ramses-humidity-diagnostics"}
             )
 
             # Check validator loading

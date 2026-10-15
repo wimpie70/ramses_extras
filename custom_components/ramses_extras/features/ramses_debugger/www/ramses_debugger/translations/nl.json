@@ -45,6 +45,14 @@
     },
     "details": {
       "title": "Flow details"
+    },
+    "diagnostics": {
+      "title": "Vochtigheidssensor-locatie",
+      "verdict_supply": "Gemeten in de TOEVOERleiding (na warmteterugwinning / bypass)",
+      "verdict_outdoor": "Gemeten op de BUITENlucht (onbehandelde luchtstroom)",
+      "verdict_inconclusive": "Onbeslist",
+      "warn_low_delta": "Buiten- en toevoertemperatuur zijn bijna gelijk — de bypass kan de toevoerlucht nauwelijks beïnvloeden, dus de run zal waarschijnlijk onbeslist zijn. Toch starten?",
+      "hint_bypass_closed": "De bypass bleef het grootste deel van het venster dicht — controleer of hij echt open ging (de klep duurt max. ~1 min). Sommige units weigeren de bypass open te houden als de buitenlucht warmer is dan de binnenlucht; probeer opnieuw wanneer buiten < binnen."
     }
   }
 }

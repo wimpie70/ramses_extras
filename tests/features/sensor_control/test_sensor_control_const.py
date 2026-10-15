@@ -120,6 +120,9 @@ class TestSensorControlConst:
             "set_area_spike_ignore_outdoor": (
                 "ramses_extras/sensor_control/set_area_spike_ignore_outdoor"
             ),
+            "set_abs_temperature_kind": (
+                "ramses_extras/sensor_control/set_abs_temperature_kind"
+            ),
         }
 
     def test_feature_definition_structure(self):

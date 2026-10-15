@@ -250,14 +250,15 @@ export const CARD_STYLE = `
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   z-index: 20;
   background: var(--ha-card-background, var(--card-background-color));
   border: 1px solid var(--divider-color);
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 15px;
-  width: min(220px, calc(100% - 140px));
-  min-width: 130px;
+  width: fit-content;
+  max-width: calc(100% - 140px);
+  min-width: 110px;
 }
 
 .r-xtrs-hvac-fan-stats-top {
@@ -581,7 +582,7 @@ export const CARD_STYLE = `
   margin: 0 4px;
 }
 
-.r-xtrs-hvac-fan-fanmode { font-size: 13px; text-transform: uppercase; font-weight: 700; color: var(--primary-text-color); }
+.r-xtrs-hvac-fan-fanmode { font-size: 12px; text-transform: uppercase; font-weight: 700; color: var(--primary-text-color); align-self: center; }
 .r-xtrs-hvac-fan-speed-display { font-size: 13px; font-weight: 900; color: var(--primary-color); }
 
 /* ====== ICONS ====== */
@@ -885,9 +886,9 @@ export const CARD_STYLE = `
 /* ====== RESPONSIVE ====== */
 @media (max-width: 480px) {
   .r-xtrs-hvac-fan-bottom-stats {
-    width: min(190px, calc(100% - 110px));
-    min-width: 110px;
-    padding: 4px 8px;
+    max-width: calc(100% - 110px);
+    min-width: 100px;
+    padding: 3px 7px;
   }
   .r-xtrs-hvac-fan-fanmode {
     font-size: 11px;
@@ -913,8 +914,8 @@ export const CARD_STYLE = `
 
 @media (max-width: 420px) {
   .r-xtrs-hvac-fan-bottom-stats {
-    width: min(160px, calc(100% - 90px));
-    min-width: 96px;
+    max-width: calc(100% - 90px);
+    min-width: 90px;
     padding: 3px 6px;
   }
   .r-xtrs-hvac-fan-stats-top {
