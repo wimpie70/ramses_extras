@@ -547,12 +547,17 @@ class RamsesCommands:
                 error_message=f"Command '{command_name}' not found in registry",
             )
 
+        # Record BEFORE dispatch: the RF echo can be observed and handled
+        # by the remote-packet listener while send_command_to_device is
+        # still awaiting, and it uses _self_sent to recognize our own
+        # packets.  A stale entry after a failed send expires harmlessly
+        # within the dedup window (issue 290: stuck manual_override).
+        self._record_command_sent(device_id, command_name)
+
         # Send command with queuing
         result = await self._device_manager.send_command_to_device(
             device_id, cmd_def, priority, timeout, command_name=command_name
         )
-        if result.success:
-            self._record_command_sent(device_id, command_name)
 
         # For bypass commands, also send the 2411/4B parameter that some
         # Orcon/HRC units use instead of (or in addition to) 22F7.  This is
