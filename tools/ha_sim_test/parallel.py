@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import os
 import subprocess
 import sys
 import time
 from contextvars import Token
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .base import RecipeContext
@@ -455,6 +457,21 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
         )
     print(f"  Started {len(parallel_instances)} parallel container(s)")
 
+    # Install manifest requirements of the bind-mounted custom components
+    # — clone images can lag the checked-out code (a requirement bump
+    # upstream otherwise fails the integration setup on the clone).
+    changed = _ensure_manifest_requirements(parallel_instances)
+    if changed:
+        print(f"  Restarting {len(changed)} container(s) to load new packages")
+        for name in changed:
+            subprocess.run(
+                ["docker", "restart", name],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        time.sleep(5)  # let the restarted HA drop off the port first
+
     # Wait for all containers to be ready in parallel (optimization: saves ~30-60s)
     async def _wait_for_ready(inst: InstanceConfig) -> bool:
         """Wait for a single container to be ready (async wrapper for wait_for)."""
@@ -477,6 +494,53 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
 
     # Wait for all in parallel
     await asyncio.gather(*[_wait_for_ready(inst) for inst in parallel_instances])
+
+
+def _manifest_requirements() -> list[str]:
+    """Pip requirements declared by the bind-mounted custom components.
+
+    :return: Requirement specifiers (e.g. ``serialx>=1.11.0``).
+    """
+    reqs: list[str] = []
+    for comp_dir in (_RAMSES_CC_PATH, _RAMSES_EXTRAS_PATH):
+        manifest = Path(comp_dir) / "manifest.json"
+        if manifest.is_file():
+            reqs.extend(json.loads(manifest.read_text()).get("requirements") or [])
+    return reqs
+
+
+def _ensure_manifest_requirements(instances: list[InstanceConfig]) -> list[str]:
+    """pip-install manifest requirements into the parallel containers.
+
+    Clone images can lag the checked-out custom component code (e.g. an
+    upstream manifest bump).  A missing requirement fails the
+    integration's setup and cascades into dependents (ramses_extras).
+
+    :param instances: Parallel instances whose containers are running.
+    :return: Names of containers that received new packages (they need a
+        restart to load them).
+    """
+    reqs = _manifest_requirements()
+    if not reqs:
+        return []
+    changed: list[str] = []
+    for inst in instances:
+        result = subprocess.run(
+            ["docker", "exec", inst.name, "pip", "install", *reqs],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        if result.returncode != 0:
+            print(
+                f"  [{inst.name}] WARNING: pip install of manifest "
+                f"requirements failed: {result.stderr[:200]}"
+            )
+            continue
+        if "Successfully installed" in result.stdout:
+            changed.append(inst.name)
+            print(f"  [{inst.name}] Installed manifest requirements")
+    return changed
 
 
 def cleanup_containers(
@@ -591,6 +655,7 @@ class InstanceResult:
     recipe_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     elapsed: float = 0.0
     error: str | None = None
+    log_report_path: str | None = None
     # Overhead breakdown (seconds) — time NOT spent inside recipe.run()
     setup_time: float = 0.0
     teardown_time: float = 0.0
@@ -739,7 +804,9 @@ async def run_dynamic_instance(
 
         # Teardown
         teardown_start = time.monotonic()
-        await _teardown_no_exit(ctx, start_time=start, instance=instance)
+        result.log_report_path = await _teardown_no_exit(
+            ctx, start_time=start, instance=instance
+        )
         result.teardown_time = time.monotonic() - teardown_start
 
     except Exception as e:
@@ -757,8 +824,11 @@ async def _teardown_no_exit(
     *,
     start_time: float,
     instance: InstanceConfig,
-) -> None:
-    """Teardown without calling sys.exit (for parallel mode)."""
+) -> str | None:
+    """Teardown without calling sys.exit (for parallel mode).
+
+    :return: The log report path, or None when no log monitor ran.
+    """
     from .helpers import delete_test_profiles
 
     try:
@@ -787,6 +857,8 @@ async def _teardown_no_exit(
             print(f"  [{instance.name}] Unexpected errors: {n_errors}")
         if n_warnings:
             print(f"  [{instance.name}] Unexpected warnings: {n_warnings}")
+        return str(report_path)
+    return None
 
 
 def merge_results(results: list[InstanceResult]) -> int:
@@ -902,6 +974,27 @@ def merge_results(results: list[InstanceResult]) -> int:
     for r in results:
         for line in r.results:
             print(f"  [{r.instance.name}] {line}")
+
+    # Persist the same Markdown summary that single-container runs write —
+    # without this, parallel runs leave only stdout as the results record.
+    from .report_writer import RunSummary, write_summary_report
+    from .runner import REPORTS_DIR
+
+    summaries = [
+        RunSummary(
+            instance=r.instance,
+            elapsed=r.elapsed,
+            passed=r.passed,
+            failed=r.failed,
+            recipe_stats=r.recipe_stats,
+            results=r.results,
+            log_report_path=r.log_report_path,
+            error=r.error,
+        )
+        for r in results
+    ]
+    summary_path = write_summary_report(summaries, reports_dir=REPORTS_DIR)
+    print(f"\n  Summary report: {summary_path}")
 
     if total_failed > 0:
         print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")
