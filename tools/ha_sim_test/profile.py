@@ -194,11 +194,14 @@ def minimal_ctl_zone_yaml(
     return _build_yaml(kl, schema)
 
 
-def minimal_hvac_yaml() -> str:
+def minimal_hvac_yaml(
+    schema_override: dict[str, dict[str, object]] | None = None,
+) -> str:
     """Minimal profile with FAN + REM + CO2 + HGI (4 devices).
 
     For HVAC topology recipes that only need the FAN/REM/CO2 triangle.
 
+    :param schema_override: Additional schema entries to merge.
     :returns: YAML string.
     """
     kl = {
@@ -208,6 +211,8 @@ def minimal_hvac_yaml() -> str:
         CO2: {"class": "CO2"},
     }
     schema = {FAN: {"_class": "FAN"}}
+    if schema_override:
+        schema.update(schema_override)
     return _build_yaml(kl, schema)
 
 
