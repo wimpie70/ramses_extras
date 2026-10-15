@@ -429,8 +429,8 @@ async def run_tests():
         coord4._get_primary_hgi_id = MagicMock(return_value="18:001111")
         coord4._suppress_reload = 0
         coord4.hass.config_entries.async_update_entry = MagicMock()
-        coord4._persist_options_no_reload = MethodType(
-            RamsesCoordinator._persist_options_no_reload, coord4
+        coord4.persist_options_no_reload = MethodType(
+            RamsesCoordinator.persist_options_no_reload, coord4
         )
 
         # Transport only reports 18:149488 (18:130236 disconnected)
