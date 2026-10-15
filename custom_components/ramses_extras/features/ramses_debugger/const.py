@@ -67,6 +67,19 @@ RAMSES_DEBUGGER_CARD_CONFIGS: list[dict[str, Any]] = [
         "supported_device_types": ["HvacVentilator"],
         "javascript_file": "ramses-packet-log-explorer.js",
     },
+    {
+        "card_id": "ramses-humidity-diagnostics",
+        "card_name": "Ramses Humidity Diagnostics",
+        "description": (
+            "Detect where the reported outdoor RH is measured "
+            "(outside flow vs supply duct)"
+        ),
+        "location": "ramses_debugger",
+        "preview": True,
+        "documentation_url": ("https://github.com/wimpie70/ramses_extras/issues/304"),
+        "supported_device_types": ["HvacVentilator"],
+        "javascript_file": "ramses-humidity-diagnostics.js",
+    },
 ]
 
 FEATURE_DEFINITION = {
@@ -79,6 +92,17 @@ FEATURE_DEFINITION = {
     "websocket_commands": RAMSES_DEBUGGER_WEBSOCKET_COMMANDS,
     "card_configs": RAMSES_DEBUGGER_CARD_CONFIGS,
     "required_entities": {},
+    "entity_mappings": {
+        # Entities needed by the humidity diagnostics card
+        "outdoor_temp_entity": "sensor.{device_id}_outdoor_temp",
+        "outdoor_humidity_entity": "sensor.{device_id}_outdoor_humidity",
+        "supply_temp_entity": "sensor.{device_id}_supply_temp",
+        "bypass_entity": "binary_sensor.{device_id}_bypass_position",
+        # Control switches that must be suspended during a diagnostic run
+        "temp_control_entity": "switch.temp_control_{device_id}",
+        "co2_control_entity": "switch.co2_control_{device_id}",
+        "dehum_mode_entity": "switch.dehumidify_{device_id}",
+    },
 }
 
 

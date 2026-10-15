@@ -108,6 +108,10 @@ const CARD_MODULES = [
     modulePath: '../features/ramses_debugger/ramses-packet-log-explorer.js',
   },
   {
+    tag: 'ramses-humidity-diagnostics',
+    modulePath: '../features/ramses_debugger/ramses-humidity-diagnostics.js',
+  },
+  {
     tag: 'device-simulator-card',
     modulePath: '../features/device_simulator/device-simulator-card.js',
   },

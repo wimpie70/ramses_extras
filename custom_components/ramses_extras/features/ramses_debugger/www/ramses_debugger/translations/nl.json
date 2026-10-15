@@ -45,6 +45,12 @@
     },
     "details": {
       "title": "Flow details"
+    },
+    "diagnostics": {
+      "title": "Vochtigheidssensor-locatie",
+      "verdict_supply": "Gemeten in de TOEVOERleiding (na warmteterugwinning / bypass)",
+      "verdict_outdoor": "Gemeten op de BUITENlucht (onbehandelde luchtstroom)",
+      "verdict_inconclusive": "Onbeslist"
     }
   }
 }

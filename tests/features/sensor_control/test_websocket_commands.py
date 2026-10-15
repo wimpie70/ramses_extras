@@ -153,3 +153,100 @@ async def test_ws_get_sensor_control_device_config_device_without_id(hass, conne
         await ws_get_sensor_control_device_config(hass, connection, msg)
 
     connection.send_error.assert_called_once()
+
+
+ws_set_abs_temperature_kind = websocket.ws_set_abs_temperature_kind.__wrapped__
+
+
+async def test_ws_set_abs_temperature_kind_missing_device_id(hass, connection):
+    """The handler should error when device_id is missing."""
+    await ws_set_abs_temperature_kind(
+        hass,
+        connection,
+        {"id": 1, "kind": "internal_supply"},
+    )
+    connection.send_error.assert_called_once()
+    args = connection.send_error.call_args[0]
+    assert args[1] == "missing_device_id"
+
+
+async def test_ws_set_abs_temperature_kind_writes_option(hass, connection):
+    """The handler should persist the temperature kind under
+    abs_humidity_inputs."""
+    entry = hass.data[DOMAIN]["config_entry"]
+    entry.options = {}
+
+    await ws_set_abs_temperature_kind(
+        hass,
+        connection,
+        {
+            "id": 2,
+            "device_id": "32:153289",
+            "metric": "outdoor_abs_humidity",
+            "kind": "internal_supply",
+        },
+    )
+
+    connection.send_result.assert_called_once()
+    result = connection.send_result.call_args[0][1]
+    assert result["success"] is True
+    assert result["kind"] == "internal_supply"
+
+    hass.config_entries.async_update_entry.assert_called_once()
+    options = hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    canonical = options["ramses_extras"]["features"]["sensor_control"]
+    temp_cfg = canonical["devices"]["32:153289"]["abs_humidity_inputs"][
+        "outdoor_abs_humidity"
+    ]["temperature"]
+    assert temp_cfg["kind"] == "internal_supply"
+    # humidity input defaults to internal so the pair stays valid
+    hum_cfg = canonical["devices"]["32:153289"]["abs_humidity_inputs"][
+        "outdoor_abs_humidity"
+    ]["humidity"]
+    assert hum_cfg["kind"] == "internal"
+
+
+async def test_ws_set_abs_temperature_kind_preserves_existing(hass, connection):
+    """Existing humidity config and other devices must be preserved."""
+    entry = hass.data[DOMAIN]["config_entry"]
+    entry.options = {
+        "ramses_extras": {
+            "version": 1,
+            "features": {
+                "sensor_control": {
+                    "devices": {
+                        "32:153289": {
+                            "abs_humidity_inputs": {
+                                "outdoor_abs_humidity": {
+                                    "temperature": {"kind": "internal"},
+                                    "humidity": {
+                                        "kind": "external",
+                                        "entity": "sensor.x",
+                                    },
+                                }
+                            }
+                        },
+                        "32:000000": {"abs_humidity_inputs": {}},
+                    }
+                }
+            },
+        }
+    }
+
+    await ws_set_abs_temperature_kind(
+        hass,
+        connection,
+        {
+            "id": 3,
+            "device_id": "32_153289",
+            "kind": "internal_supply",
+        },
+    )
+
+    connection.send_result.assert_called_once()
+    options = hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    cfg = options["ramses_extras"]["features"]["sensor_control"]["devices"]
+    out = cfg["32:153289"]["abs_humidity_inputs"]["outdoor_abs_humidity"]
+    assert out["temperature"]["kind"] == "internal_supply"
+    assert out["humidity"] == {"kind": "external", "entity": "sensor.x"}
+    assert "32:000000" in cfg

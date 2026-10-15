@@ -45,6 +45,12 @@
     },
     "details": {
       "title": "Flow details"
+    },
+    "diagnostics": {
+      "title": "Humidity sensor location",
+      "verdict_supply": "Measured in the SUPPLY duct (after heat recovery / bypass)",
+      "verdict_outdoor": "Measured on the OUTDOOR (untreated) airflow",
+      "verdict_inconclusive": "Inconclusive"
     }
   }
 }
