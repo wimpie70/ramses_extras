@@ -53,14 +53,16 @@ def _abs_temp_part_from_input(
 
     kind options:
     - "internal": use internal temperature sensor
+    - "internal_supply": use the FAN's internal supply temperature (for
+      units that measure RH in the supply duct, after heat recovery)
     - "external_temp": use external temperature entity
     - "external_abs": use external absolute humidity entity directly
     """
     kind = str(data.get(kind_key) or "internal")
     ent = data.get(ent_key)
 
-    if kind == "internal":
-        return {"kind": "internal"}
+    if kind in {"internal", "internal_supply"}:
+        return {"kind": kind}
 
     if kind in {"external_temp", "external_abs", "external"}:
         if ent:
@@ -487,7 +489,11 @@ def build_group_schema(
         abs_temp_kind_options = [
             selector.SelectOptionDict(
                 value="internal",
-                label="Internal (temperature)",
+                label="Internal (from FAN's outside flow)",
+            ),
+            selector.SelectOptionDict(
+                value="internal_supply",
+                label="Internal (from FAN's supply flow)",
             ),
             selector.SelectOptionDict(
                 value="external_temp",
@@ -769,6 +775,27 @@ async def handle_internal_fan_sensors(
         ),
     ]
 
+    # Outdoor absolute humidity temperature kind options. On some units
+    # (e.g. Orcon) the reported "outdoor" RH is measured in the supply
+    # duct, after heat recovery/bypass; "internal_supply" pairs it with
+    # the co-located supply temperature so the absolute humidity result
+    # stays correct (moisture content is conserved).
+    abs_temp_kind_options_outdoor = [
+        selector.SelectOptionDict(
+            value="internal", label="Internal (from FAN's outside flow)"
+        ),
+        selector.SelectOptionDict(
+            value="internal_supply", label="Internal (from FAN's supply flow)"
+        ),
+        selector.SelectOptionDict(value="external", label="External (from HA entity)"),
+        selector.SelectOptionDict(
+            value="external_temp", label="External temperature only"
+        ),
+        selector.SelectOptionDict(
+            value="external_abs", label="External absolute humidity"
+        ),
+    ]
+
     # Absolute humidity humidity kind options
     abs_hum_kind_options = [
         selector.SelectOptionDict(value="internal", label="Internal (from FAN)"),
@@ -886,7 +913,7 @@ async def handle_internal_fan_sensors(
                 default=outdoor_abs_cfg.get("temperature", {}).get("kind", "internal"),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=abs_temp_kind_options,
+                    options=abs_temp_kind_options_outdoor,
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),

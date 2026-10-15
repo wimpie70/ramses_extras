@@ -33,15 +33,21 @@ export function createTopSection(data, t) {
     exhaustFanSpeed, supplyFanSpeed, fanMode, fanControlModeLabel,
     co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
     timerMinutesRemaining, airflowSvg, filterDaysRemaining,
-    balanceTriggersHtml, co2ZonesHtml,
+    balanceTriggersHtml, co2ZonesHtml, co2StatusHtml,
     indoorHumidityClass, co2LevelClass,
     transportAvailable, isCalibrating,
-    tempControlHtml
+    tempControlHtml, outdoorHumidityLocation
   } = data;
   const safeTimerMinutesRemaining = Number.isFinite(timerMinutesRemaining)
     ? timerMinutesRemaining
     : 0;
   const safeFilterDaysRemaining = Number.isFinite(filterDaysRemaining) ? filterDaysRemaining : '?';
+
+  // 'supply' means the reported outdoor RH is measured in the supply
+  // duct (post heat recovery/bypass): the humidity row is rendered next
+  // to the supply temperature it pairs with, and the feature-status
+  // block moves to the left panel.
+  const supplyRhLayout = outdoorHumidityLocation === 'supply';
 
   // Helper function to format humidity values
   const formatHumidity = (value, unit) => {
@@ -82,6 +88,7 @@ export function createTopSection(data, t) {
             <div class="r-xtrs-hvac-fan-icon-circle blue"
                  title="${tr('tooltips.outdoor_air', 'Outside air')}">☁️</div>
           </div>
+          ${!supplyRhLayout ? `
           <div class="r-xtrs-hvac-fan-humidity-row">
             <span id="outdoorHumidity"
                   title="${tr('tooltips.outdoor_rh', 'Outdoor relative humidity')}">${outdoorHumidity}%</span>
@@ -89,13 +96,16 @@ export function createTopSection(data, t) {
             <span id="outdoorAbsHumidity"
                   title="${tr('tooltips.abs_humidity', 'Absolute humidity (g of water per m³ of air) — indoor vs outdoor decides whether ventilating reduces moisture')}">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
             <span>💧</span>
-          </div>
+          </div>` : ''}
           <div class="r-xtrs-hvac-fan-info-stack">
             <div title="${tr('tooltips.efficiency', 'Heat recovery efficiency — how much warmth the unit keeps inside')}">📊 ${efficiency}%</div>
             <div title="${tr('tooltips.co2', 'Indoor CO₂ level')}">🫧 <span class="${co2LevelClass || ''}">${co2Level}</span> ppm</div>
             <div id="filterDaysRemaining"
                  title="${tr('tooltips.filter_days', 'Days until the filter needs replacement')}">📅 ${safeFilterDaysRemaining}d</div>
           </div>
+          ${supplyRhLayout
+            ? `${tempControlHtml || ''}${balanceTriggersHtml || ''}${co2StatusHtml || ''}`
+            : ''}
         </div>
 
         <div class="r-xtrs-hvac-fan-corner-value top-right">
@@ -121,8 +131,8 @@ export function createTopSection(data, t) {
           </div>
 
           <!-- Balance Triggers & CO2 Zones Section (RIGHT panel) -->
-          ${tempControlHtml || ''}
-          ${balanceTriggersHtml || ''}
+          ${supplyRhLayout ? '' : (tempControlHtml || '')}
+          ${supplyRhLayout ? '' : (balanceTriggersHtml || '')}
           ${co2ZonesHtml || ''}
         </div>
 
@@ -133,6 +143,15 @@ export function createTopSection(data, t) {
             <span>🌡️</span>
             <span id="supplyTemp">${supplyTemp} °C</span>
           </div>
+          ${supplyRhLayout ? `
+          <div class="r-xtrs-hvac-fan-humidity-row">
+            <span>💧</span>
+            <span id="outdoorHumidity"
+                  title="${tr('tooltips.outdoor_rh_supply', 'Supply relative humidity — the reported RH is measured in the supply duct, after heat recovery/bypass')}">${outdoorHumidity}%</span>
+            <span class="r-xtrs-hvac-fan-arrow">→</span>
+            <span id="outdoorAbsHumidity"
+                  title="${tr('tooltips.abs_humidity', 'Absolute humidity (g of water per m³ of air) — indoor vs outdoor decides whether ventilating reduces moisture')}">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
+          </div>` : ''}
         </div>
 
         <div class="r-xtrs-hvac-fan-corner-value bottom-left">
