@@ -188,9 +188,6 @@ export function createTopSection(data, t) {
               <span class="r-xtrs-hvac-fan-connection-icon">
                 ${transportAvailable ? '🟢' : '🔴'}
               </span>
-              <span class="r-xtrs-hvac-fan-connection-text">
-                ${transportAvailable ? tr('connection.online', 'Online') : tr('connection.offline', 'Offline')}
-              </span>
             </div>
           </div>
           <div class="r-xtrs-hvac-fan-stats-bottom">
