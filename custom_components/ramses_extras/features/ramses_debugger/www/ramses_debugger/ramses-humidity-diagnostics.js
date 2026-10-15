@@ -26,8 +26,9 @@ import {
   parseHistorySeries,
 } from './humidity-diagnostics.js';
 
-const DEFAULT_WINDOW_MINUTES = 20;
-const RUN_MINUTES = 15;
+const DEFAULT_WINDOW_MINUTES = 15;
+/** Minimum |outdoor - supply| °C for a meaningful bypass perturbation. */
+const MIN_PERTURBATION_C = 1.0;
 const RUN_STORAGE_KEY = 'ramses_humidity_diag_run';
 
 /** Control-switch mapping keys suspended during a diagnostic run. */
@@ -210,6 +211,29 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
     if (!this._hass || this._busy || this._run) {
       return;
     }
+    // Perturbation potential check: if supply temperature already equals
+    // outdoor temperature, opening the bypass cannot create a signal.
+    const out = Number(
+      this._hass.states?.[this._entityId('outdoor_temp_entity')]?.state
+    );
+    const sup = Number(
+      this._hass.states?.[this._entityId('supply_temp_entity')]?.state
+    );
+    if (
+      Number.isFinite(out) && Number.isFinite(sup)
+      && Math.abs(out - sup) < MIN_PERTURBATION_C
+    ) {
+      const proceed = window.confirm(
+        this.t('card.diagnostics.warn_low_delta')
+          || `Outdoor (${out.toFixed(1)} °C) and supply (${sup.toFixed(1)} `
+          + '°C) are nearly equal — the bypass can barely perturb the '
+          + 'supply air, so the run will probably be inconclusive. '
+          + 'Run anyway?'
+      );
+      if (!proceed) {
+        return;
+      }
+    }
     await this._onStartTest();
     if (this._lastError) {
       return;
@@ -217,7 +241,7 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
     const now = Date.now();
     this._run = {
       startTs: now,
-      endTs: now + RUN_MINUTES * 60 * 1000,
+      endTs: now + this._windowMinutes * 60 * 1000,
       disabledControls: [...this._disabledControls],
     };
     this._saveRun();
@@ -532,6 +556,7 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
         const v = Number(ev?.target?.value);
         if (Number.isFinite(v) && v >= 5) {
           this._windowMinutes = Math.round(v);
+          this.render();
         }
       });
     }
@@ -661,10 +686,10 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
           <b>1.</b> Run the fan on <b>High</b> with the bypass <b>open</b>
           for ~15 minutes. <b>Auto run</b> does it all: it suspends Temp,
           Balance and CO₂ control, sets HIGH + opens the bypass, waits
-          15 min, analyzes, and restores everything (survives a page
-          reload). The bypass valve takes up to ~1 min to open. If the
-          unit keeps refusing to open it, retry when outdoor air is
-          cooler than indoor air.
+          the configured <b>Window</b>, analyzes, and restores everything
+          (survives a page reload). The bypass valve takes up to ~1 min to
+          open. If the unit keeps refusing to open it, retry when outdoor
+          air is cooler than indoor air.
           <br>
           <b>2.</b> Click <b>Analyze</b> for an ad-hoc window — the tool
           compares which temperature pairing keeps the dewpoint most
@@ -776,6 +801,10 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
         || (this._run && !['cancel', 'restore'].includes(key));
       btn.textContent =
         this._busy === key ? '…' : this._btnLabels[id];
+    }
+    const ar = this.shadowRoot.getElementById('rhd-autorun');
+    if (ar && this._busy !== 'autorun') {
+      ar.textContent = `⚡ Auto run (${this._windowMinutes} min)`;
     }
   }
 
