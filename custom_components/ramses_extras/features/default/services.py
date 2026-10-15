@@ -496,6 +496,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             return
         recent[key] = now
 
+        # An echo of our own send can arrive with ANY source address (our
+        # outbound packets spoof a bound REM) and may slip past the short
+        # self-sent dedup when the echo is handled while the send is still
+        # in flight.  The arbiter records every applied command just before
+        # dispatch, so a matching recent application means this packet is
+        # ours — dropping it prevents a spurious manual_override with no
+        # release timer (issue 290).
+        if command in {"fan_low", "fan_medium", "fan_high", "fan_auto"}:
+            arbiter = get_fan_speed_arbiter(hass)
+            if arbiter.was_recently_applied(normalized_dst, command):
+                return
+
         if not is_matched:
             # The command did not come from a bound REM, but it can still
             # be user-initiated (remote.send_command, the HA fan entity,
@@ -539,11 +551,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         own demand on the next evaluation and undo the user's command
         (issue 216).
 
-        Gateway-sourced packets (18:*) can also be echoes of our own sends —
-        those are filtered out by comparing the command against what the
-        arbiter last applied.  Our own direct sends that are not tracked by
-        the arbiter (fan_away, fan_timer_*) are additionally excluded, since
-        their originating service call already updated the control state.
+        Echoes of our own speed commands are filtered out upstream in
+        ``_async_handle_observed_remote_packet_inner`` (self-sent dedup
+        plus the arbiter's recently-applied window).  Gateway-sourced
+        packets (18:*) carrying non-speed commands are dropped here, and
+        our own direct sends that are not tracked by the arbiter
+        (fan_away, fan_timer_*) are additionally excluded, since their
+        originating service call already updated the control state.
         """
         if device_id.startswith("18:"):
             return  # dst is a gateway, not a controllable FAN
@@ -561,12 +575,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         arbiter = get_fan_speed_arbiter(hass)
 
-        if src_id.startswith("18:"):
-            # Gateway-sourced: could be an echo of our own send.
-            if command not in {"fan_low", "fan_medium", "fan_high", "fan_auto"}:
-                return
-            if arbiter.was_recently_applied(device_id, command):
-                return
+        if src_id.startswith("18:") and command not in {
+            "fan_low",
+            "fan_medium",
+            "fan_high",
+            "fan_auto",
+        }:
+            # Gateway-sourced packet with a non-speed command — not a
+            # user-initiated fan speed change.  Speed-command echoes of
+            # our own sends are filtered upstream in
+            # _async_handle_observed_remote_packet_inner.
+            return
 
         _LOGGER.info(
             "External fan command observed: %s -> %s (%s); "

@@ -983,6 +983,7 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.record_remote_activity = MagicMock()
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.set_manual_override_state = MagicMock()
             mock_arb_inst.clear_manual_override_state = MagicMock()
@@ -1039,6 +1040,7 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.record_remote_activity = MagicMock()
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.clear_manual_override_state = MagicMock()
             mock_arb_inst.async_commit_state = AsyncMock()
@@ -1097,6 +1099,7 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.record_remote_activity = MagicMock()
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.clear_manual_override_state = MagicMock()
             mock_arb_inst.async_commit_state = AsyncMock()
@@ -1158,6 +1161,7 @@ class TestObservedCommandFromPacket:
             ]
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.set_manual_override_state = MagicMock()
             mock_arb_inst.async_commit_state = AsyncMock()
@@ -1246,6 +1250,7 @@ class TestObservedCommandFromPacket:
             ]
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.async_commit_state = AsyncMock()
             mock_arb.return_value = mock_arb_inst
             mock_rel_arb.return_value = mock_arb_inst
@@ -1316,6 +1321,7 @@ class TestObservedCommandFromPacket:
             ]
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.async_commit_state = AsyncMock()
             mock_arb.return_value = mock_arb_inst
 
@@ -1361,6 +1367,7 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.record_remote_activity = MagicMock()
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.async_commit_state = AsyncMock()
             mock_arb.return_value = mock_arb_inst
 
@@ -1412,6 +1419,7 @@ class TestObservedCommandFromPacket:
             mock_bind.return_value.record_remote_activity = MagicMock()
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.set_manual_override_state = MagicMock()
             mock_arb_inst.clear_manual_override_state = MagicMock()
@@ -1945,6 +1953,7 @@ class TestExternalFanCommands:
             mock_bind.return_value._get_config_manager.return_value = None
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.set_manual_override_state = MagicMock()
             mock_arb_inst.async_commit_state = AsyncMock()
@@ -1988,6 +1997,7 @@ class TestExternalFanCommands:
             mock_bind.return_value._get_config_manager.return_value = None
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.clear_manual_override_state = MagicMock()
             mock_arb_inst.async_commit_state = AsyncMock()
@@ -2038,6 +2048,57 @@ class TestExternalFanCommands:
             msg = _make_msg(
                 {
                     "src": "18_130236",
+                    "dst": "32_123456",
+                    "code": "22F1",
+                    "payload": "000307",
+                    "verb": "I",
+                }
+            )
+            handler(msg)
+            await _drain_pending(hass)
+
+            mock_arb_inst.was_recently_applied.assert_called_once_with(
+                "32:123456", "fan_high"
+            )
+            mock_arb_inst.set_manual_override_state.assert_not_called()
+            mock_arb_inst.async_commit_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rem_src_echo_of_own_send_is_ignored(self, hass):
+        """A spoofed-REM echo of our own arbiter send is not an override.
+
+        Our outbound packets spoof a bound-REM source address, so the RF
+        echo arrives with a REM src rather than a gateway (18:*) src.
+        When the echo slips past the short self-sent dedup (observed while
+        the send is still in flight), was_recently_applied must still
+        catch it — otherwise it registers a manual override with no
+        release timer and extras control sticks on "manual" (issue 290).
+        """
+        hass.services.has_service.return_value = False
+        handler = await _setup_services_with_handler(hass)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+            ) as mock_arb,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+            ) as mock_bind,
+        ):
+            mock_bind.return_value.get_all_rem_ids_for_fan.return_value = []
+            mock_bind.return_value.get_bindings_for_fan.return_value = []
+            mock_bind.return_value.record_remote_activity = MagicMock()
+            mock_bind.return_value._get_config_manager.return_value = None
+
+            mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=True)
+            mock_arb_inst.set_manual_override_state = MagicMock()
+            mock_arb_inst.async_commit_state = AsyncMock()
+            mock_arb.return_value = mock_arb_inst
+
+            msg = _make_msg(
+                {
+                    "src": "37_168270",
                     "dst": "32_123456",
                     "code": "22F1",
                     "payload": "000307",
@@ -2114,6 +2175,7 @@ class TestExternalFanCommands:
             mock_bind.return_value._get_config_manager.return_value = None
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.set_manual_override_state = MagicMock()
             mock_arb_inst.async_commit_state = AsyncMock()
@@ -2154,6 +2216,7 @@ class TestExternalFanCommands:
             mock_bind.return_value._get_config_manager.return_value = None
 
             mock_arb_inst = MagicMock()
+            mock_arb_inst.was_recently_applied = MagicMock(return_value=False)
             mock_arb_inst.set_extras_control_enabled = MagicMock()
             mock_arb_inst.clear_manual_override_state = MagicMock()
             mock_arb_inst.async_commit_state = AsyncMock()

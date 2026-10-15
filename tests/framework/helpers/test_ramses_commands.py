@@ -765,12 +765,36 @@ class TestSelfSendTracking:
         assert ramses_commands.was_command_recently_sent("32:153289", "fan_high")
 
     @pytest.mark.asyncio
-    async def test_failed_send_not_recorded(self, ramses_commands):
-        """Test a failed send is not recorded."""
+    async def test_recorded_before_dispatch(self, ramses_commands):
+        """The self-sent record exists while the send is still in flight.
+
+        The RF echo can be observed (and handled by the remote-packet
+        listener) before send_command_to_device returns; pre-arming the
+        record makes that echo recognizable (issue 290).
+        """
+        observed_during_send = []
+
+        async def _capture(*args, **kwargs):
+            observed_during_send.append(
+                ramses_commands.was_command_recently_sent("32:153289", "fan_high")
+            )
+            return CommandResult(success=True)
+
+        ramses_commands._device_manager.send_command_to_device = AsyncMock(
+            side_effect=_capture
+        )
+        await ramses_commands.send_command("32_153289", "fan_high")
+        assert observed_during_send == [True]
+
+    @pytest.mark.asyncio
+    async def test_failed_send_recorded_then_expires(self, ramses_commands):
+        """A failed send still pre-arms the record; it expires within 5s."""
         ramses_commands._device_manager.send_command_to_device = AsyncMock(
             return_value=CommandResult(success=False, error_message="x")
         )
         await ramses_commands.send_command("32_153289", "fan_high")
+        assert ramses_commands.was_command_recently_sent("32:153289", "fan_high")
+        ramses_commands._self_sent[("32:153289", "fan_high")] = time.monotonic() - 10.0
         assert not ramses_commands.was_command_recently_sent("32:153289", "fan_high")
 
     def test_was_command_recently_sent_window_expires(self, ramses_commands):
