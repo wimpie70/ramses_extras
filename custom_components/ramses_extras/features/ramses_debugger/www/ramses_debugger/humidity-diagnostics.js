@@ -64,7 +64,9 @@ export function parseHistorySeries(raw) {
     let t;
     if ('s' in item) {
       v = Number(item.s);
-      t = Number(item.lc) * 1000;
+      // Compressed rows always carry 'lu' (last_updated, epoch s);
+      // 'lc' is only present when last_changed differs from last_updated.
+      t = Number(item.lu ?? item.lc) * 1000;
     } else if ('state' in item) {
       v = Number(item.state);
       const changed = item.lu ?? item.last_updated ?? item.last_changed;

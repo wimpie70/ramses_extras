@@ -230,6 +230,10 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
     if (!run) {
       return;
     }
+    const countdown = this.shadowRoot?.getElementById('rhd-countdown');
+    if (countdown) {
+      countdown.textContent = 'analyzing run + restoring…';
+    }
     await this._onAnalyze({ start: run.startTs, end: run.endTs });
     await this._onRestore();
     this._run = null;
@@ -402,7 +406,11 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
         outdoorTemp: parseHistorySeries(res?.[outEntity]),
         supplyTemp: parseHistorySeries(res?.[supEntity]),
       });
-      result.bypassOpenFraction = this._bypassOpenFraction(res?.[bypassEntity]);
+      result.bypassOpenFraction = this._bypassOpenFraction(
+        res?.[bypassEntity],
+        start.getTime(),
+        end.getTime()
+      );
       this._result = result;
     } catch (error) {
       this._lastError = error;
@@ -413,23 +421,68 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
   }
 
   /**
-   * Fraction of the window where the bypass binary sensor was "on".
+   * Time-weighted fraction of the window where the bypass binary sensor
+   * was "on" (forward-filled; counting rows would be misleading because
+   * recorder only stores state changes).
    *
    * @param {Array<Object>} raw History rows for the bypass entity.
+   * @param {number} startMs Window start (epoch ms).
+   * @param {number} endMs Window end (epoch ms).
    * @returns {number|null} Fraction 0..1, or null when unknown.
    */
-  _bypassOpenFraction(raw) {
-    if (!Array.isArray(raw) || raw.length === 0) {
+  _bypassOpenFraction(raw, startMs, endMs) {
+    if (!Array.isArray(raw) || raw.length === 0 || endMs <= startMs) {
       return null;
     }
-    let open = 0;
+    const rows = [];
     for (const item of raw) {
       const s = 's' in item ? item.s : item.state;
-      if (s === 'on') {
-        open += 1;
+      // Compressed rows carry numeric 'lu' (always) and 'lc' (only when
+      // last_changed differs); regular rows carry ISO strings.
+      const rawTs = item.lu ?? item.lc ?? item.last_updated
+        ?? item.last_changed;
+      const lc = typeof rawTs === 'number'
+        ? rawTs * 1000
+        : Date.parse(rawTs);
+      if ((s === 'on' || s === 'off') && Number.isFinite(lc)) {
+        rows.push({ t: lc, on: s === 'on' });
       }
     }
-    return open / raw.length;
+    if (!rows.length) {
+      return null;
+    }
+    rows.sort((a, b) => a.t - b.t);
+
+    // State at window start: last change at/before start, else the first
+    // recorded value (recorder returns the state valid at start).
+    let current = rows[0].on;
+    for (const row of rows) {
+      if (row.t <= startMs) {
+        current = row.on;
+      } else {
+        break;
+      }
+    }
+
+    let openMs = 0;
+    let cursor = startMs;
+    for (const row of rows) {
+      if (row.t <= startMs) {
+        continue;
+      }
+      if (row.t >= endMs) {
+        break;
+      }
+      if (current) {
+        openMs += row.t - cursor;
+      }
+      cursor = row.t;
+      current = row.on;
+    }
+    if (current) {
+      openMs += endMs - cursor;
+    }
+    return openMs / (endMs - startMs);
   }
 
   async _onApply() {
@@ -536,6 +589,11 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
       <div class="rhd-result ${r.verdict}">
         <div class="rhd-verdict">${verdicts[r.verdict] || verdicts.inconclusive}</div>
         ${r.reason ? `<div class="rhd-reason">${reasons[r.reason] || r.reason}</div>` : ''}
+        ${r.verdict === 'inconclusive'
+          && r.bypassOpenFraction !== null && r.bypassOpenFraction !== undefined
+          && r.bypassOpenFraction < 0.5 ? `
+        <div class="rhd-reason">${this.t('card.diagnostics.hint_bypass_closed')
+          || 'The bypass stayed closed most of the window — check that it actually opened (the valve takes up to ~1 min). Some units refuse to hold the bypass open when outdoor air is warmer than indoor air; retry when outdoor < indoor.'}</div>` : ''}
         <table class="rhd-table">
           <tr><td>Samples</td><td>${r.samples}</td></tr>
           <tr><td>Supply temp range</td><td>${this._fmt(r.supplyRange, 1)} °C</td></tr>
@@ -547,7 +605,7 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
               <td>${this._fmt(r.corrRhSupply)}</td></tr>
           ${r.bypassOpenFraction !== null && r.bypassOpenFraction !== undefined ? `
           <tr><td>Bypass open</td>
-              <td>${Math.round(r.bypassOpenFraction * 100)}% of samples</td></tr>` : ''}
+              <td>${Math.round(r.bypassOpenFraction * 100)}% of the window</td></tr>` : ''}
         </table>
         ${action}
       </div>`;
@@ -604,7 +662,9 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
           for ~15 minutes. <b>Auto run</b> does it all: it suspends Temp,
           Balance and CO₂ control, sets HIGH + opens the bypass, waits
           15 min, analyzes, and restores everything (survives a page
-          reload). Or drive it manually with the other buttons.
+          reload). The bypass valve takes up to ~1 min to open. If the
+          unit keeps refusing to open it, retry when outdoor air is
+          cooler than indoor air.
           <br>
           <b>2.</b> Click <b>Analyze</b> for an ad-hoc window — the tool
           compares which temperature pairing keeps the dewpoint most
@@ -690,6 +750,10 @@ class RamsesHumidityDiagnosticsCard extends RamsesBaseCard {
     const cancel = this.shadowRoot.getElementById('rhd-cancel');
     if (cancel) {
       cancel.style.display = this._run ? '' : 'none';
+    }
+    const countdown = this.shadowRoot.getElementById('rhd-countdown');
+    if (countdown && !this._run) {
+      countdown.textContent = '';
     }
 
     this._btnLabels = this._btnLabels || {};

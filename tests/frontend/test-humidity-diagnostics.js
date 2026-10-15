@@ -44,6 +44,20 @@ describe('dewpointCelsius', () => {
 });
 
 describe('parseHistorySeries', () => {
+  test('parses minimal_response {s, lu} rows (lc absent when unchanged)', () => {
+    // HA compressed rows always carry 'lu'; 'lc' is only set when
+    // last_changed differs from last_updated (schema 41+).
+    const rows = [
+      { s: '10.5', lu: 1700000000 },
+      { s: '11.0', lu: 1700000060 },
+      { s: '11.0', lu: 1700000120, lc: 1700000060 },
+    ];
+    const out = parseHistorySeries(rows);
+    expect(out).toHaveLength(3);
+    expect(out[0]).toEqual({ t: 1700000000000, v: 10.5 });
+    expect(out[2].t).toBe(1700000120000);
+  });
+
   test('parses minimal_response {s, lc} rows', () => {
     const rows = [
       { s: '10.5', lc: 1700000000 },

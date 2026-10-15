@@ -50,7 +50,8 @@
       "title": "Vochtigheidssensor-locatie",
       "verdict_supply": "Gemeten in de TOEVOERleiding (na warmteterugwinning / bypass)",
       "verdict_outdoor": "Gemeten op de BUITENlucht (onbehandelde luchtstroom)",
-      "verdict_inconclusive": "Onbeslist"
+      "verdict_inconclusive": "Onbeslist",
+      "hint_bypass_closed": "De bypass bleef het grootste deel van het venster dicht — controleer of hij echt open ging (de klep duurt max. ~1 min). Sommige units weigeren de bypass open te houden als de buitenlucht warmer is dan de binnenlucht; probeer opnieuw wanneer buiten < binnen."
     }
   }
 }
