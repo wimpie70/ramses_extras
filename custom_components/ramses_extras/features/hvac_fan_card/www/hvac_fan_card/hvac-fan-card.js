@@ -1066,10 +1066,6 @@ class HvacFanCard extends RamsesBaseCard {
   _createCO2StatusRow() {
     const config = this.config || {};
 
-    if (!this._areaSensors || this._areaSensors.length === 0) {
-      return '';
-    }
-
     const co2ControlMode = this.getEntityState(config.co2_control_entity)?.state || 'off';
     const co2Active = this.getEntityState(config.co2_active_entity)?.state || 'off';
     const fanControlMode = this.getEntityState(config.fan_control_mode_entity)?.state || null;
@@ -1111,9 +1107,14 @@ class HvacFanCard extends RamsesBaseCard {
    */
   _createCO2ZonesSection(includeStatus = true) {
     const config = this.config || {};
+    const statusHtml = includeStatus ? this._createCO2StatusRow() : '';
 
     if (!this._areaSensors || this._areaSensors.length === 0) {
-      return '';
+      // No per-area sensors configured — still surface the CO2 control
+      // status row so toggling the control has visible feedback.
+      return statusHtml
+        ? `<div class="r-xtrs-hvac-fan-balance-triggers">${statusHtml}</div>`
+        : '';
     }
 
     const co2ZoneStatus = this.getEntityState(config.co2_zone_status_entity)?.state || 'unknown';
@@ -1263,7 +1264,7 @@ class HvacFanCard extends RamsesBaseCard {
 
     return `
       <div class="r-xtrs-hvac-fan-balance-triggers">
-        ${includeStatus ? this._createCO2StatusRow() : ''}
+        ${statusHtml}
         ${areaSensorItems}
         ${internalItemHtml}
         ${zoneStatusHtml}
