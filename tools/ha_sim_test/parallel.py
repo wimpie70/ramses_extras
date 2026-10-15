@@ -21,6 +21,7 @@ import asyncio
 import functools
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -460,7 +461,10 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
     # Install manifest requirements of the bind-mounted custom components
     # — clone images can lag the checked-out code (a requirement bump
     # upstream otherwise fails the integration setup on the clone).
-    changed = _ensure_manifest_requirements(parallel_instances)
+    # Include the primary instance: a mid-run restart re-runs HA's
+    # requirement install under its pinned constraints, which can break
+    # or downgrade an already-working package there too.
+    changed = _ensure_manifest_requirements(instances)
     if changed:
         print(f"  Restarting {len(changed)} container(s) to load new packages")
         for name in changed:
@@ -509,12 +513,104 @@ def _manifest_requirements() -> list[str]:
     return reqs
 
 
+#: HA image constraints file — applied to every requirement install.
+_HA_CONSTRAINTS = "/usr/src/homeassistant/homeassistant/package_constraints.txt"
+#: Core integration manifests — may hard-pin the same packages.
+_HA_COMPONENTS_DIR = "/usr/src/homeassistant/homeassistant/components"
+
+
+def _req_pkg_name(req: str) -> str:
+    """Extract the bare package name from a requirement specifier.
+
+    :param req: e.g. ``serialx>=1.11.0`` or ``foo[extra]==1.2``.
+    :return: Lowercased package name (e.g. ``serialx``).
+    """
+    name = re.split(r"[<>=!~\[; ]", req, maxsplit=1)[0]
+    return name.strip().lower()
+
+
+def _relax_conflicting_pins(inst: InstanceConfig, reqs: list[str]) -> None:
+    """Drop ``==`` pins in the HA image that block our requirements.
+
+    HA installs integration requirements under
+    ``package_constraints.txt`` and honours ``==`` pins in core
+    integration manifests.  A hard pin (e.g. ``serialx==1.8.2`` for the
+    ``usb``/``serial``/``zha`` integrations) conflicts with a custom
+    component's ``>=`` bump — the install fails (``Requirements for
+    ramses_cc not found``) or silently downgrades the package when a
+    pinning integration sets up later (e.g. after a mid-run restart).
+    Downgrading the pins to ``>=`` keeps them a valid floor while
+    allowing the newer version.
+
+    :param inst: Instance whose container should be patched.
+    :param reqs: Manifest requirement specifiers to protect.
+    """
+    pkgs = {_req_pkg_name(r) for r in reqs}
+
+    # Core integration manifests: ``"pkg==x.y"`` → ``"pkg>=x.y"``
+    sed_exprs = ";".join(f's/"{pkg}==/"{pkg}>=/g' for pkg in pkgs)
+    subprocess.run(
+        [
+            "docker",
+            "exec",
+            inst.name,
+            "sh",
+            "-c",
+            f"find {_HA_COMPONENTS_DIR} -name manifest.json"
+            f" -exec sed -i '{sed_exprs}' {{}} +",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    # Constraints file: ``pkg==x.y`` → ``pkg>=x.y``
+    constraints = subprocess.run(
+        ["docker", "exec", inst.name, "cat", _HA_CONSTRAINTS],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if constraints.returncode != 0:
+        return
+    lines = constraints.stdout.splitlines()
+    out_lines: list[str] = []
+    relaxed: list[str] = []
+    for line in lines:
+        pkg = line.split("==", 1)[0].strip().lower() if "==" in line else ""
+        if pkg in pkgs:
+            out_lines.append(f"{pkg}>={line.split('==', 1)[1].strip()}")
+            relaxed.append(pkg)
+        else:
+            out_lines.append(line)
+    if relaxed:
+        heredoc = "\n".join(out_lines) + "\n"
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                "-i",
+                inst.name,
+                "sh",
+                "-c",
+                f"cat > {_HA_CONSTRAINTS}",
+            ],
+            input=heredoc,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        print(f"  [{inst.name}] Relaxed HA pin(s): {', '.join(sorted(relaxed))}")
+
+
 def _ensure_manifest_requirements(instances: list[InstanceConfig]) -> list[str]:
     """pip-install manifest requirements into the parallel containers.
 
     Clone images can lag the checked-out custom component code (e.g. an
     upstream manifest bump).  A missing requirement fails the
     integration's setup and cascades into dependents (ramses_extras).
+    Also relaxes conflicting ``==`` pins in HA's constraints file so the
+    packages survive HA-driven requirement installs and restarts.
 
     :param instances: Parallel instances whose containers are running.
     :return: Names of containers that received new packages (they need a
@@ -525,6 +621,7 @@ def _ensure_manifest_requirements(instances: list[InstanceConfig]) -> list[str]:
         return []
     changed: list[str] = []
     for inst in instances:
+        _relax_conflicting_pins(inst, reqs)
         result = subprocess.run(
             ["docker", "exec", inst.name, "pip", "install", *reqs],
             capture_output=True,
