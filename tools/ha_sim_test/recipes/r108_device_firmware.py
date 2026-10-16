@@ -21,7 +21,7 @@ Combinations tested:
 from __future__ import annotations
 
 from ..base import Recipe, RecipeContext
-from ..helpers import docker_exec_python, spawn_thread
+from ..helpers import docker_exec_python
 
 
 class R108DeviceFirmwareScenarios(Recipe):
@@ -78,7 +78,8 @@ async def run_tests():
                     os.read(master_fd, 1024)
                 except OSError:
                     break
-        t = spawn_thread(hgi80_silence)
+        t = threading.Thread(target=hgi80_silence, daemon=True)
+        t.start()
 
         try:
             from ramses_tx.transport.port import PortTransport
@@ -157,7 +158,8 @@ async def run_tests():
                         buf = buf[-128:]
                 except OSError:
                     break
-        t2 = spawn_thread(nanocul_responder)
+        t2 = threading.Thread(target=nanocul_responder, daemon=True)
+        t2.start()
 
         try:
             from ramses_tx.transport.port import PortTransport
@@ -236,7 +238,8 @@ async def run_tests():
                         buf = buf[-128:]
                 except OSError:
                     break
-        t3 = spawn_thread(atmega_responder)
+        t3 = threading.Thread(target=atmega_responder, daemon=True)
+        t3.start()
 
         try:
             from ramses_tx.transport.port import PortTransport
@@ -642,7 +645,8 @@ async def run_tests():
                     os.read(master_fd4, 1024)
                 except OSError:
                     break
-        t4 = spawn_thread(hgi80_silence2)
+        t4 = threading.Thread(target=hgi80_silence2, daemon=True)
+        t4.start()
 
         try:
             from ramses_tx.transport.port import PortTransport

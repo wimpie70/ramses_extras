@@ -185,12 +185,13 @@ class R146ConcurrentIdenticalRq(Recipe):
 
         # Pool threads start with a fresh context — get_current_instance()
         # would fall back to ha-sim.  Copy the context so workers target
-        # this recipe's own instance.
+        # this recipe's own instance; a Context can only be entered by one
+        # thread at a time, so hand each worker its own copy().
         t_start = time.monotonic()
         ctx_copy = contextvars.copy_context()
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_zones) as pool:
             durations = list(
-                pool.map(lambda eid: ctx_copy.run(call_schedule, eid), eids)
+                pool.map(lambda eid: ctx_copy.copy().run(call_schedule, eid), eids)
             )
         burst_wall = time.monotonic() - t_start
         print(
@@ -281,7 +282,10 @@ class R146ConcurrentIdenticalRq(Recipe):
         ctx_copy = contextvars.copy_context()
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_raw) as pool:
             raw_durations = list(
-                pool.map(lambda i: ctx_copy.run(call_send_packet, i), range(n_raw))
+                pool.map(
+                    lambda i: ctx_copy.copy().run(call_send_packet, i),
+                    range(n_raw),
+                )
             )
         raw_wall = time.monotonic() - t_start
         slowest = max(raw_durations)

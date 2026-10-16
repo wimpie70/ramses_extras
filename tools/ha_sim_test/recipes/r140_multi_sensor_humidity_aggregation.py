@@ -367,6 +367,10 @@ class R140MultiSensorHumidityAggregation(Recipe):
             time.sleep(3)
 
             # --- raise the area humidity ---------------------------------
+            # Take the TX baseline before the trigger: the 22F1 demand can
+            # be emitted by the very evaluation this state change kicks off,
+            # and taking it afterwards would miss that emit.
+            tx_baseline = container_log_timestamp()
             _set_entity_state(
                 ctx.token,
                 _BATH_HUM,
@@ -383,7 +387,6 @@ class R140MultiSensorHumidityAggregation(Recipe):
             # The dehumidify demand queues a 22F1 set_fan_mode 'high'
             # command; in the sim the TX can sit behind queued parameter
             # polls for tens of seconds, so both waits need large floors.
-            tx_baseline = container_log_timestamp()
             hgi_id = get_current_instance().hgi_id
             on = wait_for(
                 lambda: (

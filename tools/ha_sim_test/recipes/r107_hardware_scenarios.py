@@ -15,7 +15,7 @@ against fake serial devices, not just mocked coordinator methods.
 from __future__ import annotations
 
 from ..base import Recipe, RecipeContext
-from ..helpers import docker_exec_python, spawn_thread
+from ..helpers import docker_exec_python
 
 
 class R107HardwareScenarios(Recipe):
@@ -67,7 +67,8 @@ async def run_tests():
                     os.read(master_fd, 1024)
                 except OSError:
                     break
-        t = spawn_thread(modbus_silence)
+        t = threading.Thread(target=modbus_silence, daemon=True)
+        t.start()
 
         try:
             from ramses_tx.transport.port import PortTransport
@@ -148,7 +149,8 @@ async def run_tests():
                         buf = buf[-128:]
                 except OSError:
                     break
-        t2 = spawn_thread(hgi_responder)
+        t2 = threading.Thread(target=hgi_responder, daemon=True)
+        t2.start()
 
         try:
             from ramses_tx.transport.port import PortTransport

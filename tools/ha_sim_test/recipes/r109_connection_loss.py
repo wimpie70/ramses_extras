@@ -21,7 +21,7 @@ multi-HGI pool.  Uses pty pairs and mocked transports to simulate:
 from __future__ import annotations
 
 from ..base import Recipe, RecipeContext
-from ..helpers import docker_exec_python, spawn_thread
+from ..helpers import docker_exec_python
 
 
 class R109ConnectionLossScenarios(Recipe):
@@ -85,7 +85,8 @@ async def run_tests():
                         buf = buf[-128:]
                 except OSError:
                     break
-        t = spawn_thread(responder)
+        t = threading.Thread(target=responder, daemon=True)
+        t.start()
 
         try:
             from ramses_tx.transport.port import PortTransport
