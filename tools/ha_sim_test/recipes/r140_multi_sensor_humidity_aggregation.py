@@ -115,12 +115,20 @@ def _write_extras_options(enable: bool) -> None:
         opts = entry.setdefault("options", {})
         data = entry.setdefault("data", {})
         for store in (opts, data):
-            store.setdefault("enabled_features", {})["humidity_control"] = enable
-            store.setdefault("device_feature_matrix", {}).setdefault("32:150000", {})[
-                "humidity_control"
-            ] = enable
+            enabled = store.setdefault("enabled_features", {})
+            enabled["humidity_control"] = enable
+            # humidity_control only evaluates sensor_control config when the
+            # sensor_control feature itself is enabled (the source-selection
+            # feature creates no entities/automation of its own).
+            enabled["sensor_control"] = enable
+            matrix = store.setdefault("device_feature_matrix", {}).setdefault(
+                "32:150000", {}
+            )
+            matrix["humidity_control"] = enable
+            matrix["sensor_control"] = enable
         root = opts.setdefault("ramses_extras", {})
         root.setdefault("enabled_features", {})["humidity_control"] = enable
+        root.setdefault("enabled_features", {})["sensor_control"] = enable
         devices = (
             root.setdefault("features", {})
             .setdefault("sensor_control", {})
@@ -376,6 +384,7 @@ class R140MultiSensorHumidityAggregation(Recipe):
             # command; in the sim the TX can sit behind queued parameter
             # polls for tens of seconds, so both waits need large floors.
             tx_baseline = container_log_timestamp()
+            hgi_id = get_current_instance().hgi_id
             on = wait_for(
                 lambda: (
                     (_get_state(ctx.token, _DEHUMIDIFYING) or {}).get("state") == "on"
@@ -393,7 +402,7 @@ class R140MultiSensorHumidityAggregation(Recipe):
 
             sent = wait_for(
                 lambda: any(
-                    " I --- 18:001234 32:150000 --:------ 22F1 003 000307" in line
+                    f" I --- {hgi_id} 32:150000 --:------ 22F1 003 000307" in line
                     for line in log_lines_since("packet_log.log*", tx_baseline)
                 ),
                 timeout=120,

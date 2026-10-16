@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import threading
 import time
 import urllib.request
 from copy import deepcopy
@@ -42,6 +41,7 @@ from ..helpers import (
     get_current_instance,
     is_ha_running,
     load_profile_yaml,
+    spawn_thread,
     wait_for,
     wait_for_ramses_cc_loaded,
     wait_for_ramses_extras_ready,
@@ -176,7 +176,7 @@ def _fire_and_forget(token: str, domain: str, service: str, data: dict) -> None:
         except Exception:  # noqa: BLE001 — packet/entity is the real check
             pass
 
-    threading.Thread(target=_call, daemon=True).start()
+    spawn_thread(_call)
 
 
 async def _registry_entries(token: str) -> list[dict]:

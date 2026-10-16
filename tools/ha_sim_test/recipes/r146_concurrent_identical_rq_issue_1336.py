@@ -26,6 +26,7 @@ the checks assert progression *to* that stage, not service success.
 from __future__ import annotations
 
 import concurrent.futures
+import contextvars
 import subprocess
 import time
 
@@ -182,9 +183,15 @@ class R146ConcurrentIdenticalRq(Recipe):
                 pass  # sim 0404 replies mismatch — expected
             return time.monotonic() - t0
 
+        # Pool threads start with a fresh context — get_current_instance()
+        # would fall back to ha-sim.  Copy the context so workers target
+        # this recipe's own instance.
         t_start = time.monotonic()
+        ctx_copy = contextvars.copy_context()
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_zones) as pool:
-            durations = list(pool.map(call_schedule, eids))
+            durations = list(
+                pool.map(lambda eid: ctx_copy.run(call_schedule, eid), eids)
+            )
         burst_wall = time.monotonic() - t_start
         print(
             f"  {n_zones} concurrent calls done in {burst_wall:.1f}s"
@@ -271,8 +278,11 @@ class R146ConcurrentIdenticalRq(Recipe):
 
         n_raw = 3
         t_start = time.monotonic()
+        ctx_copy = contextvars.copy_context()
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_raw) as pool:
-            raw_durations = list(pool.map(call_send_packet, range(n_raw)))
+            raw_durations = list(
+                pool.map(lambda i: ctx_copy.run(call_send_packet, i), range(n_raw))
+            )
         raw_wall = time.monotonic() - t_start
         slowest = max(raw_durations)
         print(

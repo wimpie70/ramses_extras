@@ -21,7 +21,7 @@ multi-HGI pool.  Uses pty pairs and mocked transports to simulate:
 from __future__ import annotations
 
 from ..base import Recipe, RecipeContext
-from ..helpers import docker_exec_python
+from ..helpers import docker_exec_python, spawn_thread
 
 
 class R109ConnectionLossScenarios(Recipe):
@@ -85,8 +85,7 @@ async def run_tests():
                         buf = buf[-128:]
                 except OSError:
                     break
-        t = threading.Thread(target=responder, daemon=True)
-        t.start()
+        t = spawn_thread(responder)
 
         try:
             from ramses_tx.transport.port import PortTransport
@@ -295,10 +294,12 @@ async def run_tests():
 
         child1 = MagicMock()
         child1.is_connected = False  # Disconnected
+        child1.removed = False
         child1.hgi_id = "18:130236"
 
         child2 = MagicMock()
         child2.is_connected = True  # Still connected
+        child2.removed = False
         child2.hgi_id = "18:149488"
 
         pool._children = [child1, child2]
@@ -330,10 +331,12 @@ async def run_tests():
 
         child_a = MagicMock()
         child_a.is_connected = False
+        child_a.removed = False
         child_a.hgi_id = "18:130236"
 
         child_b = MagicMock()
         child_b.is_connected = False
+        child_b.removed = False
         child_b.hgi_id = "18:149488"
 
         pool2._children = [child_a, child_b]
@@ -363,14 +366,17 @@ async def run_tests():
 
         child_x = MagicMock()
         child_x.is_connected = True
+        child_x.removed = False
         child_x.hgi_id = "18:130236"
 
         child_y = MagicMock()
         child_y.is_connected = False  # Disconnected
+        child_y.removed = False
         child_y.hgi_id = "18:333333"
 
         child_z = MagicMock()
         child_z.is_connected = True
+        child_z.removed = False
         child_z.hgi_id = "18:149488"
 
         pool3._children = [child_x, child_y, child_z]

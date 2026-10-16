@@ -12,7 +12,6 @@ Covers ramses-rf/ramses_cc issue 1232 — the parameterized binding path
 from __future__ import annotations
 
 import json
-import threading
 import time
 import urllib.request
 
@@ -24,6 +23,7 @@ from ..helpers import (
     get_docker_logs,
     get_schema_retry,
     load_profile_yaml,
+    spawn_thread,
     wait_for,
     wait_for_transport_ready,
 )
@@ -141,7 +141,7 @@ class R135BindDeviceSupplicantHandshake(Recipe):
             except RuntimeError as e:
                 print(f"  Confirm-echo inject failed: {e}")
 
-        threading.Thread(target=_inject_peer_packets, daemon=True).start()
+        spawn_thread(_inject_peer_packets)
 
         log_since = ctx.log_monitor.snapshot()
         bound = False

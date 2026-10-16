@@ -13,6 +13,7 @@ from ..helpers import (
     container_log_timestamp,
     load_profile_yaml,
     log_lines_since,
+    spawn_thread,
     wait,
     wait_for,
     wait_for_schema_populated,
@@ -32,12 +33,7 @@ def _fire_and_forget(
     emitted within a second — asserting on the packet log is the real
     verification, so the REST call runs in a daemon thread.
     """
-    thread = threading.Thread(
-        target=lambda: _call_swallowing_errors(token, domain, service, data),
-        daemon=True,
-    )
-    thread.start()
-    return thread
+    return spawn_thread(lambda: _call_swallowing_errors(token, domain, service, data))
 
 
 def _call_swallowing_errors(token: str, domain: str, service: str, data: dict) -> None:

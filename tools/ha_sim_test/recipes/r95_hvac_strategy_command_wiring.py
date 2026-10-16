@@ -146,34 +146,41 @@ print(json.dumps({
         if fan_climate is None:
             return
 
-        # Baseline timestamp — rotation-safe (packet_log.log* files)
-        baseline_ts = container_log_timestamp()
-
-        call_service(
-            ctx.token,
-            "climate",
-            "set_fan_mode",
-            {
-                "entity_id": fan_climate["entity_id"],
-                "fan_mode": "low",
-            },
-        )
-
         expected = f"{REM} {FAN} --:------ 22F1 003 000107"
 
-        def _native_packet_sent() -> bool:
-            return any(
-                expected in line
-                for line in log_lines_since("packet_log.log*", baseline_ts)
+        # A service call that lands while the climate platform is mid-
+        # reload is silently dropped by HA (returns 200/[] without running
+        # the entity method) — retry the send with a fresh baseline so the
+        # assertion still requires a genuinely emitted packet.
+        sent = False
+        for attempt in range(1, 4):
+            # Baseline timestamp — rotation-safe (packet_log.log* files)
+            baseline_ts = container_log_timestamp()
+
+            call_service(
+                ctx.token,
+                "climate",
+                "set_fan_mode",
+                {
+                    "entity_id": fan_climate["entity_id"],
+                    "fan_mode": "low",
+                },
             )
 
-        sent = wait_for(
-            _native_packet_sent,
-            timeout=30,
-            interval=2,
-            msg="for native 22F1 command",
-            floor=10.0,
-        )
+            def _native_packet_sent(ts: str = baseline_ts) -> bool:
+                return any(
+                    expected in line for line in log_lines_since("packet_log.log*", ts)
+                )
+
+            sent = wait_for(
+                _native_packet_sent,
+                timeout=30,
+                interval=2,
+                msg=f"for native 22F1 command (attempt {attempt}/3)",
+                floor=10.0,
+            )
+            if sent:
+                break
         ctx.check(
             "Native set_fan_mode emits Orcon 22F1 payload 000107",
             sent,

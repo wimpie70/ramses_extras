@@ -20,6 +20,7 @@ import contextvars
 import json
 import os
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -103,6 +104,37 @@ def get_current_instance() -> InstanceConfig:
 
         return InstanceConfig.default()
     return inst
+
+
+def spawn_thread(
+    fn: Callable[..., Any],
+    *args: Any,
+    daemon: bool = True,
+    **kwargs: Any,
+) -> threading.Thread[Any]:
+    """Start a thread that inherits the current instance context.
+
+    ``_current_instance`` is a contextvar — a plain ``threading.Thread``
+    starts with a *fresh* context, so helpers like ``call_service``,
+    ``get_token`` or ``get_docker_logs`` inside it silently fall back to
+    ``InstanceConfig.default()`` (ha-sim).  In parallel runs that means
+    worker threads (e.g. inject delays in R135/R150) talked to instance
+    1 instead of the recipe's own container.
+
+    Runs ``fn`` inside ``contextvars.copy_context()`` so the thread sees
+    the same instance.  The thread is started before returning.
+    """
+    import threading
+
+    ctx = contextvars.copy_context()
+    thread: threading.Thread[Any] = threading.Thread(
+        target=ctx.run,
+        args=(fn, *args),
+        kwargs=kwargs,
+        daemon=daemon,
+    )
+    thread.start()
+    return thread
 
 
 def get_docker_logs(

@@ -458,6 +458,12 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
         )
     print(f"  Started {len(parallel_instances)} parallel container(s)")
 
+    # Sync the working trees into the primary's custom_components — unlike
+    # the clones, ha-sim has no ramses_cc/ramses_extras bind mounts (its
+    # compose intentionally omits them), so without this step it silently
+    # tests a stale copy from the last manual/integration_tester install.
+    primary_changed = _sync_primary_components(instances[0])
+
     # Install manifest requirements of the bind-mounted custom components
     # — clone images can lag the checked-out code (a requirement bump
     # upstream otherwise fails the integration setup on the clone).
@@ -465,6 +471,8 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
     # requirement install under its pinned constraints, which can break
     # or downgrade an already-working package there too.
     changed = _ensure_manifest_requirements(instances)
+    if primary_changed and instances[0].name not in changed:
+        changed.append(instances[0].name)
     if changed:
         print(f"  Restarting {len(changed)} container(s) to load new packages")
         for name in changed:
@@ -601,6 +609,59 @@ def _relax_conflicting_pins(inst: InstanceConfig, reqs: list[str]) -> None:
             timeout=30,
         )
         print(f"  [{inst.name}] Relaxed HA pin(s): {', '.join(sorted(relaxed))}")
+
+
+def _sync_primary_components(inst: InstanceConfig) -> bool:
+    """rsync the checked-out ramses_cc/ramses_extras into the primary's
+    ``custom_components`` when they differ.
+
+    Unlike the parallel clones (which bind-mount the working trees via the
+    generated compose file), the primary ha-sim container runs a copied
+    install.  Without this sync the suite silently tests whatever version
+    was last installed manually — masking fixes or regressions in the
+    working tree.
+
+    :param inst: The primary instance (instance 1).
+    :return: True if any files were synced (container needs a restart).
+    """
+    components = (
+        (_RAMSES_CC_PATH, "ramses_cc"),
+        (_RAMSES_EXTRAS_PATH, "ramses_extras"),
+    )
+    changed = False
+    for src, name in components:
+        dest = os.path.join(inst.config_dir, "custom_components", name)
+        if not os.path.isdir(dest):
+            continue
+        for dry in (True, False):
+            result = subprocess.run(
+                [
+                    "rsync",
+                    "-a",
+                    "--delete",
+                    "--checksum",
+                    "--exclude=__pycache__",
+                    "--exclude=*.pyc",
+                    *(["--dry-run", "--out-format=%n"] if dry else []),
+                    f"{src}/",
+                    f"{dest}/",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0:
+                print(
+                    f"  [{inst.name}] WARNING: rsync {name} failed: "
+                    f"{result.stderr[:200]}"
+                )
+                break
+            if dry:
+                if not result.stdout.strip():
+                    break  # already in sync — skip the real run
+                changed = True
+                print(f"  [{inst.name}] Synced {name} into custom_components")
+    return changed
 
 
 def _ensure_manifest_requirements(instances: list[InstanceConfig]) -> list[str]:
