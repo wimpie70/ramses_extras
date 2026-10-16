@@ -71,7 +71,8 @@ class R19ZoneBindingFromBroadcastTrafficPassiveScanA(Recipe):
             )
             print("  mixed profile loaded")
         except RuntimeError as e:
-            print(f"  Profile load failed: {e}")
+            ctx.check("mixed profile loaded", False, detail=str(e)[:200])
+            return
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         # Wait for the MQTT transport to reconnect after the reload,

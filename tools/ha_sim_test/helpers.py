@@ -347,15 +347,28 @@ async def ws_send(
 
     current_token = token
     last_err: Exception | None = None
+    extras_waited = False
     for attempt in range(retries + 1):
         try:
             return await _ws_send_once(current_token, msg)
-        except (TimeoutError, aiohttp.ClientError, RuntimeError) as e:
+        # OSError covers TimeoutError and ConnectionResetError/
+        # ConnectionRefusedError — the listener can drop accepted
+        # sockets while HA restarts.
+        except (OSError, aiohttp.ClientError, RuntimeError) as e:
             last_err = e
             err = str(e)
-            # Don't retry on "unknown_command" (ramses_extras not loaded yet)
-            # or on genuine WS error responses — only retry on timeouts and
-            # connection issues.
+            # "unknown_command" for a ramses_extras WS command means the
+            # integration hasn't registered its handlers yet after a
+            # (re)start — wait once for extras readiness, then retry
+            # normally.  Genuine WS error responses still fail fast.
+            if "unknown_command" in err and str(msg.get("type", "")).startswith(
+                "ramses_extras/"
+            ):
+                if not extras_waited:
+                    extras_waited = True
+                    wait_for_ramses_extras_ready(timeout=90)
+                    continue
+                raise
             if "unknown_command" in err or "WS error:" in err:
                 raise
             # On auth_invalid, refresh the token before retrying.

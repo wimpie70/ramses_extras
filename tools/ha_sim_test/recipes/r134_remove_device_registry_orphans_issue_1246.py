@@ -70,9 +70,15 @@ class R134RemoveDeviceRegistryOrphans(Recipe):
         ramses_id: str,
         *,
         present: bool = True,
-        tries: int = 15,
+        tries: int = 40,
     ) -> dict | None:
-        """Poll the device registry until a device appears/disappears."""
+        """Poll the device registry until a device appears/disappears.
+
+        Zone-sensor devices are registered when their entities are
+        created after the profile reload — under parallel load that
+        can exceed 15s, so allow ~40s before concluding the device
+        really isn't registered.
+        """
         dev = None
         for _ in range(tries):
             dev = await self._registry_device(ctx, ramses_id)

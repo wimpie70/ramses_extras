@@ -129,16 +129,33 @@ def _write_extras_options(enable: bool) -> None:
             )
     with open(tmp_path, "w") as fh:
         json.dump(doc, fh)
-    subprocess.run(
-        [
-            "docker",
-            "cp",
-            tmp_path,
-            f"{inst.name}:/config/.storage/core.config_entries",
-        ],
-        check=True,
-        timeout=30,
-    )
+    # Copy in, then read back what the storage file actually contains —
+    # if the cp raced a late shutdown flush of the file, the feature
+    # boot would come up with the pre-write state.  Verify via the
+    # bind-mounted host path (docker exec can't run while the container
+    # is stopped) and retry once before giving up.
+    for _attempt in range(2):
+        subprocess.run(
+            [
+                "docker",
+                "cp",
+                tmp_path,
+                f"{inst.name}:/config/.storage/core.config_entries",
+            ],
+            check=True,
+            timeout=30,
+        )
+        with open(f"{inst.storage_path}/core.config_entries") as fh:
+            written = json.load(fh)
+        for entry in written["data"]["entries"]:
+            if entry["domain"] != "ramses_extras":
+                continue
+            if (
+                entry.get("data", {}).get("enabled_features", {}).get("temp_control")
+                is enable
+            ):
+                return
+    raise RuntimeError(f"enabled_features write did not persist (enable={enable})")
 
 
 def _restart_container(ctx: RecipeContext, *, stop_first: bool = False) -> None:
