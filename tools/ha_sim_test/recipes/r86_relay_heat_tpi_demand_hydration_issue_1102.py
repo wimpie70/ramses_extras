@@ -23,6 +23,7 @@ from ..helpers import (
     get_entities,
     get_schema_retry,
     wait_for,
+    wait_for_ramses_extras_ready,
     wait_for_transport_ready,
     ws_send,
 )
@@ -48,35 +49,57 @@ class R86RelayHeatTpiDemandHydrationIssue1102(Recipe):
         ctx.refresh_token()
         ctx.wait_for_ramses_cc_loaded(timeout=30)
 
-        # 1. Load mixed profile (CTL 01:150000 with zones 03-08)
+        # 1. Load mixed profile (CTL 01:150000 with zones 03-08).
+        #    After the restart the device simulator needs ~60s before its
+        #    WS commands answer; without the wait the load fails with
+        #    'not_ready: Config store not initialized' and the injects
+        #    below are silently dropped by enforce_known_list.
+        wait_for_ramses_extras_ready(timeout=90, msg="for ramses_extras after restart")
         print("  Loading mixed profile (CTL + zones 03-08)...")
-        try:
-            await ws_send(
-                ctx.token,
-                {
-                    "type": "ramses_extras/device_simulator/load_profile",
-                    "profile": "mixed",
-                    "speed": 0.01,
-                    "preload_schema": True,
-                    "reload_ramses_cc": True,
-                    "enable_auto_answer": True,
-                },
+        loaded = False
+        for attempt in range(3):
+            try:
+                await ws_send(
+                    ctx.token,
+                    {
+                        "type": "ramses_extras/device_simulator/load_profile",
+                        "profile": "mixed",
+                        "speed": 0.01,
+                        "preload_schema": True,
+                        "reload_ramses_cc": True,
+                        "enable_auto_answer": True,
+                    },
+                )
+                loaded = True
+                print("  mixed profile loaded")
+                break
+            except RuntimeError as e:
+                print(f"  Profile load failed (attempt {attempt + 1}/3): {e}")
+                ctx.wait(5, "before profile retry", floor=3.0)
+        if not loaded:
+            ctx.check(
+                "mixed profile loaded",
+                False,
+                "profile load failed after 3 attempts — cannot proceed",
             )
-            print("  mixed profile loaded")
-        except RuntimeError as e:
-            print(f"  Profile load failed: {e}")
+            return
         ctx.wait_for_ramses_cc_reload(timeout=20)
         ctx.refresh_token()
         wait_for_transport_ready(timeout=30)
 
         ctl = CTL  # 01:150000
 
-        # Wait for schema to be populated
-        wait_for(
-            lambda: len(get_schema_retry(max_tries=3, delay=1)) >= 5,
-            timeout=15,
-            interval=1,
-            msg="for schema to be populated",
+        # Wait for schema to be populated — the profile load should have
+        # preloaded it; if not, the injects below would be dropped.
+        ctx.check(
+            "schema populated after profile load",
+            wait_for(
+                lambda: len(get_schema_retry(max_tries=3, delay=1)) >= 5,
+                timeout=15,
+                interval=1,
+                msg="for schema to be populated",
+            ),
+            f"schema keys={list(get_schema_retry(max_tries=1))}",
         )
 
         def _inject_demands() -> None:
