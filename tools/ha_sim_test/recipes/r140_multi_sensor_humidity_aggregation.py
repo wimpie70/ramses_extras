@@ -263,6 +263,9 @@ class R140MultiSensorHumidityAggregation(Recipe):
             pass
         wait_for_schema_populated(timeout=20)
 
+        # Under parallel load the FAN must be discovered before
+        # humidity_control creates its entities — observed >20s on a busy
+        # instance, so the floor has to cover that setup path.
         wait_for(
             lambda: (
                 _get_state(ctx.token, _DEHUMIDIFY_SWITCH) is not None
@@ -271,7 +274,7 @@ class R140MultiSensorHumidityAggregation(Recipe):
             timeout=90,
             interval=3,
             msg="for humidity_control entities",
-            floor=20.0,
+            floor=60.0,
         )
         entities_ready = (
             _get_state(ctx.token, _DEHUMIDIFY_SWITCH) is not None

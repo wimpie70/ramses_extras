@@ -1086,15 +1086,18 @@ def wait_for_ramses_extras_ready(
     marked as ready" is logged.  Without this wait, profile loads via
     WS fail with ``unknown_command`` or ``not_ready`` errors.
 
-    Uses a 30s floor because ramses_extras takes ~60s to load after a
+    Uses a 60s floor because ramses_extras takes ~60s to load after a
     restart, and ``WAIT_SCALE_POLL`` may scale the timeout aggressively.
+    Under parallel load on the primary container it can take even longer —
+    an entity check running before the platform finishes setup then fails
+    on entities that were never going to exist yet.
     """
     return wait_for(
         is_ramses_extras_ready,
         timeout=timeout,
         interval=2,
         msg=msg,
-        floor=30.0,
+        floor=60.0,
     )
 
 

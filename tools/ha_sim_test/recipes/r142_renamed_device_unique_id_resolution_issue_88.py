@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import time
 import urllib.request
 from copy import deepcopy
@@ -368,7 +369,7 @@ class R142RenamedDeviceUniqueIdResolution(Recipe):
                 timeout=60,
                 interval=3,
                 msg="for temp_control switch",
-                floor=10.0,
+                floor=45.0,
             )
             ctx.check(
                 "temp_control switch entity created",
