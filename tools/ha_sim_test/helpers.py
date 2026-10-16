@@ -1086,7 +1086,7 @@ def wait_for_ramses_extras_ready(
     marked as ready" is logged.  Without this wait, profile loads via
     WS fail with ``unknown_command`` or ``not_ready`` errors.
 
-    Uses a 60s floor because ramses_extras takes ~60s to load after a
+    Uses a 90s floor because ramses_extras takes ~60s to load after a
     restart, and ``WAIT_SCALE_POLL`` may scale the timeout aggressively.
     Under parallel load on the primary container it can take even longer —
     an entity check running before the platform finishes setup then fails
@@ -1097,7 +1097,7 @@ def wait_for_ramses_extras_ready(
         timeout=timeout,
         interval=2,
         msg=msg,
-        floor=60.0,
+        floor=90.0,
     )
 
 
@@ -1593,13 +1593,28 @@ def is_ramses_extras_ready() -> bool:
     previous run).
     """
     inst = get_current_instance()
-    # Use --tail to only check recent logs (avoids matching stale
-    # "ready" lines from before a docker restart).
-    result = subprocess.run(
-        ["docker", "logs", "--tail", "80", inst.name],
+    # Scope the scan to this container's current boot (--since the
+    # container's StartedAt) so a stale "ready" line from before a
+    # docker restart cannot match.  A fixed --tail window is racy:
+    # under DEBUG log volume the ready line can scroll out of the
+    # tail between polls, making the probe miss a ready instance.
+    started = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.StartedAt}}", inst.name],
         capture_output=True,
         text=True,
         timeout=15,
+    ).stdout.strip()
+    cmd = ["docker", "logs"]
+    if started:
+        cmd += ["--since", started]
+    else:
+        cmd += ["--tail", "4000"]
+    cmd += [inst.name]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     if result.returncode != 0:
         return False

@@ -79,7 +79,7 @@ class R133TxSurvivesCancelledSend(Recipe):
             cmd = (
                 f"tail -n {tail} /config/home-assistant.log | "
                 f"awk '/{marker}/{{n=NR}} {{b[NR]=$0}} "
-                f"END{{for(i=n||0;i<=NR;i++) if(b[i]) print b[i]}}' | "
+                f"END{{if(n) for(i=n;i<=NR;i++) if(b[i]) print b[i]}}' | "
                 f"grep -iE '{pattern}'"
             )
             r = subprocess.run(

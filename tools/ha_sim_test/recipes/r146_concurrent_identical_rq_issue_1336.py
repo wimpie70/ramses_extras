@@ -69,11 +69,17 @@ class R146ConcurrentIdenticalRq(Recipe):
         inst = get_current_instance()
 
         def grep_since_marker(marker: str, pattern: str) -> str:
-            """Grep for pattern only in log lines after the LAST marker."""
+            """Grep for pattern only in log lines after the LAST marker.
+
+            Fail-closed: if the marker is absent from the tail, print
+            nothing rather than scanning the whole window — ambient
+            traffic (e.g. periodic RQ 3150 heat-demand polls) would
+            otherwise pollute the count.
+            """
             cmd = (
                 f"tail -n 4000 /config/home-assistant.log | "
                 f"awk '/{marker}/{{n=NR}} {{b[NR]=$0}} "
-                f"END{{for(i=n||0;i<=NR;i++) if(b[i]) print b[i]}}' | "
+                f"END{{if(n) for(i=n;i<=NR;i++) if(b[i]) print b[i]}}' | "
                 f"grep -iE '{pattern}'"
             )
             r = subprocess.run(
@@ -88,13 +94,36 @@ class R146ConcurrentIdenticalRq(Recipe):
             return len([ln for ln in out.splitlines() if ln.strip()])
 
         def marker(name: str) -> None:
-            """Write a unique marker into the HA log."""
+            """Write a unique marker into the HA log and wait for it.
+
+            HA queues log records on a background thread, so the line can
+            land in the file after the HTTP call returns.  Wait until the
+            marker is actually visible so the tail scans below are
+            anchored — a missed marker would scan the whole tail window.
+            """
             call_service(
                 ctx.token,
                 "system_log",
                 "write",
                 {"message": name, "level": "warning"},
             )
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                out = subprocess.run(
+                    [
+                        "docker",
+                        "exec",
+                        inst.name,
+                        "bash",
+                        "-c",
+                        f"grep -c '{name}' /config/home-assistant.log",
+                    ],
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                if out.isdigit() and int(out):
+                    return
+                time.sleep(0.25)
 
         # -----------------------------------------------------------------
         # Setup: mixed profile + real two-HGI MQTT pool (the dedup paths
