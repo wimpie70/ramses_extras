@@ -203,7 +203,12 @@ class R24Phase3cClassMismatchFlagging(Recipe):
         # The remote entity (remote.fan_32_150000) inherits from RamsesEntity
         # which surfaces mismatch flags. Search by device_id only.
         # Poll until the mismatch attribute appears.  Re-trigger sync_topology
-        # periodically because mismatch detection only runs during sync cycles.
+        # periodically because mismatch detection only runs during sync cycles,
+        # and re-inject FAN evidence every other poll: the declared class
+        # (DIS) lands in the runtime known_list asynchronously after the
+        # reload, and only packets seen AFTER that point count as
+        # contradictions.  A real FAN keeps broadcasting 31D9 anyway —
+        # sustained evidence is the honest model here.
         _sync_retry_count = 0
 
         def _has_class_mismatch() -> bool:
@@ -215,9 +220,25 @@ class R24Phase3cClassMismatchFlagging(Recipe):
                     if "class_mismatch" in e.get("attributes", {}):
                         return True
             # Re-trigger sync + force_update every other poll to force
-            # mismatch detection and entity state write.
+            # mismatch detection and entity state write, and re-inject
+            # one FAN-evidence packet to keep feeding the contradiction
+            # counter once the DIS declaration is live.
             _sync_retry_count += 1
             if _sync_retry_count % 2 == 0:
+                try:
+                    call_service(
+                        ctx.token,
+                        "ramses_extras",
+                        "device_simulator_inject_message",
+                        {
+                            "source_id": FAN,
+                            "code": "31D9",
+                            "payload": "000A040020202020202020202020202008",
+                            "verb": "I",
+                        },
+                    )
+                except RuntimeError:
+                    pass
                 try:
                     call_service(ctx.token, "ramses_cc", "sync_topology")
                 except RuntimeError:
@@ -271,14 +292,20 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             )
 
         # Check 2: Persistent notification should exist.
-        # Poll until the notification is created by the mismatch detection cycle.
+        # The ramses_cc_discovery_mismatches notification id is shared by
+        # class-mismatch, bound-mismatch, missing-class, orphaned and
+        # weak-signal reports — the id alone is NOT proof of a class
+        # mismatch.  Require the FAN's device id with class-mismatch
+        # content ("schema=…") in the message body.
+        def _is_class_mismatch_notif(n: dict) -> bool:
+            if "mismatch" not in str(n.get("notification_id", "")).lower():
+                return False
+            msg = str(n.get("message", ""))
+            return FAN in msg and "schema=" in msg
+
         async def _has_mismatch_notif() -> bool:
             notifications = await get_persistent_notifications(ctx.token)
-            return any(
-                "mismatch" in n.get("title", "").lower()
-                or "mismatch" in n.get("notification_id", "").lower()
-                for n in notifications
-            )
+            return any(_is_class_mismatch_notif(n) for n in notifications)
 
         await wait_for_async(
             _has_mismatch_notif,
@@ -288,12 +315,7 @@ class R24Phase3cClassMismatchFlagging(Recipe):
             floor=5.0,
         )
         notifications = await get_persistent_notifications(ctx.token)
-        mismatch_notif = [
-            n
-            for n in notifications
-            if "mismatch" in n.get("title", "").lower()
-            or "mismatch" in n.get("notification_id", "").lower()
-        ]
+        mismatch_notif = [n for n in notifications if _is_class_mismatch_notif(n)]
 
         ctx.check(
             "Persistent notification for mismatches exists",

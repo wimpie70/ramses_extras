@@ -1593,38 +1593,43 @@ def is_ramses_extras_ready() -> bool:
     previous run).
     """
     inst = get_current_instance()
-    # Scope the scan to this container's current boot (--since the
-    # container's StartedAt) so a stale "ready" line from before a
-    # docker restart cannot match.  A fixed --tail window is racy:
-    # under DEBUG log volume the ready line can scroll out of the
-    # tail between polls, making the probe miss a ready instance.
+    # Scope the scan to this container's current boot so a stale "ready"
+    # line from before a docker restart cannot match.  Read the HA log
+    # FILES (home-assistant.log*) — not ``docker logs``: under DEBUG log
+    # volume the json-file driver rotates stdout constantly, so the
+    # boot-time ready line scrolls out of docker's buffer within seconds
+    # and the probe can never see it.  The rotated .log.1 file still
+    # carries it, and log_lines_since scans both.
     started = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.StartedAt}}", inst.name],
         capture_output=True,
         text=True,
         timeout=15,
     ).stdout.strip()
-    cmd = ["docker", "logs"]
+    since = ""
     if started:
-        cmd += ["--since", started]
-    else:
-        cmd += ["--tail", "4000"]
-    cmd += [inst.name]
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if result.returncode != 0:
-        return False
-    # docker logs output goes to stderr
-    logs = result.stderr or ""
+        # docker StartedAt is UTC RFC3339; HA log timestamps are
+        # container-local — convert inside the container to stay tz-correct.
+        conv = docker_exec_python(
+            f"""
+import json
+from datetime import datetime
+print(json.dumps({{"ts": datetime.fromisoformat(
+    {started!r}.replace("Z", "+00:00")).astimezone().replace(
+        tzinfo=None).isoformat()}}))
+"""
+        )
+        since = str(conv.get("ts", ""))
+    logs = log_lines_since("home-assistant.log*", since)
     # "Device Simulator marked as ready" fires after both the WS
     # integration AND the simulator's own setup complete (config profile
     # store, ramses_cc isolation, etc).  Checking for just this line is
-    # sufficient — it's the last step in the startup sequence.
-    return "Device Simulator marked as ready" in logs
+    # sufficient — it's the last step in the startup sequence.  The
+    # "profile load complete - marked as ready" variant covers simulator
+    # instances that mark readiness on first profile load instead.
+    return any(
+        "Device Simulator" in line and "marked as ready" in line for line in logs
+    )
 
 
 def clear_cached_state(
