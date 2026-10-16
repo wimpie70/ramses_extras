@@ -225,7 +225,12 @@ async def setup(ctx: RecipeContext) -> None:
     if not profile_loaded:
         print("  Profile load failed after retries — using existing profile")
 
-    wait_for(is_ramses_cc_loaded, timeout=20, msg="for ramses_cc reload + init")
+    wait_for(
+        is_ramses_cc_loaded,
+        timeout=45,
+        floor=5.0,
+        msg="for ramses_cc reload + init",
+    )
     ctx.refresh_token()
 
     # Activate devices via websocket (faster — uses profile config).
