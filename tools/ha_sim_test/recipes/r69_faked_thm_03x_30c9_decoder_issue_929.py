@@ -16,7 +16,23 @@ faked: true``, bound to a CTL zone, calls ``put_room_temp`` on the sensor
 entity, and verifies the 30C9 packet is transmitted (not rejected by the
 decoder).
 
+A second leg covers the UFH variant: a faked THM bound to a
+``class: underfloor_heating`` zone under the same Evohome CTL must also
+emit index ``00`` — the parent zone index is only stamped for UFC-bound
+UFH circuits (no CTL controller), per ramses_rf PR 1312.
+
+NOTE (2026-10, verified post-1312): a UFC-side leg — asserting the stamped
+zone index still fires — is intentionally absent.  The stamped path
+requires ``sensor._parent._SLUG == ZoneRole.UFH`` with ``sensor.ctl`` not
+a CTL, but every schema-bound zone sensor gets ``ctl = zone.tcs.ctl``
+(always the 01: Controller; a TCS cannot be headed by a UFC and circuits
+cannot declare sensors).  The stamped path is therefore only reachable
+with ``ctl=None``, which no profile can express — it is dead code for
+real topologies.  Do not add a UFC-side e2e test unless upstream produces
+a schema topology that can reach it.
+
 See: https://github.com/ramses-rf/ramses_cc/issues/929
+See: https://github.com/ramses-rf/ramses_rf/pull/1312
 """
 
 from __future__ import annotations
@@ -61,6 +77,8 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
         #    would fire before the fix.
         sensor_id = "03:155003"
         zone_idx = "03"
+        ufh_sensor_id = "03:155005"
+        ufh_zone_idx = "05"
         fake_temp = 22.0
 
         # Minimal profile: CTL + faked THM as zone 03 sensor (3 devices
@@ -74,6 +92,14 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
 
         profile = _yaml.safe_load(yaml_text)
         profile["known_list"][sensor_id]["faked"] = True
+        # Add a UFH zone under the same Evohome CTL with its own faked
+        # THM — the PR 1312 regression case (must still emit index 00).
+        profile["known_list"][ufh_sensor_id] = {"class": "THM", "faked": True}
+        profile["_schema"][CTL]["zones"][ufh_zone_idx] = {
+            "class": "underfloor_heating",
+            "sensor": ufh_sensor_id,
+            "actuators": [],
+        }
         yaml_text = _yaml.dump(profile, default_flow_style=False)
 
         print(f"  Loading minimal profile with {sensor_id} faked (zone {zone_idx})...")
@@ -232,7 +258,8 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
         # 5. Verify the payload format.
         #    30C9 payload format: {zone_idx}{temperature_hex}
         #    For standard evohome CTL zones (RAD/ELE/MIX/VAL), the zone_idx
-        #    must be "00" — only UFH zones use the parent's zone index.
+        #    must be "00" — only UFC-bound UFH circuits use the parent's
+        #    zone index.
         #    The old bug (commit 5b9abbe4) stamped the parent zone index for
         #    ALL zones, causing "Packet idx is 0X, but expecting no idx (00)"
         #    errors (issue 929).  The fix restricts the parent index to UFH
@@ -245,4 +272,91 @@ class R69FakedThm03x30c9DecoderIssue929(Recipe):
             "30C9 payload starts with '00' (correct for CTL zone, issue 929 fix)",
             len(payload) >= 2 and payload[:2] == "00",
             f"payload was '{payload[:8]}' (expected '00' for CTL zone)",
+        )
+
+        # 6. UFH zone under the same Evohome CTL (ramses_rf PR 1312).
+        #    A faked sensor bound to a ``class: underfloor_heating`` zone
+        #    whose controller is a CTL must also emit index 00 — Evohome
+        #    resolves the zone via RF binding and rejects indexed fakes
+        #    during sensor acquisition (zone stuck at 7FFF).  Only
+        #    UFC-bound UFH circuits (no CTL) keep the stamped parent index.
+        print(
+            f"  Checking UFH-zone faked sensor {ufh_sensor_id} (zone {ufh_zone_idx})..."
+        )
+        ufh_sensor_eid = None
+        for e in get_entities(ctx.token):
+            eid = e["entity_id"]
+            if ufh_sensor_id.replace(":", "_") in eid and eid.startswith("sensor."):
+                if e.get("attributes", {}).get("device_class") == "temperature":
+                    ufh_sensor_eid = eid
+                    break
+
+        ctx.check(
+            f"temperature sensor entity found for UFH sensor {ufh_sensor_id}",
+            ufh_sensor_eid is not None,
+            "no temperature sensor entity found",
+        )
+        if not ufh_sensor_eid:
+            return
+
+        print(f"  Found UFH sensor entity: {ufh_sensor_eid}")
+        try:
+            call_service(
+                ctx.token,
+                "ramses_cc",
+                "put_room_temp",
+                {
+                    "entity_id": ufh_sensor_eid,
+                    "temperature": fake_temp,
+                },
+            )
+            print("  put_room_temp (UFH) succeeded")
+        except RuntimeError as e:
+            err_str = str(e)
+            ctx.check(
+                "put_room_temp (UFH) did not raise PacketPayloadInvalid",
+                "0xAB" not in err_str and "expecting no idx" not in err_str,
+                f"got 0xAB error: {err_str[:80]}",
+            )
+            print(
+                f"  put_room_temp (UFH) returned error "
+                f"(expected timeout): {err_str[:60]}"
+            )
+
+        ctx.wait(5, "for UFH 30C9 packet to appear in log", floor=2.0)
+
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                get_current_instance().name,
+                "bash",
+                "-c",
+                f"grep 'Simulator received from ramses_rf.*{ufh_sensor_id}.*30C9' "
+                "/config/home-assistant.log | tail -10",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        ufh_tx_lines: list[str] = [
+            line.strip() for line in result.stdout.splitlines() if line.strip()
+        ]
+
+        ctx.check(
+            "UFH 30C9 packet found in HA log",
+            len(ufh_tx_lines) > 0,
+            "no UFH 30C9 packets found",
+        )
+        if not ufh_tx_lines:
+            return
+
+        for line in ufh_tx_lines:
+            print(f"    {line}")
+
+        ufh_payload = ufh_tx_lines[-1].split()[-1] if ufh_tx_lines[-1] else ""
+        ctx.check(
+            "UFH 30C9 payload starts with '00' (Evohome-bound UFH, PR 1312)",
+            len(ufh_payload) >= 2 and ufh_payload[:2] == "00",
+            f"payload was '{ufh_payload[:8]}' — Evohome-bound UFH must send "
+            "'00' (needs ramses_rf with PR 1312)",
         )
