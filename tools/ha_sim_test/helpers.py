@@ -1577,6 +1577,22 @@ def is_ha_ready() -> bool:
         return False  # connection refused = not ready yet
 
 
+_probe_tokens: dict[str, str] = {}
+
+
+def _probe_token() -> str | None:
+    """Return a cached long-lived token for readiness probes."""
+    ha_url = get_current_instance().ha_url
+    token = _probe_tokens.get(ha_url)
+    if token is None:
+        try:
+            token = get_token()
+        except Exception:
+            return None
+        _probe_tokens[ha_url] = token
+    return token
+
+
 def is_ramses_cc_loaded() -> bool:
     """Check if ramses_cc is loaded and its schema is populated.
 
@@ -1585,9 +1601,36 @@ def is_ramses_cc_loaded() -> bool:
     schema.  During a profile reload, the schema is briefly cleared
     (unload) and then repopulated (reload).  In both cases, a non-empty
     schema indicates ramses_cc is loaded and ready.
+
+    A non-empty persisted schema alone is not sufficient: it stays
+    populated while the entry is mid-reload, and the domain services are
+    unregistered on unload and only re-registered at the end of
+    ``async_setup_entry``.  Service calls made in that window get HTTP
+    400 "service not found", so also require ``remove_device`` (an
+    unconditionally registered service) to be present.
     """
-    schema = get_schema()
-    return bool(schema)
+    if not get_schema():
+        return False
+
+    token = _probe_token()
+    if not token:
+        return False
+    try:
+        req = urllib.request.Request(
+            get_current_instance().ha_url + "/api/services",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        domains = json.loads(urllib.request.urlopen(req, timeout=10).read())
+    except urllib.error.HTTPError as e:
+        if e.code == 401:  # token expired mid-run — refresh next poll
+            _probe_tokens.pop(get_current_instance().ha_url, None)
+        return False
+    except Exception:
+        return False
+    for domain in domains:
+        if domain.get("domain") == "ramses_cc":
+            return "remove_device" in (domain.get("services") or {})
+    return False
 
 
 def is_ramses_extras_ready() -> bool:
