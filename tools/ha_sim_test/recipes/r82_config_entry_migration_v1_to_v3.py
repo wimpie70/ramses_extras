@@ -251,6 +251,9 @@ class R80ConfigEntryMigrationV1ToV3(Recipe):
             _version_is_3,
             timeout=30,
             interval=1,
+            # HA debounces config-entry saves during startup — the file
+            # can lag the in-memory migration by several seconds.
+            floor=30.0,
             msg="for config entry version=3 to flush to disk",
         )
 

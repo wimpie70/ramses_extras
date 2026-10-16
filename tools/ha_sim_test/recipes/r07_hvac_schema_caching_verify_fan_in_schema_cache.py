@@ -47,10 +47,14 @@ class R07HvacSchemaCachingVerifyFanInSchemaCache(Recipe):
 
         # Ensure the mixed profile is loaded — earlier recipes on the
         # same container (R04 remove CTL, R02 remove TRV) may have
-        # stripped the schema down, leaving no FAN entry.
+        # stripped the schema down, leaving no FAN entry.  Check the
+        # *learned* client_state schema, not just the config schema: the
+        # config entry can carry the FAN while the gateway has seen no
+        # HVAC traffic yet, and only learned devices persist below.
         schema = get_schema_retry()
-        if FAN not in schema:
-            print("  FAN not in schema — reloading mixed profile...")
+        stored = get_ramses_storage().get("client_state", {}).get("schema", {})
+        if FAN not in schema or FAN not in stored:
+            print("  FAN not in learned schema — reloading mixed profile...")
             try:
                 await load_profile_yaml(
                     ctx.token,

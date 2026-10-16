@@ -30,7 +30,6 @@ See: https://github.com/ramses-rf/ramses_cc/issues/1283
 from __future__ import annotations
 
 import json
-import threading
 import time
 import urllib.request
 
@@ -42,6 +41,7 @@ from ..helpers import (
     get_docker_logs,
     get_schema_retry,
     load_profile_yaml,
+    spawn_thread,
     wait_for,
     wait_for_transport_ready,
 )
@@ -246,7 +246,7 @@ class R150UnbindDeviceRoundTrip(Recipe):
             except RuntimeError as e:
                 print(f"  Accept inject failed: {e}")
 
-        threading.Thread(target=_inject_fan_accept, daemon=True).start()
+        spawn_thread(_inject_fan_accept)
         log_since = ctx.log_monitor.snapshot()
 
         unbound = False

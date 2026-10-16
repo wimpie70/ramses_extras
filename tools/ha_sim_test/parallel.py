@@ -19,12 +19,15 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import os
+import re
 import subprocess
 import sys
 import time
 from contextvars import Token
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .base import RecipeContext
@@ -455,6 +458,32 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
         )
     print(f"  Started {len(parallel_instances)} parallel container(s)")
 
+    # Sync the working trees into the primary's custom_components — unlike
+    # the clones, ha-sim has no ramses_cc/ramses_extras bind mounts (its
+    # compose intentionally omits them), so without this step it silently
+    # tests a stale copy from the last manual/integration_tester install.
+    primary_changed = _sync_primary_components(instances[0])
+
+    # Install manifest requirements of the bind-mounted custom components
+    # — clone images can lag the checked-out code (a requirement bump
+    # upstream otherwise fails the integration setup on the clone).
+    # Include the primary instance: a mid-run restart re-runs HA's
+    # requirement install under its pinned constraints, which can break
+    # or downgrade an already-working package there too.
+    changed = _ensure_manifest_requirements(instances)
+    if primary_changed and instances[0].name not in changed:
+        changed.append(instances[0].name)
+    if changed:
+        print(f"  Restarting {len(changed)} container(s) to load new packages")
+        for name in changed:
+            subprocess.run(
+                ["docker", "restart", name],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        time.sleep(5)  # let the restarted HA drop off the port first
+
     # Wait for all containers to be ready in parallel (optimization: saves ~30-60s)
     async def _wait_for_ready(inst: InstanceConfig) -> bool:
         """Wait for a single container to be ready (async wrapper for wait_for)."""
@@ -477,6 +506,199 @@ async def ensure_containers(instances: list[InstanceConfig]) -> None:
 
     # Wait for all in parallel
     await asyncio.gather(*[_wait_for_ready(inst) for inst in parallel_instances])
+
+
+def _manifest_requirements() -> list[str]:
+    """Pip requirements declared by the bind-mounted custom components.
+
+    :return: Requirement specifiers (e.g. ``serialx>=1.11.0``).
+    """
+    reqs: list[str] = []
+    for comp_dir in (_RAMSES_CC_PATH, _RAMSES_EXTRAS_PATH):
+        manifest = Path(comp_dir) / "manifest.json"
+        if manifest.is_file():
+            reqs.extend(json.loads(manifest.read_text()).get("requirements") or [])
+    return reqs
+
+
+#: HA image constraints file — applied to every requirement install.
+_HA_CONSTRAINTS = "/usr/src/homeassistant/homeassistant/package_constraints.txt"
+#: Core integration manifests — may hard-pin the same packages.
+_HA_COMPONENTS_DIR = "/usr/src/homeassistant/homeassistant/components"
+
+
+def _req_pkg_name(req: str) -> str:
+    """Extract the bare package name from a requirement specifier.
+
+    :param req: e.g. ``serialx>=1.11.0`` or ``foo[extra]==1.2``.
+    :return: Lowercased package name (e.g. ``serialx``).
+    """
+    name = re.split(r"[<>=!~\[; ]", req, maxsplit=1)[0]
+    return name.strip().lower()
+
+
+def _relax_conflicting_pins(inst: InstanceConfig, reqs: list[str]) -> None:
+    """Drop ``==`` pins in the HA image that block our requirements.
+
+    HA installs integration requirements under
+    ``package_constraints.txt`` and honours ``==`` pins in core
+    integration manifests.  A hard pin (e.g. ``serialx==1.8.2`` for the
+    ``usb``/``serial``/``zha`` integrations) conflicts with a custom
+    component's ``>=`` bump — the install fails (``Requirements for
+    ramses_cc not found``) or silently downgrades the package when a
+    pinning integration sets up later (e.g. after a mid-run restart).
+    Downgrading the pins to ``>=`` keeps them a valid floor while
+    allowing the newer version.
+
+    :param inst: Instance whose container should be patched.
+    :param reqs: Manifest requirement specifiers to protect.
+    """
+    pkgs = {_req_pkg_name(r) for r in reqs}
+
+    # Core integration manifests: ``"pkg==x.y"`` → ``"pkg>=x.y"``
+    sed_exprs = ";".join(f's/"{pkg}==/"{pkg}>=/g' for pkg in pkgs)
+    subprocess.run(
+        [
+            "docker",
+            "exec",
+            inst.name,
+            "sh",
+            "-c",
+            f"find {_HA_COMPONENTS_DIR} -name manifest.json"
+            f" -exec sed -i '{sed_exprs}' {{}} +",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    # Constraints file: ``pkg==x.y`` → ``pkg>=x.y``
+    constraints = subprocess.run(
+        ["docker", "exec", inst.name, "cat", _HA_CONSTRAINTS],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if constraints.returncode != 0:
+        return
+    lines = constraints.stdout.splitlines()
+    out_lines: list[str] = []
+    relaxed: list[str] = []
+    for line in lines:
+        pkg = line.split("==", 1)[0].strip().lower() if "==" in line else ""
+        if pkg in pkgs:
+            out_lines.append(f"{pkg}>={line.split('==', 1)[1].strip()}")
+            relaxed.append(pkg)
+        else:
+            out_lines.append(line)
+    if relaxed:
+        heredoc = "\n".join(out_lines) + "\n"
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                "-i",
+                inst.name,
+                "sh",
+                "-c",
+                f"cat > {_HA_CONSTRAINTS}",
+            ],
+            input=heredoc,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        print(f"  [{inst.name}] Relaxed HA pin(s): {', '.join(sorted(relaxed))}")
+
+
+def _sync_primary_components(inst: InstanceConfig) -> bool:
+    """rsync the checked-out ramses_cc/ramses_extras into the primary's
+    ``custom_components`` when they differ.
+
+    Unlike the parallel clones (which bind-mount the working trees via the
+    generated compose file), the primary ha-sim container runs a copied
+    install.  Without this sync the suite silently tests whatever version
+    was last installed manually — masking fixes or regressions in the
+    working tree.
+
+    :param inst: The primary instance (instance 1).
+    :return: True if any files were synced (container needs a restart).
+    """
+    components = (
+        (_RAMSES_CC_PATH, "ramses_cc"),
+        (_RAMSES_EXTRAS_PATH, "ramses_extras"),
+    )
+    changed = False
+    for src, name in components:
+        dest = os.path.join(inst.config_dir, "custom_components", name)
+        if not os.path.isdir(dest):
+            continue
+        for dry in (True, False):
+            result = subprocess.run(
+                [
+                    "rsync",
+                    "-a",
+                    "--delete",
+                    "--checksum",
+                    "--exclude=__pycache__",
+                    "--exclude=*.pyc",
+                    *(["--dry-run", "--out-format=%n"] if dry else []),
+                    f"{src}/",
+                    f"{dest}/",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0:
+                print(
+                    f"  [{inst.name}] WARNING: rsync {name} failed: "
+                    f"{result.stderr[:200]}"
+                )
+                break
+            if dry:
+                if not result.stdout.strip():
+                    break  # already in sync — skip the real run
+                changed = True
+                print(f"  [{inst.name}] Synced {name} into custom_components")
+    return changed
+
+
+def _ensure_manifest_requirements(instances: list[InstanceConfig]) -> list[str]:
+    """pip-install manifest requirements into the parallel containers.
+
+    Clone images can lag the checked-out custom component code (e.g. an
+    upstream manifest bump).  A missing requirement fails the
+    integration's setup and cascades into dependents (ramses_extras).
+    Also relaxes conflicting ``==`` pins in HA's constraints file so the
+    packages survive HA-driven requirement installs and restarts.
+
+    :param instances: Parallel instances whose containers are running.
+    :return: Names of containers that received new packages (they need a
+        restart to load them).
+    """
+    reqs = _manifest_requirements()
+    if not reqs:
+        return []
+    changed: list[str] = []
+    for inst in instances:
+        _relax_conflicting_pins(inst, reqs)
+        result = subprocess.run(
+            ["docker", "exec", inst.name, "pip", "install", *reqs],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        if result.returncode != 0:
+            print(
+                f"  [{inst.name}] WARNING: pip install of manifest "
+                f"requirements failed: {result.stderr[:200]}"
+            )
+            continue
+        if "Successfully installed" in result.stdout:
+            changed.append(inst.name)
+            print(f"  [{inst.name}] Installed manifest requirements")
+    return changed
 
 
 def cleanup_containers(
@@ -591,6 +813,7 @@ class InstanceResult:
     recipe_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     elapsed: float = 0.0
     error: str | None = None
+    log_report_path: str | None = None
     # Overhead breakdown (seconds) — time NOT spent inside recipe.run()
     setup_time: float = 0.0
     teardown_time: float = 0.0
@@ -739,7 +962,9 @@ async def run_dynamic_instance(
 
         # Teardown
         teardown_start = time.monotonic()
-        await _teardown_no_exit(ctx, start_time=start, instance=instance)
+        result.log_report_path = await _teardown_no_exit(
+            ctx, start_time=start, instance=instance
+        )
         result.teardown_time = time.monotonic() - teardown_start
 
     except Exception as e:
@@ -757,8 +982,11 @@ async def _teardown_no_exit(
     *,
     start_time: float,
     instance: InstanceConfig,
-) -> None:
-    """Teardown without calling sys.exit (for parallel mode)."""
+) -> str | None:
+    """Teardown without calling sys.exit (for parallel mode).
+
+    :return: The log report path, or None when no log monitor ran.
+    """
     from .helpers import delete_test_profiles
 
     try:
@@ -787,6 +1015,8 @@ async def _teardown_no_exit(
             print(f"  [{instance.name}] Unexpected errors: {n_errors}")
         if n_warnings:
             print(f"  [{instance.name}] Unexpected warnings: {n_warnings}")
+        return str(report_path)
+    return None
 
 
 def merge_results(results: list[InstanceResult]) -> int:
@@ -902,6 +1132,27 @@ def merge_results(results: list[InstanceResult]) -> int:
     for r in results:
         for line in r.results:
             print(f"  [{r.instance.name}] {line}")
+
+    # Persist the same Markdown summary that single-container runs write —
+    # without this, parallel runs leave only stdout as the results record.
+    from .report_writer import RunSummary, write_summary_report
+    from .runner import REPORTS_DIR
+
+    summaries = [
+        RunSummary(
+            instance=r.instance,
+            elapsed=r.elapsed,
+            passed=r.passed,
+            failed=r.failed,
+            recipe_stats=r.recipe_stats,
+            results=r.results,
+            log_report_path=r.log_report_path,
+            error=r.error,
+        )
+        for r in results
+    ]
+    summary_path = write_summary_report(summaries, reports_dir=REPORTS_DIR)
+    print(f"\n  Summary report: {summary_path}")
 
     if total_failed > 0:
         print(f"\n  {bold(red('*** SOME TESTS FAILED ***'))}")

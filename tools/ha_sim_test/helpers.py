@@ -20,6 +20,7 @@ import contextvars
 import json
 import os
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -103,6 +104,37 @@ def get_current_instance() -> InstanceConfig:
 
         return InstanceConfig.default()
     return inst
+
+
+def spawn_thread(
+    fn: Callable[..., Any],
+    *args: Any,
+    daemon: bool = True,
+    **kwargs: Any,
+) -> threading.Thread[Any]:
+    """Start a thread that inherits the current instance context.
+
+    ``_current_instance`` is a contextvar — a plain ``threading.Thread``
+    starts with a *fresh* context, so helpers like ``call_service``,
+    ``get_token`` or ``get_docker_logs`` inside it silently fall back to
+    ``InstanceConfig.default()`` (ha-sim).  In parallel runs that means
+    worker threads (e.g. inject delays in R135/R150) talked to instance
+    1 instead of the recipe's own container.
+
+    Runs ``fn`` inside ``contextvars.copy_context()`` so the thread sees
+    the same instance.  The thread is started before returning.
+    """
+    import threading
+
+    ctx = contextvars.copy_context()
+    thread: threading.Thread[Any] = threading.Thread(
+        target=ctx.run,
+        args=(fn, *args),
+        kwargs=kwargs,
+        daemon=daemon,
+    )
+    thread.start()
+    return thread
 
 
 def get_docker_logs(
@@ -315,15 +347,28 @@ async def ws_send(
 
     current_token = token
     last_err: Exception | None = None
+    extras_waited = False
     for attempt in range(retries + 1):
         try:
             return await _ws_send_once(current_token, msg)
-        except (TimeoutError, aiohttp.ClientError, RuntimeError) as e:
+        # OSError covers TimeoutError and ConnectionResetError/
+        # ConnectionRefusedError — the listener can drop accepted
+        # sockets while HA restarts.
+        except (OSError, aiohttp.ClientError, RuntimeError) as e:
             last_err = e
             err = str(e)
-            # Don't retry on "unknown_command" (ramses_extras not loaded yet)
-            # or on genuine WS error responses — only retry on timeouts and
-            # connection issues.
+            # "unknown_command" for a ramses_extras WS command means the
+            # integration hasn't registered its handlers yet after a
+            # (re)start — wait once for extras readiness, then retry
+            # normally.  Genuine WS error responses still fail fast.
+            if "unknown_command" in err and str(msg.get("type", "")).startswith(
+                "ramses_extras/"
+            ):
+                if not extras_waited:
+                    extras_waited = True
+                    wait_for_ramses_extras_ready(timeout=90)
+                    continue
+                raise
             if "unknown_command" in err or "WS error:" in err:
                 raise
             # On auth_invalid, refresh the token before retrying.
@@ -1054,15 +1099,18 @@ def wait_for_ramses_extras_ready(
     marked as ready" is logged.  Without this wait, profile loads via
     WS fail with ``unknown_command`` or ``not_ready`` errors.
 
-    Uses a 30s floor because ramses_extras takes ~60s to load after a
+    Uses a 90s floor because ramses_extras takes ~60s to load after a
     restart, and ``WAIT_SCALE_POLL`` may scale the timeout aggressively.
+    Under parallel load on the primary container it can take even longer —
+    an entity check running before the platform finishes setup then fails
+    on entities that were never going to exist yet.
     """
     return wait_for(
         is_ramses_extras_ready,
         timeout=timeout,
         interval=2,
         msg=msg,
-        floor=30.0,
+        floor=90.0,
     )
 
 
@@ -1558,23 +1606,43 @@ def is_ramses_extras_ready() -> bool:
     previous run).
     """
     inst = get_current_instance()
-    # Use --tail to only check recent logs (avoids matching stale
-    # "ready" lines from before a docker restart).
-    result = subprocess.run(
-        ["docker", "logs", "--tail", "80", inst.name],
+    # Scope the scan to this container's current boot so a stale "ready"
+    # line from before a docker restart cannot match.  Read the HA log
+    # FILES (home-assistant.log*) — not ``docker logs``: under DEBUG log
+    # volume the json-file driver rotates stdout constantly, so the
+    # boot-time ready line scrolls out of docker's buffer within seconds
+    # and the probe can never see it.  The rotated .log.1 file still
+    # carries it, and log_lines_since scans both.
+    started = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.StartedAt}}", inst.name],
         capture_output=True,
         text=True,
         timeout=15,
-    )
-    if result.returncode != 0:
-        return False
-    # docker logs output goes to stderr
-    logs = result.stderr or ""
+    ).stdout.strip()
+    since = ""
+    if started:
+        # docker StartedAt is UTC RFC3339; HA log timestamps are
+        # container-local — convert inside the container to stay tz-correct.
+        conv = docker_exec_python(
+            f"""
+import json
+from datetime import datetime
+print(json.dumps({{"ts": datetime.fromisoformat(
+    {started!r}.replace("Z", "+00:00")).astimezone().replace(
+        tzinfo=None).isoformat()}}))
+"""
+        )
+        since = str(conv.get("ts", ""))
+    logs = log_lines_since("home-assistant.log*", since)
     # "Device Simulator marked as ready" fires after both the WS
     # integration AND the simulator's own setup complete (config profile
     # store, ramses_cc isolation, etc).  Checking for just this line is
-    # sufficient — it's the last step in the startup sequence.
-    return "Device Simulator marked as ready" in logs
+    # sufficient — it's the last step in the startup sequence.  The
+    # "profile load complete - marked as ready" variant covers simulator
+    # instances that mark readiness on first profile load instead.
+    return any(
+        "Device Simulator" in line and "marked as ready" in line for line in logs
+    )
 
 
 def clear_cached_state(

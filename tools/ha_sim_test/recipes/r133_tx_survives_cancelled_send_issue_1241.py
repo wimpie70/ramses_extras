@@ -26,9 +26,13 @@ from ..base import Recipe, RecipeContext
 from ..const import CTL
 from ..helpers import (
     call_service,
+    container_log_timestamp,
     get_current_instance,
     get_entities,
     load_profile_yaml,
+    log_lines_since,
+    wait_for,
+    wait_for_transport_ready,
     ws_send,
 )
 from ..profile import mixed_yaml
@@ -79,7 +83,7 @@ class R133TxSurvivesCancelledSend(Recipe):
             cmd = (
                 f"tail -n {tail} /config/home-assistant.log | "
                 f"awk '/{marker}/{{n=NR}} {{b[NR]=$0}} "
-                f"END{{for(i=n||0;i<=NR;i++) if(b[i]) print b[i]}}' | "
+                f"END{{if(n) for(i=n;i<=NR;i++) if(b[i]) print b[i]}}' | "
                 f"grep -iE '{pattern}'"
             )
             r = subprocess.run(
@@ -91,6 +95,12 @@ class R133TxSurvivesCancelledSend(Recipe):
 
         # Mixed profile: zones 03-08 each with sensor + actuator give real
         # zone climate entities for get_zone_schedule.
+        # Capture a log timestamp first so the post-load waits can detect
+        # the reload boundary: is_ramses_cc_loaded stays True while the OLD
+        # coordinator is still alive, so wait_for_ramses_cc_reload can
+        # return before the reload has even started (the unload happens
+        # asynchronously, seconds after the WS call returns).
+        pre_load_ts = container_log_timestamp()
         try:
             await load_profile_yaml(
                 ctx.token,
@@ -102,8 +112,27 @@ class R133TxSurvivesCancelledSend(Recipe):
         except RuntimeError as err:
             ctx.check("mixed profile loaded", False, detail=str(err)[:200])
             return
+        # Wait until the old coordinator has actually unloaded — the
+        # "safe shutdown" / "gateway lost" lines mark the reload boundary.
+        # Without this, a subsequent transport-ready check can pass on the
+        # still-connected OLD transport.
+        wait_for(
+            lambda: any(
+                "Initiating safe shutdown" in line or "gateway lost" in line
+                for line in log_lines_since("home-assistant.log*", pre_load_ts)
+            ),
+            timeout=30,
+            interval=1,
+            msg="for coordinator unload (reload boundary)",
+        )
         ctx.wait_for_ramses_cc_reload(timeout=30)
         ctx.refresh_token()
+        # The reload drops the MQTT transport; if we proceed while it is
+        # still reconnecting, send_cmd fails instantly (no transport) and
+        # the schedule fetch errors fast instead of hitting its 15 s
+        # in-flight timeout — the cancel trigger never runs and the
+        # follow-up send_packet can't TX either.
+        wait_for_transport_ready(timeout=30)
 
         # Find the zone climate entity.  Skip "restored" orphans left by
         # earlier profiles (they keep the climate.*_03 name with a _2
