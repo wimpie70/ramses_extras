@@ -110,6 +110,20 @@ def _write_extras_options(enable: bool) -> None:
     with open(tmp_path) as fh:
         doc = json.load(fh)
     for entry in doc["data"]["entries"]:
+        if entry["domain"] == "ramses_cc" and enable:
+            # Ensure 32:150000 is declared as FAN in the persisted schema
+            # before HA boots — a preceding CTL-only recipe leaves
+            # 32:150000 out of CONFIG_SCHEMA, so ramses_rf creates a
+            # generic DeviceHvac at boot and temp_control skips it.
+            cc_schema = entry.setdefault("options", {}).setdefault("schema", {})
+            fan_entry = cc_schema.setdefault("32:150000", {})
+            if isinstance(fan_entry, dict):
+                fan_entry["_class"] = "FAN"
+                fan_entry.setdefault("remotes", ["37:170000"])
+            rem_entry = cc_schema.setdefault("37:170000", {})
+            if isinstance(rem_entry, dict):
+                rem_entry.setdefault("_class", "REM")
+            continue
         if entry["domain"] != "ramses_extras":
             continue
         opts = entry.setdefault("options", {})

@@ -102,10 +102,16 @@ EXPECTED_WARNINGS: list[str] = [
     # the test deliberately creates a FAN/DIS mismatch to verify the
     # notification path; the WARNING is the intended behaviour)
     "class mismatch for",
-    # ramses_rf: HvacTopologyHandler FAN→DIS contradiction WARNING
-    # (expected in R79 — the test injects non-FAN packets to trigger
-    # reclassification; the WARNING is the intended behaviour)
+    # ramses_rf: HvacTopologyHandler FAN→DIS / FAN→CO2 contradiction WARNING
+    # (expected in R79 and R143 — the tests inject non-FAN or I-1298-only
+    # packets to trigger reclassification; the WARNING is the intended behaviour)
     "is typed as FAN but has only sent",
+    "is typed as FAN but has only broadcast",
+    # R146: fires 5 concurrent get_zone_schedule calls to verify RQ 0006
+    # coalescing up to the 0404 stage; the simulator does not serve the
+    # subsequent 0404 schedule fragments, so the background fetch times out.
+    ":0404:",
+    "(schedule): Fragment",
     # ramses_cc: zone name mismatch (expected in R76 — issue 947)
     "name mismatches between schema and controller",
     # ramses_cc: bound device not found during early init (FAN not yet active)
@@ -150,9 +156,11 @@ EXPECTED_WARNINGS: list[str] = [
     # HA core: ramses_cc climate entity already exists during profile reload
     # (transient — HA correctly ignores the duplicate, but logs an error)
     "does not generate unique IDs",
-    # ramses_extras: broker not found during early init (transient — ramses_cc
-    # may not be loaded yet when ramses_extras starts)
+    # ramses_extras: broker/coordinator not found during early init or
+    # mid-reload (transient — ramses_cc may be unloading/reloading when
+    # ramses_extras polls 31DA)
     "Could not find ramses_cc broker",
+    "ramses_cc coordinator not found",
     # HA core: slow state update warning (transient — profile reloads cause
     # batch entity updates that can exceed HA's 0.5s threshold)
     "Updating state for",

@@ -357,19 +357,22 @@ async def ws_send(
         except (OSError, aiohttp.ClientError, RuntimeError) as e:
             last_err = e
             err = str(e)
-            # "unknown_command" for a ramses_extras WS command means the
-            # integration hasn't registered its handlers yet after a
-            # (re)start — wait once for extras readiness, then retry
-            # normally.  Genuine WS error responses still fail fast.
-            if "unknown_command" in err and str(msg.get("type", "")).startswith(
-                "ramses_extras/"
+            # "unknown_command" or "not_ready" (e.g. "Config store not
+            # initialized" / "Simulator not initialized") for a
+            # ramses_extras WS command means the integration is still
+            # finishing startup after a (re)start — wait once for extras
+            # readiness, then let the retry loop re-send.  Genuine WS
+            # error responses still fail fast.
+            is_extras_not_ready = (
+                "unknown_command" in err or "'not_ready'" in err
+            ) and str(msg.get("type", "")).startswith("ramses_extras/")
+            if is_extras_not_ready and not extras_waited:
+                extras_waited = True
+                wait_for_ramses_extras_ready(timeout=90)
+                continue
+            if not is_extras_not_ready and (
+                "unknown_command" in err or "WS error:" in err
             ):
-                if not extras_waited:
-                    extras_waited = True
-                    wait_for_ramses_extras_ready(timeout=90)
-                    continue
-                raise
-            if "unknown_command" in err or "WS error:" in err:
                 raise
             # On auth_invalid, refresh the token before retrying.
             if "auth_invalid" in err:
