@@ -110,6 +110,21 @@ def _write_extras_options(enable: bool) -> None:
     with open(tmp_path) as fh:
         doc = json.load(fh)
     for entry in doc["data"]["entries"]:
+        if entry["domain"] == "ramses_cc" and enable:
+            # Ensure 32:150000 is declared as FAN in the persisted schema
+            # before HA boots — a preceding CTL-only recipe (e.g. R136)
+            # leaves 32:150000 out of CONFIG_SCHEMA, so ramses_rf creates
+            # a generic DeviceHvac at boot and humidity_control skips
+            # creating switch/binary_sensor entities for it.
+            cc_schema = entry.setdefault("options", {}).setdefault("schema", {})
+            fan_entry = cc_schema.setdefault("32:150000", {})
+            if isinstance(fan_entry, dict):
+                fan_entry["_class"] = "FAN"
+                fan_entry.setdefault("remotes", ["37:170000"])
+            rem_entry = cc_schema.setdefault("37:170000", {})
+            if isinstance(rem_entry, dict):
+                rem_entry.setdefault("_class", "REM")
+            continue
         if entry["domain"] != "ramses_extras":
             continue
         opts = entry.setdefault("options", {})
@@ -165,16 +180,30 @@ def _write_extras_options(enable: bool) -> None:
             devices.pop("32:150000", None)
     with open(tmp_path, "w") as fh:
         json.dump(doc, fh)
-    subprocess.run(
-        [
-            "docker",
-            "cp",
-            tmp_path,
-            f"{inst.name}:/config/.storage/core.config_entries",
-        ],
-        check=True,
-        timeout=30,
-    )
+    for _attempt in range(2):
+        subprocess.run(
+            [
+                "docker",
+                "cp",
+                tmp_path,
+                f"{inst.name}:/config/.storage/core.config_entries",
+            ],
+            check=True,
+            timeout=30,
+        )
+        with open(f"{inst.storage_path}/core.config_entries") as fh:
+            written = json.load(fh)
+        for entry in written["data"]["entries"]:
+            if entry["domain"] != "ramses_extras":
+                continue
+            if (
+                entry.get("data", {})
+                .get("enabled_features", {})
+                .get("humidity_control")
+                is enable
+            ):
+                return
+    raise RuntimeError(f"enabled_features write did not persist (enable={enable})")
 
 
 def _restart_container(ctx: RecipeContext, *, stop_first: bool = False) -> None:
