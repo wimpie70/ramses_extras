@@ -400,6 +400,9 @@ class LogMonitor:
 
         if not since:
             return ""
+        # --tail is required: on some hosts `docker logs --since <ts>`
+        # without --tail silently returns nothing for recent cutoffs,
+        # which would blind the error/warning collection entirely.
         result = subprocess.run(
             [
                 "docker",
@@ -408,6 +411,8 @@ class LogMonitor:
                 "--since",
                 since,
                 "--timestamps",
+                "--tail",
+                "50000",
             ],
             capture_output=True,
             text=True,
