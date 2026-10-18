@@ -143,10 +143,12 @@ async def async_get_integration_version(hass: HomeAssistant) -> str:
 
 
 async def discover_card_features() -> list[dict[str, Any]]:
-    """Discover features that have Lovelace cards.
+    """Discover features that have deployable www assets.
 
-    Scans the features directory for subdirectories containing www folders
-    with JavaScript files for Lovelace cards.
+    Scans the features directory for subdirectories containing www folders.
+    A feature qualifies when its www folder contains JavaScript files
+    (Lovelace cards) or other static assets (.svg, .css, .png, .woff2)
+    meant to be served from /local/ramses_extras/features/<name>/.
 
     :return: List of dictionaries containing feature information and file paths
     """
@@ -162,12 +164,10 @@ async def discover_card_features() -> list[dict[str, Any]]:
                 continue
 
             www_dir = feature_path / "www" / feature_path.name
-            if not www_dir.exists():
+            if not www_dir.exists() or not any(www_dir.iterdir()):
                 continue
 
             js_files = list(www_dir.glob("*.js"))
-            if not js_files:
-                continue
 
             card_features.append(
                 {

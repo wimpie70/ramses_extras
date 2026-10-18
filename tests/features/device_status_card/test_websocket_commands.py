@@ -73,7 +73,7 @@ def _state(state: str, **attrs: Any) -> SimpleNamespace:
 @pytest.fixture
 def _patch_coordinator():
     """Patch the ramses_cc coordinator lookup."""
-    with patch.object(websocket_commands, "_get_ramses_cc_coordinator") as mock_get:
+    with patch.object(websocket_commands, "get_ramses_cc_coordinator") as mock_get:
         yield mock_get
 
 

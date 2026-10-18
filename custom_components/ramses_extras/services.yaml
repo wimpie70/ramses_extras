@@ -280,3 +280,112 @@ run_zone_actuation:
       example: "32:153289"
       selector:
         text:
+
+# Floorplan Helper services (ha-floorplan managed regeneration)
+floorplan_export:
+  name: Floorplan Export
+  description: >-
+    Regenerate the ha-floorplan bundle (elements SVG, rules YAML, change
+    report) from the discovered RAMSES topology and the stored mapping.
+    Response contains a paste-ready floorplan card configuration.
+  fields: {}
+
+floorplan_set_element:
+  name: Floorplan Set Element
+  description: >-
+    Upsert (or remove) an SVG element binding in the stored floorplan
+    mapping. Applies on the next floorplan_export.
+  fields:
+    element_id:
+      name: Element ID
+      description: SVG element id (default convention is the bound entity_id).
+      required: true
+      example: "climate.13_045678"
+      selector:
+        text:
+    entity_id:
+      name: Entity ID
+      description: Entity to bind to the element.
+      required: false
+      selector:
+        entity:
+    icon:
+      name: Icon
+      description: Icon key for this element (see floorplan icon list).
+      required: false
+      example: "radiator"
+      selector:
+        text:
+    extra_rules:
+      name: Extra Rules
+      description: >-
+        Custom floorplan rule blobs (YAML) emitted verbatim inside the
+        managed rules block for this element.
+      required: false
+      selector:
+        object:
+    remove:
+      name: Remove
+      description: Remove this element binding instead of updating it.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+floorplan_set_icon:
+  name: Floorplan Set Icon
+  description: >-
+    Set or clear an icon override for a RAMSES device class (e.g. FAN,
+    TRV, CTL) or for a specific entity id.
+  fields:
+    target:
+      name: Target
+      description: Device class (FAN, TRV, CTL, HGI, DHW...) or entity_id.
+      required: true
+      example: "TRV"
+      selector:
+        text:
+    icon:
+      name: Icon
+      description: Icon key; omit/empty to clear the override.
+      required: false
+      example: "radiator"
+      selector:
+        text:
+
+floorplan_assign_area:
+  name: Floorplan Assign Area
+  description: >-
+    Bind a RAMSES device or zone to a Home Assistant area for floorplan
+    grouping (overrides registry-derived areas).
+  fields:
+    source:
+      name: Source
+      description: RAMSES device id (e.g. 04:123456) or entity id.
+      required: true
+      example: "04:123456"
+      selector:
+        text:
+    area_id:
+      name: Area ID
+      description: HA area id; omit/empty to clear the binding.
+      required: false
+      selector:
+        area:
+
+floorplan_set_svg:
+  name: Floorplan Set SVG
+  description: >-
+    Switch between the generated elements SVG and a custom user SVG.
+    Pass custom_svg_path to use your own drawing; omit to revert to the
+    generated plan.
+  fields:
+    custom_svg_path:
+      name: Custom SVG Path
+      description: >-
+        Web path to your SVG (e.g. /local/ramses_extras/floorplan/my-plan.svg).
+        Leave empty to use the generated elements SVG.
+      required: false
+      example: "/local/ramses_extras/floorplan/my-plan.svg"
+      selector:
+        text:

@@ -49,7 +49,8 @@
           "feature_co2_control": "Feature: CO2 Control",
           "feature_sensor_control": "Feature: FAN Configuratie",
           "feature_temp_control": "Feature: Temperature Control",
-          "feature_ramses_debugger": "Feature: Ramses Debugger"
+          "feature_ramses_debugger": "Feature: Ramses Debugger",
+          "feature_floorplan_helper": "Functie: Floorplan Helper"
         }
       },
       "enable_features": {
@@ -68,7 +69,10 @@
         "title": "Functie Configuratie",
         "description": "{info}",
         "data": {
-          "enabled_devices": "Apparaten om in te schakelen"
+          "enabled_devices": "Apparaten om in te schakelen",
+          "svg_mode": "SVG-modus",
+          "custom_svg_path": "Eigen SVG-pad (bijv. /local/.../mijn-plattegrond.svg)",
+          "icon_overrides": "Icoon-overschrijvingen (DOEL=icoon per regel)"
         }
       },
       "device_selection": {

@@ -1,0 +1,97 @@
+/* ramses-floorplan.css — canonical classes for the ramses_extras
+ * floorplan bundle. Reference from ha-floorplan via:
+ *   stylesheet: /local/ramses_extras/features/floorplan_helper/ramses-floorplan.css
+ *
+ * Classes are applied to SVG elements by floorplan.class_set rules.
+ * Theme-friendly: uses currentColor + opacity so it inherits HA colors.
+ */
+
+/* --- layout primitives (used by the generated elements SVG) --- */
+.rx-cell {
+  fill: rgba(128, 128, 128, 0.08);
+  stroke: rgba(128, 128, 128, 0.35);
+  stroke-width: 1;
+}
+
+.rx-group-label {
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  fill: currentColor;
+  opacity: 0.85;
+}
+
+.rx-label {
+  font-family: inherit;
+  font-size: 13px;
+  fill: currentColor;
+}
+
+.rx-state {
+  font-family: inherit;
+  font-size: 12px;
+  fill: currentColor;
+  opacity: 0.7;
+}
+
+/* --- connectivity / availability --- */
+.rx-online {
+  fill: #2e7d32;
+}
+
+.rx-offline {
+  fill: #9e9e9e;
+  stroke: #9e9e9e;
+  stroke-dasharray: 3 3;
+  opacity: 0.55;
+}
+
+.rx-rssi-warn {
+  stroke: #f9a825;
+  stroke-width: 2;
+}
+
+/* --- heating --- */
+.rx-heat-demand {
+  fill: #ef6c00;
+  filter: drop-shadow(0 0 6px rgba(239, 108, 0, 0.7));
+}
+
+.rx-valve-open {
+  fill: #ef6c00;
+}
+
+.rx-window-open {
+  fill: #039be5;
+}
+
+/* --- fan --- */
+.rx-fan-low {
+  fill: #7cb342;
+}
+
+.rx-fan-medium {
+  fill: #fb8c00;
+}
+
+.rx-fan-high {
+  fill: #e53935;
+}
+
+/* Fan spin animation. Apply to a <g> wrapper — never to an element that
+ * already carries its own transform attribute (floorplan transforms
+ * conflict with element transforms; wrap and transform the group). */
+@keyframes rx-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rx-spin {
+  animation: rx-spin 1.4s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
