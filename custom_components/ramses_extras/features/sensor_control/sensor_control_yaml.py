@@ -50,6 +50,7 @@ _AREA_SENSOR_SCHEMA_V2 = vol.Schema(
 _AREA_SENSOR_SCHEMA_LEGACY = vol.Schema(
     {
         vol.Optional("area_id"): str,
+        vol.Optional("source_id"): str,
         vol.Optional("zone_id"): str,
         vol.Optional("enabled", default=True): bool,
         vol.Optional("temperature_entity"): str,
@@ -192,7 +193,11 @@ def parse_sensor_control_yaml(yaml_data: dict) -> dict[str, Any]:
             for item in area_sensors:
                 if not isinstance(item, dict):
                     continue
-                area_id = str(item.get("area_id") or "").strip()
+                # Accept both "area_id" (current schema) and "source_id"
+                # (used by some configs/tests) as the area identifier.
+                area_id = str(
+                    item.get("area_id") or item.get("source_id") or ""
+                ).strip()
                 if not area_id:
                     continue
                 cleaned = dict(item)

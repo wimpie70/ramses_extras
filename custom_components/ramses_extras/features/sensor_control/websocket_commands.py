@@ -340,7 +340,10 @@ async def ws_set_area_spike_ignore_outdoor(
         for item in area_sensors:
             if not isinstance(item, dict):
                 continue
-            if str(item.get("area_id") or "").strip().lower() == area_id.lower():
+            item_area_id = str(
+                item.get("area_id") or item.get("source_id") or ""
+            ).strip()
+            if item_area_id.lower() == area_id.lower():
                 item["spike_ignore_outdoor"] = spike_ignore_outdoor
                 updated = True
                 break

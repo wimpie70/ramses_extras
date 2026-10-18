@@ -318,7 +318,11 @@ async def create_default_sensor(
             )
 
     for area_sensor in _get_area_sensors_config(hass, device_id_str, config_entry):
-        area_id = str(area_sensor.get("area_id") or "").strip()
+        # Accept both "area_id" (current schema) and "source_id"
+        # (used by some configs/tests) as the area identifier.
+        area_id = str(
+            area_sensor.get("area_id") or area_sensor.get("source_id") or ""
+        ).strip()
         if not area_id:
             continue
 
