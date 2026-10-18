@@ -15,6 +15,7 @@ export const CARD_STYLE = `
   );
   color: var(--primary-text-color);
   width: 100%;
+  container-type: inline-size;
   height: auto;
   min-height: 440px;
   margin: 0 auto;
@@ -377,6 +378,8 @@ export const CARD_STYLE = `
 
 .top-left :is(.r-xtrs-hvac-fan-corner-row, .r-xtrs-hvac-fan-humidity-row, .r-xtrs-hvac-fan-dehum-row) { justify-content: flex-start; }
 .top-right :is(.r-xtrs-hvac-fan-corner-row, .r-xtrs-hvac-fan-humidity-row, .r-xtrs-hvac-fan-dehum-row) { justify-content: flex-end; }
+.bottom-left :is(.r-xtrs-hvac-fan-corner-row, .r-xtrs-hvac-fan-humidity-row, .r-xtrs-hvac-fan-dehum-row, .r-xtrs-hvac-fan-temp-value) { justify-content: flex-start; }
+.bottom-right :is(.r-xtrs-hvac-fan-corner-row, .r-xtrs-hvac-fan-humidity-row, .r-xtrs-hvac-fan-dehum-row, .r-xtrs-hvac-fan-temp-value) { justify-content: flex-end; }
 
 .r-xtrs-hvac-fan-outside-edge {
   font-weight: 800;
@@ -884,6 +887,23 @@ export const CARD_STYLE = `
 }
 
 /* ====== RESPONSIVE ====== */
+/* Narrow cards: wrap the bottom-right humidity row into two right-aligned
+   lines so it stays clear of the centered stats block (issue 314). A
+   container query is used because the card width, not the viewport width,
+   decides whether the single-line row fits beside the stats. */
+@container (max-width: 460px) {
+  .r-xtrs-hvac-fan-corner-value.bottom-right { max-width: 96px; }
+  .r-xtrs-hvac-fan-corner-value.bottom-right .r-xtrs-hvac-fan-humidity-row {
+    flex-wrap: wrap;
+    row-gap: 0;
+    column-gap: 4px;
+    justify-content: flex-end;
+  }
+  .r-xtrs-hvac-fan-corner-value.bottom-right .r-xtrs-hvac-fan-humidity-row .r-xtrs-hvac-fan-arrow {
+    display: none;
+  }
+}
+
 @media (max-width: 480px) {
   .r-xtrs-hvac-fan-bottom-stats {
     max-width: calc(100% - 110px);
