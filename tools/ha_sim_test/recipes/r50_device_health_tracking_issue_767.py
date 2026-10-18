@@ -144,13 +144,15 @@ class R50DeviceHealthTrackingIssue767(Recipe):
             print(f"  sync_topology failed: {e}")
         ctx.wait(5, "for scan_state to be persisted", floor=3.0)
 
-        # 1b. Reset last_seen for all devices in scan_state to "now".
+        # 1b. Reset last_seen for all devices in scan_state to "now"
+        #     and clear stale weak_signal/orphaned flags in metadata.
         #     A previous test run may have left stale last_seen values
-        #     (e.g. 10 days ago from the last_seen manipulation below),
-        #     which would cause the "no devices message shown when
-        #     healthy" check to fail.  We reset all last_seen timestamps
-        #     to the current time, then restart HA to pick up the clean
-        #     state.
+        #     (e.g. 10 days ago from the last_seen manipulation below)
+        #     or weak_signal flags in discovery.metadata, which would
+        #     cause the "no devices message shown when healthy" check
+        #     to fail.  We reset all last_seen timestamps to the current
+        #     time and clear health flags, then restart HA to pick up
+        #     the clean state.
         print("  Resetting last_seen for all devices in scan_state...")
         try:
             reset_code = """
@@ -159,6 +161,14 @@ from datetime import datetime, timezone
 p = '/config/.storage/ramses_cc'
 d = json.load(open(p))
 discovery = d.get('data', {}).get('discovery', {})
+meta = discovery.get('metadata', {})
+if isinstance(meta, dict):
+    for m in meta.values():
+        if isinstance(m, dict):
+            m['weak_signal'] = None
+            m['orphaned'] = None
+            if m.get('status') == 'lost':
+                m['status'] = 'accepted'
 scan_state_str = discovery.get('scan_state', '')
 if scan_state_str:
     scan_state = json.loads(scan_state_str)
