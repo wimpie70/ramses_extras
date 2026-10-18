@@ -241,7 +241,9 @@ def _validate_area_sensor_entries(area_sensors: Any) -> list[dict[str, Any]]:
     for item in area_sensors:
         if not isinstance(item, dict):
             continue
-        area_id = str(item.get("area_id") or "").strip()
+        # Accept both "area_id" (current schema) and "source_id"
+        # (used by some configs/tests) as the area identifier.
+        area_id = str(item.get("area_id") or item.get("source_id") or "").strip()
         if not area_id:
             continue
         cleaned = dict(item)
@@ -2391,7 +2393,9 @@ def _get_area_id_options_from_legacy(
             if isinstance(area_sensors, list):
                 for sensor in area_sensors:
                     if isinstance(sensor, dict):
-                        area_id = str(sensor.get("area_id") or "").strip()
+                        area_id = str(
+                            sensor.get("area_id") or sensor.get("source_id") or ""
+                        ).strip()
                         _LOGGER.debug(
                             "Found sensor with area_id: %s",
                             area_id,
