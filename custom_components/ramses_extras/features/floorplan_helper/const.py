@@ -144,6 +144,26 @@ FLOORPLAN_DEVICE_ICON_MAP: dict[str, str] = {
 
 DEFAULT_ICON = "help"
 
+# Our icon keys → mdi names for floorplan-studio markers (studio's icon
+# style renders mdi names; our keys mostly match 1:1).
+FLOORPLAN_ICON_MDI: dict[str, str] = {
+    "fan": "fan",
+    "radiator": "radiator",
+    "valve": "valve",
+    "water-boiler": "water-boiler",
+    "thermostat": "thermostat",
+    "thermometer": "thermometer",
+    "remote": "remote",
+    "gateway": "router-wireless",
+    "fire": "fire",
+    "window-open": "window-open-variant",
+    "battery": "battery",
+    "co2": "molecule-co2",
+    "gauge": "gauge",
+    "pipe-valve": "pipe-valve",
+    "help": "help-circle",
+}
+
 # Entity-role classification used by the generator to decide which entities
 # get rules on an element. Ordered — first match wins for "primary".
 ENTITY_ROLE_PATTERNS: dict[str, tuple[str, ...]] = {
@@ -238,6 +258,7 @@ __all__ = [
     "FLOORPLAN_GENERATED_BASE",
     "FLOORPLAN_GENERATED_DIR_NAME",
     "FLOORPLAN_ICONS",
+    "FLOORPLAN_ICON_MDI",
     "FLOORPLAN_NUMBER_CONFIGS",
     "FLOORPLAN_SENSOR_CONFIGS",
     "FLOORPLAN_STANDALONE_ENTITIES",

@@ -511,3 +511,25 @@ floorplan_sync_areas:
       default: false
       selector:
         boolean:
+
+floorplan_seed_studio:
+  name: Floorplan Seed Studio
+  description: >-
+    Emit a floorplan-studio project JSON with your SVG rooms as studio
+    rooms and a marker per topology device pre-placed at its room's
+    centroid (matched by HA area). Paste the returned project_json into
+    studio's Projects → Import JSON to get a pre-populated map instead
+    of placing every marker by hand.
+  fields:
+    floors:
+      name: Floors
+      description: >-
+        Map of floor name → SVG reference (/local/... path or a filename
+        inside the ramses_extras floorplan dir). Omit to use the active
+        custom SVG as a single floor.
+      required: false
+      example: |
+        begane grond: /local/ramses_extras/floorplan/plattegrond-bg.svg
+        1e verdieping: /local/ramses_extras/floorplan/plattegrond-1e.svg
+      selector:
+        object:

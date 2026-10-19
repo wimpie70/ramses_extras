@@ -24,6 +24,7 @@ Managed-regeneration surface for the ha-floorplan bundle:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -37,7 +38,10 @@ from homeassistant.helpers import config_validation as cv
 
 from ...const import DOMAIN
 from .const import (
+    DEFAULT_ICON,
     FEATURE_ID,
+    FLOORPLAN_DEVICE_ICON_MAP,
+    FLOORPLAN_ICON_MDI,
     FLOORPLAN_ICONS,
     FLOORPLAN_UPLOAD_DIR_NAME,
     OPTION_CUSTOM_SVG_PATH,
@@ -51,7 +55,16 @@ from .const import (
     SVG_MODE_GENERATED,
 )
 from .generator import async_generate_bundle, build_toolbar_svg
-from .importer import parse_floorplan_yaml, parse_studio_project, room_for_point
+from .importer import (
+    build_studio_project,
+    parse_floorplan_yaml,
+    parse_studio_project,
+    room_for_point,
+    rooms_from_svg,
+    studio_floor,
+    studio_marker,
+    svg_viewbox,
+)
 from .mapping import (
     get_floorplan_options,
     persist_floorplan_options,
@@ -60,6 +73,7 @@ from .mapping import (
     set_icon_override,
     set_svg_mode,
 )
+from .topology import build_floorplan_model
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +85,7 @@ SVC_SET_SVG = "floorplan_set_svg"
 SVC_IMPORT = "floorplan_import"
 SVC_UPLOAD_SVG = "floorplan_upload_svg"
 SVC_SYNC_AREAS = "floorplan_sync_areas"
+SVC_SEED_STUDIO = "floorplan_seed_studio"
 
 NOTIFICATION_ID = "ramses_extras_floorplan_export"
 
@@ -384,6 +399,114 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "warnings": parsed["warnings"],
         }
 
+    def _resolve_svg_path(ref: str) -> Path:
+        """Map a /local/... URL or bare filename to a config/www path."""
+        if ref.startswith("/local/"):
+            return Path(hass.config.config_dir) / "www" / ref[len("/local/") :]
+        return (
+            Path(hass.config.config_dir)
+            / "www"
+            / "ramses_extras"
+            / FLOORPLAN_UPLOAD_DIR_NAME
+            / Path(ref).name
+        )
+
+    async def _async_seed_studio(call: ServiceCall) -> dict[str, Any]:
+        """Emit a studio project JSON with markers pre-placed.
+
+        For each floor's SVG the ``area.*`` elements become studio rooms;
+        every topology device whose HA area matches a room slug gets a
+        marker at that room's centroid (grid-stacked when a room holds
+        several devices). Paste the returned JSON into studio's
+        Projects → Import JSON.
+        """
+        floor_specs: dict[str, str] = dict(call.data.get("floors") or {})
+        if not floor_specs:
+            options = get_floorplan_options(_config_entry(hass))
+            active = options.get(OPTION_CUSTOM_SVG_PATH)
+            if not active:
+                raise vol.Invalid("No 'floors' given and no custom SVG is active")
+            floor_specs = {Path(active).stem: active}
+
+        floor_svgs: dict[str, str] = {}
+        missing: list[str] = []
+        for name, ref in floor_specs.items():
+            path = _resolve_svg_path(ref)
+            try:
+                floor_svgs[name] = await hass.async_add_executor_job(
+                    path.read_text, "utf-8"
+                )
+            except OSError:
+                missing.append(f"{name}: {ref}")
+        if missing:
+            raise vol.Invalid(f"SVG file(s) not found: {', '.join(missing)}")
+
+        model = await build_floorplan_model(hass)
+
+        def _mdi(dev: dict[str, Any]) -> str:
+            key = FLOORPLAN_DEVICE_ICON_MAP.get(
+                dev.get("device_class") or "", DEFAULT_ICON
+            )
+            return FLOORPLAN_ICON_MDI.get(key, "help-circle")
+
+        placed: dict[str, str] = {}
+        floors_json: list[dict[str, Any]] = []
+        floor_stats: list[dict[str, Any]] = []
+        for fname, svg_text in floor_svgs.items():
+            rooms = rooms_from_svg(svg_text)
+            width, height = svg_viewbox(svg_text)
+            by_slug = {r["slug"]: r for r in rooms}
+            markers: list[dict[str, Any]] = []
+            per_room: dict[str, int] = {}
+            for dev in model["devices"]:
+                area = dev.get("area_id")
+                room = by_slug.get(area) if area else None
+                primary = dev.get("primary_entity")
+                if room is None or not primary:
+                    continue
+                n = per_room.get(room["slug"], 0)
+                per_room[room["slug"]] = n + 1
+                cx, cy = room["centroid"]
+                markers.append(
+                    studio_marker(
+                        primary,
+                        cx + (n % 3) * 36 - 36,
+                        cy + (n // 3) * 36,
+                        _mdi(dev),
+                        label=str(dev.get("display_name") or dev["device_id"]),
+                    )
+                )
+                placed[dev["device_id"]] = f"{fname} / {room['name']}"
+            floors_json.append(studio_floor(fname, width, height, rooms, markers))
+            floor_stats.append(
+                {"name": fname, "rooms": len(rooms), "markers": len(markers)}
+            )
+
+        unplaced = [
+            {
+                "device_id": dev["device_id"],
+                "area_id": dev.get("area_id"),
+                "primary_entity": dev.get("primary_entity"),
+            }
+            for dev in model["devices"]
+            if dev["device_id"] not in placed
+        ]
+        project = build_studio_project(
+            _config_entry(hass).title or "Floorplan", floors_json
+        )
+        _LOGGER.info(
+            "Floorplan seed_studio: %d markers across %d floors, %d unplaced",
+            len(placed),
+            len(floors_json),
+            len(unplaced),
+        )
+        return {
+            "project_json": json.dumps(project),
+            "placed": placed,
+            "unplaced": unplaced,
+            "floors": floor_stats,
+        }
+
     if not hass.services.has_service(DOMAIN, SVC_EXPORT):
         hass.services.async_register(
             DOMAIN,
@@ -505,6 +628,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    if not hass.services.has_service(DOMAIN, SVC_SEED_STUDIO):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_SEED_STUDIO,
+            _async_seed_studio,
+            schema=vol.Schema(
+                {
+                    vol.Optional("floors"): {cv.string: cv.string},
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     _LOGGER.info("Registered floorplan_helper services")
 
 
@@ -519,6 +656,7 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SVC_IMPORT,
         SVC_UPLOAD_SVG,
         SVC_SYNC_AREAS,
+        SVC_SEED_STUDIO,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

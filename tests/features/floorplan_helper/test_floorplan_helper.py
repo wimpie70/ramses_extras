@@ -409,6 +409,47 @@ class TestStudioProject:
         assert "error" in importer.parse_studio_project('{"x": 1}')
 
 
+class TestStudioSeed:
+    """SVG → studio room extraction and project emit helpers."""
+
+    _SVG = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560">'
+        '<g transform="translate(10,20)">'
+        '<rect id="area.eetkamer" x="113" y="124" width="100" height="100"/>'
+        '<polygon id="area.nook" points="0,0 50,0 50,50"/>'
+        '<rect id="other" x="0" y="0" width="5" height="5"/>'
+        "</g></svg>"
+    )
+
+    def test_rooms_from_svg(self):
+        rooms = importer.rooms_from_svg(self._SVG)
+        by_slug = {r["slug"]: r for r in rooms}
+        assert set(by_slug) == {"eetkamer", "nook"}
+        # group translate applied
+        assert by_slug["eetkamer"]["polygon"][0] == {"x": 123, "y": 144}
+        assert by_slug["eetkamer"]["name"] == "eetkamer"
+        cx, cy = by_slug["eetkamer"]["centroid"]
+        assert cx == 173 and cy == 194
+
+    def test_svg_viewbox(self):
+        assert importer.svg_viewbox(self._SVG) == (640.0, 560.0)
+        assert importer.svg_viewbox("<svg></svg>") == (800.0, 600.0)
+
+    def test_project_shape(self):
+        rooms = importer.rooms_from_svg(self._SVG)
+        markers = [importer.studio_marker("fan.f1", 10, 10, "fan")]
+        floor = importer.studio_floor("bg", 640, 560, rooms, markers)
+        project = importer.build_studio_project("P", [floor])
+        assert project["schemaVersion"] == 1
+        assert project["floors"][0]["rooms"][0]["areaId"] == "eetkamer"
+        assert project["floors"][0]["markers"][0]["entities"] == ["fan.f1"]
+        # parses back through the studio-project importer
+        import json
+
+        parsed = importer.parse_studio_project(json.dumps(project))
+        assert len(parsed["rooms"]) == 2 and len(parsed["markers"]) == 1
+
+
 class TestMapping:
     def test_options_defaults(self):
         entry = MagicMock(spec=ConfigEntry)

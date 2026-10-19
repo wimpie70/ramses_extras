@@ -16,6 +16,8 @@ Kept hass-free so it is unit-testable.
 from __future__ import annotations
 
 import json
+import re
+import xml.etree.ElementTree as ET
 from typing import Any
 
 import yaml
@@ -223,8 +225,249 @@ def room_for_point(
     return min(containing, key=lambda r: r["area"])
 
 
+# ---------------------------------------------------------------------------
+# Emitting studio projects (HA → map direction): extract rooms from a user
+# SVG and seed a project JSON with markers pre-placed at room centroids.
+# ---------------------------------------------------------------------------
+
+_IDENT = (1, 0, 0, 1, 0, 0)
+
+
+def _compose(t1: tuple, t2: tuple) -> tuple:
+    """Compose two affine matrices (a,b,c,d,e,f); result = t1 * t2."""
+    a1, b1, c1, d1, e1, f1 = t1
+    a2, b2, c2, d2, e2, f2 = t2
+    return (
+        a1 * a2 + c1 * b2,
+        b1 * a2 + d1 * b2,
+        a1 * c2 + c1 * d2,
+        b1 * c2 + d1 * d2,
+        a1 * e2 + c1 * f2 + e1,
+        b1 * e2 + d1 * f2 + f1,
+    )
+
+
+def _apply(t: tuple, x: float, y: float) -> tuple[float, float]:
+    a, b, c, d, e, f = t
+    return a * x + c * y + e, b * x + d * y + f
+
+
+def _parse_transform(spec: str | None) -> tuple:
+    m: tuple = _IDENT
+    if not spec:
+        return m
+    for op, args in re.findall(r"(translate|matrix|scale)\(([^)]*)\)", spec):
+        vals = [float(v) for v in re.split(r"[,\s]+", args.strip()) if v]
+        t: tuple[float, ...]
+        if op == "translate":
+            t = (1.0, 0.0, 0.0, 1.0, vals[0], vals[1] if len(vals) > 1 else 0.0)
+        elif op == "scale":
+            t = (
+                vals[0],
+                0.0,
+                0.0,
+                vals[1] if len(vals) > 1 else vals[0],
+                0.0,
+                0.0,
+            )
+        else:
+            t = tuple(vals[:6])
+        m = _compose(m, t)
+    return m
+
+
+def _centroid(polygon: list[dict[str, float]]) -> tuple[float, float]:
+    return (
+        sum(float(p["x"]) for p in polygon) / len(polygon),
+        sum(float(p["y"]) for p in polygon) / len(polygon),
+    )
+
+
+def svg_viewbox(svg_text: str) -> tuple[float, float]:
+    """Return ``(width, height)`` from the viewBox, or a sane default."""
+    m = re.search(r'viewBox="[^"]*?\s([\d.]+)\s([\d.]+)"', svg_text)
+    if not m:
+        return 800.0, 600.0
+    return float(m.group(1)), float(m.group(2))
+
+
+def rooms_from_svg(svg_text: str) -> list[dict[str, Any]]:
+    """Extract ``id="area.<slug>"`` rect/polygon elements as room polygons.
+
+    Ancestor ``translate``/``matrix``/``scale`` transforms are applied so
+    coordinates land in viewBox space (= studio document space when the
+    floor canvas is set to the viewBox size).
+    """
+    try:
+        root = ET.fromstring(svg_text)
+    except ET.ParseError:
+        return []
+
+    rooms: list[dict[str, Any]] = []
+
+    def walk(el: ET.Element, t: tuple) -> None:
+        t = _compose(t, _parse_transform(el.get("transform")))
+        tag = el.tag.rsplit("}", 1)[-1]
+        el_id = el.get("id", "")
+        if el_id.startswith("area.") and tag in ("rect", "polygon"):
+            slug = el_id[5:]
+            pts: list[dict[str, float]] = []
+            if tag == "rect":
+                x = float(el.get("x") or 0)
+                y = float(el.get("y") or 0)
+                w = float(el.get("width") or 0)
+                h = float(el.get("height") or 0)
+                pts = [
+                    {"x": round(px, 2), "y": round(py, 2)}
+                    for px, py in (
+                        _apply(t, cx, cy)
+                        for cx, cy in (
+                            (x, y),
+                            (x + w, y),
+                            (x + w, y + h),
+                            (x, y + h),
+                        )
+                    )
+                ]
+            else:
+                raw = re.split(r"[,\s]+", (el.get("points") or "").strip())
+                nums = [float(v) for v in raw if v]
+                pts = [
+                    {"x": round(px, 2), "y": round(py, 2)}
+                    for px, py in (
+                        _apply(t, nums[i], nums[i + 1])
+                        for i in range(0, len(nums) - 1, 2)
+                    )
+                ]
+            if len(pts) >= 3:
+                rooms.append(
+                    {
+                        "slug": slug,
+                        "name": slug.replace("_", " "),
+                        "polygon": pts,
+                        "centroid": _centroid(pts),
+                    }
+                )
+        for child in el:
+            walk(child, t)
+
+    walk(root, _IDENT)
+    return rooms
+
+
+def build_studio_project(
+    name: str,
+    floors: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Wrap studio ``Floor`` dicts into an importable project JSON."""
+    import time
+    import uuid
+
+    now = int(time.time() * 1000)
+    return {
+        "schemaVersion": 1,
+        "id": uuid.uuid4().hex[:10],
+        "name": name,
+        "createdAt": now,
+        "updatedAt": now,
+        "activeFloorId": floors[0]["id"] if floors else "",
+        "floors": floors,
+        "settings": {"grid": 20, "snapGrid": False, "snapAngle": True},
+    }
+
+
+def studio_floor(
+    name: str,
+    width: float,
+    height: float,
+    rooms: list[dict[str, Any]],
+    markers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build one studio ``Floor`` dict (empty background, all layers on)."""
+    import uuid
+
+    return {
+        "id": uuid.uuid4().hex[:8],
+        "name": name,
+        "canvas": {"width": width, "height": height},
+        "background": {
+            "dataUri": None,
+            "naturalW": width,
+            "naturalH": height,
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "rotation": 0,
+            "opacity": 1,
+            "locked": False,
+        },
+        "layers": {
+            layer: {"visible": True, "locked": False}
+            for layer in ("background", "walls", "rooms", "entities", "labels")
+        },
+        "walls": [],
+        "openings": [],
+        "rooms": [
+            {
+                "id": uuid.uuid4().hex[:8],
+                "name": r["name"],
+                "polygon": r["polygon"],
+                "areaId": r["slug"],
+                "fill": "#3b82f6",
+                "opacity": 0.25,
+                "stateRules": [],
+                "actions": {
+                    "tap": {"kind": "none"},
+                    "hold": {"kind": "none"},
+                    "double": {"kind": "none"},
+                },
+            }
+            for r in rooms
+        ],
+        "markers": markers,
+    }
+
+
+def studio_marker(
+    entity_id: str,
+    x: float,
+    y: float,
+    icon: str,
+    label: str | None = None,
+) -> dict[str, Any]:
+    """Build one studio ``Marker`` (icon type, more-info tap action)."""
+    import uuid
+
+    return {
+        "id": uuid.uuid4().hex[:8],
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "entities": [entity_id],
+        "style": {
+            "type": "icon",
+            "icon": icon,
+            "color": "#ffc107",
+            "size": 40,
+            "showState": True,
+            **({"label": label} if label else {}),
+        },
+        "stateRules": [],
+        "actions": {
+            "tap": {"kind": "more-info"},
+            "hold": {"kind": "none"},
+            "double": {"kind": "none"},
+        },
+        "visibility": None,
+    }
+
+
 __all__ = [
+    "build_studio_project",
     "parse_floorplan_yaml",
     "parse_studio_project",
     "room_for_point",
+    "rooms_from_svg",
+    "studio_floor",
+    "studio_marker",
+    "svg_viewbox",
 ]
