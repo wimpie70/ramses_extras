@@ -15,6 +15,7 @@ Kept hass-free so it is unit-testable.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import yaml
@@ -136,4 +137,94 @@ def parse_floorplan_yaml(text: str) -> dict[str, Any]:
     }
 
 
-__all__ = ["parse_floorplan_yaml"]
+def _point_in_polygon(x: float, y: float, polygon: list[dict[str, float]]) -> bool:
+    """Ray-casting point-in-polygon test on studio ``{x, y}`` points."""
+    inside = False
+    j = len(polygon) - 1
+    for i in range(len(polygon)):
+        xi, yi = float(polygon[i]["x"]), float(polygon[i]["y"])
+        xj, yj = float(polygon[j]["x"]), float(polygon[j]["y"])
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _polygon_area(polygon: list[dict[str, float]]) -> float:
+    """Shoelace area — used to pick the most specific overlapping room."""
+    area = 0.0
+    j = len(polygon) - 1
+    for i in range(len(polygon)):
+        xi, yi = float(polygon[i]["x"]), float(polygon[i]["y"])
+        xj, yj = float(polygon[j]["x"]), float(polygon[j]["y"])
+        area += (xj + xi) * (yj - yi)
+    return abs(area) / 2
+
+
+def parse_studio_project(text: str) -> dict[str, Any]:
+    """Parse a floorplan-studio project export (JSON) for area syncing.
+
+    :param text: project JSON as produced by studio's Projects → Export
+    :return: ``{rooms: [{id, name, polygon, floor}],
+        markers: [{x, y, entities, floor}], warnings: [str]}`` — on
+        failure ``{"error": str}``
+    """
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as err:
+        return {"error": f"Invalid JSON: {err}"}
+    if not isinstance(data, dict) or not isinstance(data.get("floors"), list):
+        return {"error": "Not a floorplan-studio project (missing 'floors')"}
+
+    rooms: list[dict[str, Any]] = []
+    markers: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for floor in data["floors"]:
+        floor_name = str(floor.get("name") or floor.get("id") or "?")
+        for room in floor.get("rooms", []):
+            polygon = room.get("polygon")
+            if not isinstance(polygon, list) or len(polygon) < 3:
+                warnings.append(
+                    f"{floor_name}: room '{room.get('name')}' has no polygon"
+                )
+                continue
+            rooms.append(
+                {
+                    "id": room.get("id"),
+                    "name": str(room.get("name") or room.get("id")),
+                    "polygon": polygon,
+                    "area": _polygon_area(polygon),
+                    "floor": floor_name,
+                }
+            )
+        for marker in floor.get("markers", []):
+            markers.append(
+                {
+                    "x": float(marker.get("x", 0)),
+                    "y": float(marker.get("y", 0)),
+                    "entities": _as_list(marker.get("entities")),
+                    "floor": floor_name,
+                }
+            )
+    return {"rooms": rooms, "markers": markers, "warnings": warnings}
+
+
+def room_for_point(
+    rooms: list[dict[str, Any]], x: float, y: float
+) -> dict[str, Any] | None:
+    """Return the smallest room containing ``(x, y)``.
+
+    Overlapping fills are common (a base 'overloop' fill spanning the
+    floor) — smallest containing polygon is the most specific room.
+    """
+    containing = [r for r in rooms if _point_in_polygon(x, y, r["polygon"])]
+    if not containing:
+        return None
+    return min(containing, key=lambda r: r["area"])
+
+
+__all__ = [
+    "parse_floorplan_yaml",
+    "parse_studio_project",
+    "room_for_point",
+]

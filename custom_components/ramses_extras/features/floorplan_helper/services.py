@@ -14,6 +14,9 @@ Managed-regeneration surface for the ha-floorplan bundle:
 - ``floorplan_upload_svg`` — write an SVG file into
   ``config/www/ramses_extras/floorplan/`` and optionally activate it —
   the file bridge external browser tools cannot perform themselves.
+- ``floorplan_sync_areas`` — import a floorplan-studio project JSON:
+  creates HA areas for room names and assigns marker entities to the
+  room they sit in (real ``entity_registry`` area ids).
 
 :platform: Home Assistant
 :feature: Floorplan Helper
@@ -48,7 +51,7 @@ from .const import (
     SVG_MODE_GENERATED,
 )
 from .generator import async_generate_bundle, build_toolbar_svg
-from .importer import parse_floorplan_yaml
+from .importer import parse_floorplan_yaml, parse_studio_project, room_for_point
 from .mapping import (
     get_floorplan_options,
     persist_floorplan_options,
@@ -67,6 +70,7 @@ SVC_ASSIGN_AREA = "floorplan_assign_area"
 SVC_SET_SVG = "floorplan_set_svg"
 SVC_IMPORT = "floorplan_import"
 SVC_UPLOAD_SVG = "floorplan_upload_svg"
+SVC_SYNC_AREAS = "floorplan_sync_areas"
 
 NOTIFICATION_ID = "ramses_extras_floorplan_export"
 
@@ -294,6 +298,92 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "activated": activated,
         }
 
+    async def _async_sync_areas(call: ServiceCall) -> dict[str, Any]:
+        """Sync HA areas from a floorplan-studio project export.
+
+        Creates HA areas for room names (optional) and assigns each
+        marker's entities to the smallest room containing it — marker
+        placement in the studio drives real entity-registry area ids.
+        """
+        from homeassistant.helpers import area_registry as ar
+        from homeassistant.helpers import entity_registry as er
+        from homeassistant.util import slugify
+
+        parsed = parse_studio_project(call.data["project_json"])
+        if "error" in parsed:
+            raise vol.Invalid(str(parsed["error"]))
+
+        create_areas = call.data.get("create_areas", True)
+        dry_run = call.data.get("dry_run", False)
+        area_reg = ar.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        # Match rooms to HA areas by slugified name (or existing area id).
+        def _slug(name: str) -> str:
+            return str(slugify(str(name))).replace("-", "_")
+
+        areas = list(area_reg.async_list_areas())
+        by_slug = {_slug(a.name): a for a in areas}
+        by_slug.update({a.id: a for a in areas})
+
+        created: list[str] = []
+        room_area: dict[str, Any] = {}
+        for room in parsed["rooms"]:
+            slug = _slug(room["name"])
+            area = by_slug.get(slug)
+            if area is None and create_areas and not dry_run:
+                area = area_reg.async_create(str(room["name"]))
+            if area is not None:
+                by_slug[slug] = area
+                room_area[room["id"]] = area
+            elif create_areas:
+                # dry-run: pretend it exists for the report
+                room_area[room["id"]] = None
+            else:
+                parsed["warnings"].append(
+                    f"{room['floor']}: no HA area for room '{room['name']}'"
+                )
+        if create_areas:
+            created = (
+                [a.name for a in area_reg.async_list_areas() if a not in areas]
+                if not dry_run
+                else [
+                    r["name"] for r in parsed["rooms"] if room_area.get(r["id"]) is None
+                ]
+            )
+
+        assignments: dict[str, str] = {}
+        skipped: list[str] = []
+        outside: list[str] = []
+        for marker in parsed["markers"]:
+            room = room_for_point(parsed["rooms"], marker["x"], marker["y"])
+            area = room_area.get(room["id"]) if room else None
+            for entity_id in marker["entities"]:
+                if room is None:
+                    outside.append(entity_id)
+                    continue
+                if ent_reg.async_get(entity_id) is None:
+                    skipped.append(entity_id)
+                    continue
+                target = area.id if area else _slug(room["name"])
+                assignments[entity_id] = target
+                if area is not None and not dry_run:
+                    ent_reg.async_update_entity(entity_id, area_id=area.id)
+
+        _LOGGER.info(
+            "Floorplan sync_areas: %d areas created, %d entities assigned",
+            len(created),
+            len(assignments),
+        )
+        return {
+            "areas_created": created,
+            "assignments": assignments,
+            "entities_without_area_room": outside,
+            "entities_not_in_registry": skipped,
+            "dry_run": dry_run,
+            "warnings": parsed["warnings"],
+        }
+
     if not hass.services.has_service(DOMAIN, SVC_EXPORT):
         hass.services.async_register(
             DOMAIN,
@@ -399,6 +489,22 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    if not hass.services.has_service(DOMAIN, SVC_SYNC_AREAS):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_SYNC_AREAS,
+            _async_sync_areas,
+            schema=vol.Schema(
+                {
+                    vol.Required("project_json"): cv.string,
+                    vol.Optional("create_areas", default=True): cv.boolean,
+                    vol.Optional("dry_run", default=False): cv.boolean,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     _LOGGER.info("Registered floorplan_helper services")
 
 
@@ -412,6 +518,7 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SVC_SET_SVG,
         SVC_IMPORT,
         SVC_UPLOAD_SVG,
+        SVC_SYNC_AREAS,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

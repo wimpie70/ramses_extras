@@ -347,6 +347,68 @@ class TestImporter:
         assert "error" in importer.parse_floorplan_yaml("just: a dict")
 
 
+class TestStudioProject:
+    """floorplan-studio project JSON parsing + point-in-polygon."""
+
+    _PROJECT = {
+        "schemaVersion": 1,
+        "id": "abc",
+        "floors": [
+            {
+                "id": "f1",
+                "name": "Begane grond",
+                "rooms": [
+                    {
+                        "id": "r1",
+                        "name": "overloop",
+                        "polygon": [
+                            {"x": 0, "y": 0},
+                            {"x": 640, "y": 0},
+                            {"x": 640, "y": 560},
+                            {"x": 0, "y": 560},
+                        ],
+                    },
+                    {
+                        "id": "r2",
+                        "name": "eetkamer",
+                        "polygon": [
+                            {"x": 113, "y": 124},
+                            {"x": 229, "y": 124},
+                            {"x": 229, "y": 288},
+                            {"x": 113, "y": 288},
+                        ],
+                    },
+                ],
+                "markers": [
+                    {"id": "m1", "x": 170, "y": 200, "entities": ["fan.fan1"]},
+                    {"id": "m2", "x": 999, "y": 999, "entities": ["light.x"]},
+                ],
+            }
+        ],
+    }
+
+    def test_parse(self):
+        import json
+
+        parsed = importer.parse_studio_project(json.dumps(self._PROJECT))
+        assert len(parsed["rooms"]) == 2
+        assert len(parsed["markers"]) == 2
+        assert parsed["rooms"][0]["name"] == "overloop"
+        assert parsed["warnings"] == []
+
+    def test_room_for_point_prefers_smallest(self):
+        import json
+
+        parsed = importer.parse_studio_project(json.dumps(self._PROJECT))
+        room = importer.room_for_point(parsed["rooms"], 170, 200)
+        assert room["name"] == "eetkamer"  # not the floor-spanning overloop
+        assert importer.room_for_point(parsed["rooms"], 999, 999) is None
+
+    def test_bad_input(self):
+        assert "error" in importer.parse_studio_project("{nope")
+        assert "error" in importer.parse_studio_project('{"x": 1}')
+
+
 class TestMapping:
     def test_options_defaults(self):
         entry = MagicMock(spec=ConfigEntry)

@@ -477,3 +477,37 @@ floorplan_upload_svg:
       default: true
       selector:
         boolean:
+
+floorplan_sync_areas:
+  name: Floorplan Sync Areas
+  description: >-
+    Import a floorplan-studio project export (Projects → Export JSON) and
+    sync it into HA's registries: creates HA areas for room names
+    (optional) and assigns each marker's entities to the smallest room
+    containing it. Marker placement in the studio then drives real
+    entity-registry area ids, which the floorplan topology reads on the
+    next floorplan_export.
+  fields:
+    project_json:
+      name: Project JSON
+      description: >-
+        The floorplan-studio project file contents (Projects → Export
+        current as JSON).
+      required: true
+      selector:
+        text:
+          multiline: true
+    create_areas:
+      name: Create Areas
+      description: Create HA areas for studio rooms that don't match an existing area.
+      required: false
+      default: true
+      selector:
+        boolean:
+    dry_run:
+      name: Dry Run
+      description: Report what would be created/assigned without changing the registries.
+      required: false
+      default: false
+      selector:
+        boolean:
