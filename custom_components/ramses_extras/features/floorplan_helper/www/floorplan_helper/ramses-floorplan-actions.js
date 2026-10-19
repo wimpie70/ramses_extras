@@ -333,47 +333,66 @@ class RamsesFloorplanActions extends HTMLElement {
     return null;
   }
 
+  _fiberCommit(f, label) {
+    // Scan a fiber's hook list for the first function-valued hook — in
+    // studio's panels that is useStore((s) => s.commit).
+    let h = f.memoizedState;
+    let hi = 0;
+    while (h) {
+      const v = h.memoizedState;
+      dlog(`  ${label} hook[${hi}] type=${typeof v}`,
+        v && typeof v === 'object' ? Object.keys(v) : v);
+      const cand =
+        typeof v === 'function' ? v
+        : v && typeof v.value === 'function' ? v.value
+        : null;
+      if (cand) {
+        dlog(`commit candidate at ${label} hook[${hi}]`);
+        return cand;
+      }
+      h = h.next;
+      hi += 1;
+    }
+    return null;
+  }
+
   _studioCommit() {
     // Studio persists edits via store.commit(recipe) (immer produce →
-    // set → re-render + autosave + undo history). MarkerEditor — mounted
-    // in the inspector panel when a single marker is selected — grabs it
-    // as its first useStore hook, so we lift the same function and call
-    // the same path.
+    // set → re-render + autosave + undo history). Two ways to lift the
+    // function: LayerPanel (.fp-layers — always mounted, its hooks are
+    // [project, commit]), then MarkerEditor (single-selection only).
     const root = this._studioRoot();
     if (!root) return null;
-    const els = [...root.querySelectorAll('input, select, button, div')];
-    dlog(`commit scan: ${els.length} candidate elements`);
-    let editorFibers = 0;
-    for (const el of els) {
+
+    const layers = root.querySelector('.fp-layers');
+    if (layers) {
+      let f = this._fiberOf(layers);
+      let hops = 0;
+      while (f && hops++ < 15) {
+        if (f.memoizedState) {
+          const cand = this._fiberCommit(f, 'layers');
+          if (cand) return cand;
+        }
+        f = f.return;
+      }
+    } else {
+      dwarn('.fp-layers anchor not found');
+    }
+
+    for (const el of root.querySelectorAll('input, select, button, div')) {
       let f = this._fiberOf(el);
       let hops = 0;
       while (f && hops++ < 40) {
         const p = f.memoizedProps;
         if (p && p.marker && p.floor && !p.screenToDoc) {
-          editorFibers += 1;
           dlog('MarkerEditor fiber found, scanning hooks…');
-          // MarkerEditor fiber: scan its hooks for the commit function
-          let h = f.memoizedState;
-          let hi = 0;
-          while (h) {
-            const v = h.memoizedState;
-            dlog(`  hook[${hi}] type=${typeof v}`, v && typeof v === 'object' ? Object.keys(v) : v);
-            const cand =
-              typeof v === 'function' ? v
-              : v && typeof v.value === 'function' ? v.value
-              : null;
-            if (cand) {
-              dlog('commit candidate found at hook', hi);
-              return cand;
-            }
-            h = h.next;
-            hi += 1;
-          }
+          const cand = this._fiberCommit(f, 'editor');
+          if (cand) return cand;
         }
         f = f.return;
       }
     }
-    dwarn(`no commit found (MarkerEditor fibers seen: ${editorFibers})`);
+    dwarn('no commit found');
     return null;
   }
 
@@ -576,11 +595,14 @@ class RamsesFloorplanActions extends HTMLElement {
   }
 
   _syncSummary(r) {
-    const a = r.assignments || [];
-    const c = r.areas_created || [];
-    const o = r.entities_without_area_room || [];
-    return `Sync: ${a.length} entities assigned, ${c.length} areas created` +
-      (o.length ? `, ${o.length} outside rooms` : '') +
+    const a = Object.keys(r.assignments || {}).length;
+    const d = (r.assigned_via_device || []).length;
+    const c = (r.areas_created || []).length;
+    const o = (r.entities_without_area_room || []).length;
+    return `Sync: ${a} entities assigned` +
+      (d ? ` (${d} via device)` : '') +
+      `, ${c} areas created` +
+      (o ? `, ${o} outside rooms` : '') +
       (r.backup_path ? `\nbackup: ${r.backup_path}` : '');
   }
 

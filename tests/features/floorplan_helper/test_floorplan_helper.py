@@ -404,6 +404,40 @@ class TestStudioProject:
         assert room["name"] == "eetkamer"  # not the floor-spanning overloop
         assert importer.room_for_point(parsed["rooms"], 999, 999) is None
 
+    def test_room_for_point_scopes_to_marker_floor(self):
+        import json
+
+        project = json.loads(json.dumps(self._PROJECT))
+        project["floors"].append(
+            {
+                "id": "f2",
+                "name": "1e verdieping",
+                # Same coords as bg's eetkamer — smaller, must not win.
+                "rooms": [
+                    {
+                        "id": "r3",
+                        "name": "badhal",
+                        "polygon": [
+                            {"x": 120, "y": 130},
+                            {"x": 200, "y": 130},
+                            {"x": 200, "y": 250},
+                            {"x": 120, "y": 250},
+                        ],
+                    }
+                ],
+                "markers": [],
+            }
+        )
+        parsed = importer.parse_studio_project(json.dumps(project))
+        marker = parsed["markers"][0]
+        room = importer.room_for_point(
+            parsed["rooms"], marker["x"], marker["y"], marker["floor"]
+        )
+        assert room["name"] == "eetkamer"
+        # Without floor scoping the smaller upstairs room would win.
+        room = importer.room_for_point(parsed["rooms"], marker["x"], marker["y"])
+        assert room["name"] == "badhal"
+
     def test_bad_input(self):
         assert "error" in importer.parse_studio_project("{nope")
         assert "error" in importer.parse_studio_project('{"x": 1}')

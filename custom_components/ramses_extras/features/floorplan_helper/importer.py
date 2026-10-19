@@ -197,6 +197,7 @@ def parse_studio_project(text: str) -> dict[str, Any]:
                     "polygon": polygon,
                     "area": _polygon_area(polygon),
                     "floor": floor_name,
+                    "area_id": room.get("areaId") or None,
                 }
             )
         for marker in floor.get("markers", []):
@@ -212,14 +213,21 @@ def parse_studio_project(text: str) -> dict[str, Any]:
 
 
 def room_for_point(
-    rooms: list[dict[str, Any]], x: float, y: float
+    rooms: list[dict[str, Any]], x: float, y: float, floor: str | None = None
 ) -> dict[str, Any] | None:
     """Return the smallest room containing ``(x, y)``.
 
     Overlapping fills are common (a base 'overloop' fill spanning the
     floor) — smallest containing polygon is the most specific room.
+    Floors share the same coordinate space, so ``floor`` must be passed
+    to avoid a marker matching a same-shaped room on another storey.
     """
-    containing = [r for r in rooms if _point_in_polygon(x, y, r["polygon"])]
+    containing = [
+        r
+        for r in rooms
+        if (floor is None or r["floor"] == floor)
+        and _point_in_polygon(x, y, r["polygon"])
+    ]
     if not containing:
         return None
     return min(containing, key=lambda r: r["area"])

@@ -460,6 +460,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         for room in parsed["rooms"]:
             slug = _slug(room["name"])
             area = by_slug.get(slug)
+            if room.get("area_id"):
+                # Studio's room inspector can link a room to an HA area
+                # explicitly — prefer that over the name-slug match.
+                explicit = by_slug.get(room["area_id"])
+                if explicit is not None:
+                    area = explicit
+                else:
+                    parsed["warnings"].append(
+                        f"{room['floor']}: room '{room['name']}' links to "
+                        f"unknown HA area '{room['area_id']}'"
+                    )
             if area is None and create_areas and not dry_run:
                 area = area_reg.async_create(str(room["name"]))
             if area is not None:
@@ -487,7 +498,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         skipped: list[str] = []
         outside: list[str] = []
         for marker in parsed["markers"]:
-            room = room_for_point(parsed["rooms"], marker["x"], marker["y"])
+            room = room_for_point(
+                parsed["rooms"], marker["x"], marker["y"], marker["floor"]
+            )
             area = room_area.get(room["id"]) if room else None
             for entity_id in marker["entities"]:
                 if room is None:

@@ -1,0 +1,22 @@
+python3 - <<'EOF'
+import sqlite3, csv
+con = sqlite3.connect('/config/home-assistant_v2.db')
+q = """
+SELECT s.last_updated_ts, m.entity_id, s.state, a.shared_attrs
+FROM states s
+JOIN states_meta m ON s.metadata_id = m.metadata_id
+LEFT JOIN state_attributes a ON s.attributes_id = a.attributes_id
+WHERE (m.entity_id LIKE '%jacuzzi%' OR m.entity_id LIKE '%jaccuzzi%'
+       OR m.entity_id LIKE '%pool_heat_pump%')
+AND s.last_updated_ts > strftime('%s','now','-4 days')
+ORDER BY s.last_updated_ts
+"""
+with open('/config/www/jacuzzi_history.csv', 'w', newline='') as f:
+    w = csv.writer(f)
+    w.writerow(['ts', 'entity_id', 'state', 'attrs'])
+    w.writerows(con.execute(q))
+print('done')
+EOF
+
+
+http://192.168.40.11:8123/local/jacuzzi_history.csv
