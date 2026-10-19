@@ -434,6 +434,7 @@ def studio_marker(
     y: float,
     icon: str,
     label: str | None = None,
+    size: int = 20,
 ) -> dict[str, Any]:
     """Build one studio ``Marker`` (icon type, more-info tap action)."""
     import uuid
@@ -447,7 +448,7 @@ def studio_marker(
             "type": "icon",
             "icon": icon,
             "color": "#ffc107",
-            "size": 40,
+            "size": size,
             "showState": True,
             **({"label": label} if label else {}),
         },

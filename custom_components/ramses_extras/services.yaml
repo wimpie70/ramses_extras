@@ -553,3 +553,15 @@ floorplan_seed_studio:
       default: true
       selector:
         boolean:
+    marker_size:
+      name: Marker Icon Size
+      description: >-
+        Icon size (px) for generated markers. Studio defaults to 40 which
+        is large on a 640x560 canvas.
+      required: false
+      default: 20
+      selector:
+        number:
+          min: 8
+          max: 80
+          mode: box

@@ -35,6 +35,7 @@ from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
+from homeassistant.util import dt as dt_util
 
 from ...const import DOMAIN
 from .const import (
@@ -110,12 +111,23 @@ def _inject_toolbar(svg_text: str) -> str:
     return svg_text + "\n" + snippet
 
 
+def _backup_project(hass: HomeAssistant, project_json: str) -> str:
+    """Write a timestamped copy of a studio project for backup/history."""
+    backup_dir = Path(hass.config.path("ramses_extras/floorplan/projects"))
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = dt_util.now().strftime("%Y%m%d-%H%M%S")
+    path = backup_dir / f"project-{stamp}.json"
+    path.write_text(project_json, "utf-8")
+    return str(path)
+
+
 def _merge_studio_project(
     existing: dict[str, Any],
     floors_json: list[dict[str, Any]],
     staging: bool,
     extra_markers: list[dict[str, Any]],
     mdi: Any,
+    marker_size: int = 20,
 ) -> dict[str, Any]:
     """Merge generated floors into an existing studio project.
 
@@ -170,6 +182,7 @@ def _merge_studio_project(
                     height + 30,
                     mdi(dev),
                     label=str(dev.get("display_name") or dev["device_id"]),
+                    size=marker_size,
                 )
             )
             x += 44
@@ -393,6 +406,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         parsed = parse_studio_project(call.data["project_json"])
         if "error" in parsed:
             raise vol.Invalid(str(parsed["error"]))
+        backup_path = await hass.async_add_executor_job(
+            _backup_project, hass, call.data["project_json"]
+        )
 
         create_areas = call.data.get("create_areas", True)
         dry_run = call.data.get("dry_run", False)
@@ -462,6 +478,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "entities_without_area_room": outside,
             "entities_not_in_registry": skipped,
             "dry_run": dry_run,
+            "backup_path": backup_path,
             "warnings": parsed["warnings"],
         }
 
@@ -508,6 +525,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             raise vol.Invalid(f"SVG file(s) not found: {', '.join(missing)}")
 
         model = await build_floorplan_model(hass)
+        marker_size: int = int(call.data.get("marker_size") or 20)
 
         def _mdi(dev: dict[str, Any]) -> str:
             key = FLOORPLAN_DEVICE_ICON_MAP.get(
@@ -553,6 +571,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         cy + (n // 3) * 36,
                         _mdi(dev),
                         label=str(dev.get("display_name") or dev["device_id"]),
+                        size=marker_size,
                     )
                 )
                 placed[dev["device_id"]] = f"{fname} / {room['name']}"
@@ -575,6 +594,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 staging=call.data.get("staging", True),
                 extra_markers=unplaced,
                 mdi=_mdi,
+                marker_size=marker_size,
             )
         else:
             # Park devices with no matching room below the first floor's
@@ -587,6 +607,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         float(floors_json[0]["canvas"]["height"]) + 30,
                         _mdi(dev),
                         label=str(dev.get("display_name") or dev["device_id"]),
+                        size=marker_size,
                     )
                     for i, dev in enumerate(unplaced)
                 ]
@@ -594,6 +615,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             project = build_studio_project(
                 _config_entry(hass).title or "Floorplan", floors_json
             )
+        project_out = json.dumps(project)
+        backup_path = await hass.async_add_executor_job(
+            _backup_project, hass, project_out
+        )
         _LOGGER.info(
             "Floorplan seed_studio: %d markers across %d floors, %d unplaced",
             len(placed),
@@ -601,7 +626,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             len(unplaced),
         )
         return {
-            "project_json": json.dumps(project),
+            "project_json": project_out,
+            "backup_path": backup_path,
             "placed": placed,
             "unplaced": [
                 {
@@ -745,6 +771,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Optional("floors"): {cv.string: cv.string},
                     vol.Optional("project_json"): cv.string,
                     vol.Optional("staging", default=True): cv.boolean,
+                    vol.Optional("marker_size", default=20): cv.positive_int,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),
