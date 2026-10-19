@@ -76,6 +76,8 @@ const STYLE = `
     width: 140px; padding: 4px 6px; border-radius: 5px;
     border: 1px solid var(--divider-color, #ccc); font-size: 13px;
   }
+  .devpanel { margin-top: 10px; border-top: 1px solid
+              var(--divider-color, #ccc); padding-top: 8px; }
   input[type=file] { display: none; }
 `;
 
@@ -126,9 +128,15 @@ class RamsesFloorplanActions extends HTMLElement {
     this._config = {};
     this._hass = null;
     this._fpConfig = null;
+    this._topology = null;
+    this._entityDevice = {}; // entity_id -> topology device record
     this._projects = [];   // studio projects [{id, name, updatedAt}]
     this._busy = false;
     this._tweaks = {};
+    this._hiDevice = null; // device_id whose zone is highlighted
+    this._hiPatched = [];  // [el, {attr: original}] pairs to restore
+    this._roomsCache = null;
+    this._devCard = null;
     try {
       this._tweaks =
         JSON.parse(window.localStorage.getItem(TWEAKS_KEY) || '{}') || {};
@@ -156,10 +164,23 @@ class RamsesFloorplanActions extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._devCard) this._devCard.hass = hass;
     if (!this._fpConfig && hass) {
       this._fetchConfig();
       this._refreshProjects();
     }
+  }
+
+  connectedCallback() {
+    if (!this._watch) {
+      this._watch = setInterval(() => this._pollSelection(), 700);
+    }
+  }
+
+  disconnectedCallback() {
+    clearInterval(this._watch);
+    this._watch = null;
+    this._clearZoneHighlight();
   }
 
   getCardSize() {
@@ -182,6 +203,21 @@ class RamsesFloorplanActions extends HTMLElement {
     } catch {
       this._fpConfig = {};
     }
+    try {
+      this._topology = await this._hass.callWS({
+        type: 'ramses_extras/floorplan_helper/get_topology',
+      });
+      this._entityDevice = {};
+      for (const d of (this._topology && this._topology.devices) || []) {
+        for (const e of d.entities || []) {
+          if (e.entity_id) this._entityDevice[e.entity_id] = d;
+        }
+      }
+    } catch {
+      this._topology = null;
+      this._entityDevice = {};
+    }
+    this._fillZoneDevices();
   }
 
   async _refreshProjects() {
@@ -290,13 +326,13 @@ class RamsesFloorplanActions extends HTMLElement {
     return el && el.shadowRoot ? el.shadowRoot : null;
   }
 
-  _studioSelectedMarkers() {
+  _studioSelectedMarkers(quiet) {
     // Selected markers render a dashed #38bdf8 ring as first child of
     // their <g translate(x y)> inside the entities layer (edit mode only).
     const root = this._studioRoot();
     if (!root) return [];
     const gs = [...root.querySelectorAll('g[data-layer="entities"] > g')];
-    dlog(`entities layer: ${gs.length} marker <g> elements`);
+    if (!quiet) dlog(`entities layer: ${gs.length} marker <g> elements`);
     const out = gs
       .map((g) => {
         const ring = g.querySelector(':scope > circle');
@@ -307,11 +343,11 @@ class RamsesFloorplanActions extends HTMLElement {
         const m = /translate\(\s*([-\d.e]+)[ ,]+([-\d.e]+)\s*\)/.exec(
           g.getAttribute('transform') || ''
         );
-        if (ring) dlog('first circle attrs:', ring.getAttribute('stroke'), ring.getAttribute('stroke-dasharray'), '| transform:', g.getAttribute('transform'));
+        if (ring && !quiet) dlog('first circle attrs:', ring.getAttribute('stroke'), ring.getAttribute('stroke-dasharray'), '| transform:', g.getAttribute('transform'));
         return sel && m ? { x: parseFloat(m[1]), y: parseFloat(m[2]), el: g } : null;
       })
       .filter(Boolean);
-    dlog('selected markers found:', out.length);
+    if (!quiet) dlog('selected markers found:', out.length);
     return out;
   }
 
@@ -598,6 +634,247 @@ class RamsesFloorplanActions extends HTMLElement {
     return sel && sel.value ? sel.value : null;
   }
 
+  // --- device zones: marker click → highlight served rooms ---------------
+
+  _slug(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  async _projectRooms() {
+    // roomId -> {name, areaId, floor} from the selected studio project
+    const now = Date.now();
+    if (this._roomsCache && now - this._roomsCache.t < 3000) {
+      return this._roomsCache.m;
+    }
+    const m = new Map();
+    try {
+      const db = await openFpDb();
+      const id = this._selectedProjectId();
+      const p = id && (await idbReq(
+        db.transaction('projects').objectStore('projects').get(id)
+      ));
+      db.close();
+      for (const f of (p && p.floors) || []) {
+        for (const r of f.rooms || []) {
+          m.set(r.id, {
+            name: r.name,
+            areaId: r.areaId || this._slug(r.name),
+            floor: f.name,
+          });
+        }
+      }
+    } catch { /* no project reachable — zone matching degrades to none */ }
+    this._roomsCache = { t: now, m };
+    return m;
+  }
+
+  _deviceOfMarkerEl(g) {
+    const marker = this._fiberMarker(g);
+    const ents =
+      marker && (marker.entities || (marker.entity ? [marker.entity] : []));
+    for (const e of ents || []) {
+      if (this._entityDevice[e]) return this._entityDevice[e];
+    }
+    return null;
+  }
+
+  _pollSelection() {
+    if (this._busy || document.hidden || this._tweak('zone_watch') === false) {
+      return;
+    }
+    const root = this._studioRoot();
+    if (!root) return;
+
+    // (Re)hook dblclick on the entities layer — studio may re-render it.
+    const layer = root.querySelector('g[data-layer="entities"]');
+    if (layer && !layer.__fpDbl) {
+      layer.__fpDbl = true;
+      layer.addEventListener('dblclick', (ev) => this._markerDblClick(ev, layer));
+    }
+
+    const sel = this._studioSelectedMarkers(true);
+    let dev = null;
+    for (const m of sel) {
+      dev = this._deviceOfMarkerEl(m.el);
+      if (dev) break;
+    }
+    const devId = dev && dev.device_id;
+    if (devId !== this._hiDevice) {
+      this._hiDevice = devId;
+      this._hiDev = dev;
+      this._applyZoneHighlight(devId, dev);
+    } else if (
+      this._hiDevice &&
+      this._hiPatched.length &&
+      !this._hiPatched[0][0].isConnected
+    ) {
+      // Studio re-rendered the rooms layer — re-apply the highlight.
+      this._hiPatched = [];
+      this._applyZoneHighlight(this._hiDevice, this._hiDev);
+    }
+  }
+
+  _clearZoneHighlight() {
+    for (const [el, attrs] of this._hiPatched) {
+      for (const [k, v] of Object.entries(attrs)) {
+        if (v === null) el.removeAttribute(k);
+        else el.setAttribute(k, v);
+      }
+    }
+    this._hiPatched = [];
+  }
+
+  async _applyZoneHighlight(devId, dev) {
+    this._clearZoneHighlight();
+    if (!devId) return;
+    const zone = ((this._fpConfig || {}).device_zones || {})[devId];
+    if (!zone) return;
+    const areas = new Set(zone.areas || []);
+    if (!areas.size) return;
+    const color = zone.color || '#f59e0b';
+    const rooms = await this._projectRooms();
+    const root = this._studioRoot();
+    if (!root) return;
+
+    const names = [];
+    for (const g of root.querySelectorAll('g[data-layer="rooms"] g[data-room]')) {
+      const room = rooms.get(g.getAttribute('data-room'));
+      if (!room || !areas.has(room.areaId)) continue;
+      const path = g.querySelector(':scope > path');
+      if (!path) continue;
+      this._hiPatched.push([
+        path,
+        {
+          stroke: path.getAttribute('stroke'),
+          'stroke-width': path.getAttribute('stroke-width'),
+          'stroke-dasharray': path.getAttribute('stroke-dasharray'),
+        },
+      ]);
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '3');
+      path.setAttribute('stroke-dasharray', '6 3');
+      names.push(room.name);
+    }
+    if (names.length) {
+      this._status(
+        `${dev.display_name || devId} zone → ${names.join(', ')}`
+      );
+    }
+  }
+
+  _markerDblClick(ev, layer) {
+    // ev.target may be the ring/path/text — walk up to the marker <g>
+    // (direct child of the entities layer).
+    let g = ev.target;
+    while (g && g.parentElement !== layer) g = g.parentElement;
+    if (!g) return;
+    const dev = this._deviceOfMarkerEl(g);
+    if (dev) this._run(() => this._openDeviceCard(dev));
+  }
+
+  async _openDeviceCard(dev) {
+    const panel = this.shadowRoot.getElementById('devpanel');
+    const host = this.shadowRoot.getElementById('devhost');
+    const title = this.shadowRoot.getElementById('devtitle');
+    if (!panel || !host) return;
+
+    // The FAN gets its own card; other devices use the native more-info.
+    if (dev.device_class === 'FAN' || dev.device_class === 'HVAC') {
+      if (!customElements.get('hvac-fan-card')) {
+        try {
+          await import('/local/ramses_extras/features/hvac_fan_card/hvac-fan-card.js');
+        } catch (e) {
+          dwarn('hvac-fan-card module failed to load:', e);
+        }
+      }
+      if (customElements.get('hvac-fan-card')) {
+        host.innerHTML = '';
+        const card = document.createElement('hvac-fan-card');
+        card.setConfig({
+          type: 'custom:hvac-fan-card',
+          device_id: dev.device_id,
+        });
+        card.hass = this._hass;
+        host.appendChild(card);
+        this._devCard = card;
+        title.textContent = dev.display_name || dev.device_id;
+        panel.style.display = 'block';
+        return;
+      }
+    }
+    if (dev.primary_entity) {
+      this.dispatchEvent(
+        new CustomEvent('hass-more-info', {
+          detail: { entityId: dev.primary_entity },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    } else {
+      this._status(`No card for ${dev.device_id} (${dev.device_class})`);
+    }
+  }
+
+  _fillZoneDevices() {
+    const sel = this.shadowRoot.getElementById('zone-dev');
+    if (!sel) return;
+    const zones = ((this._fpConfig || {}).device_zones) || {};
+    sel.innerHTML = '<option value="">(device)</option>';
+    for (const d of (this._topology && this._topology.devices) || []) {
+      const o = document.createElement('option');
+      o.value = d.device_id;
+      const z = zones[d.device_id];
+      o.textContent =
+        `${d.device_id} ${d.device_class}` +
+        (z ? ` ▸ ${(z.areas || []).join(',')}` : '');
+      sel.appendChild(o);
+    }
+  }
+
+  async _assignZone() {
+    const devSel = this.shadowRoot.getElementById('zone-dev');
+    const devId = devSel && devSel.value;
+    if (!devId) {
+      this._status('Pick a device in the zone row first');
+      return;
+    }
+    const ids = this._studioSelectedRoomIds();
+    if (!ids.size) {
+      this._status(
+        'No rooms selected in studio — shift-click the rooms this device serves first'
+      );
+      return;
+    }
+    const rooms = await this._projectRooms();
+    const areas = [
+      ...new Set(
+        [...ids]
+          .map((id) => rooms.get(id))
+          .filter(Boolean)
+          .map((r) => r.areaId)
+      ),
+    ];
+    if (!areas.length) {
+      this._status('Selected rooms resolve to no HA areas');
+      return;
+    }
+    const color = this._tweak('room_fill') || undefined;
+    const r = await this._call('floorplan_set_device_zone', {
+      device_id: devId,
+      areas,
+      ...(color ? { color } : {}),
+    });
+    await this._fetchConfig();
+    this._status(
+      `Zone stored for ${devId}: ${areas.join(', ')}` +
+        (color ? ` (${color})` : '') +
+        ' — click its marker in studio to highlight'
+    );
+  }
+
   async _pull() {
     const id = this._selectedProjectId();
     if (!id) { this._status('No studio project selected'); return; }
@@ -772,6 +1049,16 @@ class RamsesFloorplanActions extends HTMLElement {
             <label for="tw-op" title="Fill opacity 0–1; leave empty to keep each room's current opacity">opacity</label>
             <input id="tw-op" type="number" min="0" max="1" step="0.05" style="width:64px" placeholder="keep">
           </div>
+          <div class="row">
+            <label for="zone-dev" title="Device whose 'zone' (rooms it serves) you are editing — existing zones shown after ▸">Zone device</label>
+            <select id="zone-dev" style="max-width:260px"></select>
+            <button id="b-zone" class="secondary"
+              title="Store the rooms currently selected in studio (shift-click) as this device's zone — clicking its marker then highlights them">◧ rooms → zone</button>
+          </div>
+          <div class="row">
+            <label for="tw-zonewatch" title="When a marker is selected in studio, outline the rooms its device serves (device_zones config); double-click a marker to open the device card">Highlight zones on select</label>
+            <input id="tw-zonewatch" type="checkbox">
+          </div>
         </div>
         <div class="drop" id="drop"
           title="For project files from another machine or a backup — this browser's studio is already reachable via Pull">
@@ -781,6 +1068,13 @@ class RamsesFloorplanActions extends HTMLElement {
         </div>
         <textarea class="log" id="status" readonly
           title="Result log — selectable, copy with Ctrl+C"></textarea>
+        <div class="devpanel" id="devpanel" style="display:none">
+          <div class="row" style="justify-content:space-between">
+            <span class="lbl" id="devtitle"></span>
+            <button id="devclose" class="secondary" title="Close the device panel">✕</button>
+          </div>
+          <div id="devhost"></div>
+        </div>
       </ha-card>`;
 
     const $ = (id) => this.shadowRoot.getElementById(id);
@@ -835,6 +1129,23 @@ class RamsesFloorplanActions extends HTMLElement {
     };
     twOp.onchange = () =>
       this._saveTweak('room_opacity', twOp.value === '' ? undefined : Number(twOp.value));
+
+    // device zones: "◧ rooms → zone" + watch toggle + device panel close
+    $('b-zone').onclick = () => this._run(() => this._assignZone());
+    const twWatch = $('tw-zonewatch');
+    twWatch.checked = this._tweak('zone_watch') !== false;
+    twWatch.onchange = () => {
+      this._saveTweak('zone_watch', twWatch.checked);
+      if (!twWatch.checked) {
+        this._hiDevice = null;
+        this._clearZoneHighlight();
+      }
+    };
+    this._fillZoneDevices();
+    $('devclose').onclick = () => {
+      $('devpanel').style.display = 'none';
+      this._devCard = null;
+    };
 
     this._fillProjectSelect();
 

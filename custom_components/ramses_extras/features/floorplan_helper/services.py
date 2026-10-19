@@ -46,6 +46,7 @@ from .const import (
     FLOORPLAN_ICONS,
     FLOORPLAN_UPLOAD_DIR_NAME,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_DEVICE_ZONES,
     OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
@@ -70,6 +71,7 @@ from .mapping import (
     get_floorplan_options,
     persist_floorplan_options,
     set_area_override,
+    set_device_zone,
     set_element_binding,
     set_icon_override,
     set_svg_mode,
@@ -82,6 +84,7 @@ SVC_EXPORT = "floorplan_export"
 SVC_SET_ELEMENT = "floorplan_set_element"
 SVC_SET_ICON = "floorplan_set_icon"
 SVC_ASSIGN_AREA = "floorplan_assign_area"
+SVC_SET_DEVICE_ZONE = "floorplan_set_device_zone"
 SVC_SET_SVG = "floorplan_set_svg"
 SVC_IMPORT = "floorplan_import"
 SVC_UPLOAD_SVG = "floorplan_upload_svg"
@@ -310,6 +313,28 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "source": source,
             "area_id": area_id,
             "area_overrides": section.get("area_overrides", {}),
+        }
+
+    async def _async_set_device_zone(call: ServiceCall) -> dict[str, Any]:
+        """Set or clear which rooms a device serves (its 'zone').
+
+        The actions card highlights these rooms when the device's
+        studio marker is selected; double-clicking the marker opens the
+        device card.
+        """
+        device_id: str = call.data["device_id"]
+        remove = call.data.get("remove", False)
+        zone = None
+        if not remove:
+            zone = {
+                "areas": list(call.data.get("areas") or []),
+                "color": call.data.get("color") or None,
+            }
+        section = set_device_zone(hass, _config_entry(hass), device_id, zone)
+        return {
+            "device_id": device_id,
+            "zone": section.get(OPTION_DEVICE_ZONES, {}).get(device_id),
+            "removed": remove,
         }
 
     async def _async_set_svg(call: ServiceCall) -> dict[str, Any]:
@@ -790,6 +815,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 {
                     vol.Required("source"): cv.string,
                     vol.Optional("area_id"): cv.string,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_SET_DEVICE_ZONE):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_SET_DEVICE_ZONE,
+            _async_set_device_zone,
+            schema=vol.Schema(
+                {
+                    vol.Required("device_id"): cv.string,
+                    vol.Optional("areas"): vol.All(cv.ensure_list, [cv.string]),
+                    vol.Optional("color"): cv.string,
+                    vol.Optional("remove", default=False): cv.boolean,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),

@@ -373,6 +373,46 @@ floorplan_assign_area:
       selector:
         area:
 
+floorplan_set_device_zone:
+  name: Floorplan Set Device Zone
+  description: >-
+    Declare which rooms a device serves (its "zone") — e.g. the rooms a
+    WTW ventilates. The floorplan actions card highlights these rooms
+    when the device's studio marker is selected, and double-clicking the
+    marker opens the device card.
+  fields:
+    device_id:
+      name: Device ID
+      description: RAMSES device id (e.g. 32:153289).
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    areas:
+      name: Areas
+      description: >-
+        HA area ids the device serves. Matched against a studio room's
+        explicit HA-area link first, then its slugified name.
+      required: false
+      example: "[potstal, garage, cv_ruimte, hal_bg]"
+      selector:
+        object:
+    color:
+      name: Color
+      description: >-
+        Highlight colour for the zone rooms in studio (default amber).
+      required: false
+      example: "#22c55e"
+      selector:
+        text:
+    remove:
+      name: Remove
+      description: Remove the zone for this device.
+      required: false
+      default: false
+      selector:
+        boolean:
+
 floorplan_set_svg:
   name: Floorplan Set SVG
   description: >-

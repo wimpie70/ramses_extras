@@ -20,6 +20,9 @@ Section schema::
             }
         },
         "area_overrides": {"<device_id|entity_id>": "<area_id>"},
+        "device_zones": {
+            "<device_id>": {"areas": ["<area_id>", ...], "color": "#hex"},
+        },
         "extra_rules": ["<yaml rule blob>", ...],
         "last_snapshot": {<model signature from previous export>},
     }
@@ -43,6 +46,7 @@ from .const import (
     FEATURE_ID,
     OPTION_AREA_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_DEVICE_ZONES,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
     OPTION_ICON_OVERRIDES,
@@ -156,6 +160,29 @@ def set_area_override(
     return section
 
 
+def set_device_zone(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    device_id: str,
+    zone: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Set or clear which rooms a device serves (its 'zone').
+
+    :param device_id: ramses device id (e.g. ``32:153289``)
+    :param zone: ``{"areas": [area_id, ...], "color": "#hex"}`` or None
+        to remove the zone
+    :return: The updated options section
+    """
+    section = get_floorplan_options(config_entry)
+    zones = section.setdefault(OPTION_DEVICE_ZONES, {})
+    if zone is None:
+        zones.pop(device_id, None)
+    else:
+        zones[device_id] = {k: v for k, v in zone.items() if v is not None}
+    persist_floorplan_options(hass, config_entry, section)
+    return section
+
+
 def set_svg_mode(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -227,6 +254,7 @@ __all__ = [
     "model_snapshot",
     "persist_floorplan_options",
     "set_area_override",
+    "set_device_zone",
     "set_element_binding",
     "set_icon_override",
     "set_svg_mode",

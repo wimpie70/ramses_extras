@@ -61,6 +61,11 @@ OPTION_ELEMENT_BINDINGS = "element_bindings"
 OPTION_AREA_OVERRIDES = "area_overrides"
 OPTION_EXTRA_RULES = "extra_rules"
 OPTION_LAST_SNAPSHOT = "last_snapshot"
+# Which rooms a device serves (e.g. rooms a WTW ventilates).  Selecting
+# the device's marker in studio highlights these rooms; double-click
+# opens the device card.  Maps ramses device id → {"areas": [area_id],
+# "color": "#hex"}.
+OPTION_DEVICE_ZONES = "device_zones"
 OPTION_TOOLBAR_ENABLED = "toolbar_enabled"
 OPTION_EDITOR_URL = "editor_url"
 OPTION_PLANNER_URL = "planner_url"
@@ -93,6 +98,7 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_ELEMENT_BINDINGS: {},
     OPTION_AREA_OVERRIDES: {},
     OPTION_EXTRA_RULES: [],
+    OPTION_DEVICE_ZONES: {},
     OPTION_TOOLBAR_ENABLED: True,
     OPTION_EDITOR_URL: DEFAULT_EDITOR_URL,
     OPTION_PLANNER_URL: DEFAULT_PLANNER_URL,
@@ -272,6 +278,7 @@ __all__ = [
     "GENERATED_ELEMENTS_SVG",
     "OPTION_AREA_OVERRIDES",
     "OPTION_CUSTOM_SVG_PATH",
+    "OPTION_DEVICE_ZONES",
     "OPTION_EDITOR_URL",
     "OPTION_ELEMENT_BINDINGS",
     "OPTION_EXTRA_RULES",
