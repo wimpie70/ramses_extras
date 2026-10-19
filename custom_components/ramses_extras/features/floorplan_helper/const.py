@@ -133,6 +133,7 @@ FLOORPLAN_DEVICE_ICON_MAP: dict[str, str] = {
     "DHW": "water-boiler",
     "REM": "remote",
     "RND": "remote",
+    "DIS": "thermostat",
     "HGI": "gateway",
     "BDR": "pipe-valve",
     "UFC": "pipe-valve",
