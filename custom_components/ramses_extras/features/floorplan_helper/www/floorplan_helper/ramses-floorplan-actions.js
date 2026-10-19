@@ -81,6 +81,12 @@ const STYLE = `
 
 const TWEAKS_KEY = 'ramses-floorplan-actions-tweaks';
 
+const DBG = '[fp-actions]';
+/* eslint-disable no-console -- temporary diagnostics while the studio bridge settles */
+const dlog = (...a) => console.debug(DBG, ...a);
+const dwarn = (...a) => console.warn(DBG, ...a);
+/* eslint-enable no-console */
+
 // Lovelace renders cards inside nested shadow roots (hui-card etc.), so
 // a plain document.querySelector can't reach sibling cards — walk the
 // shadow tree instead.
@@ -280,6 +286,7 @@ class RamsesFloorplanActions extends HTMLElement {
 
   _studioRoot() {
     const el = deepFind('floorplan-studio-card');
+    dlog('studio card element:', el, 'shadowRoot:', el && el.shadowRoot);
     return el && el.shadowRoot ? el.shadowRoot : null;
   }
 
@@ -288,7 +295,9 @@ class RamsesFloorplanActions extends HTMLElement {
     // their <g translate(x y)> inside the entities layer (edit mode only).
     const root = this._studioRoot();
     if (!root) return [];
-    return [...root.querySelectorAll('g[data-layer="entities"] > g')]
+    const gs = [...root.querySelectorAll('g[data-layer="entities"] > g')];
+    dlog(`entities layer: ${gs.length} marker <g> elements`);
+    const out = gs
       .map((g) => {
         const ring = g.querySelector(':scope > circle');
         const sel =
@@ -298,13 +307,18 @@ class RamsesFloorplanActions extends HTMLElement {
         const m = /translate\(\s*([-\d.e]+)[ ,]+([-\d.e]+)\s*\)/.exec(
           g.getAttribute('transform') || ''
         );
+        if (ring) dlog('first circle attrs:', ring.getAttribute('stroke'), ring.getAttribute('stroke-dasharray'), '| transform:', g.getAttribute('transform'));
         return sel && m ? { x: parseFloat(m[1]), y: parseFloat(m[2]), el: g } : null;
       })
       .filter(Boolean);
+    dlog('selected markers found:', out.length);
+    return out;
   }
 
   _fiberOf(el) {
-    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+    const keys = Object.keys(el).filter((k) => k.startsWith('__react'));
+    const key = keys.find((k) => k.startsWith('__reactFiber$'));
+    if (!key) dwarn('no react fiber key on element; react keys present:', keys);
     return key ? el[key] : null;
   }
 
@@ -327,26 +341,39 @@ class RamsesFloorplanActions extends HTMLElement {
     // the same path.
     const root = this._studioRoot();
     if (!root) return null;
-    for (const el of root.querySelectorAll('input, select, button, div')) {
+    const els = [...root.querySelectorAll('input, select, button, div')];
+    dlog(`commit scan: ${els.length} candidate elements`);
+    let editorFibers = 0;
+    for (const el of els) {
       let f = this._fiberOf(el);
-      while (f) {
+      let hops = 0;
+      while (f && hops++ < 40) {
         const p = f.memoizedProps;
         if (p && p.marker && p.floor && !p.screenToDoc) {
+          editorFibers += 1;
+          dlog('MarkerEditor fiber found, scanning hooks…');
           // MarkerEditor fiber: scan its hooks for the commit function
           let h = f.memoizedState;
+          let hi = 0;
           while (h) {
             const v = h.memoizedState;
+            dlog(`  hook[${hi}] type=${typeof v}`, v && typeof v === 'object' ? Object.keys(v) : v);
             const cand =
               typeof v === 'function' ? v
               : v && typeof v.value === 'function' ? v.value
               : null;
-            if (cand) return cand;
+            if (cand) {
+              dlog('commit candidate found at hook', hi);
+              return cand;
+            }
             h = h.next;
+            hi += 1;
           }
         }
         f = f.return;
       }
     }
+    dwarn(`no commit found (MarkerEditor fibers seen: ${editorFibers})`);
     return null;
   }
 
@@ -393,6 +420,7 @@ class RamsesFloorplanActions extends HTMLElement {
     const ids = new Set();
     for (const m of sel) {
       const marker = this._fiberMarker(m.el);
+      dlog('fiber marker for selected g:', marker && { id: marker.id, size: marker.style && marker.style.size });
       if (marker && marker.id) ids.add(marker.id);
     }
 
@@ -400,6 +428,7 @@ class RamsesFloorplanActions extends HTMLElement {
     // -> autosave -> undo history). Available while a single marker is
     // selected (MarkerEditor mounted in the inspector).
     const commit = this._studioCommit();
+    dlog('commit:', typeof commit, '| ids:', [...ids]);
     if (commit && ids.size) {
       try {
         commit((p) => {
@@ -414,6 +443,7 @@ class RamsesFloorplanActions extends HTMLElement {
         );
         return;
       } catch (e) {
+        dwarn('commit threw:', e);
         this._status(`commit failed (${e.message || e}), falling back to DOM+IDB patch…`);
       }
     }
