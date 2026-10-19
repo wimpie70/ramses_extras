@@ -533,3 +533,23 @@ floorplan_seed_studio:
         1e verdieping: /local/ramses_extras/floorplan/plattegrond-1e.svg
       selector:
         object:
+    project_json:
+      name: Existing Project JSON
+      description: >-
+        Optional: a studio project export to merge into — floors match by
+        name, missing rooms are added, markers whose entity already exists
+        are skipped. Preserves your background images and studio edits.
+      required: false
+      selector:
+        text:
+          multiline: true
+    staging:
+      name: Staging Row
+      description: >-
+        Park markers for devices without a matching room in a strip below
+        the first floor's canvas — drag them into a room in studio, then
+        re-export and run floorplan_sync_areas to set their HA area.
+      required: false
+      default: true
+      selector:
+        boolean:

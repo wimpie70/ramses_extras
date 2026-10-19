@@ -110,6 +110,72 @@ def _inject_toolbar(svg_text: str) -> str:
     return svg_text + "\n" + snippet
 
 
+def _merge_studio_project(
+    existing: dict[str, Any],
+    floors_json: list[dict[str, Any]],
+    staging: bool,
+    extra_markers: list[dict[str, Any]],
+    mdi: Any,
+) -> dict[str, Any]:
+    """Merge generated floors into an existing studio project.
+
+    Floors match by name; rooms are added when missing (by name);
+    markers whose entity is already present anywhere in the project are
+    skipped (user's own placement wins). ``extra_markers`` are devices
+    without a matching room — parked in a strip below the first floor's
+    canvas so they can be dragged into place.
+    """
+    project = dict(existing)
+    project["floors"] = list(existing.get("floors") or [])
+    by_name = {str(f.get("name", "")).lower(): f for f in project["floors"]}
+
+    def _placed_entities() -> set[str]:
+        return {
+            e
+            for f in project["floors"]
+            for m in f.get("markers", [])
+            for e in (m.get("entities") or [])
+        }
+
+    for new_floor in floors_json:
+        floor = by_name.get(str(new_floor["name"]).lower())
+        if floor is None:
+            project["floors"].append(new_floor)
+            by_name[str(new_floor["name"]).lower()] = new_floor
+            continue
+        have_rooms = {str(r.get("name", "")).lower() for r in floor.get("rooms", [])}
+        floor.setdefault("rooms", []).extend(
+            r for r in new_floor["rooms"] if str(r["name"]).lower() not in have_rooms
+        )
+        have_entities = _placed_entities()
+        floor.setdefault("markers", []).extend(
+            m
+            for m in new_floor["markers"]
+            if not (set(m.get("entities") or []) & have_entities)
+        )
+
+    if staging and project["floors"]:
+        first = project["floors"][0]
+        height = float(first.get("canvas", {}).get("height") or 560)
+        have_entities = _placed_entities()
+        x = 30.0
+        for dev in extra_markers:
+            primary = dev.get("primary_entity")
+            if not primary or primary in have_entities:
+                continue
+            first.setdefault("markers", []).append(
+                studio_marker(
+                    primary,
+                    x,
+                    height + 30,
+                    mdi(dev),
+                    label=str(dev.get("display_name") or dev["device_id"]),
+                )
+            )
+            x += 44
+    return project
+
+
 def _config_entry(hass: HomeAssistant) -> ConfigEntry:
     """Return the integration's config entry."""
     entry = hass.data.get(DOMAIN, {}).get("config_entry")
@@ -449,7 +515,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             )
             return FLOORPLAN_ICON_MDI.get(key, "help-circle")
 
+        # Merging into an existing project preserves the background image,
+        # walls and any studio edits — without it we emit a fresh project.
+        existing: dict[str, Any] | None = None
+        raw_project = call.data.get("project_json")
+        if raw_project:
+            try:
+                existing = json.loads(raw_project)
+            except json.JSONDecodeError:
+                raise vol.Invalid("project_json is not valid JSON") from None
+            if not isinstance(existing.get("floors"), list):
+                raise vol.Invalid("project_json is not a studio project")
+
         placed: dict[str, str] = {}
+        placed_entities: set[str] = set()
         floors_json: list[dict[str, Any]] = []
         floor_stats: list[dict[str, Any]] = []
         for fname, svg_text in floor_svgs.items():
@@ -477,23 +556,44 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     )
                 )
                 placed[dev["device_id"]] = f"{fname} / {room['name']}"
+                placed_entities.add(primary)
             floors_json.append(studio_floor(fname, width, height, rooms, markers))
             floor_stats.append(
                 {"name": fname, "rooms": len(rooms), "markers": len(markers)}
             )
 
         unplaced = [
-            {
-                "device_id": dev["device_id"],
-                "area_id": dev.get("area_id"),
-                "primary_entity": dev.get("primary_entity"),
-            }
+            dev
             for dev in model["devices"]
-            if dev["device_id"] not in placed
+            if dev["device_id"] not in placed and dev.get("primary_entity")
         ]
-        project = build_studio_project(
-            _config_entry(hass).title or "Floorplan", floors_json
-        )
+
+        if existing is not None:
+            project = _merge_studio_project(
+                existing,
+                floors_json,
+                staging=call.data.get("staging", True),
+                extra_markers=unplaced,
+                mdi=_mdi,
+            )
+        else:
+            # Park devices with no matching room below the first floor's
+            # canvas — drag them into a room in studio to assign the area.
+            if call.data.get("staging", True) and floors_json:
+                staging_markers = [
+                    studio_marker(
+                        dev["primary_entity"],
+                        30 + i * 44,
+                        float(floors_json[0]["canvas"]["height"]) + 30,
+                        _mdi(dev),
+                        label=str(dev.get("display_name") or dev["device_id"]),
+                    )
+                    for i, dev in enumerate(unplaced)
+                ]
+                floors_json[0]["markers"].extend(staging_markers)
+            project = build_studio_project(
+                _config_entry(hass).title or "Floorplan", floors_json
+            )
         _LOGGER.info(
             "Floorplan seed_studio: %d markers across %d floors, %d unplaced",
             len(placed),
@@ -503,7 +603,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         return {
             "project_json": json.dumps(project),
             "placed": placed,
-            "unplaced": unplaced,
+            "unplaced": [
+                {
+                    "device_id": dev["device_id"],
+                    "area_id": dev.get("area_id"),
+                    "primary_entity": dev.get("primary_entity"),
+                }
+                for dev in unplaced
+            ],
             "floors": floor_stats,
         }
 
@@ -636,6 +743,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             schema=vol.Schema(
                 {
                     vol.Optional("floors"): {cv.string: cv.string},
+                    vol.Optional("project_json"): cv.string,
+                    vol.Optional("staging", default=True): cv.boolean,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),
