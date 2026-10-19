@@ -21,11 +21,16 @@ import voluptuous as vol
 from homeassistant.helpers import selector
 
 from .const import (
+    DEFAULT_EDITOR_URL,
+    DEFAULT_PLANNER_URL,
     FEATURE_ID,
     FLOORPLAN_ICONS,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_EDITOR_URL,
     OPTION_ICON_OVERRIDES,
+    OPTION_PLANNER_URL,
     OPTION_SVG_MODE,
+    OPTION_TOOLBAR_ENABLED,
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
 )
@@ -78,6 +83,13 @@ async def async_step_floorplan_helper_config(
         section[OPTION_ICON_OVERRIDES] = _parse_icon_overrides(
             user_input.get("icon_overrides") or ""
         )
+        section[OPTION_TOOLBAR_ENABLED] = bool(user_input.get("toolbar_enabled", True))
+        section[OPTION_EDITOR_URL] = (
+            user_input.get("editor_url") or DEFAULT_EDITOR_URL
+        ).strip()
+        section[OPTION_PLANNER_URL] = (
+            user_input.get("planner_url") or DEFAULT_PLANNER_URL
+        ).strip()
         persist_floorplan_options(flow.hass, config_entry, section)
         _LOGGER.info("Floorplan Helper options saved")
         return await flow.async_step_main_menu()
@@ -94,7 +106,10 @@ async def async_step_floorplan_helper_config(
         f"- Icon overrides: {len(overrides)}\n\n"
         "Icon overrides: one `TARGET=icon` per line, where TARGET is a "
         "device class (FAN, TRV, CTL, HGI, DHW...) or an entity_id. "
-        f"Available icons: {', '.join(_VALID_ICON_KEYS)}"
+        f"Available icons: {', '.join(_VALID_ICON_KEYS)}\n\n"
+        "Tool URLs open from the in-SVG toolbar buttons. Point them at "
+        "vendored copies or iframe panel paths (`/...` navigates inside "
+        "HA instead of a new tab)."
     )
 
     schema = vol.Schema(
@@ -129,6 +144,18 @@ async def async_step_floorplan_helper_config(
                 "icon_overrides",
                 default=_format_icon_overrides(overrides),
             ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+            vol.Optional(
+                "toolbar_enabled",
+                default=options.get(OPTION_TOOLBAR_ENABLED, True),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                "editor_url",
+                default=options.get(OPTION_EDITOR_URL) or DEFAULT_EDITOR_URL,
+            ): selector.TextSelector(selector.TextSelectorConfig(multiline=False)),
+            vol.Optional(
+                "planner_url",
+                default=options.get(OPTION_PLANNER_URL) or DEFAULT_PLANNER_URL,
+            ): selector.TextSelector(selector.TextSelectorConfig(multiline=False)),
         }
     )
 

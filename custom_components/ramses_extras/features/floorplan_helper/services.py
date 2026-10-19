@@ -9,6 +9,11 @@ Managed-regeneration surface for the ha-floorplan bundle:
 - ``floorplan_set_icon`` — icon override per device class or entity.
 - ``floorplan_assign_area`` — bind a device/zone to an HA area.
 - ``floorplan_set_svg`` — switch between generated and custom SVG.
+- ``floorplan_import`` — parse pasted floorplan YAML (e.g. from the
+  external floorplan-editor) into stored bindings and extra rules.
+- ``floorplan_upload_svg`` — write an SVG file into
+  ``config/www/ramses_extras/floorplan/`` and optionally activate it —
+  the file bridge external browser tools cannot perform themselves.
 
 :platform: Home Assistant
 :feature: Floorplan Helper
@@ -17,18 +22,36 @@ Managed-regeneration surface for the ha-floorplan bundle:
 from __future__ import annotations
 
 import logging
+import re
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 
 from ...const import DOMAIN
-from .const import FEATURE_ID, FLOORPLAN_ICONS
-from .generator import async_generate_bundle
+from .const import (
+    FEATURE_ID,
+    FLOORPLAN_ICONS,
+    FLOORPLAN_UPLOAD_DIR_NAME,
+    OPTION_CUSTOM_SVG_PATH,
+    OPTION_EDITOR_URL,
+    OPTION_ELEMENT_BINDINGS,
+    OPTION_EXTRA_RULES,
+    OPTION_PLANNER_URL,
+    OPTION_SVG_MODE,
+    OPTION_TOOLBAR_ENABLED,
+    SVG_MODE_CUSTOM,
+    SVG_MODE_GENERATED,
+)
+from .generator import async_generate_bundle, build_toolbar_svg
+from .importer import parse_floorplan_yaml
 from .mapping import (
     get_floorplan_options,
+    persist_floorplan_options,
     set_area_override,
     set_element_binding,
     set_icon_override,
@@ -42,6 +65,30 @@ SVC_SET_ELEMENT = "floorplan_set_element"
 SVC_SET_ICON = "floorplan_set_icon"
 SVC_ASSIGN_AREA = "floorplan_assign_area"
 SVC_SET_SVG = "floorplan_set_svg"
+SVC_IMPORT = "floorplan_import"
+SVC_UPLOAD_SVG = "floorplan_upload_svg"
+
+NOTIFICATION_ID = "ramses_extras_floorplan_export"
+
+_TOOLBAR_W = 5 * 34  # five 26px buttons spaced 34px
+
+
+def _inject_toolbar(svg_text: str) -> str:
+    """Append the toolbar ``<g>`` before ``</svg>``, placed bottom-right.
+
+    Position derives from the viewBox when present; falls back to a fixed
+    offset matching the generated SVG's 800-wide canvas.
+    """
+    x, y = 770.0, 605.0
+    m = re.search(r'viewBox="[^"]*?\s([\d.]+)\s([\d.]+)"', svg_text)
+    if m:
+        vb_w, vb_h = float(m.group(1)), float(m.group(2))
+        x = max(0, vb_w - _TOOLBAR_W - 8)
+        y = max(0, vb_h - 32)
+    snippet = f'<g transform="translate({x:g},{y:g})">{build_toolbar_svg()}</g>'
+    if "</svg>" in svg_text:
+        return svg_text.replace("</svg>", snippet + "\n</svg>", 1)
+    return svg_text + "\n" + snippet
 
 
 def _config_entry(hass: HomeAssistant) -> ConfigEntry:
@@ -52,12 +99,40 @@ def _config_entry(hass: HomeAssistant) -> ConfigEntry:
     return entry
 
 
+def notify_export(hass: HomeAssistant, bundle: dict[str, Any]) -> None:
+    """Raise a persistent_notification summarising an export.
+
+    Needed because tap_action service calls (the in-SVG export button)
+    can't display a service response.
+    """
+    changes = bundle.get("changes") or {}
+    lines = [
+        f"{len(bundle.get('rules', []))} rules, "
+        f"{len(bundle.get('files_written', []))} files written.",
+    ]
+    if changes.get("first_export"):
+        lines.append("First export — snapshot stored.")
+    else:
+        for key in ("devices_added", "devices_removed", "devices_changed"):
+            if changes.get(key):
+                lines.append(f"{key.replace('_', ' ')}: {', '.join(changes[key])}")
+    for warning in bundle.get("warnings", []):
+        lines.append(f"⚠ {warning}")
+    persistent_notification.async_create(
+        hass,
+        "\n".join(lines),
+        title="Floorplan bundle regenerated",
+        notification_id=NOTIFICATION_ID,
+    )
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Register floorplan helper services."""
 
     async def _async_export(call: ServiceCall) -> dict[str, Any]:
         """Regenerate the floorplan bundle and return it."""
         bundle = await async_generate_bundle(hass, _config_entry(hass))
+        notify_export(hass, bundle)
         _LOGGER.info(
             "Floorplan export complete: %d rules, %d files",
             len(bundle.get("rules", [])),
@@ -112,12 +187,111 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         }
 
     async def _async_set_svg(call: ServiceCall) -> dict[str, Any]:
-        """Switch between generated and custom SVG."""
-        custom_path = call.data.get("custom_svg_path") or None
-        section = set_svg_mode(hass, _config_entry(hass), custom_path)
+        """Switch SVG mode and/or set the toolbar's tool URLs."""
+        entry = _config_entry(hass)
+        section = get_floorplan_options(entry)
+        if "custom_svg_path" in call.data:
+            custom_path = call.data.get("custom_svg_path") or None
+            if custom_path:
+                section[OPTION_SVG_MODE] = SVG_MODE_CUSTOM
+                section[OPTION_CUSTOM_SVG_PATH] = custom_path
+            else:
+                section[OPTION_SVG_MODE] = SVG_MODE_GENERATED
+                section[OPTION_CUSTOM_SVG_PATH] = ""
+        if "editor_url" in call.data:
+            section[OPTION_EDITOR_URL] = call.data["editor_url"] or ""
+        if "planner_url" in call.data:
+            section[OPTION_PLANNER_URL] = call.data["planner_url"] or ""
+        if "toolbar_enabled" in call.data:
+            section[OPTION_TOOLBAR_ENABLED] = bool(call.data["toolbar_enabled"])
+        persist_floorplan_options(hass, entry, section)
         return {
-            "svg_mode": section.get("svg_mode"),
-            "custom_svg_path": section.get("custom_svg_path"),
+            "svg_mode": section.get(OPTION_SVG_MODE),
+            "custom_svg_path": section.get(OPTION_CUSTOM_SVG_PATH),
+            "editor_url": section.get(OPTION_EDITOR_URL),
+            "planner_url": section.get(OPTION_PLANNER_URL),
+            "toolbar_enabled": section.get(OPTION_TOOLBAR_ENABLED),
+        }
+
+    async def _async_import(call: ServiceCall) -> dict[str, Any]:
+        """Import pasted floorplan YAML into the stored mapping."""
+        parsed = parse_floorplan_yaml(call.data["yaml_text"])
+        if "error" in parsed:
+            raise vol.Invalid(str(parsed["error"]))
+
+        entry = _config_entry(hass)
+        section = get_floorplan_options(entry)
+
+        bindings = section.setdefault(OPTION_ELEMENT_BINDINGS, {})
+        for element_id, binding in parsed["bindings"].items():
+            existing = bindings.get(element_id)
+            merged = dict(existing) if isinstance(existing, dict) else {}
+            merged.update(binding)
+            bindings[element_id] = merged
+
+        extra = section.setdefault(OPTION_EXTRA_RULES, [])
+        if call.data.get("replace"):
+            section[OPTION_EXTRA_RULES] = list(parsed["extra_rules"])
+        else:
+            seen = {repr(rule) for rule in extra}
+            extra.extend(
+                rule for rule in parsed["extra_rules"] if repr(rule) not in seen
+            )
+
+        persist_floorplan_options(hass, entry, section)
+        _LOGGER.info(
+            "Floorplan import: %d element bindings, %d rules kept",
+            len(parsed["bindings"]),
+            len(parsed["extra_rules"]),
+        )
+        return {
+            "bindings_imported": len(parsed["bindings"]),
+            "rules_kept": len(parsed["extra_rules"]),
+            "warnings": parsed["warnings"],
+        }
+
+    async def _async_upload_svg(call: ServiceCall) -> dict[str, Any]:
+        """Write an SVG into config/www/ramses_extras/floorplan/."""
+        filename = Path(str(call.data["filename"])).name
+        if not filename.lower().endswith(".svg"):
+            filename += ".svg"
+        svg_text = str(call.data["svg_text"])
+        if "<svg" not in svg_text:
+            raise vol.Invalid("svg_text does not look like an SVG document")
+
+        # External tools (e.g. floorplan-studio) rebuild the SVG from their
+        # own model, so our toolbar elements are lost — re-inject them
+        # bottom-right so the export/import/upload round-trip survives.
+        section = get_floorplan_options(_config_entry(hass))
+        if section.get(OPTION_TOOLBAR_ENABLED, True) and (
+            "floorplan.toolbar" not in svg_text
+        ):
+            svg_text = _inject_toolbar(svg_text)
+
+        out_dir = (
+            Path(hass.config.config_dir)
+            / "www"
+            / "ramses_extras"
+            / FLOORPLAN_UPLOAD_DIR_NAME
+        )
+
+        def _write() -> str:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / filename).write_text(svg_text, encoding="utf-8")
+            return filename
+
+        written = await hass.async_add_executor_job(_write)
+        web_path = f"/local/ramses_extras/{FLOORPLAN_UPLOAD_DIR_NAME}/{written}"
+        _LOGGER.info("Floorplan SVG uploaded: %s", web_path)
+
+        activated = False
+        if call.data.get("set_as_active"):
+            set_svg_mode(hass, _config_entry(hass), web_path)
+            activated = True
+
+        return {
+            "web_path": web_path,
+            "activated": activated,
         }
 
     if not hass.services.has_service(DOMAIN, SVC_EXPORT):
@@ -183,7 +357,43 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             SVC_SET_SVG,
             _async_set_svg,
             schema=vol.Schema(
-                {vol.Optional("custom_svg_path"): cv.string},
+                {
+                    vol.Optional("custom_svg_path"): cv.string,
+                    vol.Optional("editor_url"): cv.string,
+                    vol.Optional("planner_url"): cv.string,
+                    vol.Optional("toolbar_enabled"): cv.boolean,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_IMPORT):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_IMPORT,
+            _async_import,
+            schema=vol.Schema(
+                {
+                    vol.Required("yaml_text"): cv.string,
+                    vol.Optional("replace", default=False): cv.boolean,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_UPLOAD_SVG):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_UPLOAD_SVG,
+            _async_upload_svg,
+            schema=vol.Schema(
+                {
+                    vol.Required("filename"): cv.string,
+                    vol.Required("svg_text"): cv.string,
+                    vol.Optional("set_as_active", default=True): cv.boolean,
+                },
                 extra=vol.PREVENT_EXTRA,
             ),
             supports_response=SupportsResponse.OPTIONAL,
@@ -200,9 +410,11 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SVC_SET_ICON,
         SVC_ASSIGN_AREA,
         SVC_SET_SVG,
+        SVC_IMPORT,
+        SVC_UPLOAD_SVG,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
 
 
-__all__ = ["async_setup_services", "async_unload_services"]
+__all__ = ["async_setup_services", "async_unload_services", "notify_export"]

@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 
 from custom_components.ramses_extras.features.floorplan_helper import (
     generator,
+    importer,
     mapping,
     topology,
 )
@@ -25,6 +26,11 @@ from custom_components.ramses_extras.features.floorplan_helper.const import (
     OPTION_ICON_OVERRIDES,
     RULES_BEGIN_MARKER,
     RULES_END_MARKER,
+    TOOLBAR_ELEMENT_EDITOR,
+    TOOLBAR_ELEMENT_EXPORT,
+    TOOLBAR_ELEMENT_IMPORT,
+    TOOLBAR_ELEMENT_PLANNER,
+    TOOLBAR_ELEMENT_UPLOAD,
 )
 from custom_components.ramses_extras.framework.helpers.ramses_topology import (
     build_owner_map,
@@ -193,7 +199,7 @@ class TestRulesAndCard:
             ]
         )
         rules = generator._build_rules(_model(devices=[dev]), _options())
-        entities = {r["entity"] for r in rules}
+        entities = {r["entity"] for r in rules if "entity" in r}
         assert "binary_sensor.32_153289_status" in entities
         assert "sensor.32_153289_fan_rate" in entities
         # status entity differs from element id → explicit element key
@@ -209,7 +215,14 @@ class TestRulesAndCard:
             ]
         )
         rules = generator._build_rules(_model(), opts)
-        assert rules[-1]["entity"] == "light.kitchen"
+        assert any(r.get("entity") == "light.kitchen" for r in rules)
+        # extra rules precede the toolbar rules (emitted last)
+        idx = next(i for i, r in enumerate(rules) if r.get("entity") == "light.kitchen")
+        assert idx < next(
+            i
+            for i, r in enumerate(rules)
+            if str(r.get("element", "")).startswith("floorplan.")
+        )
 
     def test_card_yaml_markers_and_parse(self):
         rules = [
@@ -227,6 +240,111 @@ class TestRulesAndCard:
         parsed = yaml.safe_load(text)
         assert parsed["type"] == "custom:floorplan-card"
         assert parsed["config"]["rules"][0]["entity"] == "binary_sensor.a_status"
+
+
+class TestToolbar:
+    def test_toolbar_rules_emitted(self):
+        rules = generator._build_rules(_model(), _options())
+        by_element = {r.get("element"): r for r in rules if "element" in r}
+        assert by_element[TOOLBAR_ELEMENT_EXPORT]["tap_action"]["service"] == (
+            "ramses_extras.floorplan_export"
+        )
+        assert by_element[TOOLBAR_ELEMENT_IMPORT]["tap_action"][
+            "navigation_path"
+        ].endswith("floorplan_import")
+        assert by_element[TOOLBAR_ELEMENT_UPLOAD]["tap_action"][
+            "navigation_path"
+        ].endswith("floorplan_upload_svg")
+        assert by_element[TOOLBAR_ELEMENT_EDITOR]["tap_action"]["action"] == "url"
+        assert by_element[TOOLBAR_ELEMENT_PLANNER]["tap_action"]["action"] == "url"
+
+    def test_toolbar_disabled(self):
+        rules = generator._build_rules(_model(), _options(toolbar_enabled=False))
+        assert not any(
+            str(r.get("element", "")).startswith("floorplan.") for r in rules
+        )
+
+    def test_internal_tool_url_uses_navigate(self):
+        rules = generator._build_rules(
+            _model(), _options(editor_url="/floorplan-editor/")
+        )
+        editor = next(r for r in rules if r.get("element") == TOOLBAR_ELEMENT_EDITOR)
+        assert editor["tap_action"]["action"] == "navigate"
+        assert editor["tap_action"]["navigation_path"] == "/floorplan-editor/"
+
+    def test_toolbar_svg_snippet(self):
+        snippet = generator.build_toolbar_svg()
+        for element_id in (
+            TOOLBAR_ELEMENT_EXPORT,
+            TOOLBAR_ELEMENT_IMPORT,
+            TOOLBAR_ELEMENT_UPLOAD,
+            TOOLBAR_ELEMENT_EDITOR,
+            TOOLBAR_ELEMENT_PLANNER,
+        ):
+            assert f'id="{element_id}"' in snippet
+
+    def test_generated_svg_includes_toolbar(self):
+        svg = generator.build_elements_svg(_model(devices=[_device()]), _options())
+        assert 'id="floorplan.toolbar"' in svg
+        svg_no = generator.build_elements_svg(
+            _model(devices=[_device()]), _options(toolbar_enabled=False)
+        )
+        assert 'id="floorplan.toolbar"' not in svg_no
+
+
+class TestImporter:
+    def test_card_config(self):
+        text = (
+            "type: custom:floorplan-card\n"
+            "config:\n"
+            "  rules:\n"
+            "    - element: area.kitchen\n"
+            "      entity: light.kitchen\n"
+            "      tap_action:\n"
+            "        action: toggle\n"
+        )
+        parsed = importer.parse_floorplan_yaml(text)
+        assert parsed["bindings"]["area.kitchen"] == {"entity_id": "light.kitchen"}
+        assert len(parsed["extra_rules"]) == 1
+        assert parsed["extra_rules"][0]["tap_action"]["action"] == "toggle"
+
+    def test_bare_rules_list(self):
+        text = (
+            "- element: area.living\n"
+            "  entity: climate.living\n"
+            "- entity: sensor.temp\n"
+            "  state_action: {service: floorplan.text_set}\n"
+        )
+        parsed = importer.parse_floorplan_yaml(text)
+        assert parsed["bindings"] == {"area.living": {"entity_id": "climate.living"}}
+        # both rules kept verbatim (entity-only rule has no binding)
+        assert len(parsed["extra_rules"]) == 2
+
+    def test_views_dashboard(self):
+        text = (
+            "views:\n"
+            "  - title: Plan\n"
+            "    cards:\n"
+            "      - type: custom:floorplan-card\n"
+            "        config:\n"
+            "          rules:\n"
+            "            - element: area.hall\n"
+            "              entity: switch.hall\n"
+        )
+        parsed = importer.parse_floorplan_yaml(text)
+        assert parsed["bindings"]["area.hall"]["entity_id"] == "switch.hall"
+
+    def test_elements_and_entities_lists(self):
+        text = "- elements: [area.a, area.b]\n  entities: [light.a, light.b]\n"
+        parsed = importer.parse_floorplan_yaml(text)
+        assert set(parsed["bindings"]) == {"area.a", "area.b"}
+        assert parsed["bindings"]["area.a"]["entity_id"] == "light.a"
+        assert parsed["warnings"]
+
+    def test_garbage_input(self):
+        assert "error" in importer.parse_floorplan_yaml("not: [valid: yaml")
+        assert "error" in importer.parse_floorplan_yaml("")
+        assert "error" in importer.parse_floorplan_yaml("just: a dict")
 
 
 class TestMapping:

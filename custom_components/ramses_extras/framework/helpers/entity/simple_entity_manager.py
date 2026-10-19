@@ -182,6 +182,16 @@ class SimpleEntityManager:
         extra_entities = {
             entity for entity in extra_entities if self._is_managed_entity(entity)
         }
+        # ... minus entities features declare as standalone (not derived
+        # from per-device entity configs — e.g. a global export button or
+        # registry-driven derived sensors).
+        standalone = self._get_standalone_entity_patterns()
+        if standalone:
+            extra_entities = {
+                entity
+                for entity in extra_entities
+                if not self._matches_standalone(entity, standalone)
+            }
 
         # Find missing entities (should exist but don't)
         missing_entities = set(required_entities) - set(current_entities)
@@ -398,6 +408,59 @@ class SimpleEntityManager:
                 pass
 
         return entity_ids
+
+    def _get_standalone_entity_patterns(self) -> list[str]:
+        """Collect standalone entity declarations from enabled features.
+
+        Features may declare ``standalone_entities`` in their
+        ``FEATURE_DEFINITION`` — ``{"<platform>": ["<object_id|pattern>"]}``
+        for entities that don't come from per-device entity configs
+        (global buttons, registry-derived sensors). ``*`` works as an
+        fnmatch wildcard.
+
+        :return: List of ``<platform>.<object_id-or-pattern>`` strings
+        """
+        patterns: list[str] = []
+        enabled_features = self._get_enabled_features()
+
+        try:
+            from ....extras_registry import extras_registry
+            from .core import (
+                _import_feature_const_module,
+                get_feature_definition,
+            )
+        except ImportError:
+            return patterns
+
+        try:
+            feature_ids = extras_registry.get_loaded_features()
+        except Exception:
+            return patterns
+
+        for feature_id in feature_ids:
+            if feature_id != "default" and enabled_features.get(feature_id) is not True:
+                continue
+            try:
+                feature_def = get_feature_definition(
+                    _import_feature_const_module(feature_id)
+                )
+            except Exception:
+                continue
+            standalone = feature_def.get("standalone_entities", {})
+            if not isinstance(standalone, dict):
+                continue
+            for platform, names in standalone.items():
+                if not isinstance(names, list):
+                    continue
+                patterns.extend(f"{platform}.{name}" for name in names)
+        return patterns
+
+    @staticmethod
+    def _matches_standalone(entity_id: str, patterns: list[str]) -> bool:
+        """True when ``entity_id`` matches a declared standalone pattern."""
+        from fnmatch import fnmatchcase
+
+        return any(fnmatchcase(entity_id, pattern) for pattern in patterns)
 
     def _is_managed_entity(self, entity_id: str) -> bool:
         """Check if an entity is managed by this integration.

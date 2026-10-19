@@ -86,11 +86,11 @@ a real building layout:
 
 1. Draw the plan in **Inkscape** (recommended — the official
    floorplan editor workflow). A flat scan or PDF of a printed layout
-   works well as a tracing base. Alternative browser tools:
+   works well as a tracing base. Browser tool alternative:
    `sleien.github.io/HA-floorplanner-gui` (draws and exports SVG +
-   YAML) or `qaddodi.github.io/ha-floorplan-editor` (maps entities
-   onto an existing SVG). Avoid draw.io — its SVG export doesn't
-   preserve element ids.
+   YAML; note it can't import an existing SVG — it keeps its own
+   `.json` projects). Avoid draw.io — its SVG export doesn't preserve
+   element ids.
 2. For each interactive element, set the element `id` to the **entity
    id** it should show — that's the floorplan convention
    (`id="climate.living_room"` binds automatically).
@@ -105,6 +105,9 @@ a real building layout:
    data:
      custom_svg_path: /local/ramses_extras/floorplan/my-plan.svg
    ```
+
+   Or skip the file copy entirely — `floorplan_upload_svg` takes the
+   SVG text and writes the file for you (see §5e).
 
 5. If your custom element id differs from the entity id, bind them:
 
@@ -141,7 +144,73 @@ Keep them either:
   parameter — these are stored in the mapping and re-emitted inside
   the managed block on every export, so they survive regeneration.
 
-### 5d. Gardens, outbuildings, multiple floors
+### 5d. In-plan toolbar + external tools
+
+The generated SVG (and the `toolbar_svg` snippet in the export
+response, which you can paste once into a custom SVG) contains a small
+toolbar — five glyph buttons that drive the whole editing loop from
+inside the plan:
+
+| Button | What it does |
+|--------|--------------|
+| ↻ export | Calls `floorplan_export` — result lands as a notification |
+| ⇣ import | Opens Dev Tools with `floorplan_import` preselected — paste the YAML a binding tool produced |
+| ⇡ upload | Opens Dev Tools with `floorplan_upload_svg` preselected — paste SVG text to save it into `config/www/` |
+| ⛓ editor | Opens the click-to-bind tool (`editor_url` option) |
+| ✎ planner | Opens the drawing tool (`planner_url` option) |
+
+Set the tool URLs under **Configure → Floorplan Helper**. An internal
+path (starting `/`, e.g. a dashboard view or a `panel_iframe` panel)
+navigates inside HA; an `https://` URL opens in a new tab.
+
+**Recommended: Floorplan Studio**
+([tinkersoder/floorplan-studio](https://github.com/tinkersoder/floorplan-studio),
+MIT) — a full editor that draws rooms/walls/markers *and* binds
+entities, and installs **inside HA** via HACS:
+
+1. HACS → ⋮ → Custom repositories → `tinkersoder/floorplan-studio`,
+   type **Dashboard** → Download.
+2. Add `type: custom:floorplan-studio-card` to a dedicated dashboard
+   view.
+3. Set `editor_url` and `planner_url` to that view's path
+   (e.g. `/lovelace/floorplan-studio`) — the toolbar buttons will
+   navigate there.
+
+Its ha-floorplan export YAML (Copy/Download from the editor) pastes
+straight into `floorplan_import`; its SVG into `floorplan_upload_svg`.
+
+**Zero-install alternatives** (hosted pages, no HA connection):
+`qaddodi.github.io/ha-floorplan-editor` (click-to-bind → YAML for
+import) and `sleien.github.io/HA-floorplanner-gui` (drawing → SVG +
+YAML; can't import an existing SVG). To keep them in the sidebar:
+
+```yaml
+panel_iframe:
+  floorplan_editor:
+    title: Floorplan editor
+    url: https://qaddodi.github.io/ha-floorplan-editor/
+    icon: mdi:link-variant
+  floorplan_planner:
+    title: Floorplanner
+    url: https://sleien.github.io/HA-floorplanner-gui/
+    icon: mdi:drawing
+```
+
+The hosted tools can't write to HA — that's what
+`floorplan_import`/`floorplan_upload_svg` are for.
+
+**Round-trip loop:**
+
+1. Tap ⇣ import → paste the floorplan card YAML the editor emitted →
+   bindings + rules land in the stored mapping.
+2. Tap ↻ export → rules re-emit with your bindings baked in.
+3. Tap ✎ planner / ⛓ editor to iterate; new drawings come back via
+   ⇡ upload.
+
+Disable the toolbar with the **Toolbar enabled** option if you don't
+want the buttons on the plan.
+
+### 5e. Gardens, outbuildings, multiple floors
 
 - **Garden/outside**: just draw it — SVG is freeform. Put garden
   devices in an HA area named e.g. "Garden" and they get their own
@@ -201,7 +270,13 @@ config carries it over.
 | `ramses_extras.floorplan_set_element` | Upsert/remove an element ↔ entity/icon binding (`element_id`, `entity_id`, `icon`, `extra_rules`, `remove`) |
 | `ramses_extras.floorplan_set_icon` | Icon override per device class or entity (`target`, `icon`; omit `icon` to clear) |
 | `ramses_extras.floorplan_assign_area` | Bind a device/zone to an HA area (`source`, `area_id`; omit to clear) |
-| `ramses_extras.floorplan_set_svg` | Switch generated ↔ custom SVG (`custom_svg_path`; omit for generated) |
+| `ramses_extras.floorplan_set_svg` | Switch generated ↔ custom SVG (`custom_svg_path`; empty for generated, omit to leave) — also sets toolbar `editor_url`/`planner_url`/`toolbar_enabled` |
+| `ramses_extras.floorplan_import` | Import pasted floorplan YAML into bindings + extra rules (`yaml_text`, `replace`) |
+| `ramses_extras.floorplan_upload_svg` | Write an SVG into `config/www/ramses_extras/floorplan/` (`filename`, `svg_text`, `set_as_active`) |
+
+`button.floorplan_export` triggers the same regeneration as the
+service — handy as a dashboard shortcut. Every export also raises a
+persistent notification with the change summary.
 
 WebSocket commands for tooling: `ramses_extras/floorplan_helper/get_bundle`,
 `get_topology`, `list_icons`.

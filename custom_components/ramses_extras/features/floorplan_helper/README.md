@@ -46,10 +46,23 @@ ramses_cc entities/devices          options (config entry)
   rules list (role → rule templates), and the paste-ready card YAML
   with `# >>> ramses_extras managed rules >>>` markers.
 - `services.py` — `floorplan_export`, `floorplan_set_element`,
-  `floorplan_set_icon`, `floorplan_assign_area`, `floorplan_set_svg`.
-  All mapping edits go through services so regeneration is managed.
+  `floorplan_set_icon`, `floorplan_assign_area`, `floorplan_set_svg`,
+  `floorplan_import`, `floorplan_upload_svg`. All mapping edits go
+  through services so regeneration is managed. Export also raises a
+  `persistent_notification` summary (tap-action calls can't show a
+  service response).
+- `importer.py` — pure parser turning pasted floorplan YAML (card
+  config, `views:` dashboard, or bare rules list) into
+  `element_bindings` + verbatim `extra_rules`.
 - `websocket_commands.py` — `get_bundle`, `get_topology`,
   `list_icons` under `ramses_extras/floorplan_helper/*`.
+- `platforms/button.py` — `button.floorplan_export`, one-press
+  regeneration (first `button` platform in the integration — see
+  `button.py` at top level plus `Platform.BUTTON` in
+  `framework/setup/features.py`). The button deliberately has no
+  `device_info`: the orphan-device cleanup in
+  `framework/setup/devices.py` runs before platform entities attach
+  and would delete a synthetic feature device every boot.
 - `platforms/binary_sensor.py` — derived
   `binary_sensor.*_heat_demand` entities, one per
   `sensor.*_heat_demand` discovered in the entity registry
@@ -73,6 +86,25 @@ ramses_cc entities/devices          options (config entry)
   id carrying `entity_id`; both resolve to the same element through
   `_binding_maps()` — used consistently by `build_elements_svg()` and
   `_build_rules()` so generated SVG ids always match rule targets.
+
+## In-SVG toolbar
+
+`build_toolbar_svg()` emits a `<g id="floorplan.toolbar">` with five
+glyph buttons; `_build_toolbar_rules()` emits their `tap_action` rules
+inside the managed block:
+
+| Element | Action |
+|---------|--------|
+| `floorplan.export` | calls `ramses_extras.floorplan_export` |
+| `floorplan.import` | navigates to Dev Tools with `floorplan_import` preselected (`?action=` deep-link) |
+| `floorplan.upload` | same for `floorplan_upload_svg` |
+| `floorplan.editor` | opens `editor_url` option (default: ha-floorplan-editor) |
+| `floorplan.planner` | opens `planner_url` option (default: HA-floorplanner-gui) |
+
+Internal tool URLs (`/...`) emit `navigate`; external URLs emit `url`
+(new tab). The generated SVG includes the toolbar at the bottom-right;
+custom SVGs get the snippet from the `toolbar_svg` bundle key — paste
+it once, rules keep working.
 
 ## Deployed paths
 

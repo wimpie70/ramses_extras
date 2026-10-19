@@ -31,7 +31,9 @@ from homeassistant.helpers.storage import Store
 
 from ...const import INTEGRATION_DIR
 from .const import (
+    DEFAULT_EDITOR_URL,
     DEFAULT_ICON,
+    DEFAULT_PLANNER_URL,
     FEATURE_ID,
     FLOORPLAN_DEVICE_ICON_MAP,
     FLOORPLAN_GENERATED_BASE,
@@ -42,15 +44,23 @@ from .const import (
     GENERATED_ELEMENTS_SVG,
     OPTION_AREA_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
     OPTION_ICON_OVERRIDES,
     OPTION_LAST_SNAPSHOT,
+    OPTION_PLANNER_URL,
     OPTION_SVG_MODE,
+    OPTION_TOOLBAR_ENABLED,
     RULES_BEGIN_MARKER,
     RULES_END_MARKER,
     STYLESHEET_FILENAME,
     SVG_MODE_CUSTOM,
+    TOOLBAR_ELEMENT_EDITOR,
+    TOOLBAR_ELEMENT_EXPORT,
+    TOOLBAR_ELEMENT_IMPORT,
+    TOOLBAR_ELEMENT_PLANNER,
+    TOOLBAR_ELEMENT_UPLOAD,
 )
 from .mapping import (
     get_floorplan_options,
@@ -327,6 +337,9 @@ def build_elements_svg(model: dict[str, Any], options: dict[str, Any]) -> str:
         y = row_y + rows * _CELL_H + _GROUP_GAP
         parts.append("</g>")
 
+    if options.get(OPTION_TOOLBAR_ENABLED, True):
+        parts.append(f'<g transform="translate(770,605)">{build_toolbar_svg()}</g>')
+
     parts.extend(["</g>", "</svg>"])
     return "\n".join(parts)
 
@@ -378,7 +391,98 @@ def _build_rules(
 
     # Global extra rules appended last.
     rules.extend(_parse_extra_rules(options.get(OPTION_EXTRA_RULES)))
+    rules.extend(_build_toolbar_rules(options))
     return rules
+
+
+def _link_action(target: str) -> dict[str, Any]:
+    """Build a tap_action opening ``target``.
+
+    Internal paths (leading ``/``) navigate inside HA; anything else is
+    an external URL opened in a new tab.
+    """
+    if str(target).startswith("/"):
+        return {"action": "navigate", "navigation_path": target}
+    return {"action": "url", "url_path": target}
+
+
+def _build_toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rules for the in-SVG toolbar glyphs (see :func:`build_toolbar_svg`).
+
+    Emitted inside the managed block so bindings stay managed; harmless
+    for SVGs that don't contain the toolbar elements.
+    """
+    if not options.get(OPTION_TOOLBAR_ENABLED, True):
+        return []
+    domain_action = "ramses_extras"
+    return [
+        {
+            "element": TOOLBAR_ELEMENT_EXPORT,
+            "tap_action": {
+                "action": "call-service",
+                "service": f"{domain_action}.floorplan_export",
+            },
+        },
+        {
+            "element": TOOLBAR_ELEMENT_IMPORT,
+            "tap_action": {
+                "action": "navigate",
+                "navigation_path": (
+                    f"/developer-tools/action?action={domain_action}.floorplan_import"
+                ),
+            },
+        },
+        {
+            "element": TOOLBAR_ELEMENT_UPLOAD,
+            "tap_action": {
+                "action": "navigate",
+                "navigation_path": (
+                    "/developer-tools/action?"
+                    f"action={domain_action}.floorplan_upload_svg"
+                ),
+            },
+        },
+        {
+            "element": TOOLBAR_ELEMENT_EDITOR,
+            "tap_action": _link_action(
+                options.get(OPTION_EDITOR_URL) or DEFAULT_EDITOR_URL
+            ),
+        },
+        {
+            "element": TOOLBAR_ELEMENT_PLANNER,
+            "tap_action": _link_action(
+                options.get(OPTION_PLANNER_URL) or DEFAULT_PLANNER_URL
+            ),
+        },
+    ]
+
+
+def build_toolbar_svg() -> str:
+    """Return the toolbar ``<g>`` snippet — paste once into a custom SVG.
+
+    Five 26px glyph buttons spaced 34px apart, styled via the
+    ``rx-toolbar*`` classes in ramses-floorplan.css. Wrap coordinates
+    with a ``transform="translate(x,y)"`` to position it.
+    """
+    glyphs = (
+        (TOOLBAR_ELEMENT_EXPORT, "↻"),
+        (TOOLBAR_ELEMENT_IMPORT, "⇣"),
+        (TOOLBAR_ELEMENT_UPLOAD, "⇡"),
+        (TOOLBAR_ELEMENT_EDITOR, "⛓"),
+        (TOOLBAR_ELEMENT_PLANNER, "✎"),
+    )
+    parts = ['<g id="floorplan.toolbar">']
+    for idx, (element_id, glyph) in enumerate(glyphs):
+        x = idx * 34
+        parts.append(
+            f'<g id="{element_id}" class="rx-toolbar-btn" '
+            f'transform="translate({x},0)">'
+            f'<rect class="rx-toolbar-bg" width="26" height="26" rx="4"/>'
+            f'<text class="rx-toolbar-glyph" x="13" y="18">{glyph}</text>'
+            "</g>"
+        )
+    parts.append("</g>")
+    return "\n".join(parts)
 
 
 def _parse_extra_rules(raw: Any) -> list[dict[str, Any]]:
@@ -519,10 +623,15 @@ async def async_generate_bundle(
         "rules": rules,
         "elements_svg_url": f"{FLOORPLAN_GENERATED_BASE}/{GENERATED_ELEMENTS_SVG}",
         "stylesheet_url": f"{FLOORPLAN_STATIC_BASE}/{STYLESHEET_FILENAME}",
+        "toolbar_svg": build_toolbar_svg(),
         "files_written": files_written,
         "changes": changes,
         "warnings": warnings,
     }
 
 
-__all__ = ["async_generate_bundle", "build_elements_svg"]
+__all__ = [
+    "async_generate_bundle",
+    "build_elements_svg",
+    "build_toolbar_svg",
+]

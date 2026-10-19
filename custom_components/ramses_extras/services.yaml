@@ -384,8 +384,96 @@ floorplan_set_svg:
       name: Custom SVG Path
       description: >-
         Web path to your SVG (e.g. /local/ramses_extras/floorplan/my-plan.svg).
-        Leave empty to use the generated elements SVG.
+        Pass empty to use the generated elements SVG; omit to leave the
+        SVG mode unchanged.
       required: false
       example: "/local/ramses_extras/floorplan/my-plan.svg"
       selector:
         text:
+    editor_url:
+      name: Editor URL
+      description: >-
+        Target of the in-SVG editor button. Internal paths (leading /)
+        navigate in place; anything else opens in a new tab.
+      required: false
+      example: "/floorplan-studio/0"
+      selector:
+        text:
+    planner_url:
+      name: Planner URL
+      description: >-
+        Target of the in-SVG planner/drawing button. Same navigation
+        rules as editor_url.
+      required: false
+      example: "/floorplan-studio/0"
+      selector:
+        text:
+    toolbar_enabled:
+      name: Toolbar Enabled
+      description: Emit the in-SVG toolbar rules in the managed block.
+      required: false
+      selector:
+        boolean:
+
+floorplan_import:
+  name: Floorplan Import
+  description: >-
+    Import floorplan YAML (e.g. the card config emitted by the external
+    ha-floorplan-editor tool) into the stored mapping. Rules carrying an
+    element plus an entity become element bindings; all other rules are
+    kept verbatim in extra rules and re-emitted inside the managed block
+    on the next floorplan_export.
+  fields:
+    yaml_text:
+      name: YAML
+      description: >-
+        Pasted floorplan YAML — a floorplan card config, a dashboard
+        view fragment, or a bare rules list.
+      required: true
+      example: |
+        rules:
+          - element: area.kitchen
+            entity: light.kitchen
+            tap_action:
+              action: toggle
+      selector:
+        text:
+          multiline: true
+    replace:
+      name: Replace Extra Rules
+      description: >-
+        Replace all stored extra rules with the imported ones instead of
+        merging. Element bindings are always merged.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+floorplan_upload_svg:
+  name: Floorplan Upload SVG
+  description: >-
+    Write an SVG file into config/www/ramses_extras/floorplan/ and
+    optionally activate it as the custom floorplan SVG — the file bridge
+    for externally drawn plans (Inkscape, HA-floorplanner-gui).
+  fields:
+    filename:
+      name: Filename
+      description: Target filename inside the floorplan dir (.svg appended if missing).
+      required: true
+      example: "my-plan.svg"
+      selector:
+        text:
+    svg_text:
+      name: SVG Content
+      description: The SVG document text.
+      required: true
+      selector:
+        text:
+          multiline: true
+    set_as_active:
+      name: Set As Active
+      description: Switch svg_mode to custom and point the bundle at this file.
+      required: false
+      default: true
+      selector:
+        boolean:

@@ -95,3 +95,26 @@
   transform-origin: center;
   transform-box: fill-box;
 }
+
+/* --- in-plan toolbar buttons (floorplan.* element ids) --- */
+.rx-toolbar-btn {
+  cursor: pointer;
+}
+
+.rx-toolbar-btn .rx-toolbar-bg {
+  fill: rgba(30, 30, 30, 0.72);
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 1;
+}
+
+.rx-toolbar-btn:hover .rx-toolbar-bg {
+  fill: rgba(30, 30, 30, 0.9);
+}
+
+.rx-toolbar-btn .rx-toolbar-glyph {
+  font-family: inherit;
+  font-size: 15px;
+  fill: #fff;
+  text-anchor: middle;
+  pointer-events: none;
+}
