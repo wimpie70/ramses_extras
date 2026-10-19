@@ -288,16 +288,49 @@ class RamsesFloorplanActions extends HTMLElement {
       .filter(Boolean);
   }
 
+  _fiberOf(el) {
+    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+    return key ? el[key] : null;
+  }
+
   _fiberMarker(g) {
-    // Walk the React fiber for the host <g> up to MarkerNode, whose
-    // props carry the live marker object from studio's store — mutating
-    // it makes the change part of studio's own state (persisted by its
-    // autosave on the next edit).
-    const key = Object.keys(g).find((k) => k.startsWith('__reactFiber$'));
-    let f = key ? g[key] : null;
+    // Walk the fiber for the host <g> up to MarkerNode — its props carry
+    // the marker object (and its id) from studio's store.
+    let f = this._fiberOf(g);
     while (f) {
       if (f.memoizedProps && f.memoizedProps.marker) return f.memoizedProps.marker;
       f = f.return;
+    }
+    return null;
+  }
+
+  _studioCommit() {
+    // Studio persists edits via store.commit(recipe) (immer produce →
+    // set → re-render + autosave + undo history). MarkerEditor — mounted
+    // in the inspector panel when a single marker is selected — grabs it
+    // as its first useStore hook, so we lift the same function and call
+    // the same path.
+    const root = this._studioRoot();
+    if (!root) return null;
+    for (const el of root.querySelectorAll('input, select, button, div')) {
+      let f = this._fiberOf(el);
+      while (f) {
+        const p = f.memoizedProps;
+        if (p && p.marker && p.floor && !p.screenToDoc) {
+          // MarkerEditor fiber: scan its hooks for the commit function
+          let h = f.memoizedState;
+          while (h) {
+            const v = h.memoizedState;
+            const cand =
+              typeof v === 'function' ? v
+              : v && typeof v.value === 'function' ? v.value
+              : null;
+            if (cand) return cand;
+            h = h.next;
+          }
+        }
+        f = f.return;
+      }
     }
     return null;
   }
@@ -335,42 +368,62 @@ class RamsesFloorplanActions extends HTMLElement {
       this._status('No markers selected in studio (switch to edit mode, select with the select tool)');
       return;
     }
-    let mutated = 0;
+
+    // Collect the marker ids behind the selected <g> elements.
+    const ids = new Set();
     for (const m of sel) {
       const marker = this._fiberMarker(m.el);
-      if (marker && marker.style) {
-        marker.style.size = size;
-        mutated += 1;
-      }
-      this._patchMarkerDom(m.el, size);
+      if (marker && marker.id) ids.add(marker.id);
     }
-    // also persist into studio's stored project so a reload keeps it
+
+    // Preferred path: studio's own commit() (immer produce -> re-render
+    // -> autosave -> undo history). Available while a single marker is
+    // selected (MarkerEditor mounted in the inspector).
+    const commit = this._studioCommit();
+    if (commit && ids.size) {
+      try {
+        commit((p) => {
+          for (const floor of p.floors || []) {
+            for (const mk of floor.markers || []) {
+              if (ids.has(mk.id)) mk.style.size = size;
+            }
+          }
+        });
+        this._status(
+          `Resized ${ids.size} selected marker(s) to ${size}px via studio's own commit — re-rendered, autosaved, undo-able`
+        );
+        return;
+      } catch (e) {
+        this._status(`commit failed (${e.message || e}), falling back to DOM+IDB patch…`);
+      }
+    }
+
+    // Fallback: write sizes into the IndexedDB project + live DOM patch
+    // (studio's in-memory copy may overwrite on its next autosave).
+    for (const m of sel) this._patchMarkerDom(m.el, size);
     const id = this._selectedProjectId();
     if (id) {
       try {
         const db = await openFpDb();
         const project = await idbReq(db.transaction('projects').objectStore('projects').get(id));
         if (project) {
-          let n = 0;
           for (const floor of project.floors || []) {
             for (const mk of floor.markers || []) {
-              if (sel.some((s) => Math.abs(mk.x - s.x) < 0.5 && Math.abs(mk.y - s.y) < 0.5)) {
+              if (ids.has(mk.id) || sel.some((s) => Math.abs(mk.x - s.x) < 0.5 && Math.abs(mk.y - s.y) < 0.5)) {
                 mk.style.size = size;
-                n += 1;
               }
             }
           }
           await idbReq(db.transaction('projects', 'readwrite').objectStore('projects').put(project));
           db.close();
           this._status(
-            `Resized ${sel.length} selected marker(s) to ${size}px` +
-              (mutated === sel.length ? '' : ` (${sel.length - mutated} patched in DOM only)`) +
-              `, ${n} written to project storage`
+            `Resized ${sel.length} selected marker(s) to ${size}px — patched DOM + project storage` +
+              ` (select a single marker to also drive studio's own commit for live persistence)`
           );
           return;
         }
         db.close();
-      } catch { /* fall through to DOM-only message */ }
+      } catch { /* fall through */ }
     }
     this._status(`Resized ${sel.length} selected marker(s) to ${size}px (DOM only)`);
   }
