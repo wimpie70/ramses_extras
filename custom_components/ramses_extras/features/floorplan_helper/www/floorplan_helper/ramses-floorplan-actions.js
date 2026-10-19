@@ -315,6 +315,26 @@ class RamsesFloorplanActions extends HTMLElement {
     return out;
   }
 
+  _studioSelectedRoomIds() {
+    // Selected rooms render stroke:#38bdf8 + dasharray on their fill
+    // path; the wrapping <g> carries data-room="<id>" — no fiber needed.
+    const root = this._studioRoot();
+    const ids = new Set();
+    if (!root) return ids;
+    for (const g of root.querySelectorAll('g[data-layer="rooms"] g[data-room]')) {
+      const path = g.querySelector(':scope > path');
+      if (
+        path &&
+        path.getAttribute('stroke') === '#38bdf8' &&
+        path.getAttribute('stroke-dasharray')
+      ) {
+        ids.add(g.getAttribute('data-room'));
+      }
+    }
+    dlog('selected rooms found:', ids.size);
+    return ids;
+  }
+
   _fiberOf(el) {
     const keys = Object.keys(el).filter((k) => k.startsWith('__react'));
     const key = keys.find((k) => k.startsWith('__reactFiber$'));
@@ -497,6 +517,82 @@ class RamsesFloorplanActions extends HTMLElement {
     this._status(`Resized ${sel.length} selected marker(s) to ${size}px (DOM only)`);
   }
 
+  async _recolorSelectedRooms() {
+    const fill = this._tweak('room_fill') || '#22c55e';
+    const opRaw = this._tweak('room_opacity');
+    const opacity = opRaw === undefined || opRaw === '' ? null : Number(opRaw);
+    const root = this._studioRoot();
+    if (!root) {
+      this._status('Studio card not found on this view');
+      return;
+    }
+    const ids = this._studioSelectedRoomIds();
+    if (!ids.size) {
+      const total = root.querySelectorAll('g[data-layer="rooms"] g[data-room]').length;
+      this._status(
+        `No selected rooms found (${total} rooms on canvas). In studio edit mode: ` +
+          'select tool, click a room (shift-click for several) — a dashed blue outline marks the selection.'
+      );
+      return;
+    }
+    const label = `${fill}${opacity !== null ? ` @ ${opacity}` : ''}`;
+
+    const commit = this._studioCommit();
+    if (commit) {
+      try {
+        commit((p) => {
+          for (const floor of p.floors || []) {
+            for (const room of floor.rooms || []) {
+              if (ids.has(room.id)) {
+                room.fill = fill;
+                if (opacity !== null) room.opacity = opacity;
+              }
+            }
+          }
+        });
+        this._status(
+          `Recolored ${ids.size} selected room(s) → ${label} via studio's own commit — re-rendered, autosaved, undo-able`
+        );
+        return;
+      } catch (e) {
+        dwarn('commit threw:', e);
+        this._status(`commit failed (${e.message || e}), falling back to DOM+IDB patch…`);
+      }
+    }
+
+    // Fallback: patch the fill path live + write the stored project.
+    for (const g of root.querySelectorAll('g[data-layer="rooms"] g[data-room]')) {
+      if (!ids.has(g.getAttribute('data-room'))) continue;
+      const path = g.querySelector(':scope > path');
+      if (path) {
+        path.setAttribute('fill', fill);
+        if (opacity !== null) path.setAttribute('fill-opacity', String(opacity));
+      }
+    }
+    const pid = this._selectedProjectId();
+    if (pid) {
+      try {
+        const db = await openFpDb();
+        const project = await idbReq(db.transaction('projects').objectStore('projects').get(pid));
+        if (project) {
+          for (const floor of project.floors || []) {
+            for (const room of floor.rooms || []) {
+              if (ids.has(room.id)) {
+                room.fill = fill;
+                if (opacity !== null) room.opacity = opacity;
+              }
+            }
+          }
+          await idbReq(db.transaction('projects', 'readwrite').objectStore('projects').put(project));
+        }
+        db.close();
+      } catch { /* fall through */ }
+    }
+    this._status(
+      `Recolored ${ids.size} selected room(s) → ${label} (DOM + stored project; studio commit unavailable)`
+    );
+  }
+
   _selectedProjectId() {
     const sel = this.shadowRoot.getElementById('project');
     return sel && sel.value ? sel.value : null;
@@ -648,6 +744,8 @@ class RamsesFloorplanActions extends HTMLElement {
             title="Re-run area sync on the stored project: marker-in-room → entity area_id, missing areas created">Sync areas</button>
           <button id="b-resize" class="secondary"
             title="Apply the tweak icon size to the markers currently selected inside studio (edit mode). Patches the studio canvas live and persists via studio's own autosave">Resize ◉ selected</button>
+          <button id="b-recolor" class="secondary"
+            title="Apply the tweak room colour to the rooms currently selected inside studio (edit mode, shift-click for several) — e.g. colour every room a device serves">Recolor ◧ rooms</button>
           <button id="b-tweaks" class="secondary"
             title="Card tweaks — saved in this browser">⚙ Tweaks</button>
         </div>
@@ -668,6 +766,12 @@ class RamsesFloorplanActions extends HTMLElement {
             <label for="tw-norm" title="On Pull, set every marker's icon size in the project to the size above — also writes it back to studio so manually placed markers (studio default 40) get fixed">Normalize icon sizes on pull</label>
             <input id="tw-norm" type="checkbox">
           </div>
+          <div class="row">
+            <label for="tw-fill" title="Fill colour applied to rooms selected in studio via 'Recolor ◧ rooms' — e.g. mark every room a WTW ventilates">Room fill</label>
+            <input id="tw-fill" type="color" style="width:44px;padding:0;height:24px">
+            <label for="tw-op" title="Fill opacity 0–1; leave empty to keep each room's current opacity">opacity</label>
+            <input id="tw-op" type="number" min="0" max="1" step="0.05" style="width:64px" placeholder="keep">
+          </div>
         </div>
         <div class="drop" id="drop"
           title="For project files from another machine or a backup — this browser's studio is already reachable via Pull">
@@ -687,6 +791,7 @@ class RamsesFloorplanActions extends HTMLElement {
     $('b-export').onclick = () => this._run(() => this._export());
     $('b-sync').onclick = () => this._run(() => this._sync());
     $('b-resize').onclick = () => this._run(() => this._resizeSelected());
+    $('b-recolor').onclick = () => this._run(() => this._recolorSelectedRooms());
     $('b-tweaks').onclick = () => {
       const t = $('tweaks');
       t.style.display = t.style.display === 'none' ? 'block' : 'none';
@@ -717,6 +822,19 @@ class RamsesFloorplanActions extends HTMLElement {
     twName.onchange = () => this._saveTweak('seed_name', twName.value || undefined);
     twSync.onchange = () => this._saveTweak('sync_on_pull', twSync.checked);
     twNorm.onchange = () => this._saveTweak('normalize_sizes', twNorm.checked);
+
+    const twFill = $('tw-fill');
+    const twOp = $('tw-op');
+    twFill.value = this._tweak('room_fill') || '#22c55e';
+    twOp.value = this._tweak('room_opacity') ?? '';
+    twFill.onchange = () => {
+      this._saveTweak('room_fill', twFill.value);
+      if (this._studioSelectedRoomIds().size) {
+        this._run(() => this._recolorSelectedRooms());
+      }
+    };
+    twOp.onchange = () =>
+      this._saveTweak('room_opacity', twOp.value === '' ? undefined : Number(twOp.value));
 
     this._fillProjectSelect();
 
