@@ -261,6 +261,120 @@ class RamsesFloorplanActions extends HTMLElement {
     }
   }
 
+  // --- reach into the studio card: selection + in-memory marker state ----
+
+  _studioRoot() {
+    const el = document.querySelector('floorplan-studio-card');
+    return el && el.shadowRoot ? el.shadowRoot : null;
+  }
+
+  _studioSelectedMarkers() {
+    // Selected markers render a dashed #38bdf8 ring as first child of
+    // their <g translate(x y)> inside the entities layer (edit mode only).
+    const root = this._studioRoot();
+    if (!root) return [];
+    return [...root.querySelectorAll('g[data-layer="entities"] > g')]
+      .map((g) => {
+        const ring = g.querySelector(':scope > circle');
+        const sel =
+          ring &&
+          ring.getAttribute('stroke') === '#38bdf8' &&
+          ring.getAttribute('stroke-dasharray');
+        const m = /translate\(\s*([-\d.e]+)[ ,]+([-\d.e]+)\s*\)/.exec(
+          g.getAttribute('transform') || ''
+        );
+        return sel && m ? { x: parseFloat(m[1]), y: parseFloat(m[2]), el: g } : null;
+      })
+      .filter(Boolean);
+  }
+
+  _fiberMarker(g) {
+    // Walk the React fiber for the host <g> up to MarkerNode, whose
+    // props carry the live marker object from studio's store — mutating
+    // it makes the change part of studio's own state (persisted by its
+    // autosave on the next edit).
+    const key = Object.keys(g).find((k) => k.startsWith('__reactFiber$'));
+    let f = key ? g[key] : null;
+    while (f) {
+      if (f.memoizedProps && f.memoizedProps.marker) return f.memoizedProps.marker;
+      f = f.return;
+    }
+    return null;
+  }
+
+  _patchMarkerDom(g, size) {
+    for (const child of g.children) {
+      const tag = child.tagName.toLowerCase();
+      if (tag === 'circle') {
+        if (child.getAttribute('stroke-dasharray')) child.setAttribute('r', size * 0.72);
+        else if (child.getAttribute('fill') === 'rgba(20,24,33,0.55)') child.setAttribute('r', size * 0.5);
+        else if (child.getAttribute('stroke') === '#fff') child.setAttribute('r', size * 0.4);
+      } else if (tag === 'path') {
+        child.setAttribute('transform', `translate(${-size * 0.35} ${-size * 0.35}) scale(${(size * 0.7) / 24})`);
+      } else if (tag === 'image') {
+        child.setAttribute('x', -size / 2);
+        child.setAttribute('y', -size / 2);
+        child.setAttribute('width', size);
+        child.setAttribute('height', size);
+      } else if (tag === 'g') {
+        child.setAttribute('transform', `scale(${size / 24})`);
+      } else if (tag === 'text') {
+        child.setAttribute('y', size * 0.5 + 14);
+      }
+    }
+  }
+
+  async _resizeSelected() {
+    const size = Number(this._tweak('marker_size') || 20);
+    const sel = this._studioSelectedMarkers();
+    if (!this._studioRoot()) {
+      this._status('Studio card not found on this view');
+      return;
+    }
+    if (!sel.length) {
+      this._status('No markers selected in studio (switch to edit mode, select with the select tool)');
+      return;
+    }
+    let mutated = 0;
+    for (const m of sel) {
+      const marker = this._fiberMarker(m.el);
+      if (marker && marker.style) {
+        marker.style.size = size;
+        mutated += 1;
+      }
+      this._patchMarkerDom(m.el, size);
+    }
+    // also persist into studio's stored project so a reload keeps it
+    const id = this._selectedProjectId();
+    if (id) {
+      try {
+        const db = await openFpDb();
+        const project = await idbReq(db.transaction('projects').objectStore('projects').get(id));
+        if (project) {
+          let n = 0;
+          for (const floor of project.floors || []) {
+            for (const mk of floor.markers || []) {
+              if (sel.some((s) => Math.abs(mk.x - s.x) < 0.5 && Math.abs(mk.y - s.y) < 0.5)) {
+                mk.style.size = size;
+                n += 1;
+              }
+            }
+          }
+          await idbReq(db.transaction('projects', 'readwrite').objectStore('projects').put(project));
+          db.close();
+          this._status(
+            `Resized ${sel.length} selected marker(s) to ${size}px` +
+              (mutated === sel.length ? '' : ` (${sel.length - mutated} patched in DOM only)`) +
+              `, ${n} written to project storage`
+          );
+          return;
+        }
+        db.close();
+      } catch { /* fall through to DOM-only message */ }
+    }
+    this._status(`Resized ${sel.length} selected marker(s) to ${size}px (DOM only)`);
+  }
+
   _selectedProjectId() {
     const sel = this.shadowRoot.getElementById('project');
     return sel && sel.value ? sel.value : null;
@@ -407,6 +521,8 @@ class RamsesFloorplanActions extends HTMLElement {
             title="Regenerate the ha-floorplan bundle (SVG + rules + CSS) and copy the dashboard card YAML to your clipboard">Export bundle</button>
           <button id="b-sync" class="secondary"
             title="Re-run area sync on the stored project: marker-in-room → entity area_id, missing areas created">Sync areas</button>
+          <button id="b-resize" class="secondary"
+            title="Apply the tweak icon size to the markers currently selected inside studio (edit mode). Patches the studio canvas live and persists via studio's own autosave">Resize ◉ selected</button>
           <button id="b-tweaks" class="secondary"
             title="Card tweaks — saved in this browser">⚙ Tweaks</button>
         </div>
@@ -445,6 +561,7 @@ class RamsesFloorplanActions extends HTMLElement {
     $('b-seed').onclick = () => this._run(() => this._seed());
     $('b-export').onclick = () => this._run(() => this._export());
     $('b-sync').onclick = () => this._run(() => this._sync());
+    $('b-resize').onclick = () => this._run(() => this._resizeSelected());
     $('b-tweaks').onclick = () => {
       const t = $('tweaks');
       t.style.display = t.style.display === 'none' ? 'block' : 'none';
