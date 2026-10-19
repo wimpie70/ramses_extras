@@ -428,6 +428,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         placement in the studio drives real entity-registry area ids.
         """
         from homeassistant.helpers import area_registry as ar
+        from homeassistant.helpers import device_registry as dr
         from homeassistant.helpers import entity_registry as er
         from homeassistant.util import slugify
 
@@ -480,7 +481,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 ]
             )
 
+        dev_reg = dr.async_get(hass)
         assignments: dict[str, str] = {}
+        via_device: list[str] = []
         skipped: list[str] = []
         outside: list[str] = []
         for marker in parsed["markers"]:
@@ -490,13 +493,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 if room is None:
                     outside.append(entity_id)
                     continue
-                if ent_reg.async_get(entity_id) is None:
+                entry = ent_reg.async_get(entity_id)
+                if entry is None:
                     skipped.append(entity_id)
                     continue
                 target = area.id if area else _slug(room["name"])
                 assignments[entity_id] = target
                 if area is not None and not dry_run:
-                    ent_reg.async_update_entity(entity_id, area_id=area.id)
+                    try:
+                        ent_reg.async_update_entity(entity_id, area_id=area.id)
+                    except ValueError:
+                        # Entities without a name of their own can't hold
+                        # an area — set it on the device instead.
+                        if entry.device_id:
+                            dev_reg.async_update_device(
+                                entry.device_id, area_id=area.id
+                            )
+                            via_device.append(entity_id)
+                        else:
+                            skipped.append(entity_id)
 
         _LOGGER.info(
             "Floorplan sync_areas: %d areas created, %d entities assigned",
@@ -508,6 +523,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "assignments": assignments,
             "entities_without_area_room": outside,
             "entities_not_in_registry": skipped,
+            "assigned_via_device": via_device,
             "dry_run": dry_run,
             "backup_path": backup_path,
             "warnings": parsed["warnings"],
