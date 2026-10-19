@@ -119,6 +119,10 @@ const CARD_MODULES = [
     tag: 'device-status-card',
     modulePath: '../features/device_status_card/device-status-card.js',
   },
+  {
+    tag: 'ramses-floorplan-actions',
+    modulePath: '../features/floorplan_helper/ramses-floorplan-actions.js',
+  },
 ];
 
 const loaded = new Set();

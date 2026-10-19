@@ -37,6 +37,31 @@ Two file formats to keep straight:
                           ha-floorplan card on dashboard
 ```
 
+## The actions card
+
+`ramses-floorplan-actions` — a full-width companion card meant to sit
+under the studio card on the same view:
+
+```yaml
+type: custom:ramses-floorplan-actions
+floors:                        # optional; needed for seed with >1 floor
+  begane grond: plattegrond-bg.svg
+  1e verdieping: plattegrond-1e.svg
+marker_size: 20                # optional (default 20)
+sync_on_drop: true             # optional — run sync_areas after a drop
+```
+
+Buttons: **Open studio** / **Open editor** (navigate to the configured
+tool URLs), **Seed markers** (`seed_studio` + copies project JSON to
+clipboard), **Export bundle** (`floorplan_export` + copies card_yaml),
+**Sync areas** (`sync_areas` on the stored project).
+
+**Drop zone** — drop studio's *Export JSON* file onto the card: it calls
+`floorplan_store_project` (writes `config/ramses_extras/floorplan/
+projects/latest.json` + a timestamped backup) then `floorplan_sync_areas`.
+This is the canonical way to get a studio export into HA — the Downloads
+copy and its `file(1).json` clutter can be ignored.
+
 ## Workflows
 
 ### W1 — Bootstrap (done once)
@@ -44,7 +69,8 @@ Two file formats to keep straight:
 1. `floorplan_set_svg` with `custom_svg_path` per floor + `editor_url`/`planner_url`.
 2. Convert SVG → studio project (`svg_to_studio.py` in `~/dev/plattegrond`, or ask me).
 3. Studio → **Projects → Import JSON** → rooms appear; click the **Demo chip** → "Use this dashboard's Home Assistant" for live entities.
-4. `floorplan_sync_areas` with the project JSON → creates all HA areas.
+4. `floorplan_sync_areas` with the project JSON (or drop it on the
+   actions card) → creates all HA areas.
 
 ### W2 — Place devices (HA → studio)
 
@@ -54,22 +80,23 @@ data:
   floors:
     begane grond: plattegrond-bg.svg
     1e verdieping: plattegrond-1e.svg
-  project_json: >-     # paste your current project export (optional but
-    {...}              # keeps background + walls + your edits)
+  # project_json omitted → merges into the stored latest.json if present
 ```
 
-→ copy `project_json` from the response → studio **Projects → Import JSON**.
-Devices with an HA `area_id` matching a room slug land at the room centroid.
-Devices without an area are **parked in a strip below the first floor's
-canvas** (`staging: false` to skip). Drag them into rooms.
+Or the **Seed markers** button on the actions card (copies the emitted
+project JSON to the clipboard). → studio **Projects → Import JSON**.
+Devices with an HA `area_id` matching a room slug land at the room
+centroid. Devices without an area are **parked in a strip below the
+first floor's canvas** (`staging: false` to skip). Drag them into rooms.
 
 ### W3 — Assign areas by dragging (studio → HA)
 
 1. In studio, drag markers into rooms.
-2. Projects → **Export JSON**.
-3. Call `floorplan_sync_areas` with `project_json: <paste>` (add
-   `dry_run: true` to preview). Each marker inside a room → that entity's
-   `area_id` = the room slug; missing areas are created.
+2. Projects → **Export JSON** (browser download — ignore the file).
+3. **Drop that file on the actions card** → it is stored as
+   `latest.json` (+ timestamped backup) and `floorplan_sync_areas` runs:
+   each marker inside a room → that entity's `area_id` = the room slug;
+   missing areas are created. (`dry_run: true` previews via Dev Tools.)
 
 ### W4 — Daily editing loop
 

@@ -87,6 +87,12 @@ SVC_IMPORT = "floorplan_import"
 SVC_UPLOAD_SVG = "floorplan_upload_svg"
 SVC_SYNC_AREAS = "floorplan_sync_areas"
 SVC_SEED_STUDIO = "floorplan_seed_studio"
+SVC_STORE_PROJECT = "floorplan_store_project"
+
+# Canonical server-side location for the "current" studio project
+# (written by floorplan_store_project; read when services get no
+# project_json). Timestamped copies go alongside for history.
+PROJECT_LATEST_NAME = "latest.json"
 
 NOTIFICATION_ID = "ramses_extras_floorplan_export"
 
@@ -119,6 +125,28 @@ def _backup_project(hass: HomeAssistant, project_json: str) -> str:
     path = backup_dir / f"project-{stamp}.json"
     path.write_text(project_json, "utf-8")
     return str(path)
+
+
+def _store_latest_project(hass: HomeAssistant, project_json: str) -> str:
+    """Write/overwrite the canonical latest studio project."""
+    path = Path(hass.config.path("ramses_extras/floorplan/projects"))
+    path.mkdir(parents=True, exist_ok=True)
+    latest = path / PROJECT_LATEST_NAME
+    latest.write_text(project_json, "utf-8")
+    return str(latest)
+
+
+def _load_latest_project(hass: HomeAssistant) -> str:
+    """Return the stored studio project, or raise if none was stored."""
+    path = Path(hass.config.path("ramses_extras/floorplan/projects"))
+    latest = path / PROJECT_LATEST_NAME
+    try:
+        return latest.read_text("utf-8")
+    except OSError:
+        raise vol.Invalid(
+            "No stored studio project — pass project_json or store one "
+            "first (floorplan_store_project / the actions card drop zone)"
+        ) from None
 
 
 def _merge_studio_project(
@@ -403,11 +431,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         from homeassistant.helpers import entity_registry as er
         from homeassistant.util import slugify
 
-        parsed = parse_studio_project(call.data["project_json"])
+        project_json = call.data.get("project_json") or (
+            await hass.async_add_executor_job(_load_latest_project, hass)
+        )
+        parsed = parse_studio_project(project_json)
         if "error" in parsed:
             raise vol.Invalid(str(parsed["error"]))
         backup_path = await hass.async_add_executor_job(
-            _backup_project, hass, call.data["project_json"]
+            _backup_project, hass, project_json
         )
 
         create_areas = call.data.get("create_areas", True)
@@ -494,6 +525,32 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             / Path(ref).name
         )
 
+    async def _async_store_project(call: ServiceCall) -> dict[str, Any]:
+        """Store a studio project export as the canonical 'latest'.
+
+        Written to ``ramses_extras/floorplan/projects/latest.json`` plus a
+        timestamped backup — the server-side working copy that
+        ``seed_studio``/``sync_areas`` fall back to when no project_json
+        is passed. Powers the actions card's drop zone.
+        """
+        project_json = call.data["project_json"]
+        parsed = parse_studio_project(project_json)
+        if "error" in parsed:
+            raise vol.Invalid(str(parsed["error"]))
+        latest = await hass.async_add_executor_job(
+            _store_latest_project, hass, project_json
+        )
+        backup = await hass.async_add_executor_job(_backup_project, hass, project_json)
+        stats: dict[str, dict[str, int]] = {}
+        for room in parsed["rooms"]:
+            stats.setdefault(room["floor"], {"rooms": 0, "markers": 0})["rooms"] += 1
+        for marker in parsed["markers"]:
+            stats.setdefault(marker["floor"], {"rooms": 0, "markers": 0})[
+                "markers"
+            ] += 1
+        _LOGGER.info("Floorplan project stored: %s (%s)", latest, stats)
+        return {"latest_path": latest, "backup_path": backup, "floors": stats}
+
     async def _async_seed_studio(call: ServiceCall) -> dict[str, Any]:
         """Emit a studio project JSON with markers pre-placed.
 
@@ -537,6 +594,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # walls and any studio edits — without it we emit a fresh project.
         existing: dict[str, Any] | None = None
         raw_project = call.data.get("project_json")
+        if not raw_project:
+            # Fall back to the stored project — keeps backgrounds/edits
+            # when re-seeding; silently ignored if none was ever stored.
+            latest_path = (
+                Path(hass.config.path("ramses_extras/floorplan/projects"))
+                / PROJECT_LATEST_NAME
+            )
+            try:
+                raw_project = await hass.async_add_executor_job(
+                    latest_path.read_text, "utf-8"
+                )
+            except OSError:
+                raw_project = None
         if raw_project:
             try:
                 existing = json.loads(raw_project)
@@ -752,10 +822,22 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             _async_sync_areas,
             schema=vol.Schema(
                 {
-                    vol.Required("project_json"): cv.string,
+                    vol.Optional("project_json"): cv.string,
                     vol.Optional("create_areas", default=True): cv.boolean,
                     vol.Optional("dry_run", default=False): cv.boolean,
                 },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_STORE_PROJECT):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_STORE_PROJECT,
+            _async_store_project,
+            schema=vol.Schema(
+                {vol.Required("project_json"): cv.string},
                 extra=vol.PREVENT_EXTRA,
             ),
             supports_response=SupportsResponse.OPTIONAL,

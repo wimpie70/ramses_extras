@@ -22,8 +22,17 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.const import DOMAIN
 
-from .const import FLOORPLAN_ICONS, FLOORPLAN_STATIC_BASE
+from .const import (
+    FLOORPLAN_ICONS,
+    FLOORPLAN_STATIC_BASE,
+    OPTION_CUSTOM_SVG_PATH,
+    OPTION_EDITOR_URL,
+    OPTION_PLANNER_URL,
+    OPTION_SVG_MODE,
+    OPTION_TOOLBAR_ENABLED,
+)
 from .generator import async_generate_bundle
+from .mapping import get_floorplan_options
 from .topology import build_floorplan_model
 
 if TYPE_CHECKING:
@@ -99,4 +108,38 @@ async def ws_list_icons(
     )
 
 
-__all__ = ["ws_get_bundle", "ws_get_topology", "ws_list_icons"]
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ramses_extras/floorplan_helper/get_config",
+    }
+)
+@websocket_api.async_response
+async def ws_get_config(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Return the floorplan options the actions card needs (tool URLs)."""
+    entry = _config_entry(hass)
+    if entry is None:
+        connection.send_error(
+            msg["id"], "no_config_entry", "No ramses_extras config entry"
+        )
+        return
+    options = get_floorplan_options(entry)
+    connection.send_result(
+        msg["id"],
+        {
+            "svg_mode": options.get(OPTION_SVG_MODE),
+            "custom_svg_path": options.get(OPTION_CUSTOM_SVG_PATH),
+            "editor_url": options.get(OPTION_EDITOR_URL),
+            "planner_url": options.get(OPTION_PLANNER_URL),
+            "toolbar_enabled": options.get(OPTION_TOOLBAR_ENABLED),
+        },
+    )
+
+
+__all__ = [
+    "ws_get_bundle",
+    "ws_get_config",
+    "ws_get_topology",
+    "ws_list_icons",
+]
