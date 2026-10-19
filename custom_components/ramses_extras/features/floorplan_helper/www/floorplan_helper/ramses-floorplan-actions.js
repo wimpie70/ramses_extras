@@ -59,6 +59,13 @@ const STYLE = `
                color: var(--primary-color); }
   .status { margin-top: 8px; font-size: 12px;
             color: var(--secondary-text-color); white-space: pre-wrap; }
+  textarea.log {
+    width: 100%; box-sizing: border-box; margin-top: 8px; padding: 6px;
+    font-size: 12px; font-family: inherit; resize: vertical;
+    color: var(--secondary-text-color); background: transparent;
+    border: 1px solid var(--divider-color, #ccc); border-radius: 6px;
+    min-height: 2.4em; user-select: text; cursor: text;
+  }
   .tweaks { margin-top: 10px; padding: 10px; border-radius: 8px;
             background: var(--secondary-background-color, #f5f5f5);
             font-size: 13px; }
@@ -246,7 +253,12 @@ class RamsesFloorplanActions extends HTMLElement {
 
   _status(text) {
     const el = this.shadowRoot.getElementById('status');
-    if (el) el.textContent = text;
+    if (el) {
+      el.value = text;
+      // grow to fit content
+      el.style.height = 'auto';
+      el.style.height = `${Math.max(2.4, (text.split('\n').length + 0.4) * 1.4)}em`;
+    }
   }
 
   _selectedProjectId() {
@@ -263,7 +275,36 @@ class RamsesFloorplanActions extends HTMLElement {
     );
     db.close();
     if (!project) { this._status('Project not found in studio storage'); return; }
-    await this._storeAndSync(JSON.stringify(project), `pulled '${project.name || id}'`);
+    const resized = this._normalizeSizes(project);
+    if (resized) {
+      // write the normalized sizes back so studio shows them too
+      project.updatedAt = Date.now();
+      const dbw = await openFpDb();
+      await idbReq(
+        dbw.transaction('projects', 'readwrite').objectStore('projects').put(project)
+      );
+      dbw.close();
+    }
+    await this._storeAndSync(
+      JSON.stringify(project),
+      `pulled '${project.name || id}'` + (resized ? `, ${resized} markers resized` : '')
+    );
+  }
+
+  _normalizeSizes(project) {
+    if (this._tweak('normalize_sizes') === false) return 0;
+    const size = Number(this._tweak('marker_size'));
+    if (!size) return 0;
+    let n = 0;
+    for (const floor of project.floors || []) {
+      for (const m of floor.markers || []) {
+        if (m.style && m.style.size !== size) {
+          m.style.size = size;
+          n += 1;
+        }
+      }
+    }
+    return n;
   }
 
   async _pushToStudio(projectJson) {
@@ -382,6 +423,10 @@ class RamsesFloorplanActions extends HTMLElement {
             <label for="tw-sync" title="After Pull (or a dropped file), also run area sync automatically">Sync areas on pull</label>
             <input id="tw-sync" type="checkbox">
           </div>
+          <div class="row">
+            <label for="tw-norm" title="On Pull, set every marker's icon size in the project to the size above — also writes it back to studio so manually placed markers (studio default 40) get fixed">Normalize icon sizes on pull</label>
+            <input id="tw-norm" type="checkbox">
+          </div>
         </div>
         <div class="drop" id="drop"
           title="For project files from another machine or a backup — this browser's studio is already reachable via Pull">
@@ -389,7 +434,8 @@ class RamsesFloorplanActions extends HTMLElement {
           for files from another machine or backup
           <input id="file" type="file" accept=".json,application/json">
         </div>
-        <div class="status" id="status"></div>
+        <textarea class="log" id="status" readonly
+          title="Result log — selectable, copy with Ctrl+C"></textarea>
       </ha-card>`;
 
     const $ = (id) => this.shadowRoot.getElementById(id);
@@ -408,13 +454,16 @@ class RamsesFloorplanActions extends HTMLElement {
     const twSize = $('tw-size');
     const twName = $('tw-name');
     const twSync = $('tw-sync');
+    const twNorm = $('tw-norm');
     twSize.value = this._tweak('marker_size') ?? '';
     twName.value = this._tweak('seed_name') ?? '';
     twSync.checked = this._tweak('sync_on_pull') !== false;
+    twNorm.checked = this._tweak('normalize_sizes') !== false;
     twSize.onchange = () =>
       this._saveTweak('marker_size', twSize.value ? Number(twSize.value) : undefined);
     twName.onchange = () => this._saveTweak('seed_name', twName.value || undefined);
     twSync.onchange = () => this._saveTweak('sync_on_pull', twSync.checked);
+    twNorm.onchange = () => this._saveTweak('normalize_sizes', twNorm.checked);
 
     this._fillProjectSelect();
 
