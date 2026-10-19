@@ -22,6 +22,8 @@
  *   marker_size: 20
  *   sync_on_pull: true   (also sync HA areas after pull/store)
  *   studio_url: /floorplan-studio   (fallback: floorplan options)
+ *   device_view_url: /lovelace/hvac  (optional — adds a '⤢ dashboard'
+ *   button to the device popup opened by double-clicking a marker)
  */
 
 const DOMAIN = 'ramses_extras';
@@ -76,8 +78,20 @@ const STYLE = `
     width: 140px; padding: 4px 6px; border-radius: 5px;
     border: 1px solid var(--divider-color, #ccc); font-size: 13px;
   }
-  .devpanel { margin-top: 10px; border-top: 1px solid
-              var(--divider-color, #ccc); padding-top: 8px; }
+  .devoverlay {
+    position: fixed; inset: 0; z-index: 999;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.5);
+  }
+  .devdialog {
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color);
+    border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    width: min(440px, 92vw); max-height: 85vh; overflow-y: auto;
+    padding: 10px 14px 14px;
+  }
+  .devdialog .lbl { font-size: 14px; font-weight: 600;
+                    color: var(--primary-text-color); }
   input[type=file] { display: none; }
 `;
 
@@ -800,8 +814,12 @@ class RamsesFloorplanActions extends HTMLElement {
         card.hass = this._hass;
         host.appendChild(card);
         this._devCard = card;
-        title.textContent = dev.display_name || dev.device_id;
-        panel.style.display = 'block';
+        title.textContent =
+          `${dev.display_name || dev.device_id} (${dev.device_id})`;
+        const view = this._tweak('device_view_url');
+        const full = this.shadowRoot.getElementById('devfull');
+        if (full) full.style.display = view ? '' : 'none';
+        panel.style.display = 'flex';
         return;
       }
     }
@@ -1059,6 +1077,10 @@ class RamsesFloorplanActions extends HTMLElement {
             <label for="tw-zonewatch" title="When a marker is selected in studio, outline the rooms its device serves (device_zones config); double-click a marker to open the device card">Highlight zones on select</label>
             <input id="tw-zonewatch" type="checkbox">
           </div>
+          <div class="row">
+            <label for="tw-devview" title="Optional dashboard path for device details (e.g. /lovelace/hvac) — a '⤢ dashboard' button appears in the device popup">Device dashboard URL</label>
+            <input id="tw-devview" type="text" placeholder="/lovelace/hvac" style="width:200px">
+          </div>
         </div>
         <div class="drop" id="drop"
           title="For project files from another machine or a backup — this browser's studio is already reachable via Pull">
@@ -1068,12 +1090,18 @@ class RamsesFloorplanActions extends HTMLElement {
         </div>
         <textarea class="log" id="status" readonly
           title="Result log — selectable, copy with Ctrl+C"></textarea>
-        <div class="devpanel" id="devpanel" style="display:none">
-          <div class="row" style="justify-content:space-between">
-            <span class="lbl" id="devtitle"></span>
-            <button id="devclose" class="secondary" title="Close the device panel">✕</button>
+        <div class="devoverlay" id="devpanel" style="display:none">
+          <div class="devdialog">
+            <div class="row" style="justify-content:space-between">
+              <span class="lbl" id="devtitle"></span>
+              <span>
+                <button id="devfull" class="secondary" style="display:none"
+                  title="Open the dashboard view configured for this device">⤢ dashboard</button>
+                <button id="devclose" class="secondary" title="Close">✕</button>
+              </span>
+            </div>
+            <div id="devhost"></div>
           </div>
-          <div id="devhost"></div>
         </div>
       </ha-card>`;
 
@@ -1142,10 +1170,25 @@ class RamsesFloorplanActions extends HTMLElement {
       }
     };
     this._fillZoneDevices();
-    $('devclose').onclick = () => {
+    const closePanel = () => {
       $('devpanel').style.display = 'none';
       this._devCard = null;
     };
+    $('devclose').onclick = closePanel;
+    $('devpanel').onclick = (e) => {
+      if (e.target.id === 'devpanel') closePanel();
+    };
+    $('devfull').onclick = () => {
+      const url = this._tweak('device_view_url');
+      if (url) {
+        closePanel();
+        this._navigate(url);
+      }
+    };
+    const twDevView = $('tw-devview');
+    twDevView.value = this._tweak('device_view_url') || '';
+    twDevView.onchange = () =>
+      this._saveTweak('device_view_url', twDevView.value || undefined);
 
     this._fillProjectSelect();
 
