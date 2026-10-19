@@ -48,19 +48,24 @@ floors:                        # optional; needed for seed with >1 floor
   begane grond: plattegrond-bg.svg
   1e verdieping: plattegrond-1e.svg
 marker_size: 20                # optional (default 20)
-sync_on_drop: true             # optional — run sync_areas after a drop
+sync_on_pull: true             # optional — also sync areas after pull
 ```
 
-Buttons: **Open studio** / **Open editor** (navigate to the configured
-tool URLs), **Seed markers** (`seed_studio` + copies project JSON to
-clipboard), **Export bundle** (`floorplan_export` + copies card_yaml),
-**Sync areas** (`sync_areas` on the stored project).
+**The key trick**: studio keeps its projects in this origin's IndexedDB
+(`floorplan-studio` db) and autosaves ~600ms after every change — so the
+card reads/writes studio storage directly. No export/download needed:
 
-**Drop zone** — drop studio's *Export JSON* file onto the card: it calls
-`floorplan_store_project` (writes `config/ramses_extras/floorplan/
-projects/latest.json` + a timestamped backup) then `floorplan_sync_areas`.
-This is the canonical way to get a studio export into HA — the Downloads
-copy and its `file(1).json` clutter can be ignored.
+- **Project picker** lists studio's own projects (current one marked)
+- **Pull ← studio** → stores it as `latest.json` + timestamped backup
+  (`floorplan_store_project`), then runs `floorplan_sync_areas`
+- **Seed → studio** → `seed_studio`, then writes the result *into*
+  studio's project list — open it via Projects (no Import JSON needed)
+- **Open studio** / **Open editor** — navigate to the configured tool URLs
+- **Export bundle** — `floorplan_export`, copies `card_yaml` to clipboard
+- **Sync areas** — `sync_areas` on the stored project
+
+**Drop zone** — fallback for a project JSON from another machine or a
+backup file (e.g. migrating to prod): stores + syncs it the same way.
 
 ## Workflows
 
@@ -92,11 +97,11 @@ first floor's canvas** (`staging: false` to skip). Drag them into rooms.
 ### W3 — Assign areas by dragging (studio → HA)
 
 1. In studio, drag markers into rooms.
-2. Projects → **Export JSON** (browser download — ignore the file).
-3. **Drop that file on the actions card** → it is stored as
-   `latest.json` (+ timestamped backup) and `floorplan_sync_areas` runs:
-   each marker inside a room → that entity's `area_id` = the room slug;
-   missing areas are created. (`dry_run: true` previews via Dev Tools.)
+2. Click **Pull ← studio** on the actions card → the project is read
+   straight from studio storage, saved as `latest.json` (+ timestamped
+   backup) and `floorplan_sync_areas` runs: each marker inside a room →
+   that entity's `area_id` = the room slug; missing areas are created.
+   (`dry_run: true` previews via Dev Tools.)
 
 ### W4 — Daily editing loop
 

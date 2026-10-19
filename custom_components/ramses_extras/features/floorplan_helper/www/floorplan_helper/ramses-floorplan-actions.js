@@ -4,23 +4,28 @@
  * Companion bar for floorplan-studio: full-width card meant to sit
  * below (or above) the studio card on the same view.
  *
+ * Studio stores its projects in this origin's IndexedDB
+ * (db 'floorplan-studio', store 'projects', meta 'lastProjectId') and
+ * autosaves ~600ms after every change — so this card can pull the live
+ * project and push seeded projects with no export/download round-trip:
+ *
+ *   - Project picker lists studio's own projects; "Pull" stores it
+ *     server-side (latest.json + backup) and syncs HA areas
+ *   - "Seed markers" runs floorplan_seed_studio and writes the result
+ *     back into studio's project list (open it via Projects)
  *   - "Open studio" / "Open editor" navigate to the configured tool URLs
- *   - "Seed markers" runs floorplan_seed_studio and copies the emitted
- *     project JSON to the clipboard (paste into studio → Import JSON)
  *   - "Export bundle" runs floorplan_export and copies card_yaml
- *   - "Sync areas" runs floorplan_sync_areas on the stored project
- *   - Drop zone: drop a studio "Export JSON" file — it is stored
- *     server-side (latest.json + timestamped backup) and, unless
- *     sync_on_drop: false, synced into HA areas.
+ *   - Drop zone: fallback for JSON files from another machine/backup
  *
  * Config (all optional):
  *   floors: {begane grond: plattegrond-bg.svg, ...}  floor name → SVG ref
  *   marker_size: 20
- *   sync_on_drop: true
+ *   sync_on_pull: true   (also sync HA areas after pull/store)
  *   studio_url: /floorplan-studio   (fallback: floorplan options)
  */
 
 const DOMAIN = 'ramses_extras';
+const FP_DB = 'floorplan-studio';
 
 const STYLE = `
   :host { display: block; }
@@ -36,6 +41,12 @@ const STYLE = `
   button.secondary { background: var(--secondary-background-color, #eee);
                      color: var(--primary-text-color); }
   button:disabled { opacity: 0.5; cursor: default; }
+  select {
+    font-size: 13px; padding: 5px; border-radius: 6px;
+    border: 1px solid var(--divider-color, #ccc);
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color); max-width: 220px;
+  }
   .drop {
     margin-top: 10px; border: 2px dashed var(--divider-color, #ccc);
     border-radius: 8px; padding: 10px; text-align: center;
@@ -48,6 +59,23 @@ const STYLE = `
   input[type=file] { display: none; }
 `;
 
+// --- minimal IndexedDB helpers (studio's 'floorplan-studio' db) -----------
+
+function openFpDb() {
+  return new Promise((resolve, reject) => {
+    const req = window.indexedDB.open(FP_DB);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+  });
+}
+
+function idbReq(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('IndexedDB request failed'));
+  });
+}
+
 class RamsesFloorplanActions extends HTMLElement {
   constructor() {
     super();
@@ -55,6 +83,7 @@ class RamsesFloorplanActions extends HTMLElement {
     this._config = {};
     this._hass = null;
     this._fpConfig = null;
+    this._projects = [];   // studio projects [{id, name, updatedAt}]
     this._busy = false;
   }
 
@@ -67,11 +96,12 @@ class RamsesFloorplanActions extends HTMLElement {
     this._hass = hass;
     if (!this._fpConfig && hass) {
       this._fetchConfig();
+      this._refreshProjects();
     }
   }
 
   getCardSize() {
-    return 2;
+    return 3;
   }
 
   static getConfigElement() {
@@ -89,6 +119,44 @@ class RamsesFloorplanActions extends HTMLElement {
       });
     } catch {
       this._fpConfig = {};
+    }
+  }
+
+  async _refreshProjects() {
+    try {
+      const db = await openFpDb();
+      const all = await idbReq(
+        db.transaction('projects').objectStore('projects').getAll()
+      );
+      const lastId = await idbReq(
+        db.transaction('meta').objectStore('meta').get('lastProjectId')
+      );
+      db.close();
+      this._projects = (all || [])
+        .map((p) => ({ id: p.id, name: p.name || p.id, last: p.id === lastId }))
+        .sort((a, b) => (b.last ? 1 : 0) - (a.last ? 1 : 0));
+    } catch {
+      this._projects = [];
+    }
+    this._fillProjectSelect();
+  }
+
+  _fillProjectSelect() {
+    const sel = this.shadowRoot.getElementById('project');
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (!this._projects.length) {
+      const o = document.createElement('option');
+      o.textContent = '(no studio project found)';
+      o.value = '';
+      sel.appendChild(o);
+      return;
+    }
+    for (const p of this._projects) {
+      const o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = p.name + (p.last ? ' (current)' : '');
+      sel.appendChild(o);
     }
   }
 
@@ -124,7 +192,7 @@ class RamsesFloorplanActions extends HTMLElement {
     window.dispatchEvent(new CustomEvent('location-changed'));
   }
 
-  async _run(btn, fn) {
+  async _run(fn) {
     if (this._busy) return;
     this._busy = true;
     this._setDisabled(true);
@@ -147,6 +215,35 @@ class RamsesFloorplanActions extends HTMLElement {
     if (el) el.textContent = text;
   }
 
+  _selectedProjectId() {
+    const sel = this.shadowRoot.getElementById('project');
+    return sel && sel.value ? sel.value : null;
+  }
+
+  async _pull() {
+    const id = this._selectedProjectId();
+    if (!id) { this._status('No studio project selected'); return; }
+    const db = await openFpDb();
+    const project = await idbReq(
+      db.transaction('projects').objectStore('projects').get(id)
+    );
+    db.close();
+    if (!project) { this._status('Project not found in studio storage'); return; }
+    await this._storeAndSync(JSON.stringify(project), `pulled '${project.name || id}'`);
+  }
+
+  async _pushToStudio(projectJson) {
+    const project = JSON.parse(projectJson);
+    project.id = project.id || `seed-${Date.now()}`;
+    project.updatedAt = Date.now();
+    const db = await openFpDb();
+    await idbReq(
+      db.transaction('projects', 'readwrite').objectStore('projects').put(project)
+    );
+    db.close();
+    return project;
+  }
+
   async _seed() {
     const data = {};
     if (this._config.floors) data.floors = this._config.floors;
@@ -155,9 +252,14 @@ class RamsesFloorplanActions extends HTMLElement {
     const placed = Object.keys(r.placed || {}).length;
     const unplaced = (r.unplaced || []).length;
     if (r.project_json) {
-      this._copy(r.project_json,
-        `Seeded: ${placed} placed, ${unplaced} parked. Project JSON`);
-      this._status(`Seeded: ${placed} placed, ${unplaced} parked — project JSON copied to clipboard. Import via Projects → Import JSON in studio.`);
+      try {
+        const p = await this._pushToStudio(r.project_json);
+        this._status(`Seeded: ${placed} placed, ${unplaced} parked — written to studio as '${p.name}'. Open it via Projects.`);
+      } catch {
+        this._copy(r.project_json, 'Project JSON');
+        this._status(`Seeded: ${placed} placed, ${unplaced} parked — could not write to studio storage; JSON copied to clipboard instead.`);
+      }
+      this._refreshProjects();
     } else {
       this._status(`Seeded: ${placed} placed, ${unplaced} parked`);
     }
@@ -175,23 +277,33 @@ class RamsesFloorplanActions extends HTMLElement {
 
   async _sync() {
     const r = await this._call('floorplan_sync_areas', {});
+    this._status(this._syncSummary(r));
+  }
+
+  _syncSummary(r) {
     const a = r.assignments || [];
     const c = r.areas_created || [];
     const o = r.entities_without_area_room || [];
-    this._status(`Sync: ${a.length} entities assigned, ${c.length} areas created` +
+    return `Sync: ${a.length} entities assigned, ${c.length} areas created` +
       (o.length ? `, ${o.length} outside rooms` : '') +
-      (r.backup_path ? `\nbackup: ${r.backup_path}` : ''));
+      (r.backup_path ? `\nbackup: ${r.backup_path}` : '');
   }
 
-  async _storeAndSync(text) {
+  async _storeAndSync(text, via) {
     const r = await this._call('floorplan_store_project', { project_json: text });
-    let msg = `Project stored: ${r.latest_path}`;
-    if (this._config.sync_on_drop !== false) {
+    let msg = `Project ${via || 'stored'}: ${r.latest_path}`;
+    if (this._config.sync_on_pull !== false) {
       const s = await this._call('floorplan_sync_areas', {});
-      msg += `\nSync: ${(s.assignments || []).length} entities assigned, ` +
-        `${(s.areas_created || []).length} areas created`;
+      msg += `\n${this._syncSummary(s)}`;
     }
     this._status(msg);
+  }
+
+  _readFile(file) {
+    const reader = new window.FileReader();
+    reader.onload = () =>
+      this._run(() => this._storeAndSync(String(reader.result || ''), `file '${file.name}'`));
+    reader.readAsText(file);
   }
 
   _render() {
@@ -201,13 +313,15 @@ class RamsesFloorplanActions extends HTMLElement {
         <div class="title">Floorplan</div>
         <div class="row">
           <button id="b-studio">Open studio</button>
-          <button id="b-editor" class="secondary">Open editor</button>
-          <button id="b-seed" class="secondary">Seed markers</button>
+          <select id="project" title="Studio project"></select>
+          <button id="b-pull" class="secondary">Pull ← studio</button>
+          <button id="b-seed" class="secondary">Seed → studio</button>
           <button id="b-export" class="secondary">Export bundle</button>
           <button id="b-sync" class="secondary">Sync areas</button>
         </div>
         <div class="drop" id="drop">
-          Drop studio project JSON here (or click to browse)
+          Drop a studio project JSON here (or click to browse) — fallback
+          for files from another machine or backup
           <input id="file" type="file" accept=".json,application/json">
         </div>
         <div class="status" id="status"></div>
@@ -216,11 +330,11 @@ class RamsesFloorplanActions extends HTMLElement {
     const $ = (id) => this.shadowRoot.getElementById(id);
     $('b-studio').onclick = () =>
       this._navigate(this._config.studio_url || (this._fpConfig || {}).planner_url || '/floorplan-studio');
-    $('b-editor').onclick = () =>
-      this._navigate(this._config.editor_url || (this._fpConfig || {}).editor_url);
-    $('b-seed').onclick = () => this._run(null, () => this._seed());
-    $('b-export').onclick = () => this._run(null, () => this._export());
-    $('b-sync').onclick = () => this._run(null, () => this._sync());
+    $('b-pull').onclick = () => this._run(() => this._pull());
+    $('b-seed').onclick = () => this._run(() => this._seed());
+    $('b-export').onclick = () => this._run(() => this._export());
+    $('b-sync').onclick = () => this._run(() => this._sync());
+    this._fillProjectSelect();
 
     const drop = $('drop');
     const file = $('file');
@@ -239,13 +353,6 @@ class RamsesFloorplanActions extends HTMLElement {
       if (f) this._readFile(f);
     };
   }
-
-  _readFile(file) {
-    const reader = new window.FileReader();
-    reader.onload = () =>
-      this._run(null, () => this._storeAndSync(String(reader.result || '')));
-    reader.readAsText(file);
-  }
 }
 
 customElements.define('ramses-floorplan-actions', RamsesFloorplanActions);
@@ -254,5 +361,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'ramses-floorplan-actions',
   name: 'Ramses Floorplan Actions',
-  description: 'Action bar + project drop zone for floorplan-studio workflows',
+  description: 'Action bar + studio project bridge for floorplan-studio workflows',
 });
