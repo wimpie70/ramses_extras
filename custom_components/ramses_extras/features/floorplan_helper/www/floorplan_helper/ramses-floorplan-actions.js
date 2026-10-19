@@ -81,6 +81,21 @@ const STYLE = `
 
 const TWEAKS_KEY = 'ramses-floorplan-actions-tweaks';
 
+// Lovelace renders cards inside nested shadow roots (hui-card etc.), so
+// a plain document.querySelector can't reach sibling cards — walk the
+// shadow tree instead.
+function deepFind(selector, root = document) {
+  const direct = root.querySelector(selector);
+  if (direct) return direct;
+  for (const el of root.querySelectorAll('*')) {
+    if (el.shadowRoot) {
+      const hit = deepFind(selector, el.shadowRoot);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
 // --- minimal IndexedDB helpers (studio's 'floorplan-studio' db) -----------
 
 function openFpDb() {
@@ -264,7 +279,7 @@ class RamsesFloorplanActions extends HTMLElement {
   // --- reach into the studio card: selection + in-memory marker state ----
 
   _studioRoot() {
-    const el = document.querySelector('floorplan-studio-card');
+    const el = deepFind('floorplan-studio-card');
     return el && el.shadowRoot ? el.shadowRoot : null;
   }
 
@@ -365,7 +380,12 @@ class RamsesFloorplanActions extends HTMLElement {
       return;
     }
     if (!sel.length) {
-      this._status('No markers selected in studio (switch to edit mode, select with the select tool)');
+      const layer = this._studioRoot().querySelector('g[data-layer="entities"]');
+      const total = layer ? layer.children.length : 0;
+      this._status(
+        `No selected markers found (${total} marker(s) on canvas). ` +
+          'In studio: pick the select tool in edit mode and click a marker — a dashed blue ring appears around the selection.'
+      );
       return;
     }
 
