@@ -683,7 +683,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 ]
                 floors_json[0]["markers"].extend(staging_markers)
             project = build_studio_project(
-                _config_entry(hass).title or "Floorplan", floors_json
+                call.data.get("name") or "Floorplan", floors_json
             )
         project_out = json.dumps(project)
         backup_path = await hass.async_add_executor_job(
@@ -854,6 +854,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Optional("project_json"): cv.string,
                     vol.Optional("staging", default=True): cv.boolean,
                     vol.Optional("marker_size", default=20): cv.positive_int,
+                    vol.Optional("name"): cv.string,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),

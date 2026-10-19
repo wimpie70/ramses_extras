@@ -566,6 +566,14 @@ floorplan_seed_studio:
           min: 8
           max: 80
           mode: box
+    name:
+      name: Project Name
+      description: >-
+        Name for the generated studio project (only used when not merging
+        into project_json).
+      required: false
+      selector:
+        text:
 
 floorplan_store_project:
   name: Store Studio Project

@@ -30,9 +30,12 @@ const FP_DB = 'floorplan-studio';
 const STYLE = `
   :host { display: block; }
   ha-card { padding: 12px 16px; }
-  .title { font-size: 15px; font-weight: 600; margin-bottom: 8px;
+  .title { font-size: 15px; font-weight: 600;
            color: var(--primary-text-color); }
+  .hint { font-size: 12px; color: var(--secondary-text-color);
+          margin: 4px 0 8px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .lbl { font-size: 13px; color: var(--secondary-text-color); }
   button {
     background: var(--primary-color); color: var(--text-primary-color, #fff);
     border: none; border-radius: 6px; padding: 7px 14px; cursor: pointer;
@@ -248,6 +251,7 @@ class RamsesFloorplanActions extends HTMLElement {
     const data = {};
     if (this._config.floors) data.floors = this._config.floors;
     if (this._config.marker_size) data.marker_size = this._config.marker_size;
+    if (this._config.seed_name) data.name = this._config.seed_name;
     const r = await this._call('floorplan_seed_studio', data);
     const placed = Object.keys(r.placed || {}).length;
     const unplaced = (r.unplaced || []).length;
@@ -311,15 +315,27 @@ class RamsesFloorplanActions extends HTMLElement {
       <style>${STYLE}</style>
       <ha-card>
         <div class="title">Floorplan</div>
-        <div class="row">
-          <button id="b-studio">Open studio</button>
-          <select id="project" title="Studio project"></select>
-          <button id="b-pull" class="secondary">Pull ← studio</button>
-          <button id="b-seed" class="secondary">Seed → studio</button>
-          <button id="b-export" class="secondary">Export bundle</button>
-          <button id="b-sync" class="secondary">Sync areas</button>
+        <div class="hint">
+          Bridge between floorplan-studio and Home Assistant — pull the
+          drawing into HA areas, or seed device markers back into studio.
         </div>
-        <div class="drop" id="drop">
+        <div class="row">
+          <button id="b-studio"
+            title="Open the floorplan-studio editor (planner_url from your floorplan settings)">Open studio</button>
+          <span class="lbl">studio project:</span>
+          <select id="project"
+            title="Projects stored in floorplan-studio (this browser). The one studio is currently editing is marked (current)."></select>
+          <button id="b-pull" class="secondary"
+            title="Read the selected project straight from studio (it autosaves ~0.6s after each change), store it as latest.json + backup, and sync marker positions into HA areas">Pull ← studio</button>
+          <button id="b-seed" class="secondary"
+            title="Pre-place a marker for every device whose HA area matches a room (at the room's centre), park unassigned devices below the canvas, and write the result into studio's project list">Seed → studio</button>
+          <button id="b-export" class="secondary"
+            title="Regenerate the ha-floorplan bundle (SVG + rules + CSS) and copy the dashboard card YAML to your clipboard">Export bundle</button>
+          <button id="b-sync" class="secondary"
+            title="Re-run area sync on the stored project: marker-in-room → entity area_id, missing areas created">Sync areas</button>
+        </div>
+        <div class="drop" id="drop"
+          title="For project files from another machine or a backup — this browser's studio is already reachable via Pull">
           Drop a studio project JSON here (or click to browse) — fallback
           for files from another machine or backup
           <input id="file" type="file" accept=".json,application/json">
