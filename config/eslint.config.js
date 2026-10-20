@@ -65,6 +65,7 @@ export default [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         fetch: 'readonly',
+        FileReader: 'readonly',
 
         // Home Assistant globals
         hass: 'readonly',

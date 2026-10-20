@@ -55,7 +55,11 @@ from .const import (
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
 )
-from .generator import async_generate_bundle, build_toolbar_svg
+from .generator import (
+    async_generate_bundle,
+    build_toolbar_svg,
+    strip_toolbar,
+)
 from .importer import (
     backup_project,
     build_studio_project,
@@ -104,7 +108,7 @@ NOTIFICATION_ID = "ramses_extras_floorplan_export"
 _TOOLBAR_W = 5 * 34  # five 26px buttons spaced 34px
 
 
-def _inject_toolbar(svg_text: str) -> str:
+def _inject_toolbar(svg_text: str, options: dict[str, Any] | None = None) -> str:
     """Append the toolbar ``<g>`` before ``</svg>``, placed bottom-right.
 
     Position derives from the viewBox when present; falls back to a fixed
@@ -116,7 +120,7 @@ def _inject_toolbar(svg_text: str) -> str:
         vb_w, vb_h = float(m.group(1)), float(m.group(2))
         x = max(0, vb_w - _TOOLBAR_W - 8)
         y = max(0, vb_h - 32)
-    snippet = f'<g transform="translate({x:g},{y:g})">{build_toolbar_svg()}</g>'
+    snippet = f'<g transform="translate({x:g},{y:g})">{build_toolbar_svg(options)}</g>'
     if "</svg>" in svg_text:
         return svg_text.replace("</svg>", snippet + "\n</svg>", 1)
     return svg_text + "\n" + snippet
@@ -420,11 +424,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # External tools (e.g. floorplan-studio) rebuild the SVG from their
         # own model, so our toolbar elements are lost — re-inject them
         # bottom-right so the export/import/upload round-trip survives.
+        # An existing toolbar is stripped first so the current button
+        # set + tooltips replace any stale copy.
         section = get_floorplan_options(_config_entry(hass))
-        if section.get(OPTION_TOOLBAR_ENABLED, True) and (
-            "floorplan.toolbar" not in svg_text
-        ):
-            svg_text = _inject_toolbar(svg_text)
+        if section.get(OPTION_TOOLBAR_ENABLED, True):
+            svg_text = _inject_toolbar(strip_toolbar(svg_text), section)
 
         out_dir = (
             Path(hass.config.config_dir)

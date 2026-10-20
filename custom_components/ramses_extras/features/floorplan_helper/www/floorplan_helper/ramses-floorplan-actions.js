@@ -1397,11 +1397,9 @@ async function _fpDeviceViewUrl(hass) {
   return _fpPopView;
 }
 
-async function _openGlobalDevicePopup(detail) {
-  const hass = _fpHass();
-  if (!hass) return;
-  const deviceId = detail.ramses_device_id;
-
+// Create-or-reuse the shared overlay shell; returns the .host element
+// ready for content. Hides the "⤢ dashboard" button by default.
+function _fpPopupShell() {
   let pop = document.getElementById(FP_POPUP_ID);
   if (!pop) {
     pop = document.createElement('div');
@@ -1430,6 +1428,22 @@ async function _openGlobalDevicePopup(detail) {
           border-radius: 6px; color: inherit; cursor: pointer;
           padding: 3px 8px; font-size: 12px;
         }
+        #${FP_POPUP_ID} textarea {
+          width: 100%; box-sizing: border-box; min-height: 140px;
+          background: var(--secondary-background-color, transparent);
+          color: inherit; border: 1px solid var(--divider-color, #ccc);
+          border-radius: 6px; font-family: monospace; font-size: 11px;
+          padding: 6px; margin-bottom: 6px;
+        }
+        #${FP_POPUP_ID} input[type='text'], #${FP_POPUP_ID} input[type='file'] {
+          width: 100%; box-sizing: border-box; color: inherit;
+          border: 1px solid var(--divider-color, #ccc); border-radius: 6px;
+          padding: 4px 6px; margin-bottom: 6px; background: transparent;
+        }
+        #${FP_POPUP_ID} .msg { font-size: 12px; margin: 4px 0; }
+        #${FP_POPUP_ID} .err { font-size: 12px; margin: 4px 0; color: #e53935; }
+        #${FP_POPUP_ID} .warn { font-size: 11px; margin: 2px 0; opacity: 0.75; }
+        #${FP_POPUP_ID} .ybtn { margin: 2px 6px 2px 0; }
       </style>
       <div class="dlg">
         <div class="head">
@@ -1454,14 +1468,165 @@ async function _openGlobalDevicePopup(detail) {
     });
     document.body.appendChild(pop);
   }
+  pop.querySelector('.view').style.display = 'none';
+  const host = pop.querySelector('.host');
+  host.innerHTML = '';
+  _fpPopCard = null;
+  if (_fpPopHassTimer) {
+    clearInterval(_fpPopHassTimer);
+    _fpPopHassTimer = null;
+  }
+  return pop;
+}
 
+async function _fpCallService(service, data) {
+  const hass = _fpHass();
+  if (!hass) throw new Error('hass not ready');
+  const r = await hass.callWS({
+    type: 'call_service',
+    domain: DOMAIN,
+    service,
+    service_data: data || {},
+    return_response: true,
+  });
+  return (r && r.response) || {};
+}
+
+// Dialogs for the in-SVG toolbar buttons — export/import/upload need a
+// response or user input, so they run through ll-custom rather than a
+// plain call-service/navigate rule.
+async function _openFpActionDialog(action) {
+  const titles = {
+    export: 'Export floorplan bundle',
+    import: 'Import floorplan YAML',
+    upload: 'Upload SVG',
+  };
+  const pop = _fpPopupShell();
+  pop.querySelector('.lbl').textContent = titles[action] || action;
+  const host = pop.querySelector('.host');
+  if (action === 'export') _fpExportDialog(host);
+  else if (action === 'import') _fpImportDialog(host);
+  else if (action === 'upload') _fpUploadDialog(host);
+}
+
+function _fpMsg(host, text, cls) {
+  const div = document.createElement('div');
+  div.className = cls || 'msg';
+  div.textContent = text;
+  host.appendChild(div);
+  return div;
+}
+
+async function _fpExportDialog(host) {
+  _fpMsg(host, 'Exporting…');
+  try {
+    const r = await _fpCallService('floorplan_export', {});
+    host.innerHTML = '';
+    const files = r.files_written || {};
+    _fpMsg(
+      host,
+      `Wrote ${Object.keys(files).length} file(s) to /local/ramses_extras/floorplan/generated/`
+    );
+    for (const w of r.warnings || []) _fpMsg(host, w, 'warn');
+    const yamls =
+      r.card_yamls || (r.card_yaml ? { default: r.card_yaml } : {});
+    for (const [stem, yml] of Object.entries(yamls)) {
+      const b = document.createElement('button');
+      b.className = 'ybtn';
+      b.textContent = `⧉ ${stem}`;
+      b.addEventListener('click', () => {
+        navigator.clipboard.writeText(yml).then(
+          () => {
+            b.textContent = `✓ ${stem}`;
+          },
+          () => {
+            b.textContent = `⧉ ${stem} — copy failed`;
+          }
+        );
+      });
+      host.appendChild(b);
+    }
+  } catch (e) {
+    host.innerHTML = '';
+    _fpMsg(host, `Export failed: ${(e && e.message) || e}`, 'err');
+  }
+}
+
+function _fpImportDialog(host) {
+  const ta = document.createElement('textarea');
+  ta.placeholder = 'Paste floorplan YAML (element bindings / extra rules)…';
+  host.appendChild(ta);
+  const b = document.createElement('button');
+  b.textContent = 'Import';
+  host.appendChild(b);
+  const out = _fpMsg(host, '', 'msg');
+  b.addEventListener('click', async () => {
+    out.textContent = 'Importing…';
+    try {
+      const r = await _fpCallService('floorplan_import', {
+        yaml_text: ta.value,
+      });
+      out.textContent =
+        `Imported ${r.bindings_imported || 0} binding(s), ` +
+        `${r.rules_kept || 0} rule(s) kept`;
+      for (const w of r.warnings || []) _fpMsg(host, w, 'warn');
+    } catch (e) {
+      out.className = 'err';
+      out.textContent = `Import failed: ${(e && e.message) || e}`;
+    }
+  });
+}
+
+function _fpUploadDialog(host) {
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.placeholder = 'filename.svg (optional — defaults to the file name)';
+  host.appendChild(name);
+  const file = document.createElement('input');
+  file.type = 'file';
+  file.accept = '.svg,image/svg+xml';
+  host.appendChild(file);
+  const b = document.createElement('button');
+  b.textContent = 'Upload';
+  host.appendChild(b);
+  const out = _fpMsg(host, '', 'msg');
+  b.addEventListener('click', () => {
+    const f = file.files && file.files[0];
+    if (!f) {
+      out.className = 'err';
+      out.textContent = 'Pick an SVG file first';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      out.className = 'msg';
+      out.textContent = 'Uploading…';
+      try {
+        const r = await _fpCallService('floorplan_upload_svg', {
+          filename: name.value || f.name,
+          svg_text: String(reader.result || ''),
+        });
+        out.textContent = `Written: ${r.path || r.filename || 'ok'}`;
+      } catch (e) {
+        out.className = 'err';
+        out.textContent = `Upload failed: ${(e && e.message) || e}`;
+      }
+    };
+    reader.readAsText(f);
+  });
+}
+
+async function _openGlobalDevicePopup(detail) {
+  const hass = _fpHass();
+  if (!hass) return;
+  const deviceId = detail.ramses_device_id;
+
+  const pop = _fpPopupShell();
   pop.querySelector('.lbl').textContent = deviceId;
   const viewUrl = await _fpDeviceViewUrl(hass);
   pop.querySelector('.view').style.display = viewUrl ? '' : 'none';
 
   const host = pop.querySelector('.host');
-  host.innerHTML = '';
-  _fpPopCard = null;
 
   if (detail.ramses_card === 'hvac-fan') {
     if (!customElements.get('hvac-fan-card')) {
@@ -1554,6 +1719,7 @@ window.addEventListener('ll-custom', (ev) => {
   const d = ev && ev.detail;
   if (d && d.ramses_device_id) _openGlobalDevicePopup(d);
   if (d && d.ramses_zone_sync) _fpZoneSync(ev, d.ramses_zone_sync);
+  if (d && d.ramses_fp_action) _openFpActionDialog(d.ramses_fp_action);
 });
 
 window.customCards = window.customCards || [];

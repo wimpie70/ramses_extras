@@ -246,17 +246,32 @@ class TestToolbar:
     def test_toolbar_rules_emitted(self):
         rules = generator._build_rules(_model(), _options())
         by_element = {r.get("element"): r for r in rules if "element" in r}
-        assert by_element[TOOLBAR_ELEMENT_EXPORT]["tap_action"]["service"] == (
-            "ramses_extras.floorplan_export"
-        )
-        assert by_element[TOOLBAR_ELEMENT_IMPORT]["tap_action"][
-            "navigation_path"
-        ].endswith("floorplan_import")
-        assert by_element[TOOLBAR_ELEMENT_UPLOAD]["tap_action"][
-            "navigation_path"
-        ].endswith("floorplan_upload_svg")
+        # export/import/upload go through ll-custom so the module-level
+        # listener can run dialogs (file picker, results, copy buttons)
+        for element_id, action in (
+            (TOOLBAR_ELEMENT_EXPORT, "export"),
+            (TOOLBAR_ELEMENT_IMPORT, "import"),
+            (TOOLBAR_ELEMENT_UPLOAD, "upload"),
+        ):
+            tap = by_element[element_id]["tap_action"]
+            assert tap["action"] == "fire-dom-event"
+            assert tap["ramses_fp_action"] == action
         assert by_element[TOOLBAR_ELEMENT_EDITOR]["tap_action"]["action"] == "url"
         assert by_element[TOOLBAR_ELEMENT_PLANNER]["tap_action"]["action"] == "url"
+
+    def test_toolbar_planner_deduped_when_same_url(self):
+        # planner button is skipped when it resolves to the editor URL
+        rules = generator._build_rules(
+            _model(), _options(planner_url=None, editor_url=None)
+        )
+        by_element = {r.get("element"): r for r in rules if "element" in r}
+        same = generator._build_rules(
+            _model(),
+            _options(editor_url="/studio", planner_url="/studio"),
+        )
+        same_elements = {r.get("element") for r in same}
+        assert TOOLBAR_ELEMENT_PLANNER not in same_elements
+        assert TOOLBAR_ELEMENT_PLANNER in by_element
 
     def test_toolbar_disabled(self):
         rules = generator._build_rules(_model(), _options(toolbar_enabled=False))

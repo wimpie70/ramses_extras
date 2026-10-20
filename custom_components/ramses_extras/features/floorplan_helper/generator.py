@@ -575,9 +575,44 @@ def build_overlay_fragment(
         tx = max(0.0, vb_w - 5 * 34 - 8)
         ty = max(0.0, vb_h - 32)
         parts.append(
-            f'<g transform="translate({tx:.0f},{ty:.0f})">{build_toolbar_svg()}</g>'
+            f'<g transform="translate({tx:.0f},{ty:.0f})">'
+            f"{build_toolbar_svg(options)}</g>"
         )
     return "\n".join(parts), warnings
+
+
+def strip_toolbar(svg_text: str) -> str:
+    """Remove a previously injected toolbar group (and its translate
+    wrapper) so a fresh one — current button set + tooltips — can be
+    re-injected. Balances ``<g …>/</g>`` pairs since the group contains
+    nested button groups.
+    """
+    out = svg_text
+    while True:
+        i = out.find('<g id="floorplan.toolbar"')
+        if i < 0:
+            return out
+        depth, j = 1, i
+        while depth:
+            nxt_open = out.find("<g ", j)
+            nxt_close = out.find("</g>", j)
+            if nxt_close < 0:
+                return out  # malformed — leave untouched
+            if 0 <= nxt_open < nxt_close:
+                depth += 1
+                j = nxt_open + 1
+            else:
+                depth -= 1
+                j = nxt_close + 4
+        end = j
+        start = i
+        before = out[:i]
+        m = re.search(r'<g transform="[^"]*">\s*$', before)
+        if m:
+            start = m.start()
+            while end < len(out) and out[end] in " \t\n":
+                end += 1
+        out = out[:start] + out[end:]
 
 
 def _slugify(value: Any) -> str:
@@ -704,7 +739,9 @@ def build_elements_svg(model: dict[str, Any], options: dict[str, Any]) -> str:
         parts.append("</g>")
 
     if options.get(OPTION_TOOLBAR_ENABLED, True):
-        parts.append(f'<g transform="translate(770,605)">{build_toolbar_svg()}</g>')
+        parts.append(
+            f'<g transform="translate(770,605)">{build_toolbar_svg(options)}</g>'
+        )
 
     parts.extend(["</g>", "</svg>"])
     return "\n".join(parts)
@@ -930,32 +967,30 @@ def _build_toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
     """
     if not options.get(OPTION_TOOLBAR_ENABLED, True):
         return []
-    domain_action = "ramses_extras"
-    return [
+    rules: list[dict[str, Any]] = [
+        # export/import/upload need service data or a response — they go
+        # through ll-custom so the module-level listener can show real
+        # dialogs (file picker, results, copy buttons) instead of just
+        # dumping the user on the developer-tools page
         {
             "element": TOOLBAR_ELEMENT_EXPORT,
             "tap_action": {
-                "action": "call-service",
-                "service": f"{domain_action}.floorplan_export",
+                "action": "fire-dom-event",
+                "ramses_fp_action": "export",
             },
         },
         {
             "element": TOOLBAR_ELEMENT_IMPORT,
             "tap_action": {
-                "action": "navigate",
-                "navigation_path": (
-                    f"/developer-tools/action?action={domain_action}.floorplan_import"
-                ),
+                "action": "fire-dom-event",
+                "ramses_fp_action": "import",
             },
         },
         {
             "element": TOOLBAR_ELEMENT_UPLOAD,
             "tap_action": {
-                "action": "navigate",
-                "navigation_path": (
-                    "/developer-tools/action?"
-                    f"action={domain_action}.floorplan_upload_svg"
-                ),
+                "action": "fire-dom-event",
+                "ramses_fp_action": "upload",
             },
         },
         {
@@ -964,35 +999,49 @@ def _build_toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
                 options.get(OPTION_EDITOR_URL) or DEFAULT_EDITOR_URL
             ),
         },
-        {
-            "element": TOOLBAR_ELEMENT_PLANNER,
-            "tap_action": _link_action(
-                options.get(OPTION_PLANNER_URL) or DEFAULT_PLANNER_URL
-            ),
-        },
     ]
+    if _planner_url(options) != _editor_url(options):
+        rules.append(
+            {
+                "element": TOOLBAR_ELEMENT_PLANNER,
+                "tap_action": _link_action(_planner_url(options)),
+            }
+        )
+    return rules
 
 
-def build_toolbar_svg() -> str:
+def _editor_url(options: dict[str, Any]) -> str:
+    return str(options.get(OPTION_EDITOR_URL) or DEFAULT_EDITOR_URL)
+
+
+def _planner_url(options: dict[str, Any]) -> str:
+    return str(options.get(OPTION_PLANNER_URL) or DEFAULT_PLANNER_URL)
+
+
+def build_toolbar_svg(options: dict[str, Any] | None = None) -> str:
     """Return the toolbar ``<g>`` snippet — paste once into a custom SVG.
 
-    Five 26px glyph buttons spaced 34px apart, styled via the
-    ``rx-toolbar*`` classes in ramses-floorplan.css. Wrap coordinates
-    with a ``transform="translate(x,y)"`` to position it.
+    Up to five 26px glyph buttons spaced 34px apart, styled via the
+    ``rx-toolbar*`` classes in ramses-floorplan.css; each carries a
+    ``<title>`` tooltip. Wrap coordinates with a
+    ``transform="translate(x,y)"`` to position it. The planner button is
+    skipped when it resolves to the same URL as the editor button.
     """
-    glyphs = (
-        (TOOLBAR_ELEMENT_EXPORT, "↻"),
-        (TOOLBAR_ELEMENT_IMPORT, "⇣"),
-        (TOOLBAR_ELEMENT_UPLOAD, "⇡"),
-        (TOOLBAR_ELEMENT_EDITOR, "⛓"),
-        (TOOLBAR_ELEMENT_PLANNER, "✎"),
-    )
+    glyphs = [
+        (TOOLBAR_ELEMENT_EXPORT, "↻", "Export bundle (merged SVGs + card yamls)"),
+        (TOOLBAR_ELEMENT_IMPORT, "⇣", "Import floorplan YAML (bindings + rules)"),
+        (TOOLBAR_ELEMENT_UPLOAD, "⇡", "Upload an SVG to the floorplan folder"),
+        (TOOLBAR_ELEMENT_EDITOR, "⛓", "Open floorplan studio"),
+    ]
+    if options is None or _planner_url(options) != _editor_url(options):
+        glyphs.append((TOOLBAR_ELEMENT_PLANNER, "✎", "Open floor planner"))
     parts = ['<g id="floorplan.toolbar">']
-    for idx, (element_id, glyph) in enumerate(glyphs):
+    for idx, (element_id, glyph, tooltip) in enumerate(glyphs):
         x = idx * 34
         parts.append(
             f'<g id="{element_id}" class="rx-toolbar-btn" '
             f'transform="translate({x},0)">'
+            f"<title>{_xml_text(tooltip)}</title>"
             f'<rect class="rx-toolbar-bg" width="26" height="26" rx="4"/>'
             f'<text class="rx-toolbar-glyph" x="13" y="18">{glyph}</text>'
             "</g>"
@@ -1099,6 +1148,9 @@ async def _build_merged_svg(
     else:
         warnings.append("No stored studio project — markers placed at area centroids")
 
+    # drop any stale toolbar (old button set, no tooltips) — a fresh
+    # one is re-injected inside build_overlay_fragment below
+    svg_text = strip_toolbar(svg_text)
     fragment, frag_warnings = build_overlay_fragment(
         model, options, positions, svg_text
     )
@@ -1273,7 +1325,7 @@ async def async_generate_bundle(
         "rules": rules,
         "elements_svg_url": f"{FLOORPLAN_GENERATED_BASE}/{GENERATED_ELEMENTS_SVG}",
         "stylesheet_url": f"{FLOORPLAN_STATIC_BASE}/{STYLESHEET_FILENAME}",
-        "toolbar_svg": build_toolbar_svg(),
+        "toolbar_svg": build_toolbar_svg(options),
         "files_written": files_written,
         "changes": changes,
         "warnings": warnings,
