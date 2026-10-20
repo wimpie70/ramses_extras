@@ -1737,7 +1737,7 @@ window.addEventListener('ll-custom', (ev) => {
 //                    zooming)
 //   pinch (2-finger) zooms always — distinct from one-finger scroll
 //   drag             pans only while zoomed in
-//   dblclick on the  resets to the full view
+//   dblclick on the  zooms in 2x; when zoomed, resets to full view
 //   background
 const _FP_PZ_MIN = 0.05; // deepest zoom-in factor vs. base viewBox
 
@@ -1797,8 +1797,8 @@ function _fpPzInit(svg) {
       // zooming is the expected gesture
       if (!(ev.ctrlKey || ev.metaKey) && _fpPzScale(svg) <= 1.001) return;
       const loc = _fpPzSvgPoint(svg, ev.clientX, ev.clientY);
-      if (!loc) return;
       ev.preventDefault();
+      if (!loc) return;
       _fpPzZoomAt(svg, loc, ev.deltaY < 0 ? 1.25 : 0.8);
     },
     { passive: false },
@@ -1857,24 +1857,38 @@ function _fpPzInit(svg) {
   svg.addEventListener('pointerleave', _end);
 
   svg.addEventListener('dblclick', (ev) => {
-    if (_fpPzScale(svg) <= 1.001) return; // nothing to reset
     // a dblclick on a generated marker/toolbar is ha-floorplan's
-    // double-tap action, not a zoom reset — everything else resets
+    // double-tap action, not a zoom gesture — everything else zooms
+    // in when at rest and resets while zoomed
     for (let n = ev.target; n && n !== svg; n = n.parentNode) {
       if (n.id === 'floorplan.markers' || n.id === 'floorplan.toolbar') return;
     }
-    _fpPzReset(svg);
+    if (_fpPzScale(svg) > 1.001) {
+      _fpPzReset(svg);
+      return;
+    }
+    const loc = _fpPzSvgPoint(svg, ev.clientX, ev.clientY);
+    if (loc) _fpPzZoomAt(svg, loc, 2);
   });
 }
 
-// Attach to every floorplan-card svg — cards render late, and a re-render
-// replaces the svg, so keep scanning cheaply.
+// Attach to every floorplan-card svg. A document-level observer can't
+// see inside shadow DOM, so each discovered card's shadowRoot gets its
+// own observer (the svg appears late and is replaced on re-render);
+// a slow rescan is the backstop for anything else.
 function _fpPzScan() {
   const walk = (root) => {
     for (const el of root.querySelectorAll('*')) {
       if (el.tagName === 'FLOORPLAN-CARD' && el.shadowRoot) {
         const svg = el.shadowRoot.querySelector('svg');
         if (svg) _fpPzInit(svg);
+        if (!el._rxPzObserved) {
+          el._rxPzObserved = true;
+          new window.MutationObserver(() => {
+            const s = el.shadowRoot && el.shadowRoot.querySelector('svg');
+            if (s) _fpPzInit(s);
+          }).observe(el.shadowRoot, { childList: true, subtree: true });
+        }
       }
       if (el.shadowRoot) walk(el.shadowRoot);
     }
@@ -1886,6 +1900,7 @@ new window.MutationObserver(_fpPzScan).observe(document.body, {
   childList: true,
   subtree: true,
 });
+setInterval(_fpPzScan, 2500);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
