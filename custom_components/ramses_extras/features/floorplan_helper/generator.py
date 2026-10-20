@@ -518,7 +518,23 @@ def _build_rules(
                 if ent["entity_id"] != element_id:
                     rule["element"] = element_id
                 rule.update(deepcopy(template))
+                if ent["entity_id"] != primary:
+                    # every rule bound to the element fires its tap_action;
+                    # suppress it here so the primary-entity rule below is
+                    # the one more-info opens ("none" is a no-op action)
+                    rule["tap_action"] = {"action": "none"}
                 rules.append(rule)
+
+        if primary:
+            # tap the marker → more-info on the device's own entity
+            # (climate dialog for a FAN), not a secondary stat sensor
+            tap_rule: dict[str, Any] = {
+                "entity": primary,
+                "tap_action": {"action": "more-info"},
+            }
+            if primary != element_id:
+                tap_rule["element"] = element_id
+            rules.append(tap_rule)
 
         binding = entity_binding_map.get(primary or "")
         if isinstance(binding, dict):
