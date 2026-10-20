@@ -188,11 +188,14 @@ def _element_class_expr(dev: dict[str, Any]) -> str | None:
     would wipe ``rx-online``). The trailing term re-emits any toggled
     ``rx-zone-*`` classes so a status update can't drop a zone highlight.
     """
+    # Spin is fan-shaped: a REM's fan_mode mirrors its parent's speed,
+    # but its marker isn't a fan — only FAN/HVAC markers rotate.
+    is_fan = dev.get("device_class") in ("FAN", "HVAC")
     by_role: dict[str, list[str]] = {}
     for ent in dev.get("entities", []):
         role = ent.get("role") or ""
         eid = str(ent.get("entity_id") or "")
-        if eid and role in _CLASS_ROLES:
+        if eid and role in _CLASS_ROLES and (role != "fan_rate" or is_fan):
             by_role.setdefault(role, []).append(eid)
     parts = [
         expr

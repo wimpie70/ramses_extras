@@ -238,6 +238,13 @@ class TestRulesAndCard:
         assert "return" not in expr
         assert "function(" not in expr
         assert ".includes(" not in expr
+        # spin is FAN/HVAC-only — a REM mirroring its parent's fan_mode
+        # doesn't rotate its marker
+        rem = _device(device_class="REM")
+        rem["entities"].append(
+            {"entity_id": "sensor.37_168270_fan_mode", "role": "fan_rate"}
+        )
+        assert "rx-spin" not in (generator._element_class_expr(rem) or "")
 
     def test_generated_rules_tagged_and_stale_filtered(self):
         rules = generator._build_rules(_model(devices=[_device()]), _options())
