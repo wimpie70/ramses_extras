@@ -913,7 +913,7 @@ class RamsesFloorplanActions extends HTMLElement {
       return;
     }
     const color = this._tweak('room_fill') || undefined;
-    const r = await this._call('floorplan_set_device_zone', {
+    await this._call('floorplan_set_device_zone', {
       device_id: devId,
       areas,
       ...(color ? { color } : {}),
