@@ -71,6 +71,11 @@ OPTION_DEVICE_ZONES = "device_zones"
 # the rule navigates there instead of firing the ll-custom popup event
 # (which needs the ramses-floorplan-actions card on the same view).
 OPTION_DEVICE_VIEW_URL = "device_view_url"
+# Backdrop rect injected into merged custom SVGs — the source drawings
+# are authored on a transparent page, so without it translucent room
+# fills render over the HA theme (dark navy instead of pastel). Empty
+# string disables the rect.
+OPTION_BACKGROUND = "background"
 OPTION_TOOLBAR_ENABLED = "toolbar_enabled"
 OPTION_EDITOR_URL = "editor_url"
 OPTION_PLANNER_URL = "planner_url"
@@ -105,6 +110,7 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_EXTRA_RULES: [],
     OPTION_DEVICE_ZONES: {},
     OPTION_DEVICE_VIEW_URL: "",
+    OPTION_BACKGROUND: "#ffffff",
     OPTION_TOOLBAR_ENABLED: True,
     OPTION_EDITOR_URL: DEFAULT_EDITOR_URL,
     OPTION_PLANNER_URL: DEFAULT_PLANNER_URL,
@@ -284,6 +290,7 @@ __all__ = [
     "GENERATED_CARD_YAML",
     "GENERATED_ELEMENTS_SVG",
     "OPTION_AREA_OVERRIDES",
+    "OPTION_BACKGROUND",
     "OPTION_CUSTOM_SVG_PATH",
     "OPTION_DEVICE_VIEW_URL",
     "OPTION_DEVICE_ZONES",

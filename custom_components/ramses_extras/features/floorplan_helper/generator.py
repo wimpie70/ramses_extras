@@ -46,6 +46,7 @@ from .const import (
     GENERATED_CARD_YAML,
     GENERATED_ELEMENTS_SVG,
     OPTION_AREA_OVERRIDES,
+    OPTION_BACKGROUND,
     OPTION_CUSTOM_SVG_PATH,
     OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
@@ -305,6 +306,25 @@ def _svg_viewbox_size(svg_text: str) -> tuple[float, float]:
     return (float(m.group(1)), float(m.group(2))) if m else (960.0, 640.0)
 
 
+# Marker presentation defaults — fill sits on the <g> so rx-* state
+# classes override it; `color` feeds currentColor for captions.
+DEFAULT_MARKER_COLOR = "#ffc107"
+DEFAULT_TEXT_COLOR = "#334155"
+
+# Domain-based icons for standalone zone members (non-ramses entities).
+_ENTITY_DOMAIN_ICONS = {
+    "cover": "pipe-valve",
+    "valve": "pipe-valve",
+    "sensor": "gauge",
+    "binary_sensor": "thermometer",
+}
+
+
+def _standalone_icon(entity_id: str) -> str:
+    """Icon key for a non-ramses zone member, based on entity domain."""
+    return _ENTITY_DOMAIN_ICONS.get(entity_id.split(".", 1)[0], DEFAULT_ICON)
+
+
 def _model_entity_ids(model: dict[str, Any]) -> set[str]:
     """All entity ids belonging to model devices (primary + members)."""
     ids: set[str] = set()
@@ -410,13 +430,17 @@ def build_overlay_fragment(
             x, y = 20.0 + staged * 36.0, vb_h + 30.0
             size = 20.0
         used_icons.add(icon_key)
-        color = pos.get("color") if pos else None
-        fill = f' fill="{color}"' if color else ""
+        # fill on the <g> — presentation attrs lose to the rx-* state
+        # classes (a use-level fill would win and break them); the
+        # amber default keeps unstyled markers visible. `color` feeds
+        # currentColor for the rx-state caption on the light backdrop.
+        color = (pos.get("color") if pos else None) or DEFAULT_MARKER_COLOR
         body.append(
-            f'<g id="{element_id}" transform="translate({x:.1f},{y:.1f})">'
+            f'<g id="{element_id}" transform="translate({x:.1f},{y:.1f})" '
+            f'fill="{color}" color="{DEFAULT_TEXT_COLOR}">'
             f'<use href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
-            f'width="{size:.0f}" height="{size:.0f}"{fill}/>'
+            f'width="{size:.0f}" height="{size:.0f}"/>'
             f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
             f'text-anchor="middle"></text>'
             "</g>"
@@ -426,19 +450,19 @@ def build_overlay_fragment(
         pos = positions.get(ent)
         if pos is not None:
             x, y, size = pos["x"], pos["y"], float(pos.get("size") or 20)
-            icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), DEFAULT_ICON)
-            color = pos.get("color")
+            icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), _standalone_icon(ent))
+            color = pos.get("color") or DEFAULT_MARKER_COLOR
         else:
             docked += 1
             x, y, size = 20.0 + docked * 36.0, vb_h - 20.0, 20.0
-            icon_key, color = DEFAULT_ICON, None
+            icon_key, color = _standalone_icon(ent), DEFAULT_MARKER_COLOR
         used_icons.add(icon_key)
-        fill = f' fill="{color}"' if color else ""
         body.append(
-            f'<g id="{_xml_id(ent)}" transform="translate({x:.1f},{y:.1f})">'
+            f'<g id="{_xml_id(ent)}" transform="translate({x:.1f},{y:.1f})" '
+            f'fill="{color}" color="{DEFAULT_TEXT_COLOR}">'
             f'<use href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
-            f'width="{size:.0f}" height="{size:.0f}"{fill}/>'
+            f'width="{size:.0f}" height="{size:.0f}"/>'
             f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
             f'text-anchor="middle"></text>'
             "</g>"
@@ -957,6 +981,20 @@ async def _build_merged_svg(
             None,
             [f"Custom SVG not readable: {ref} — image left unchanged"],
             None,
+        )
+
+    # Inkscape drawings are authored on a transparent page — without a
+    # backdrop the HA theme shows through and translucent room fills
+    # render dark. The rect goes first so any drawing elements stay on
+    # top (namedview/defs render nothing, so position is irrelevant).
+    background = str(options.get(OPTION_BACKGROUND) or "")
+    if background:
+        svg_text = re.sub(
+            r"<svg\b[^>]*>",
+            rf'\g<0><rect id="rx.background" width="100%" height="100%" '
+            f'fill="{background}"/>',
+            svg_text,
+            count=1,
         )
 
     positions: dict[str, dict[str, Any]] = {}
