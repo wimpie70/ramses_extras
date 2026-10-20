@@ -40,6 +40,7 @@ from ...framework.helpers.ramses_topology import (
     get_runtime_schema,
 )
 from .const import ENTITY_ROLE_PATTERNS
+from .domains import device_class_from_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -151,9 +152,11 @@ async def build_floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
         device_class = (
             getattr(device, "_SLUG", None) or type(device).__name__
             if device is not None
-            else "unknown"
+            # no rf object — infer from the id prefix (ramses_rf's
+            # DEVICE_ID_REGEX: 18:* → HGI, 07:* → DHW…)
+            else device_class_from_id(device_id) or "unknown"
         )
-        if device_id.startswith("18:") or device_class == "HGI":
+        if device_class_from_id(device_id) == "HGI" or device_class == "HGI":
             device_class = "HGI"
 
         entities = entities_by_device.get(device_id, [])

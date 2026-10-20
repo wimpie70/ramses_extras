@@ -37,6 +37,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 
 from ...const import DOMAIN
+from .bundle import async_generate_bundle
 from .const import (
     DEFAULT_ICON,
     FEATURE_ID,
@@ -55,11 +56,6 @@ from .const import (
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
     is_generated_rule,
-)
-from .generator import (
-    async_generate_bundle,
-    build_toolbar_svg,
-    strip_toolbar,
 )
 from .importer import (
     backup_project,
@@ -83,6 +79,7 @@ from .mapping import (
     set_icon_override,
     set_svg_mode,
 )
+from .markers import build_toolbar_svg, strip_toolbar
 from .topology import build_floorplan_model
 
 _LOGGER = logging.getLogger(__name__)

@@ -19,8 +19,8 @@ See `docs/FLOORPLAN_HELPER.md` for the step-by-step setup guide
 ramses_cc entities/devices          options (config entry)
         │                                   │
         ▼                                   ▼
-  topology.py  ──build_floorplan_model──►  generator.py
-  (device/entity/area model)             elements SVG + rules YAML
+  topology.py  ──build_floorplan_model──►  bundle.py
+  (device/entity/area model)             merged SVGs + card yamls
                                               │
                                         <config>/www/ramses_extras/
                                           floorplan/generated/
@@ -35,16 +35,38 @@ ramses_cc entities/devices          options (config entry)
   (entities, role classification, area, primary element candidate).
   Device grouping (heat / hvac / hgi / orphan) comes from the shared
   `framework/helpers/ramses_topology.py`, also used by
-  `device_status_card`.
+  `device_status_card`. Id-prefix class inference reuses ramses_rf's
+  `DEVICE_ID_REGEX` via `domains.device_class_from_id` (`18:*` → HGI…).
 - `mapping.py` — reads/writes the `floorplan_helper` options section
   (dual-write: flat key + canonical `ramses_extras.features.*`
   section). Owns `icon_overrides`, `element_bindings`,
   `area_overrides`, `extra_rules`, `svg_mode`, and the
   `last_snapshot` used for export change reports.
-- `generator.py` — renders the elements SVG (area-grouped grid,
-  MDI-derived `<symbol>` defs inlined from shipped icons), the managed
-  rules list (role → rule templates), and the paste-ready card YAML
-  with `# >>> ramses_extras managed rules >>>` markers.
+- `domains/` — per-device-class behaviour registry (`get_domain`):
+  `hvac.py` covers FAN + bound devices + infra, `heat.py` registers the
+  heat classes so behaviour lands there instead of growing shared
+  code. Answers "does this marker spin / join zones / open which
+  popup".
+- `svg_utils.py` — low-level SVG helpers: id/text escaping, slugs,
+  `marker_svg`/`svg_button` builders, `set_element_style`,
+  `strip_element`, `merge_svg_overlay`, icon-symbol loading. Reuse
+  these for any additive change to a drawing.
+- `expressions.py` — all `${…}` rule expressions. Documents the
+  ha-floorplan eval5 contract (no `return`/`function` substring, no
+  `.includes`, `class_set` re-emits the full class set).
+- `zones.py` — zone semantics: `rx-zone-*` class naming, bound-device
+  resolution via the ramses parent link + one-way zone `devices`,
+  hatch defs, toggle/sync/clear payloads.
+- `markers.py` — element-id + icon resolution, dock placement,
+  overlay fragment (markers + zone defs + toolbar), the generated
+  `ramses-elements.svg`, toolbar snippet, studio room-style patching.
+- `rules.py` — assembles the managed `rules:` list; small factories
+  (`class_set_rule`, `text_set_rule`, `fire_dom_event`, `link_action`)
+  for new rule shapes.
+- `bundle.py` — orchestrates the export: per-floor merged SVGs, the
+  paste-ready card YAML with `# >>> ramses_extras managed rules >>>`
+  markers, file writes, snapshot diff.
+- `generator.py` — compatibility shim re-exporting the public API.
 - `services.py` — `floorplan_export`, `floorplan_set_element`,
   `floorplan_set_icon`, `floorplan_assign_area`, `floorplan_set_svg`,
   `floorplan_import`, `floorplan_upload_svg`. All mapping edits go

@@ -22,6 +22,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.const import DOMAIN
 
+from .bundle import async_generate_bundle
 from .const import (
     FLOORPLAN_ICONS,
     FLOORPLAN_STATIC_BASE,
@@ -33,7 +34,6 @@ from .const import (
     OPTION_SVG_MODE,
     OPTION_TOOLBAR_ENABLED,
 )
-from .generator import async_generate_bundle
 from .mapping import get_floorplan_options
 from .topology import build_floorplan_model
 

@@ -20,8 +20,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.ramses_extras.const import register_feature_platform
 
+from ..bundle import async_generate_bundle
 from ..const import FEATURE_ID
-from ..generator import async_generate_bundle
 from ..services import notify_export
 
 _LOGGER = logging.getLogger(__name__)

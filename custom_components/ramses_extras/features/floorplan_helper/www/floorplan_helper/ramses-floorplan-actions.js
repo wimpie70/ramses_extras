@@ -1728,6 +1728,165 @@ window.addEventListener('ll-custom', (ev) => {
   if (d && d.ramses_fp_action) _openFpActionDialog(d.ramses_fp_action);
 });
 
+// --- Pan/zoom on floorplan card SVGs ----------------------------------
+// ha-floorplan has no zoom support — we pan/zoom by rewriting the svg's
+// viewBox, so element ids, taps and generated rules all keep working.
+// Deliberately non-intrusive on a scrolling dashboard:
+//   wheel            zooms only with Ctrl/Cmd held (plain wheel = page
+//                    scroll, unless already zoomed in — then it keeps
+//                    zooming)
+//   pinch (2-finger) zooms always — distinct from one-finger scroll
+//   drag             pans only while zoomed in
+//   dblclick on the  resets to the full view
+//   background
+const _FP_PZ_MIN = 0.05; // deepest zoom-in factor vs. base viewBox
+
+function _fpPzSvgPoint(svg, clientX, clientY) {
+  const ctm = svg.getScreenCTM && svg.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  return pt.matrixTransform(ctm.inverse());
+}
+
+function _fpPzBase(svg) {
+  // Full-drawing viewBox, captured once — reset target.
+  if (!svg._rxPzBase) {
+    const vb = svg.viewBox.baseVal;
+    svg._rxPzBase = { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
+  }
+  return svg._rxPzBase;
+}
+
+function _fpPzScale(svg) {
+  const base = _fpPzBase(svg);
+  return base.w / svg.viewBox.baseVal.width;
+}
+
+function _fpPzZoomAt(svg, loc, factor) {
+  const vb = svg.viewBox.baseVal;
+  const base = _fpPzBase(svg);
+  const minW = base.w * _FP_PZ_MIN;
+  const newW = Math.max(minW, Math.min(base.w, vb.width / factor));
+  const clamped = vb.width / newW; // effective factor after min/max clamp
+  vb.x = loc.x - (loc.x - vb.x) / clamped;
+  vb.y = loc.y - (loc.y - vb.y) / clamped;
+  vb.width = newW;
+  vb.height = vb.width / (base.w / base.h); // keep aspect
+}
+
+function _fpPzReset(svg) {
+  const base = _fpPzBase(svg);
+  const vb = svg.viewBox.baseVal;
+  vb.x = base.x;
+  vb.y = base.y;
+  vb.width = base.w;
+  vb.height = base.h;
+}
+
+function _fpPzInit(svg) {
+  if (svg._rxPz) return;
+  svg._rxPz = { pointers: new Map(), drag: null, pinch: null };
+  const st = svg._rxPz;
+
+  svg.addEventListener(
+    'wheel',
+    (ev) => {
+      // plain wheel stays page scroll — except while zoomed in, where
+      // zooming is the expected gesture
+      if (!(ev.ctrlKey || ev.metaKey) && _fpPzScale(svg) <= 1.001) return;
+      const loc = _fpPzSvgPoint(svg, ev.clientX, ev.clientY);
+      if (!loc) return;
+      ev.preventDefault();
+      _fpPzZoomAt(svg, loc, ev.deltaY < 0 ? 1.25 : 0.8);
+    },
+    { passive: false },
+  );
+
+  svg.addEventListener('pointerdown', (ev) => {
+    st.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (st.pointers.size === 1 && _fpPzScale(svg) > 1.001) {
+      st.drag = { x: ev.clientX, y: ev.clientY };
+    } else if (st.pointers.size === 2) {
+      const [a, b] = [...st.pointers.values()];
+      st.pinch = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y),
+        cx: (a.x + b.x) / 2,
+        cy: (a.y + b.y) / 2,
+      };
+      st.drag = null;
+    }
+  });
+
+  svg.addEventListener('pointermove', (ev) => {
+    if (!st.pointers.has(ev.pointerId)) return;
+    st.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (st.pinch && st.pointers.size === 2) {
+      const [a, b] = [...st.pointers.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const loc = _fpPzSvgPoint(svg, st.pinch.cx, st.pinch.cy);
+      if (loc && st.pinch.dist > 0) {
+        _fpPzZoomAt(svg, loc, dist / st.pinch.dist);
+      }
+      st.pinch = { dist, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+      ev.preventDefault();
+    } else if (st.drag) {
+      const ctm = svg.getScreenCTM && svg.getScreenCTM();
+      if (!ctm || !ctm.a) return;
+      const vb = svg.viewBox.baseVal;
+      const dx = (st.drag.x - ev.clientX) / ctm.a;
+      const dy = (st.drag.y - ev.clientY) / ctm.a;
+      if (Math.abs(dx) + Math.abs(dy) < 0.01) return;
+      const base = _fpPzBase(svg);
+      // keep the visible window inside the drawing
+      vb.x = Math.min(base.x + base.w - vb.width, Math.max(base.x, vb.x + dx));
+      vb.y = Math.min(base.y + base.h - vb.height, Math.max(base.y, vb.y + dy));
+      st.drag = { x: ev.clientX, y: ev.clientY };
+      ev.preventDefault();
+    }
+  });
+
+  const _end = (ev) => {
+    st.pointers.delete(ev.pointerId);
+    if (st.pointers.size < 2) st.pinch = null;
+    if (st.pointers.size === 0) st.drag = null;
+  };
+  svg.addEventListener('pointerup', _end);
+  svg.addEventListener('pointercancel', _end);
+  svg.addEventListener('pointerleave', _end);
+
+  svg.addEventListener('dblclick', (ev) => {
+    if (_fpPzScale(svg) <= 1.001) return; // nothing to reset
+    // a dblclick on a generated marker/toolbar is ha-floorplan's
+    // double-tap action, not a zoom reset — everything else resets
+    for (let n = ev.target; n && n !== svg; n = n.parentNode) {
+      if (n.id === 'floorplan.markers' || n.id === 'floorplan.toolbar') return;
+    }
+    _fpPzReset(svg);
+  });
+}
+
+// Attach to every floorplan-card svg — cards render late, and a re-render
+// replaces the svg, so keep scanning cheaply.
+function _fpPzScan() {
+  const walk = (root) => {
+    for (const el of root.querySelectorAll('*')) {
+      if (el.tagName === 'FLOORPLAN-CARD' && el.shadowRoot) {
+        const svg = el.shadowRoot.querySelector('svg');
+        if (svg) _fpPzInit(svg);
+      }
+      if (el.shadowRoot) walk(el.shadowRoot);
+    }
+  };
+  walk(document);
+}
+_fpPzScan();
+new window.MutationObserver(_fpPzScan).observe(document.body, {
+  childList: true,
+  subtree: true,
+});
+
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'ramses-floorplan-actions',

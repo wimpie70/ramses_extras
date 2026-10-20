@@ -575,3 +575,135 @@ class TestMapping:
         parsed = _parse_icon_overrides(text)
         assert parsed == {"FAN": "gauge", "CTL": "thermostat"}
         assert _format_icon_overrides(parsed) == "CTL=thermostat\nFAN=gauge"
+
+
+class TestDomains:
+    def test_device_class_from_id(self):
+        from custom_components.ramses_extras.features.floorplan_helper.domains import (
+            device_class_from_id,
+        )
+
+        assert device_class_from_id("18:000730") == "HGI"
+        assert device_class_from_id("01:000001") == "CTL"
+        assert device_class_from_id("23:000001") == "CTL"
+        assert device_class_from_id("07:000001") == "DHW"
+        assert device_class_from_id("02:000001") == "UFC"
+        assert device_class_from_id("13:000001") == "BDR"
+        assert device_class_from_id("34:000001") == "SEN"
+        assert device_class_from_id("32:153289") == ""  # FAN ids carry no prefix
+        assert device_class_from_id("") == ""
+
+    def test_domain_behaviour(self):
+        from custom_components.ramses_extras.features.floorplan_helper.domains import (
+            get_domain,
+            zone_eligible,
+        )
+
+        fan = get_domain(_device())
+        assert fan.can_spin and fan.popup_card == "hvac-fan"
+        rem = get_domain(_device(device_id="37:168270", device_class="REM"))
+        assert not rem.can_spin and rem.popup_card == ""
+        hgi = get_domain(_device(device_id="18:000730", device_class="HGI"))
+        assert not hgi.zone_eligible
+        assert not zone_eligible(_device(device_id="18:1", device_class="HGI"))
+        assert zone_eligible(_device())
+        # heat classes resolve to the registered heat domain
+        assert get_domain("TRV").device_classes
+
+
+class TestSvgUtils:
+    def test_marker_and_button(self):
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            svg_utils,
+        )
+
+        m = svg_utils.marker_svg(
+            "climate.32_153289",
+            10.0,
+            20.0,
+            20.0,
+            "fan",
+            label="FAN 32:153289",
+            color="#fff",
+            text_color="#000",
+        )
+        assert 'id="climate.32_153289"' in m
+        assert "translate(10.0,20.0)" in m
+        assert "rx-rotor" in m and "FAN 32:153289" in m and "rx-name" in m
+        b = svg_utils.svg_button("floorplan.export", "X", "tip", 34)
+        assert 'id="floorplan.export"' in b and "<title>tip</title>" in b
+
+    def test_set_element_style_and_strip(self):
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            svg_utils,
+        )
+
+        svg = (
+            '<svg viewBox="0 0 100 100">'
+            '<rect id="area.lounge" class="room"/>'
+            '<g transform="translate(1,2)"><g id="floorplan.toolbar">'
+            '<g id="floorplan.export"><rect/></g></g></g>'
+            '<rect id="other"/></svg>'
+        )
+        out = svg_utils.set_element_style(
+            svg, "area.lounge", {"fill": "#abc", "fill-opacity": 0.4}
+        )
+        assert 'style="fill:#abc; fill-opacity:0.4"' in out
+        out = svg_utils.strip_element(out, "floorplan.toolbar")
+        assert "floorplan.toolbar" not in out and 'id="other"' in out
+        assert 'id="area.lounge"' in out  # siblings survive
+
+
+class TestZones:
+    def test_resolve_bound_and_toggle_specs(self):
+        from custom_components.ramses_extras.features.floorplan_helper import zones
+
+        fan = _device()
+        rem = _device(
+            device_id="37:168270",
+            device_class="REM",
+            parent="32:153289",
+            primary_entity="remote.37_168270",
+        )
+        hgi = _device(
+            device_id="18:000730",
+            device_class="HGI",
+            parent="32:153289",
+            primary_entity="binary_sensor.hgi_online",
+        )
+        model = _model(devices=[fan, rem, hgi])
+        zone = {"areas": ["woonkamer"], "devices": ["cover.klep_1"]}
+        areas, bound = zones.resolve_bound(
+            model, fan, zone, lambda d: d["primary_entity"]
+        )
+        assert areas == ["area.woonkamer"]
+        # fan + rem bound; hgi excluded (zone_eligible=False); valve lands
+        # on its own standalone marker
+        assert "sensor.32_153289_fan_rate" in bound
+        assert "remote.37_168270" in bound
+        assert "cover.klep_1" in bound
+        assert all("hgi" not in str(b) for b in bound)
+        toggles = zones.zone_toggle_specs("32:153289", areas, bound)
+        assert toggles[0]["class"] == "rx-zone-32_153289"
+        assert toggles[1]["class"] == "rx-zone-32_153289_dev"
+        # actions: N local toggles + one sync broadcast + clear event
+        acts = zones.zone_tap_actions(toggles)
+        assert acts[-1]["ramses_zone_sync"] == toggles
+        assert zones.zone_clear_action(toggles)["ramses_zone_clear"] == toggles
+
+    def test_standalone_members_dedupes(self):
+        from custom_components.ramses_extras.features.floorplan_helper import zones
+
+        model = _model(devices=[_device()])
+        zones_cfg = {
+            "32:153289": {
+                "devices": [
+                    "cover.klep_1",
+                    "cover.klep_1",
+                    "37:168270",
+                    "sensor.32_153289_fan_rate",
+                ]
+            }
+        }
+        # model entity ids + device ids are excluded; plain entities kept
+        assert zones.standalone_members(model, zones_cfg) == ["cover.klep_1"]
