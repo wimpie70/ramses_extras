@@ -23,6 +23,8 @@ from typing import Any
 
 import yaml
 
+from .const import is_generated_rule
+
 _MISSING = object()
 
 # Keys that mark a dict as a floorplan rule (vs. a view/card container).
@@ -118,9 +120,8 @@ def parse_floorplan_yaml(text: str) -> dict[str, Any]:
         elements = _as_list(rule.get("element") or rule.get("elements"))
         entities = _as_list(rule.get("entity") or rule.get("entities"))
         if elements and entities:
-            # Keep the authored rule verbatim AND record the binding so
-            # generated rules target the same element on re-export.
-            extra_rules.append(dict(rule))
+            # Record the binding so generated rules target the same
+            # element on re-export.
             for element_id in elements:
                 bindings.setdefault(element_id, {"entity_id": entities[0]})
             if len(entities) > 1:
@@ -128,10 +129,13 @@ def parse_floorplan_yaml(text: str) -> dict[str, Any]:
                     f"{elements[0]}: rule binds {len(entities)} entities; "
                     f"stored binding uses {entities[0]}"
                 )
-        else:
-            # Element-less rules (entity targets its own element) and
-            # entity-less rules (pure actions) are kept verbatim.
-            extra_rules.append(dict(rule))
+        if is_generated_rule(rule):
+            # Generated rules are rebuilt from the model/options on
+            # every export — storing them would accumulate stale copies
+            # that shadow the regenerated ones (e.g. old ${} class
+            # expressions). Skip the verbatim copy.
+            continue
+        extra_rules.append(dict(rule))
 
     return {
         "bindings": bindings,

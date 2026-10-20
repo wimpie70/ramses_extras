@@ -45,6 +45,7 @@ from .const import (
     FLOORPLAN_STATIC_BASE,
     GENERATED_CARD_YAML,
     GENERATED_ELEMENTS_SVG,
+    GENERATED_RULE_TAG,
     OPTION_AREA_OVERRIDES,
     OPTION_BACKGROUND,
     OPTION_CUSTOM_SVG_PATH,
@@ -67,6 +68,7 @@ from .const import (
     TOOLBAR_ELEMENT_IMPORT,
     TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
+    is_generated_rule,
 )
 from .importer import (
     best_floor_for_svg,
@@ -146,16 +148,21 @@ def _role_class_expr(role: str | None, ents: list[str]) -> str | None:
         return f"({exprs})"
     if role == "fan_rate":
         # speed-proportional spin: numeric % state, else mode names;
-        # entities OR-ed — first one carrying a value wins
+        # entities OR-ed — first one carrying a value wins.
+        # NOTE: ha-floorplan wraps the template in `return …` only when the
+        # body has no "return" substring — a JS function()/return here would
+        # silently discard the result. Keep this a pure ternary expression.
         def spin(st: str) -> str:
+            num = f"parseFloat(String({st}.state).toLowerCase())"
+            txt = f"String({st}.state).toLowerCase()"
             return (
-                f"(function(){{var s={st}?String({st}.state).toLowerCase()"
-                ':"";var n=parseFloat(s);'
-                'if(!isNaN(n))return n>75?"rx-spin-fast":n>40?"rx-spin"'
-                ':n>0?"rx-spin-slow":"";'
-                'return s==="high"||s==="boost"?"rx-spin-fast"'
-                ':s==="medium"||s==="normal"?"rx-spin"'
-                ':s==="low"||s==="auto"||s==="away"?"rx-spin-slow":"";})()'
+                f'({st}?({num}>75?"rx-spin-fast"'
+                f':{num}>40?"rx-spin"'
+                f':{num}>0?"rx-spin-slow"'
+                f':"|high|boost|".indexOf("|"+{txt}+ "|")>=0?"rx-spin-fast"'
+                f':"|medium|normal|".indexOf("|"+{txt}+ "|")>=0?"rx-spin"'
+                f':"|low|auto|away|".indexOf("|"+{txt}+ "|")>=0'
+                '?"rx-spin-slow":""):"")'
             )
 
         return "(" + " || ".join(spin(s) for s in sts) + ")"
@@ -774,6 +781,7 @@ def _build_rules(
     zones = options.get(OPTION_DEVICE_ZONES) or {}
 
     rules: list[dict[str, Any]] = []
+    extra: list[dict[str, Any]] = []
     for dev in model.get("devices", []):
         primary = dev.get("primary_entity")
         element_id = _element_id_for_device(dev, options)
@@ -913,7 +921,7 @@ def _build_rules(
 
         binding = entity_binding_map.get(primary or "")
         if isinstance(binding, dict):
-            rules.extend(_parse_extra_rules(binding.get("extra_rules")))
+            extra.extend(_parse_extra_rules(binding.get("extra_rules")))
 
     # Standalone zone members (non-ramses entities like DIY valves or
     # zigbee sensors listed in a zone's devices) get a plain more-info
@@ -933,8 +941,9 @@ def _build_rules(
                     "service": "floorplan.class_set",
                     "service_data": {
                         "class": (
-                            '${["unavailable","unknown"].includes('
-                            'String(entity.state)) ? "rx-offline" : "rx-online"}'
+                            '${(entity==null||entity.state==="unavailable"'
+                            '||entity.state==="unknown")'
+                            ' ? "rx-offline" : "rx-online"}'
                         )
                     },
                 },
@@ -943,9 +952,14 @@ def _build_rules(
         )
 
     # Global extra rules appended last.
-    rules.extend(_parse_extra_rules(options.get(OPTION_EXTRA_RULES)))
+    extra.extend(_parse_extra_rules(options.get(OPTION_EXTRA_RULES)))
     rules.extend(_build_toolbar_rules(options))
-    return rules
+    # Tag generated rules so floorplan_import can tell them apart from
+    # user-authored extras — importing a generated card yaml then stays
+    # idempotent instead of accumulating stale copies in extra_rules.
+    for rule in rules:
+        rule[GENERATED_RULE_TAG] = True
+    return rules + extra
 
 
 def _link_action(target: str) -> dict[str, Any]:
@@ -1062,7 +1076,7 @@ def _parse_extra_rules(raw: Any) -> list[dict[str, Any]]:
                 parsed = yaml.safe_load(extra)
             except yaml.YAMLError:
                 parsed = None
-        if isinstance(parsed, dict):
+        if isinstance(parsed, dict) and not is_generated_rule(parsed):
             rules.append(parsed)
     return rules
 

@@ -18,6 +18,7 @@ creates no entities of its own besides optional derived binary sensors.
 :feature: Floorplan Helper
 """
 
+import json
 from typing import Any
 
 DOMAIN = "floorplan_helper"
@@ -100,6 +101,47 @@ TOOLBAR_ELEMENT_PLANNER = "floorplan.planner"
 
 # Dir under <config>/www/ramses_extras/ where user SVGs are uploaded.
 FLOORPLAN_UPLOAD_DIR_NAME = "floorplan"
+
+# Key stamped on every generated rule. ha-floorplan ignores unknown
+# rule keys; the importer uses it to skip our own rules so re-importing
+# a generated card yaml is idempotent (stale rules never accumulate in
+# ``extra_rules``).
+GENERATED_RULE_TAG = "rx_gen"
+
+# Serialized-rule substrings that mark a stored extra_rule as a stale
+# generated artifact (written before GENERATED_RULE_TAG existed). These
+# are filtered at emit time so outdated class expressions can't shadow
+# freshly generated rules.
+GENERATED_RULE_TOKENS = (
+    '"rx-',
+    "ramses_fp_action",
+    "ramses_zone_sync",
+    "ramses_device_id",
+    "ramses_entity",
+    "ramses_card",
+    '"floorplan.toolbar"',
+    '"floorplan.export"',
+    '"floorplan.import"',
+    '"floorplan.upload"',
+    '"floorplan.editor"',
+    '"floorplan.planner"',
+)
+
+
+def is_generated_rule(rule: Any) -> bool:
+    """True for rules emitted by the generator — tagged (``rx_gen``) or
+    matching the legacy generated signature (untagged rules imported
+    before tagging existed)."""
+    if not isinstance(rule, dict):
+        return False
+    if rule.get(GENERATED_RULE_TAG):
+        return True
+    try:
+        blob = json.dumps(rule)
+    except TypeError, ValueError:
+        return False
+    return any(token in blob for token in GENERATED_RULE_TOKENS)
+
 
 DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_SVG_MODE: SVG_MODE_GENERATED,
@@ -289,6 +331,8 @@ __all__ = [
     "CARD_YAML_STEM",
     "GENERATED_CARD_YAML",
     "GENERATED_ELEMENTS_SVG",
+    "GENERATED_RULE_TAG",
+    "GENERATED_RULE_TOKENS",
     "OPTION_AREA_OVERRIDES",
     "OPTION_BACKGROUND",
     "OPTION_CUSTOM_SVG_PATH",
@@ -312,5 +356,6 @@ __all__ = [
     "TOOLBAR_ELEMENT_IMPORT",
     "TOOLBAR_ELEMENT_PLANNER",
     "TOOLBAR_ELEMENT_UPLOAD",
+    "is_generated_rule",
     "load_feature",
 ]

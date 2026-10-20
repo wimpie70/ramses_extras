@@ -216,12 +216,59 @@ class TestRulesAndCard:
         )
         rules = generator._build_rules(_model(), opts)
         assert any(r.get("entity") == "light.kitchen" for r in rules)
-        # extra rules precede the toolbar rules (emitted last)
+        # extra rules are emitted last (after the generated toolbar
+        # rules) so user-authored actions win on conflicting elements
         idx = next(i for i, r in enumerate(rules) if r.get("entity") == "light.kitchen")
-        assert idx < next(
+        assert idx > next(
             i
             for i, r in enumerate(rules)
             if str(r.get("element", "")).startswith("floorplan.")
+        )
+
+    def test_class_exprs_have_no_return_keyword(self):
+        # ha-floorplan wraps ${…} bodies in `return …` only when the body
+        # has no "return" substring — a JS function()/return in a class
+        # expression silently discards the result (class => undefined).
+        dev = _device()
+        dev["entities"].append(
+            {"entity_id": "sensor.32_153289_fan_mode", "role": "fan_rate"}
+        )
+        expr = generator._element_class_expr(dev)
+        assert expr is not None
+        assert "return" not in expr
+        assert "function(" not in expr
+        assert ".includes(" not in expr
+
+    def test_generated_rules_tagged_and_stale_filtered(self):
+        rules = generator._build_rules(_model(devices=[_device()]), _options())
+        assert all(r.get("rx_gen") for r in rules)
+        # stale generated rules (tagged or legacy rx- signature) are
+        # dropped from stored extra_rules instead of shadowing fresh ones
+        stale = [
+            {"entity": "sensor.x", "rx_gen": True},
+            {
+                "entity": "binary_sensor.y_status",
+                "state_action": {
+                    "service": "floorplan.class_set",
+                    "service_data": {"class": '${"rx-online"}'},
+                },
+            },
+            {
+                "element": "floorplan.export",
+                "tap_action": {"action": "fire-dom-event"},
+            },
+        ]
+        keep = [{"entity": "light.kitchen", "tap_action": {"action": "toggle"}}]
+        rules = generator._build_rules(_model(), _options(extra_rules=stale + keep))
+        entities = {r.get("entity") for r in rules}
+        assert "sensor.x" not in entities
+        assert "binary_sensor.y_status" not in entities
+        assert "light.kitchen" in entities
+        # the stale untagged toolbar rule is dropped — only the fresh
+        # generated (tagged) one remains
+        assert (
+            sum(1 for r in rules if str(r.get("element", "")) == "floorplan.export")
+            == 1
         )
 
     def test_card_yaml_markers_and_parse(self):

@@ -54,6 +54,7 @@ from .const import (
     OPTION_TOOLBAR_ENABLED,
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
+    is_generated_rule,
 )
 from .generator import (
     async_generate_bundle,
@@ -392,6 +393,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             bindings[element_id] = merged
 
         extra = section.setdefault(OPTION_EXTRA_RULES, [])
+        # Drop stale generated rules stored by earlier imports — they are
+        # rebuilt from the model on every export and old copies (e.g.
+        # outdated ${} class expressions) would shadow the fresh ones.
+        extra[:] = [rule for rule in extra if not is_generated_rule(rule)]
         if call.data.get("replace"):
             section[OPTION_EXTRA_RULES] = list(parsed["extra_rules"])
         else:
