@@ -89,7 +89,7 @@ _ICONS_DIR = (
     / "icons"
 )
 
-_SVG_PATH_RE = re.compile(r'd="([^"]+)"')
+_SVG_PATH_RE = re.compile(r'\bd="([^"]+)"')
 
 # Grid layout constants for the generated elements SVG.
 _COLS = 4
@@ -307,6 +307,7 @@ def build_overlay_fragment(
     options: dict[str, Any],
     positions: dict[str, dict[str, Any]],
     svg_text: str,
+    rooms: list[dict[str, Any]] | None = None,
 ) -> tuple[str, list[str]]:
     """Build the marker/toolbar fragment to splice into a user SVG.
 
@@ -315,8 +316,13 @@ def build_overlay_fragment(
     back to the centroid of their area's ``area.*`` element, then to a
     staging strip just below the canvas.
 
-    :param positions: entity_id → ``{x, y, size, icon}`` (from
+    :param positions: entity_id → ``{x, y, size, icon, color}`` (from
         :func:`importer.studio_marker_positions`)
+    :param rooms: studio-project rooms for this floor — their
+        ``fill``/``opacity`` are emitted as ``!important`` style
+        overrides on the matching ``area.<slug>`` elements so studio
+        recolours survive into the output (the source SVG's own class
+        styles otherwise win over presentation attributes).
     :return: ``(fragment, warnings)``
     """
     svg_rooms = {r["slug"]: r for r in rooms_from_svg(svg_text)}
@@ -348,11 +354,13 @@ def build_overlay_fragment(
             x, y = 20.0 + staged * 36.0, vb_h + 30.0
             size = 20.0
         used_icons.add(icon_key)
+        color = pos.get("color") if pos else None
+        fill = f' fill="{color}"' if color else ""
         body.append(
             f'<g id="{element_id}" transform="translate({x:.1f},{y:.1f})">'
             f'<use href="#icon.{icon_key}" xlink:href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
-            f'width="{size:.0f}" height="{size:.0f}"/>'
+            f'width="{size:.0f}" height="{size:.0f}"{fill}/>'
             f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
             f'text-anchor="middle"></text>'
             "</g>"
@@ -363,8 +371,25 @@ def build_overlay_fragment(
             "parked below the canvas (off-viewBox)"
         )
 
+    room_css: list[str] = []
+    for room in rooms or []:
+        slug = re.sub(
+            r"_+", "_", re.sub(r"[^a-z0-9]+", "_", str(room.get("name") or "").lower())
+        ).strip("_")
+        if not slug or slug not in svg_rooms:
+            continue
+        decl = []
+        if room.get("fill"):
+            decl.append(f"fill: {room['fill']} !important")
+        if room.get("opacity") is not None:
+            decl.append(f"fill-opacity: {room['opacity']} !important")
+        if decl:
+            room_css.append(f"#area\\.{slug} {{ {'; '.join(decl)}; }}")
+    room_style = f"<style>\n{chr(10).join(room_css)}\n</style>" if room_css else ""
+
     symbols = [s for s in (_load_icon_symbol(k) for k in sorted(used_icons)) if s]
     parts = [
+        *([room_style] if room_style else []),
         "<defs>",
         *symbols,
         "</defs>",
@@ -651,6 +676,7 @@ async def _build_merged_svg(
         )
 
     positions: dict[str, dict[str, Any]] = {}
+    rooms: list[dict[str, Any]] | None = None
     warnings: list[str] = []
     project_json = await hass.async_add_executor_job(load_latest_project, hass)
     project: dict[str, Any] | None = None
@@ -661,6 +687,8 @@ async def _build_merged_svg(
             project = None
     if project:
         floor = best_floor_for_svg(project, svg_text)
+        if floor:
+            rooms = floor.get("rooms") or []
         positions = studio_marker_positions(
             project, str(floor.get("name")) if floor else None
         )
@@ -668,7 +696,7 @@ async def _build_merged_svg(
         warnings.append("No stored studio project — markers placed at area centroids")
 
     fragment, frag_warnings = build_overlay_fragment(
-        model, options, positions, svg_text
+        model, options, positions, svg_text, rooms
     )
     warnings.extend(frag_warnings)
     return f"{src.stem}.merged.svg", warnings, merge_svg_overlay(svg_text, fragment)

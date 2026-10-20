@@ -894,14 +894,8 @@ class RamsesFloorplanActions extends HTMLElement {
   }
 
   async _pull() {
-    const id = this._selectedProjectId();
-    if (!id) { this._status('No studio project selected'); return; }
-    const db = await openFpDb();
-    const project = await idbReq(
-      db.transaction('projects').objectStore('projects').get(id)
-    );
-    db.close();
-    if (!project) { this._status('Project not found in studio storage'); return; }
+    const project = await this._readStudioProject();
+    if (!project) return; // _readStudioProject already reported
     const resized = this._normalizeSizes(project);
     if (resized) {
       // write the normalized sizes back so studio shows them too
@@ -914,8 +908,24 @@ class RamsesFloorplanActions extends HTMLElement {
     }
     await this._storeAndSync(
       JSON.stringify(project),
-      `pulled '${project.name || id}'` + (resized ? `, ${resized} markers resized` : '')
+      `pulled '${project.name || project.id}'` +
+        (resized ? `, ${resized} markers resized` : '')
     );
+  }
+
+  async _readStudioProject() {
+    const id = this._selectedProjectId();
+    if (!id) { this._status('No studio project selected'); return null; }
+    const db = await openFpDb();
+    const project = await idbReq(
+      db.transaction('projects').objectStore('projects').get(id)
+    );
+    db.close();
+    if (!project) {
+      this._status('Project not found in studio storage');
+      return null;
+    }
+    return project;
   }
 
   _normalizeSizes(project) {
@@ -971,12 +981,28 @@ class RamsesFloorplanActions extends HTMLElement {
   }
 
   async _export() {
+    // Snapshot live studio state first — the merged-SVG export reads
+    // latest.json, so unsaved drags/recolours must be stored or they
+    // silently don't make it into the output.
+    const project = await this._readStudioProject();
+    let stored = '';
+    if (project) {
+      const resized = this._normalizeSizes(project);
+      const s = await this._call('floorplan_store_project', {
+        project_json: JSON.stringify(project),
+      });
+      stored = ` (project snapshot: ${s.latest_path}` +
+        (resized ? `, ${resized} markers resized` : '') + ')';
+      if (this._tweak('sync_on_pull') !== false) {
+        await this._call('floorplan_sync_areas', {});
+      }
+    }
     const r = await this._call('floorplan_export', {});
     if (r.card_yaml) {
       this._copy(r.card_yaml, 'card_yaml');
-      this._status(`Exported ${(r.rules || []).length} rules — card_yaml copied to clipboard.`);
+      this._status(`Exported ${(r.rules || []).length} rules${stored} — card_yaml copied to clipboard.`);
     } else {
-      this._status('Export finished (no card_yaml in response)');
+      this._status(`Export finished${stored} (no card_yaml in response)`);
     }
   }
 

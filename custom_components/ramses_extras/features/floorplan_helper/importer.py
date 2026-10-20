@@ -538,6 +538,7 @@ def studio_marker_positions(
                         "y": float(marker.get("y") or 0),
                         "size": float(style.get("size") or 20),
                         "icon": style.get("icon"),
+                        "color": style.get("color"),
                         "label": style.get("label"),
                         "floor": fname,
                     },
