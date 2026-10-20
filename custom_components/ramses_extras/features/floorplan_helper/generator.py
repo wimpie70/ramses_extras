@@ -305,6 +305,32 @@ def _svg_viewbox_size(svg_text: str) -> tuple[float, float]:
     return (float(m.group(1)), float(m.group(2))) if m else (960.0, 640.0)
 
 
+def _model_entity_ids(model: dict[str, Any]) -> set[str]:
+    """All entity ids belonging to model devices (primary + members)."""
+    ids: set[str] = set()
+    for d in model.get("devices", []):
+        if d.get("primary_entity"):
+            ids.add(str(d["primary_entity"]))
+        ids.update(
+            str(e.get("entity_id"))
+            for e in d.get("entities") or []
+            if e.get("entity_id")
+        )
+    return ids
+
+
+def _device_of_entity(model: dict[str, Any], entity_id: str) -> dict[str, Any] | None:
+    """Return the model device owning ``entity_id``, or None."""
+    devices: list[dict[str, Any]] = model.get("devices") or []
+    for d in devices:
+        if d.get("primary_entity") == entity_id:
+            return d
+        for e in d.get("entities") or []:
+            if e.get("entity_id") == entity_id:
+                return d
+    return None
+
+
 def build_overlay_fragment(
     model: dict[str, Any],
     options: dict[str, Any],
@@ -331,7 +357,30 @@ def build_overlay_fragment(
     staged = 0
     docked = 0
 
-    for dev in model.get("devices", []):
+    model_devices = model.get("devices", [])
+    model_entity_ids = _model_entity_ids(model)
+    # zone-relevant devices stay visible on every floor — parked in a
+    # dock inside the canvas bottom edge when they have no marker here
+    zoned_ids = {str(k) for k in zones}
+    docked_ids = {
+        str(d.get("device_id"))
+        for d in model_devices
+        if str(d.get("device_id")) in zoned_ids
+        or str(d.get("parent") or "") in zoned_ids
+        or str(d.get("device_id"))
+        in {str(b) for z in zones.values() for b in (z.get("devices") or [])}
+    }
+    # standalone zone members: entity ids in a zone's devices list that
+    # aren't ramses model devices (DIY valves, zigbee area sensors…).
+    # One-way link — the same entity may serve several zones.
+    extra_entities: list[str] = []
+    for z in zones.values():
+        for ent in z.get("devices") or []:
+            ent = str(ent)
+            if "." in ent and ent not in model_entity_ids and ent not in extra_entities:
+                extra_entities.append(ent)
+
+    for dev in model_devices:
         element_id = _xml_id(_element_id_for_device(dev, options))
         icon_key = _icon_for_device(dev, options)
         pos: dict[str, Any] | None = None
@@ -348,11 +397,11 @@ def build_overlay_fragment(
         elif dev.get("area_id") and dev["area_id"] in svg_rooms:
             x, y = svg_rooms[dev["area_id"]]["centroid"]
             size = 20.0
-        elif zones.get(str(dev.get("device_id"))):
-            # zone devices stay tappable on every floor's card — park
-            # them in a visible dock just inside the canvas bottom edge
-            # (their zone may span floors: tap here highlights the
-            # rooms of this floor that belong to the zone)
+        elif str(dev.get("device_id")) in docked_ids:
+            # zone-relevant devices stay tappable on every floor's card
+            # — park them in a visible dock just inside the canvas
+            # bottom edge (a zone may span floors: tap here highlights
+            # the rooms/devices of this floor that belong to the zone)
             docked += 1
             x, y = 20.0 + docked * 36.0, vb_h - 20.0
             size = 20.0
@@ -365,6 +414,28 @@ def build_overlay_fragment(
         fill = f' fill="{color}"' if color else ""
         body.append(
             f'<g id="{element_id}" transform="translate({x:.1f},{y:.1f})">'
+            f'<use href="#icon.{icon_key}" '
+            f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
+            f'width="{size:.0f}" height="{size:.0f}"{fill}/>'
+            f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
+            f'text-anchor="middle"></text>'
+            "</g>"
+        )
+
+    for ent in extra_entities:
+        pos = positions.get(ent)
+        if pos is not None:
+            x, y, size = pos["x"], pos["y"], float(pos.get("size") or 20)
+            icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), DEFAULT_ICON)
+            color = pos.get("color")
+        else:
+            docked += 1
+            x, y, size = 20.0 + docked * 36.0, vb_h - 20.0, 20.0
+            icon_key, color = DEFAULT_ICON, None
+        used_icons.add(icon_key)
+        fill = f' fill="{color}"' if color else ""
+        body.append(
+            f'<g id="{_xml_id(ent)}" transform="translate({x:.1f},{y:.1f})">'
             f'<use href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
             f'width="{size:.0f}" height="{size:.0f}"{fill}/>'
@@ -385,22 +456,24 @@ def build_overlay_fragment(
     zone_patterns: list[str] = []
     for dev in model.get("devices", []):
         z = zones.get(dev.get("device_id"))
-        if not (z and z.get("areas")):
+        if not (z and (z.get("areas") or z.get("devices"))):
             continue
         color = z.get("color") or "#22c55e"
-        pat = f"rx-zonepat-{_slugify(str(dev.get('device_id')))}"
-        zone_patterns.append(
-            f'<pattern id="{pat}" width="10" height="10" '
-            f'patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
-            f'<rect width="10" height="10" fill="{color}" fill-opacity="0.12"/>'
-            f'<line x1="0" y1="0" x2="0" y2="10" stroke="{color}" '
-            f'stroke-opacity="0.5" stroke-width="3"/></pattern>'
-        )
-        zone_css.append(
-            f".{_zone_class(str(dev.get('device_id')))} {{ "
-            f"fill: url(#{pat}) !important; fill-opacity: 1 !important; "
-            f"stroke: {color} !important; stroke-width: 3px !important; }}"
-        )
+        if z.get("areas"):
+            pat = f"rx-zonepat-{_slugify(str(dev.get('device_id')))}"
+            zone_patterns.append(
+                f'<pattern id="{pat}" width="10" height="10" '
+                f'patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+                f'<rect width="10" height="10" fill="{color}" '
+                f'fill-opacity="0.12"/>'
+                f'<line x1="0" y1="0" x2="0" y2="10" stroke="{color}" '
+                f'stroke-opacity="0.5" stroke-width="3"/></pattern>'
+            )
+            zone_css.append(
+                f".{_zone_class(str(dev.get('device_id')))} {{ "
+                f"fill: url(#{pat}) !important; fill-opacity: 1 !important; "
+                f"stroke: {color} !important; stroke-width: 3px !important; }}"
+            )
         # same zone, applied to device markers — outline + glow, keep the
         # icon fill (rx-* state classes own that)
         zone_css.append(
@@ -619,38 +692,57 @@ def _build_rules(
                 tap_rule["element"] = element_id
             zone = zones.get(dev.get("device_id")) or {}
             area_ids = [a for a in zone.get("areas") or [] if a]
-            if area_ids:
+            # markers of devices bound to this device get the same
+            # treatment — binding comes from the ramses schema
+            # (remotes/sensors under the FAN = parent link), not from
+            # which room they sit in; gateways/HGI excluded (they serve
+            # the whole house, not a zone). Extra device ids or plain
+            # entity ids (non-ramses DIY/zigbee members) can be added
+            # via the zone's "devices" list — a one-way link, so the
+            # same entity may serve several zones.
+            bound_ids = {
+                str(d.get("device_id"))
+                for d in model.get("devices", [])
+                if d.get("parent") == dev.get("device_id")
+                and d.get("device_class") != "HGI"
+            }
+            bound_ids.update(str(b) for b in zone.get("devices") or [])
+            bound_ids.add(str(dev.get("device_id")))
+            bound = [
+                _element_id_for_device(d, options)
+                for d in model.get("devices", [])
+                if str(d.get("device_id")) in bound_ids
+                and d.get("device_class") != "HGI"
+            ]
+            # entity-id entries (a member entity of a model device, or
+            # a non-ramses zone member) map to the owning device's
+            # element, or land on their own marker rendered for them
+            for b in sorted(bound_ids):
+                if "." not in b or b in bound:
+                    continue
+                owner = _device_of_entity(model, b)
+                if owner is not None:
+                    if owner.get("device_class") == "HGI":
+                        continue
+                    el = _element_id_for_device(owner, options)
+                else:
+                    el = b
+                if el not in bound:
+                    bound.append(el)
+            if area_ids or (zone.get("devices") and bound):
                 device_id = str(dev.get("device_id"))
-                zone_actions: list[dict[str, Any]] = [
-                    {
-                        "action": "call-service",
-                        "service": "floorplan.class_toggle",
-                        "service_data": {
-                            "elements": [f"area.{_slugify(a)}" for a in area_ids],
-                            "class": _zone_class(device_id),
-                        },
-                    }
-                ]
-                # markers of devices bound to this device get the same
-                # treatment — binding comes from the ramses schema
-                # (remotes/sensors under the FAN = parent link), not
-                # from which room they sit in; gateways/HGI excluded
-                # (they serve the whole house, not a zone). Extra
-                # device ids can be added via the zone's "devices" list.
-                bound_ids = {
-                    str(d.get("device_id"))
-                    for d in model.get("devices", [])
-                    if d.get("parent") == dev.get("device_id")
-                    and d.get("device_class") != "HGI"
-                }
-                bound_ids.update(str(b) for b in zone.get("devices") or [])
-                bound_ids.add(str(dev.get("device_id")))
-                bound = [
-                    _element_id_for_device(d, options)
-                    for d in model.get("devices", [])
-                    if str(d.get("device_id")) in bound_ids
-                    and d.get("device_class") != "HGI"
-                ]
+                zone_actions: list[dict[str, Any]] = []
+                if area_ids:
+                    zone_actions.append(
+                        {
+                            "action": "call-service",
+                            "service": "floorplan.class_toggle",
+                            "service_data": {
+                                "elements": [f"area.{_slugify(a)}" for a in area_ids],
+                                "class": _zone_class(device_id),
+                            },
+                        }
+                    )
                 if bound:
                     zone_actions.append(
                         {
@@ -693,6 +785,19 @@ def _build_rules(
         binding = entity_binding_map.get(primary or "")
         if isinstance(binding, dict):
             rules.extend(_parse_extra_rules(binding.get("extra_rules")))
+
+    # Standalone zone members (non-ramses entities like DIY valves or
+    # zigbee sensors listed in a zone's devices) get a plain more-info
+    # on tap; their marker is rendered by build_overlay_fragment.
+    model_entities = _model_entity_ids(model)
+    standalone: set[str] = set()
+    for z in zones.values():
+        for ent in z.get("devices") or []:
+            ent = str(ent)
+            if "." in ent and ent not in model_entities:
+                standalone.add(ent)
+    for ent in sorted(standalone):
+        rules.append({"entity": ent, "tap_action": {"action": "more-info"}})
 
     # Global extra rules appended last.
     rules.extend(_parse_extra_rules(options.get(OPTION_EXTRA_RULES)))

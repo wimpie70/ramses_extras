@@ -63,6 +63,7 @@ Key Functions:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import shutil
@@ -114,12 +115,43 @@ def _stamp_js_import_versions(directory: Path, version: str) -> int:
     return stamped
 
 
+def _frontend_assets_hash() -> str:
+    """Content hash of the JS/CSS assets deployed under ``/local/ramses_extras``.
+
+    Appended to the manifest version as the cache-bust key, so any
+    deployed file change picked up at startup produces fresh ``?v=``
+    URLs and browsers drop stale modules — without a version bump.
+
+    :return: First 8 hex chars of the assets digest
+    """
+    digest = hashlib.sha256()
+    for root in (
+        INTEGRATION_DIR / "framework" / "www",
+        INTEGRATION_DIR / "features",
+    ):
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*")):
+            if path.is_file() and path.suffix in (".js", ".css"):
+                digest.update(str(path.relative_to(INTEGRATION_DIR)).encode())
+                try:
+                    digest.update(path.read_bytes())
+                except OSError:
+                    continue
+    return digest.hexdigest()[:8]
+
+
 async def async_get_integration_version(hass: HomeAssistant) -> str:
     """Get the integration version with caching.
 
+    Returns ``<manifest version>-<assets hash>`` — the hash suffix makes
+    every ``?v=`` cache-bust key (bootstrap resource URL, stamped import
+    specifiers, ``window.ramsesExtras.version``) change whenever the
+    deployed frontend files change.
+
     :param hass: Home Assistant instance
 
-    :return: Integration version string (e.g., "0.12.0")
+    :return: Integration version string (e.g., "0.12.0-a1b2c3d4")
     """
     data = hass.data.setdefault(DOMAIN, {})
     cached_version = data.get("_integration_version")
@@ -130,6 +162,7 @@ async def async_get_integration_version(hass: HomeAssistant) -> str:
         integration = await async_get_integration(hass, DOMAIN)
         version = integration.manifest.get("version")
         if isinstance(version, str) and version:
+            version = f"{version}-{_frontend_assets_hash()}"
             data["_integration_version"] = version
             return version
     except Exception:

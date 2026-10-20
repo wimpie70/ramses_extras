@@ -774,6 +774,33 @@ class RamsesFloorplanActions extends HTMLElement {
       path.setAttribute('stroke-dasharray', '6 3');
       names.push(room.name);
     }
+
+    // bound devices: schema parent links (remotes/sensors of a FAN) +
+    // the zone's devices list — the latter may hold non-ramses entity
+    // ids (DIY valves, zigbee sensors); HGI gateways never highlight.
+    const bound = new Set([devId]);
+    for (const d of (this._topology || {}).devices || []) {
+      if (d.parent === devId && d.device_class !== 'HGI') bound.add(d.device_id);
+    }
+    for (const b of zone.devices || []) bound.add(String(b));
+    const entsLayer = root.querySelector('g[data-layer="entities"]');
+    if (entsLayer) {
+      let nDev = 0;
+      for (const g of entsLayer.querySelectorAll('g')) {
+        const marker = this._fiberMarker(g);
+        if (!marker) continue;
+        const ents = marker.entities || (marker.entity ? [marker.entity] : []);
+        const hit = ents.some(
+          (e) => bound.has(e) ||
+            (this._entityDevice[e] && bound.has(this._entityDevice[e].device_id)),
+        );
+        if (!hit) continue;
+        this._hiPatched.push([g, { style: g.getAttribute('style') }]);
+        g.style.filter = `drop-shadow(0 0 5px ${color})`;
+        nDev++;
+      }
+      if (nDev) names.push(`${nDev} bound device(s)`);
+    }
     if (names.length) {
       this._status(
         `${dev.display_name || devId} zone → ${names.join(', ')}`
@@ -884,9 +911,12 @@ class RamsesFloorplanActions extends HTMLElement {
       return;
     }
     const color = this._tweak('room_fill') || undefined;
+    const existing =
+      (((this._fpConfig || {}).device_zones || {})[devId]) || {};
     await this._call('floorplan_set_device_zone', {
       device_id: devId,
       areas,
+      devices: existing.devices || [],
       ...(color ? { color } : {}),
     });
     await this._fetchConfig();
@@ -894,6 +924,51 @@ class RamsesFloorplanActions extends HTMLElement {
       `Zone stored for ${devId}: ${areas.join(', ')}` +
         (color ? ` (${color})` : '') +
         ' — click its marker in studio to highlight'
+    );
+  }
+
+  async _assignZoneDevices() {
+    const devSel = this.shadowRoot.getElementById('zone-dev');
+    const devId = devSel && devSel.value;
+    if (!devId) {
+      this._status('Pick a device in the zone row first');
+      return;
+    }
+    const sel = this._studioSelectedMarkers(true);
+    if (!sel.length) {
+      this._status('Select marker(s) in studio first (shift-click)');
+      return;
+    }
+    const zones = ((this._fpConfig || {}).device_zones) || {};
+    const zone = zones[devId] || {};
+    const ids = new Set(zone.devices || []);
+    const added = [];
+    for (const m of sel) {
+      const marker = this._fiberMarker(m.el);
+      const ents =
+        marker && (marker.entities || (marker.entity ? [marker.entity] : []));
+      for (const e of ents || []) {
+        // ramses devices bind by device_id; anything else (DIY/zigbee)
+        // binds by entity id — a one-way link, so the same member can
+        // serve several zones
+        const d = this._entityDevice[e];
+        const id = d ? d.device_id : e;
+        if (id !== devId && !ids.has(id)) {
+          ids.add(id);
+          added.push(id);
+        }
+      }
+    }
+    await this._call('floorplan_set_device_zone', {
+      device_id: devId,
+      areas: zone.areas || [],
+      devices: [...ids],
+      color: zone.color || this._tweak('room_fill') || undefined,
+    });
+    await this._fetchConfig();
+    this._status(
+      `Zone ${devId}: bound devices ${added.length ? `+${added.join(', ')}` : 'unchanged'} ` +
+        `(total ${ids.size})`
     );
   }
 
@@ -1135,6 +1210,8 @@ class RamsesFloorplanActions extends HTMLElement {
             <select id="zone-dev" style="max-width:260px"></select>
             <button id="b-zone" class="secondary"
               title="Store the rooms currently selected in studio (shift-click) as this device's zone — clicking its marker then highlights them">◧ rooms → zone</button>
+            <button id="b-zonedev" class="secondary"
+              title="Bind the markers currently selected in studio (shift-click) to this device — they highlight when its marker is tapped. Works for non-ramses entities too (DIY valves, zigbee sensors); devices already bound via the ramses schema need no entry">◉ markers → zone</button>
           </div>
           <div class="row">
             <label for="tw-zonewatch" title="When a marker is selected in studio, outline the rooms its device serves (device_zones config); double-click a marker to open the device card">Highlight zones on select</label>
@@ -1224,6 +1301,7 @@ class RamsesFloorplanActions extends HTMLElement {
 
     // device zones: "◧ rooms → zone" + watch toggle + device panel close
     $('b-zone').onclick = () => this._run(() => this._assignZone());
+    $('b-zonedev').onclick = () => this._run(() => this._assignZoneDevices());
     const twWatch = $('tw-zonewatch');
     twWatch.checked = this._tweak('zone_watch') !== false;
     twWatch.onchange = () => {

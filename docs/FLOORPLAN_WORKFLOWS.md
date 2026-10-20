@@ -89,8 +89,13 @@ autosave, Ctrl+Z-able); a DOM+IndexedDB patch is the fallback.
   glow (`.rx-zone-<dev>-dev`). Binding comes from the ramses schema —
   remotes/sensors under a FAN get `parent=<fan id>` — not from which
   room a device sits in (a remote bound to the WTW highlights even
-  when placed in a non-zone room). Extra devices can be added via the
-  zone's `devices` list; HGI gateways are never highlighted.
+  when placed in a non-zone room). Extra members can be added via the
+  zone's `devices` list — ramses device ids **or plain entity ids**
+  (DIY valves, zigbee area sensors…); the link is one-way so the same
+  entity may serve several zones. Non-ramses members get their own
+  docked marker (tap → more-info). Use "◉ markers → zone" in the
+  actions card to bind markers selected in studio. HGI gateways are
+  never highlighted.
 - Zones may **span floors**: list areas from every floor. A zone
   device without a marker on a floor is docked just inside that
   card's bottom edge so it stays tappable — tapping it on the 1e
