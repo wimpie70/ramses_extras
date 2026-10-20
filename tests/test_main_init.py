@@ -34,13 +34,19 @@ class TestIntegrationVersion:
         mock_integration = MagicMock()
         mock_integration.manifest = {"version": "2.0.0"}
 
-        with patch(
-            "custom_components.ramses_extras.framework.setup.cards.async_get_integration",
-            return_value=mock_integration,
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.setup.cards.async_get_integration",
+                return_value=mock_integration,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.setup.cards._frontend_assets_hash",
+                return_value="abc12345",
+            ),
         ):
             version = await async_get_integration_version(hass)
-            assert version == "2.0.0"
-            assert hass.data[DOMAIN]["_integration_version"] == "2.0.0"
+            assert version == "2.0.0-abc12345"
+            assert hass.data[DOMAIN]["_integration_version"] == "2.0.0-abc12345"
 
     @pytest.mark.asyncio
     async def test_get_integration_version_failure(self, hass):
