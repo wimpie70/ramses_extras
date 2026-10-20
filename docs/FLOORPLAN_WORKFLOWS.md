@@ -96,10 +96,12 @@ autosave, Ctrl+Z-able); a DOM+IndexedDB patch is the fallback.
   docked marker (tap → more-info). Use "◉ markers → zone" in the
   actions card to bind markers selected in studio. HGI gateways are
   never highlighted.
-- Zones may **span floors**: list areas from every floor. A zone
-  device without a marker on a floor is docked just inside that
-  card's bottom edge so it stays tappable — tapping it on the 1e
-  card highlights only the zone rooms present in that SVG.
+- Zones may **span floors**: list areas from every floor. A device or
+  entity without a marker on a floor is parked in that card's **dock**
+  — the largest `outside`-class room if the drawing has one (e.g.
+  terras), else a strip along the top-right canvas edge — so it stays
+  visible and tappable. Tapping a zone member on the 1e card
+  highlights only the zone rooms present in that SVG.
 - **double-tap** → device popup (hvac-fan-card for FAN/HVAC). The
   rule fires `ll-custom`; a module-level listener in the actions-card
   JS catches it on **any** view. If the floorplan option

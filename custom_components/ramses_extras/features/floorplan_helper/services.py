@@ -317,10 +317,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         remove = call.data.get("remove", False)
         zone = None
         if not remove:
+            # merge with the existing zone — omitted keys keep their
+            # stored value (pass an explicit empty list to clear one)
+            entry = _config_entry(hass)
+            prev = (
+                get_floorplan_options(entry).get(OPTION_DEVICE_ZONES, {}).get(device_id)
+                or {}
+            )
             zone = {
-                "areas": list(call.data.get("areas") or []),
-                "devices": list(call.data.get("devices") or []),
-                "color": call.data.get("color") or None,
+                "areas": (
+                    list(call.data["areas"])
+                    if "areas" in call.data
+                    else list(prev.get("areas") or [])
+                ),
+                "devices": (
+                    list(call.data["devices"])
+                    if "devices" in call.data
+                    else list(prev.get("devices") or [])
+                ),
+                "color": call.data.get("color") or prev.get("color"),
             }
         section = set_device_zone(hass, _config_entry(hass), device_id, zone)
         return {

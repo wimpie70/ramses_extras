@@ -349,12 +349,16 @@ def rooms_from_svg(svg_text: str) -> list[dict[str, Any]]:
                     )
                 ]
             if len(pts) >= 3:
+                xs = [p["x"] for p in pts]
+                ys = [p["y"] for p in pts]
                 rooms.append(
                     {
                         "slug": slug,
                         "name": slug.replace("_", " "),
                         "polygon": pts,
                         "centroid": _centroid(pts),
+                        "class": el.get("class") or "",
+                        "area": (max(xs) - min(xs)) * (max(ys) - min(ys)),
                     }
                 )
         for child in el:

@@ -325,6 +325,22 @@ def _standalone_icon(entity_id: str) -> str:
     return _ENTITY_DOMAIN_ICONS.get(entity_id.split(".", 1)[0], DEFAULT_ICON)
 
 
+def _dock_anchor(
+    svg_rooms: dict[str, dict[str, Any]], vb_w: float
+) -> tuple[float, float]:
+    """Anchor (row start) for the unplaced-device dock.
+
+    Centred inside the largest ``outside``-class room when the drawing
+    has one — open, non-living space (e.g. terras); otherwise a strip
+    along the top-right inside edge of the canvas.
+    """
+    outside = [r for r in svg_rooms.values() if r.get("class") == "outside"]
+    if outside:
+        cx, cy = max(outside, key=lambda r: r.get("area") or 0)["centroid"]
+        return cx - 3.5 * 30.0, cy
+    return vb_w - 8 * 30.0 - 20.0, 44.0
+
+
 def _model_entity_ids(model: dict[str, Any]) -> set[str]:
     """All entity ids belonging to model devices (primary + members)."""
     ids: set[str] = set()
@@ -374,22 +390,16 @@ def build_overlay_fragment(
     warnings: list[str] = []
     used_icons: set[str] = set()
     body: list[str] = []
-    staged = 0
-    docked = 0
+    dock_x, dock_y = _dock_anchor(svg_rooms, vb_w)
+    unplaced = 0
+
+    def _dock_pos() -> tuple[float, float]:
+        nonlocal unplaced
+        i = unplaced
+        return dock_x + (i % 8) * 30.0, dock_y + (i // 8) * 30.0
 
     model_devices = model.get("devices", [])
     model_entity_ids = _model_entity_ids(model)
-    # zone-relevant devices stay visible on every floor — parked in a
-    # dock inside the canvas bottom edge when they have no marker here
-    zoned_ids = {str(k) for k in zones}
-    docked_ids = {
-        str(d.get("device_id"))
-        for d in model_devices
-        if str(d.get("device_id")) in zoned_ids
-        or str(d.get("parent") or "") in zoned_ids
-        or str(d.get("device_id"))
-        in {str(b) for z in zones.values() for b in (z.get("devices") or [])}
-    }
     # standalone zone members: entity ids in a zone's devices list that
     # aren't ramses model devices (DIY valves, zigbee area sensors…).
     # One-way link — the same entity may serve several zones.
@@ -417,17 +427,13 @@ def build_overlay_fragment(
         elif dev.get("area_id") and dev["area_id"] in svg_rooms:
             x, y = svg_rooms[dev["area_id"]]["centroid"]
             size = 20.0
-        elif str(dev.get("device_id")) in docked_ids:
-            # zone-relevant devices stay tappable on every floor's card
-            # — park them in a visible dock just inside the canvas
-            # bottom edge (a zone may span floors: tap here highlights
-            # the rooms/devices of this floor that belong to the zone)
-            docked += 1
-            x, y = 20.0 + docked * 36.0, vb_h - 20.0
-            size = 20.0
         else:
-            staged += 1
-            x, y = 20.0 + staged * 36.0, vb_h + 30.0
+            # no position on this floor — park in the dock (outside
+            # room / top-right strip) so the marker stays visible and
+            # tappable; zone devices need that since a zone may span
+            # floors, and it keeps unassigned devices in view too
+            x, y = _dock_pos()
+            unplaced += 1
             size = 20.0
         used_icons.add(icon_key)
         # fill on the <g> — presentation attrs lose to the rx-* state
@@ -453,8 +459,9 @@ def build_overlay_fragment(
             icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), _standalone_icon(ent))
             color = pos.get("color") or DEFAULT_MARKER_COLOR
         else:
-            docked += 1
-            x, y, size = 20.0 + docked * 36.0, vb_h - 20.0, 20.0
+            x, y = _dock_pos()
+            unplaced += 1
+            size = 20.0
             icon_key, color = _standalone_icon(ent), DEFAULT_MARKER_COLOR
         used_icons.add(icon_key)
         body.append(
@@ -467,10 +474,11 @@ def build_overlay_fragment(
             f'text-anchor="middle"></text>'
             "</g>"
         )
-    if staged:
+    if unplaced:
         warnings.append(
-            f"{staged} device(s) have no studio marker or area room — "
-            "parked below the canvas (off-viewBox)"
+            f"{unplaced} device(s)/entit(ies) have no studio marker or area "
+            "room on this floor — parked in the dock (outside room or "
+            "top-right strip)"
         )
 
     # Zone highlight (toggled by the marker's tap_action rule): the class
