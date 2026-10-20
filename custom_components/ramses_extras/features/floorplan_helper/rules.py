@@ -1,0 +1,385 @@
+"""Floorplan rule assembly.
+
+Builds the managed ``rules:`` list for the card yaml — per-entity
+state/class rules, tap semantics, zone toggle + sync actions,
+standalone zone-member rules, toolbar element rules — then appends
+the user-authored extras. The small factories at the top
+(``class_set_rule``…) are the reusable bits: new rule shapes should
+be built from them, not hand-rolled dicts.
+
+:platform: Home Assistant
+:feature: Floorplan Helper
+"""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from typing import Any
+
+import yaml
+
+from .const import (
+    GENERATED_RULE_TAG,
+    OPTION_CAPTION_OVERRIDES,
+    OPTION_DEVICE_VIEW_URL,
+    OPTION_DEVICE_ZONES,
+    OPTION_ELEMENT_BINDINGS,
+    OPTION_EXTRA_RULES,
+    OPTION_TOOLBAR_ENABLED,
+    TOOLBAR_ELEMENT_EDITOR,
+    TOOLBAR_ELEMENT_EXPORT,
+    TOOLBAR_ELEMENT_IMPORT,
+    TOOLBAR_ELEMENT_PLANNER,
+    TOOLBAR_ELEMENT_UPLOAD,
+    is_generated_rule,
+)
+from .domains import get_domain
+from .expressions import (
+    CLASS_ROLES,
+    element_caption_expr,
+    element_class_expr,
+    standalone_status_expr,
+)
+from .markers import (
+    binding_maps,
+    editor_url,
+    element_id_for_device,
+    planner_url,
+)
+from .zones import (
+    model_entity_ids,
+    resolve_bound,
+    standalone_members,
+    zone_clear_action,
+    zone_tap_actions,
+    zone_toggle_specs,
+)
+
+# Roles handled by the domain caption spec, not per-entity templates:
+# the element has a single caption text, so every contributing entity
+# re-emits the complete combined expression (see element_caption_expr)
+# — individual text_set rules would clobber each other.
+CAPTION_ROLES = ("temperature", "co2")
+
+# Non-class rule templates emitted inside the managed block. Roles not
+# listed here and not in CLASS_ROLES/CAPTION_ROLES get no rule.
+ROLE_RULE_TEMPLATES: dict[str, list[dict[str, Any]]] = {}
+
+
+def class_set_rule(entity: str, element: str, class_expr: str) -> dict[str, Any]:
+    """State rule writing the element's whole class attribute."""
+    return {
+        "entity": entity,
+        "element": element,
+        "state_action": {
+            "service": "floorplan.class_set",
+            "service_data": {"class": class_expr},
+        },
+    }
+
+
+def text_set_rule(entity: str, element: str, template: str) -> dict[str, Any]:
+    """State rule writing text into the element's ``.rx-state`` child."""
+    return {
+        "entity": entity,
+        "element": element,
+        "state_action": {
+            "service": "floorplan.text_set",
+            "service_data": {"text": template},
+        },
+    }
+
+
+def fire_dom_event(**payload: Any) -> dict[str, Any]:
+    """fire-dom-event action — picked up by the module-level listener."""
+    return {"action": "fire-dom-event", **payload}
+
+
+def link_action(target: str) -> dict[str, Any]:
+    """Build a tap_action opening ``target``.
+
+    Internal paths (leading ``/``) navigate inside HA; anything else is
+    an external URL opened in a new tab.
+    """
+    if str(target).startswith("/"):
+        return {"action": "navigate", "navigation_path": target}
+    return {"action": "url", "url_path": target}
+
+
+def stale_managed_rule(rule: dict[str, Any], managed_entities: set[str]) -> bool:
+    """Legacy generated rule replayed via stored extras.
+
+    Pre-tagging exports wrote plain ``floorplan.*`` rules bound to
+    model entities; on import they landed verbatim in ``extra_rules``
+    and now shadow the fresh managed rules (e.g. an old
+    ``${entity.state}`` text_set clobbering the combined caption).
+    Anything tagged or flagged by ``is_generated_rule`` is already
+    filtered; this catches the untagged remainder. A genuine user rule
+    that pairs a ramses entity with a ``floorplan.*`` service is
+    indistinguishable from our own output — and the managed block
+    generates those anyway.
+    """
+    if is_generated_rule(rule) or not managed_entities:
+        return False
+    if rule.get("entity") not in managed_entities:
+        return False
+    svc = str((rule.get("state_action") or {}).get("service") or "")
+    return svc.startswith("floorplan.")
+
+
+def parse_extra_rules(
+    raw: Any, managed_entities: set[str] | None = None
+) -> list[dict[str, Any]]:
+    """Parse extra_rules entries (dicts or YAML blobs) into rule dicts.
+
+    Generated rules (tagged, matching the legacy signature, or shaped
+    like a stale managed rule on a model entity) are dropped —
+    re-importing a generated card yaml stays idempotent instead of
+    accumulating stale copies.
+    """
+    rules: list[dict[str, Any]] = []
+    for extra in raw or []:
+        parsed: Any = None
+        if isinstance(extra, dict):
+            parsed = deepcopy(extra)
+        elif isinstance(extra, str):
+            try:
+                parsed = yaml.safe_load(extra)
+            except yaml.YAMLError:
+                parsed = None
+        if (
+            isinstance(parsed, dict)
+            and not is_generated_rule(parsed)
+            and not stale_managed_rule(parsed, managed_entities or set())
+        ):
+            rules.append(parsed)
+    return rules
+
+
+def _device_view_actions(
+    dev: dict[str, Any],
+    primary: str,
+    toggles: list[dict[str, Any]],
+    options: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """double_tap list: deterministic zone clear, then the device view.
+
+    ha-floorplan waits ~250ms to tell a single click from a double
+    click — a quick "second tap to deselect" is eaten as a double tap,
+    so the clear fires first (all cards, including the origin) and the
+    highlight can't get stuck.
+    """
+    view_url = options.get(OPTION_DEVICE_VIEW_URL) or ""
+    view = (
+        {"action": "navigate", "navigation_path": view_url}
+        if view_url
+        else fire_dom_event(
+            # picked up by the ramses-floorplan-actions module (loaded
+            # as a Lovelace resource → works on any view) to open the
+            # device popup
+            ramses_device_id=dev.get("device_id"),
+            ramses_entity=primary,
+            ramses_card=get_domain(dev).popup_card,
+        )
+    )
+    return [zone_clear_action(toggles), view]
+
+
+def _device_rules(
+    model: dict[str, Any],
+    dev: dict[str, Any],
+    options: dict[str, Any],
+    entity_binding_map: dict[str, dict[str, Any]],
+    managed_entities: set[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """``(managed rules, binding-level extras)`` for one model device.
+
+    Binding extras stay separate from the managed list — they are
+    user-authored, so they get appended *after* the tagged block."""
+    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    primary = dev.get("primary_entity")
+    element_id = element_id_for_device(dev, options)
+    combined_class = element_class_expr(dev)
+    domain = get_domain(dev)
+
+    rules: list[dict[str, Any]] = []
+    for ent in dev.get("entities", []):
+        role = ent.get("role") or ""
+        eid = ent["entity_id"]
+        is_class_role = role in CLASS_ROLES
+        templates = ROLE_RULE_TEMPLATES.get(role)
+        if role in CAPTION_ROLES or (not is_class_role and not templates):
+            continue
+        rule: dict[str, Any] = {"entity": eid}
+        if eid != element_id:
+            rule["element"] = element_id
+        if is_class_role:
+            rule["state_action"] = {
+                "service": "floorplan.class_set",
+                "service_data": {"class": combined_class},
+            }
+        elif templates:
+            rule.update(deepcopy(templates[0]))
+        if eid != primary:
+            # every rule bound to the element fires its tap_action;
+            # suppress it here so the primary-entity rule below is
+            # the one more-info opens ("none" is a no-op action)
+            rule["tap_action"] = {"action": "none"}
+        rules.append(rule)
+
+    # caption: one combined ${} emitted on every contributing entity's
+    # rule — whichever state updates, the caption rewrites in full.
+    # caption_overrides (device id → class → primary entity) win over
+    # the domain default; "eid|suffix" entries carry their own suffix.
+    caption_pairs = domain.caption_entities(dev.get("entities") or [])
+    overrides: dict[str, Any] = options.get(OPTION_CAPTION_OVERRIDES) or {}
+    raw = overrides.get(str(dev.get("device_id")))
+    if raw is None and dev.get("device_class"):
+        raw = overrides.get(str(dev["device_class"]))
+    if raw is None and primary:
+        raw = overrides.get(str(primary))
+    if raw is not None:
+        caption_pairs = [
+            (eid.strip(), sfx.strip())
+            for item in raw
+            for eid, _, sfx in [str(item).partition("|")]
+            if eid.strip()
+        ]
+    caption_expr = element_caption_expr(caption_pairs)
+    if caption_expr:
+        for eid, _ in caption_pairs:
+            rule = text_set_rule(eid, element_id, caption_expr)
+            if eid == element_id:
+                rule.pop("element")
+            if eid != primary:
+                rule["tap_action"] = {"action": "none"}
+            rules.append(rule)
+
+    if primary:
+        # tap the marker → more-info on the device's own entity
+        # (climate dialog for a FAN), not a secondary stat sensor;
+        # zoned devices get tap = highlight served rooms instead,
+        # keep the entity dialog on hold
+        tap_rule: dict[str, Any] = {"entity": primary}
+        if primary != element_id:
+            tap_rule["element"] = element_id
+        zone = zones.get(dev.get("device_id")) or {}
+        area_elements, bound = resolve_bound(
+            model, dev, zone, lambda d: element_id_for_device(d, options)
+        )
+        if area_elements or bound:
+            toggles = zone_toggle_specs(str(dev.get("device_id")), area_elements, bound)
+            tap_rule["tap_action"] = zone_tap_actions(toggles)
+            tap_rule["hold_action"] = {"action": "more-info"}
+            tap_rule["double_tap_action"] = _device_view_actions(
+                dev, str(primary), toggles, options
+            )
+        else:
+            tap_rule["tap_action"] = {"action": "more-info"}
+        rules.append(tap_rule)
+
+    binding = entity_binding_map.get(primary or "")
+    extras = (
+        parse_extra_rules(binding.get("extra_rules"), managed_entities)
+        if isinstance(binding, dict)
+        else []
+    )
+    return rules, extras
+
+
+def _toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rules for the in-SVG toolbar glyphs (see ``build_toolbar_svg``).
+
+    Emitted inside the managed block so bindings stay managed; harmless
+    for SVGs that don't contain the toolbar elements.
+    """
+    if not options.get(OPTION_TOOLBAR_ENABLED, True):
+        return []
+    rules: list[dict[str, Any]] = [
+        # export/import/upload need service data or a response — they go
+        # through ll-custom so the module-level listener can show real
+        # dialogs (file picker, results, copy buttons) instead of just
+        # dumping the user on the developer-tools page
+        {
+            "element": TOOLBAR_ELEMENT_EXPORT,
+            "tap_action": fire_dom_event(ramses_fp_action="export"),
+        },
+        {
+            "element": TOOLBAR_ELEMENT_IMPORT,
+            "tap_action": fire_dom_event(ramses_fp_action="import"),
+        },
+        {
+            "element": TOOLBAR_ELEMENT_UPLOAD,
+            "tap_action": fire_dom_event(ramses_fp_action="upload"),
+        },
+        {
+            "element": TOOLBAR_ELEMENT_EDITOR,
+            "tap_action": link_action(editor_url(options)),
+        },
+    ]
+    if planner_url(options) != editor_url(options):
+        rules.append(
+            {
+                "element": TOOLBAR_ELEMENT_PLANNER,
+                "tap_action": link_action(planner_url(options)),
+            }
+        )
+    return rules
+
+
+def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build the managed floorplan rules list.
+
+    Element bindings may be keyed by the bound entity id or by a custom
+    element id carrying ``entity_id`` — either way the device's rules
+    target the bound element.
+    """
+    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    _, entity_binding_map = binding_maps(options)
+    standalone = standalone_members(model, zones)
+    # model entities + standalone members — anything the managed block
+    # already owns; untagged floorplan.* rules on these in stored
+    # extras are stale leftovers from pre-tagging exports
+    managed = model_entity_ids(model) | set(standalone)
+    rules: list[dict[str, Any]] = []
+    extras: list[dict[str, Any]] = []
+    for dev in model.get("devices", []):
+        dev_rules, dev_extras = _device_rules(
+            model, dev, options, entity_binding_map, managed
+        )
+        rules.extend(dev_rules)
+        extras.extend(dev_extras)
+
+    # Standalone zone members (non-ramses entities like DIY valves or
+    # zigbee sensors listed in a zone's devices) get a status class +
+    # plain more-info on tap; their marker is rendered by
+    # build_overlay_fragment.
+    for ent in standalone:
+        rule = class_set_rule(ent, ent, standalone_status_expr())
+        rule.pop("element")  # element id == entity id
+        rule["tap_action"] = {"action": "more-info"}
+        rules.append(rule)
+
+    rules.extend(_toolbar_rules(options))
+    # Tag generated rules so floorplan_import can tell them apart from
+    # user-authored extras — importing a generated card yaml then stays
+    # idempotent instead of accumulating stale copies in extra_rules.
+    for rule in rules:
+        rule[GENERATED_RULE_TAG] = True
+
+    # User-authored extras appended last, untagged: binding-level ones
+    # collected above, then the global extra_rules option.
+    extras.extend(parse_extra_rules(options.get(OPTION_EXTRA_RULES), managed))
+    return rules + extras
+
+
+__all__ = [
+    "ROLE_RULE_TEMPLATES",
+    "stale_managed_rule",
+    "build_rules",
+    "class_set_rule",
+    "fire_dom_event",
+    "link_action",
+    "parse_extra_rules",
+    "text_set_rule",
+]

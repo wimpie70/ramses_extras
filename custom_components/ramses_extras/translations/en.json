@@ -50,7 +50,8 @@
           "feature_sensor_control": "Feature: FAN Configuration",
           "feature_temp_control": "Feature: Temperature Control",
           "feature_ramses_debugger": "Feature: Ramses Debugger",
-          "feature_device_simulator": "Feature: Device Simulator"
+          "feature_device_simulator": "Feature: Device Simulator",
+          "feature_floorplan_helper": "Feature: Floorplan Helper"
         }
       },
       "device_simulator_warning": {
@@ -73,7 +74,6 @@
           "log_level": "Log level (backend)"
         }
       },
-
       "feature_ramses_debugger": {
         "title": "Ramses Debugger Configuration",
         "description": "{info}",
@@ -93,7 +93,10 @@
         "title": "Feature Configuration",
         "description": "{info}",
         "data": {
-          "enabled_devices": "Devices to Enable"
+          "enabled_devices": "Devices to Enable",
+          "svg_mode": "SVG mode",
+          "custom_svg_path": "Custom SVG path (e.g. /local/.../my-plan.svg)",
+          "icon_overrides": "Icon overrides (TARGET=icon per line)"
         }
       },
       "device_selection": {

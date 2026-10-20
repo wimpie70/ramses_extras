@@ -63,6 +63,7 @@ Key Functions:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import shutil
@@ -114,12 +115,43 @@ def _stamp_js_import_versions(directory: Path, version: str) -> int:
     return stamped
 
 
+def _frontend_assets_hash() -> str:
+    """Content hash of the JS/CSS assets deployed under ``/local/ramses_extras``.
+
+    Appended to the manifest version as the cache-bust key, so any
+    deployed file change picked up at startup produces fresh ``?v=``
+    URLs and browsers drop stale modules — without a version bump.
+
+    :return: First 8 hex chars of the assets digest
+    """
+    digest = hashlib.sha256()
+    for root in (
+        INTEGRATION_DIR / "framework" / "www",
+        INTEGRATION_DIR / "features",
+    ):
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*")):
+            if path.is_file() and path.suffix in (".js", ".css"):
+                digest.update(str(path.relative_to(INTEGRATION_DIR)).encode())
+                try:
+                    digest.update(path.read_bytes())
+                except OSError:
+                    continue
+    return digest.hexdigest()[:8]
+
+
 async def async_get_integration_version(hass: HomeAssistant) -> str:
     """Get the integration version with caching.
 
+    Returns ``<manifest version>-<assets hash>`` — the hash suffix makes
+    every ``?v=`` cache-bust key (bootstrap resource URL, stamped import
+    specifiers, ``window.ramsesExtras.version``) change whenever the
+    deployed frontend files change.
+
     :param hass: Home Assistant instance
 
-    :return: Integration version string (e.g., "0.12.0")
+    :return: Integration version string (e.g., "0.12.0-a1b2c3d4")
     """
     data = hass.data.setdefault(DOMAIN, {})
     cached_version = data.get("_integration_version")
@@ -130,6 +162,7 @@ async def async_get_integration_version(hass: HomeAssistant) -> str:
         integration = await async_get_integration(hass, DOMAIN)
         version = integration.manifest.get("version")
         if isinstance(version, str) and version:
+            version = f"{version}-{_frontend_assets_hash()}"
             data["_integration_version"] = version
             return version
     except Exception:
@@ -143,10 +176,12 @@ async def async_get_integration_version(hass: HomeAssistant) -> str:
 
 
 async def discover_card_features() -> list[dict[str, Any]]:
-    """Discover features that have Lovelace cards.
+    """Discover features that have deployable www assets.
 
-    Scans the features directory for subdirectories containing www folders
-    with JavaScript files for Lovelace cards.
+    Scans the features directory for subdirectories containing www folders.
+    A feature qualifies when its www folder contains JavaScript files
+    (Lovelace cards) or other static assets (.svg, .css, .png, .woff2)
+    meant to be served from /local/ramses_extras/features/<name>/.
 
     :return: List of dictionaries containing feature information and file paths
     """
@@ -162,12 +197,10 @@ async def discover_card_features() -> list[dict[str, Any]]:
                 continue
 
             www_dir = feature_path / "www" / feature_path.name
-            if not www_dir.exists():
+            if not www_dir.exists() or not any(www_dir.iterdir()):
                 continue
 
             js_files = list(www_dir.glob("*.js"))
-            if not js_files:
-                continue
 
             card_features.append(
                 {

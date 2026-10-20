@@ -1,0 +1,144 @@
+/* ramses-floorplan.css — canonical classes for the ramses_extras
+ * floorplan bundle. Reference from ha-floorplan via:
+ *   stylesheet: /local/ramses_extras/features/floorplan_helper/ramses-floorplan.css
+ *
+ * Classes are applied to SVG elements by floorplan.class_set rules.
+ * Theme-friendly: uses currentColor + opacity so it inherits HA colors.
+ */
+
+/* --- layout primitives (used by the generated elements SVG) --- */
+.rx-cell {
+  fill: rgba(128, 128, 128, 0.08);
+  stroke: rgba(128, 128, 128, 0.35);
+  stroke-width: 1;
+}
+
+.rx-group-label {
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  fill: currentColor;
+  opacity: 0.85;
+}
+
+.rx-label {
+  font-family: inherit;
+  font-size: 13px;
+  fill: currentColor;
+}
+
+.rx-state {
+  font-family: inherit;
+  font-size: 12px;
+  fill: currentColor;
+  opacity: 0.7;
+}
+
+/* Device-name caption above overlay markers — smaller than rx-label
+   (which labels cells in the generated elements SVG). */
+.rx-name {
+  font-family: inherit;
+  font-size: 9px;
+  fill: currentColor;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* --- connectivity / availability --- */
+.rx-online {
+  fill: #2e7d32;
+}
+
+.rx-offline {
+  fill: #9e9e9e;
+  stroke: #9e9e9e;
+  stroke-dasharray: 3 3;
+  opacity: 0.55;
+}
+
+.rx-rssi-warn {
+  stroke: #f9a825;
+  stroke-width: 2;
+}
+
+/* --- heating --- */
+.rx-heat-demand {
+  fill: #ef6c00;
+  filter: drop-shadow(0 0 6px rgba(239, 108, 0, 0.7));
+}
+
+.rx-valve-open {
+  fill: #ef6c00;
+}
+
+.rx-window-open {
+  fill: #039be5;
+}
+
+/* --- fan --- */
+.rx-fan-low {
+  fill: #7cb342;
+}
+
+.rx-fan-medium {
+  fill: #fb8c00;
+}
+
+.rx-fan-high {
+  fill: #e53935;
+}
+
+/* Fan spin animation, speed-proportional. The rx-spin* class is set on
+ * the marker <g> (which already carries a translate transform — a CSS
+ * transform there would override it), so the animation applies to the
+ * inner .rx-rotor wrapper around the icon instead. */
+@keyframes rx-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rx-spin-slow .rx-rotor,
+.rx-spin .rx-rotor,
+.rx-spin-fast .rx-rotor {
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.rx-spin-slow .rx-rotor {
+  animation: rx-spin 3.2s linear infinite;
+}
+
+.rx-spin .rx-rotor {
+  animation: rx-spin 1.4s linear infinite;
+}
+
+.rx-spin-fast .rx-rotor {
+  animation: rx-spin 0.7s linear infinite;
+}
+
+/* --- in-plan toolbar buttons (floorplan.* element ids) --- */
+.rx-toolbar-btn {
+  cursor: pointer;
+}
+
+.rx-toolbar-btn .rx-toolbar-bg {
+  fill: rgba(30, 30, 30, 0.72);
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 1;
+}
+
+.rx-toolbar-btn:hover .rx-toolbar-bg {
+  fill: rgba(30, 30, 30, 0.9);
+}
+
+.rx-toolbar-btn .rx-toolbar-glyph {
+  font-family: inherit;
+  font-size: 15px;
+  fill: #fff;
+  text-anchor: middle;
+  pointer-events: none;
+}

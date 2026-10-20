@@ -280,3 +280,367 @@ run_zone_actuation:
       example: "32:153289"
       selector:
         text:
+
+# Floorplan Helper services (ha-floorplan managed regeneration)
+floorplan_export:
+  name: Floorplan Export
+  description: >-
+    Regenerate the ha-floorplan bundle (elements SVG, rules YAML, change
+    report) from the discovered RAMSES topology and the stored mapping.
+    Response contains a paste-ready floorplan card configuration.
+  fields: {}
+
+floorplan_set_element:
+  name: Floorplan Set Element
+  description: >-
+    Upsert (or remove) an SVG element binding in the stored floorplan
+    mapping. Applies on the next floorplan_export.
+  fields:
+    element_id:
+      name: Element ID
+      description: SVG element id (default convention is the bound entity_id).
+      required: true
+      example: "climate.13_045678"
+      selector:
+        text:
+    entity_id:
+      name: Entity ID
+      description: Entity to bind to the element.
+      required: false
+      selector:
+        entity:
+    icon:
+      name: Icon
+      description: Icon key for this element (see floorplan icon list).
+      required: false
+      example: "radiator"
+      selector:
+        text:
+    extra_rules:
+      name: Extra Rules
+      description: >-
+        Custom floorplan rule blobs (YAML) emitted verbatim inside the
+        managed rules block for this element.
+      required: false
+      selector:
+        object:
+    remove:
+      name: Remove
+      description: Remove this element binding instead of updating it.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+floorplan_set_icon:
+  name: Floorplan Set Icon
+  description: >-
+    Set or clear an icon override for a RAMSES device class (e.g. FAN,
+    TRV, CTL) or for a specific entity id.
+  fields:
+    target:
+      name: Target
+      description: Device class (FAN, TRV, CTL, HGI, DHW...) or entity_id.
+      required: true
+      example: "TRV"
+      selector:
+        text:
+    icon:
+      name: Icon
+      description: Icon key; omit/empty to clear the override.
+      required: false
+      example: "radiator"
+      selector:
+        text:
+
+floorplan_assign_area:
+  name: Floorplan Assign Area
+  description: >-
+    Bind a RAMSES device or zone to a Home Assistant area for floorplan
+    grouping (overrides registry-derived areas).
+  fields:
+    source:
+      name: Source
+      description: RAMSES device id (e.g. 04:123456) or entity id.
+      required: true
+      example: "04:123456"
+      selector:
+        text:
+    area_id:
+      name: Area ID
+      description: HA area id; omit/empty to clear the binding.
+      required: false
+      selector:
+        area:
+
+floorplan_set_device_zone:
+  name: Floorplan Set Device Zone
+  description: >-
+    Declare which rooms a device serves (its "zone") — e.g. the rooms a
+    WTW ventilates, on any floor. Tapping the device's marker on a
+    floorplan card highlights those rooms plus the markers of devices
+    bound to it (ramses schema remotes/sensors, or the "devices" list);
+    double-tapping opens the device card.
+  fields:
+    device_id:
+      name: Device ID
+      description: RAMSES device id (e.g. 32:153289).
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    areas:
+      name: Areas
+      description: >-
+        HA area ids the device serves — may span floors; each floorplan
+        card highlights the subset present in its own SVG. Matched
+        against a studio room's explicit HA-area link first, then its
+        slugified name.
+      required: false
+      example: "[potstal, garage, cv_ruimte, hal_bg]"
+      selector:
+        object:
+    devices:
+      name: Bound devices
+      description: >-
+        Extra RAMSES device ids whose markers are highlighted on tap, on
+        top of devices bound via the ramses schema (remotes/sensors of a
+        FAN get parent=<fan id> automatically). Gateways (HGI) are never
+        highlighted.
+      required: false
+      example: "[37:169161]"
+      selector:
+        object:
+    color:
+      name: Color
+      description: >-
+        Highlight colour for the zone rooms in studio (default amber).
+      required: false
+      example: "#22c55e"
+      selector:
+        text:
+    remove:
+      name: Remove
+      description: Remove the zone for this device.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+floorplan_set_svg:
+  name: Floorplan Set SVG
+  description: >-
+    Switch between the generated elements SVG and a custom user SVG.
+    Pass custom_svg_path to use your own drawing; omit to revert to the
+    generated plan.
+  fields:
+    custom_svg_path:
+      name: Custom SVG Path
+      description: >-
+        Web path to your SVG (e.g. /local/ramses_extras/floorplan/my-plan.svg).
+        Pass empty to use the generated elements SVG; omit to leave the
+        SVG mode unchanged.
+      required: false
+      example: "/local/ramses_extras/floorplan/my-plan.svg"
+      selector:
+        text:
+    editor_url:
+      name: Editor URL
+      description: >-
+        Target of the in-SVG editor button. Internal paths (leading /)
+        navigate in place; anything else opens in a new tab.
+      required: false
+      example: "/floorplan-studio/0"
+      selector:
+        text:
+    planner_url:
+      name: Planner URL
+      description: >-
+        Target of the in-SVG planner/drawing button. Same navigation
+        rules as editor_url.
+      required: false
+      example: "/floorplan-studio/0"
+      selector:
+        text:
+    toolbar_enabled:
+      name: Toolbar Enabled
+      description: Emit the in-SVG toolbar rules in the managed block.
+      required: false
+      selector:
+        boolean:
+
+floorplan_import:
+  name: Floorplan Import
+  description: >-
+    Import floorplan YAML (e.g. the card config emitted by the external
+    ha-floorplan-editor tool) into the stored mapping. Rules carrying an
+    element plus an entity become element bindings; all other rules are
+    kept verbatim in extra rules and re-emitted inside the managed block
+    on the next floorplan_export.
+  fields:
+    yaml_text:
+      name: YAML
+      description: >-
+        Pasted floorplan YAML — a floorplan card config, a dashboard
+        view fragment, or a bare rules list.
+      required: true
+      example: |
+        rules:
+          - element: area.kitchen
+            entity: light.kitchen
+            tap_action:
+              action: toggle
+      selector:
+        text:
+          multiline: true
+    replace:
+      name: Replace Extra Rules
+      description: >-
+        Replace all stored extra rules with the imported ones instead of
+        merging. Element bindings are always merged.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+floorplan_upload_svg:
+  name: Floorplan Upload SVG
+  description: >-
+    Write an SVG file into config/www/ramses_extras/floorplan/ and
+    optionally activate it as the custom floorplan SVG — the file bridge
+    for externally drawn plans (Inkscape, HA-floorplanner-gui).
+  fields:
+    filename:
+      name: Filename
+      description: Target filename inside the floorplan dir (.svg appended if missing).
+      required: true
+      example: "my-plan.svg"
+      selector:
+        text:
+    svg_text:
+      name: SVG Content
+      description: The SVG document text.
+      required: true
+      selector:
+        text:
+          multiline: true
+    set_as_active:
+      name: Set As Active
+      description: Switch svg_mode to custom and point the bundle at this file.
+      required: false
+      default: true
+      selector:
+        boolean:
+
+floorplan_sync_areas:
+  name: Floorplan Sync Areas
+  description: >-
+    Import a floorplan-studio project export (Projects → Export JSON) and
+    sync it into HA's registries: creates HA areas for room names
+    (optional) and assigns each marker's entities to the smallest room
+    containing it. Marker placement in the studio then drives real
+    entity-registry area ids, which the floorplan topology reads on the
+    next floorplan_export.
+  fields:
+    project_json:
+      name: Project JSON
+      description: >-
+        The floorplan-studio project file contents (Projects → Export
+        current as JSON). When omitted, the project last stored via
+        floorplan_store_project is used.
+      required: false
+      selector:
+        text:
+          multiline: true
+    create_areas:
+      name: Create Areas
+      description: Create HA areas for studio rooms that don't match an existing area.
+      required: false
+      default: true
+      selector:
+        boolean:
+    dry_run:
+      name: Dry Run
+      description: Report what would be created/assigned without changing the registries.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+floorplan_seed_studio:
+  name: Floorplan Seed Studio
+  description: >-
+    Emit a floorplan-studio project JSON with your SVG rooms as studio
+    rooms and a marker per topology device pre-placed at its room's
+    centroid (matched by HA area). Paste the returned project_json into
+    studio's Projects → Import JSON to get a pre-populated map instead
+    of placing every marker by hand.
+  fields:
+    floors:
+      name: Floors
+      description: >-
+        Map of floor name → SVG reference (/local/... path or a filename
+        inside the ramses_extras floorplan dir). Omit to use the active
+        custom SVG as a single floor.
+      required: false
+      example: |
+        begane grond: /local/ramses_extras/floorplan/plattegrond-bg.svg
+        1e verdieping: /local/ramses_extras/floorplan/plattegrond-1e.svg
+      selector:
+        object:
+    project_json:
+      name: Existing Project JSON
+      description: >-
+        Optional: a studio project export to merge into — floors match by
+        name, missing rooms are added, markers whose entity already exists
+        are skipped. Preserves your background images and studio edits.
+      required: false
+      selector:
+        text:
+          multiline: true
+    staging:
+      name: Staging Row
+      description: >-
+        Park markers for devices without a matching room in a strip below
+        the first floor's canvas — drag them into a room in studio, then
+        re-export and run floorplan_sync_areas to set their HA area.
+      required: false
+      default: true
+      selector:
+        boolean:
+    marker_size:
+      name: Marker Icon Size
+      description: >-
+        Icon size (px) for generated markers. Studio defaults to 40 which
+        is large on a 640x560 canvas.
+      required: false
+      default: 20
+      selector:
+        number:
+          min: 8
+          max: 80
+          mode: box
+    name:
+      name: Project Name
+      description: >-
+        Name for the generated studio project (only used when not merging
+        into project_json).
+      required: false
+      selector:
+        text:
+
+floorplan_store_project:
+  name: Store Studio Project
+  description: >-
+    Store a floorplan-studio project export as the canonical 'latest'
+    project (ramses_extras/floorplan/projects/latest.json) plus a
+    timestamped backup. floorplan_seed_studio and floorplan_sync_areas
+    fall back to this stored copy when no project_json is passed.
+  fields:
+    project_json:
+      name: Studio Project JSON
+      description: Studio Projects → Export JSON contents.
+      required: true
+      selector:
+        text:
+          multiline: true

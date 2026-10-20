@@ -71,6 +71,7 @@ async def import_feature_platform_modules(feature_names: list[str]) -> None:
         Platform.BINARY_SENSOR: "binary_sensor",
         Platform.NUMBER: "number",
         Platform.SELECT: "select",
+        Platform.BUTTON: "button",
     }
 
     for feature_name in feature_names:
@@ -164,6 +165,7 @@ async def load_feature_definitions_and_platforms(
             Platform.BINARY_SENSOR,
             Platform.NUMBER,
             Platform.SELECT,
+            Platform.BUTTON,
         ],
     )
 

@@ -157,4 +157,16 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "has_device_config": False,
         "platforms": ["sensor"],
     },
+    "floorplan_helper": {
+        "name": "Floorplan Helper",
+        "description": (
+            "Generate a managed ha-floorplan bundle (icons, CSS, rules YAML) "
+            "from the discovered RAMSES system"
+        ),
+        "feature_module": "features.floorplan_helper",
+        "handler": None,
+        "default_enabled": False,
+        "allowed_device_slugs": ["*"],
+        "has_device_config": True,
+    },
 }
