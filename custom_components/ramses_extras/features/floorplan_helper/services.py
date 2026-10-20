@@ -35,7 +35,6 @@ from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
-from homeassistant.util import dt as dt_util
 
 from ...const import DOMAIN
 from .const import (
@@ -58,11 +57,14 @@ from .const import (
 )
 from .generator import async_generate_bundle, build_toolbar_svg
 from .importer import (
+    backup_project,
     build_studio_project,
+    load_latest_project,
     parse_floorplan_yaml,
     parse_studio_project,
     room_for_point,
     rooms_from_svg,
+    store_latest_project,
     studio_floor,
     studio_marker,
     svg_viewbox,
@@ -122,34 +124,23 @@ def _inject_toolbar(svg_text: str) -> str:
 
 def _backup_project(hass: HomeAssistant, project_json: str) -> str:
     """Write a timestamped copy of a studio project for backup/history."""
-    backup_dir = Path(hass.config.path("ramses_extras/floorplan/projects"))
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    stamp = dt_util.now().strftime("%Y%m%d-%H%M%S")
-    path = backup_dir / f"project-{stamp}.json"
-    path.write_text(project_json, "utf-8")
-    return str(path)
+    return backup_project(hass, project_json)
 
 
 def _store_latest_project(hass: HomeAssistant, project_json: str) -> str:
     """Write/overwrite the canonical latest studio project."""
-    path = Path(hass.config.path("ramses_extras/floorplan/projects"))
-    path.mkdir(parents=True, exist_ok=True)
-    latest = path / PROJECT_LATEST_NAME
-    latest.write_text(project_json, "utf-8")
-    return str(latest)
+    return store_latest_project(hass, project_json)
 
 
 def _load_latest_project(hass: HomeAssistant) -> str:
     """Return the stored studio project, or raise if none was stored."""
-    path = Path(hass.config.path("ramses_extras/floorplan/projects"))
-    latest = path / PROJECT_LATEST_NAME
-    try:
-        return latest.read_text("utf-8")
-    except OSError:
+    text = load_latest_project(hass)
+    if text is None:
         raise vol.Invalid(
             "No stored studio project — pass project_json or store one "
             "first (floorplan_store_project / the actions card drop zone)"
-        ) from None
+        )
+    return text
 
 
 def _merge_studio_project(

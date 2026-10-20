@@ -61,8 +61,27 @@ card reads/writes studio storage directly. No export/download needed:
 - **Seed → studio** → `seed_studio`, then writes the result *into*
   studio's project list — open it via Projects (no Import JSON needed)
 - **Open studio** / **Open editor** — navigate to the configured tool URLs
-- **Export bundle** — `floorplan_export`, copies `card_yaml` to clipboard
+- **Export bundle** — `floorplan_export`, copies `card_yaml` to clipboard.
+  In custom-SVG mode it also writes a **merged SVG**
+  (`generated/<name>.merged.svg`): your drawing + device markers at
+  their studio positions + the toolbar — that is what the card loads,
+  so rules actually bind and `rx-*` classes apply.
 - **Sync areas** — `sync_areas` on the stored project
+- **Resize ◉ selected** — apply the tweak icon size to the markers
+  selected in studio (multi-select works — studio's own inspector can't)
+- **Recolor ◧ rooms** — apply the tweak fill/opacity to selected rooms
+  (shift-click) — e.g. colour every room a WTW ventilates
+
+Both studio-side actions go through studio's own `commit()` (re-render,
+autosave, Ctrl+Z-able); a DOM+IndexedDB patch is the fallback.
+
+**Device zones** (`floorplan_set_device_zone` or the ⚙ Tweaks "◧ rooms
+→ zone" flow): declare which rooms a device serves, then
+
+- **click a marker** → its zone's rooms get a dashed outline
+- **double-click a marker** → device card popup (hvac-fan-card for
+  FAN/HVAC, native more-info otherwise); `device_view_url` adds a
+  "⤢ dashboard" button that navigates to a full view
 
 **Drop zone** — fallback for a project JSON from another machine or a
 backup file (e.g. migrating to prod): stores + syncs it the same way.
@@ -159,6 +178,11 @@ use a `script` with a text `input_text`/`variable`, or Dev Tools.
   True for areas created by `sync_areas`; hand-renamed HA areas break it.
 - Studio **walls/doors are canvas-only** — never exported to the SVG. They
   live in the project JSON only.
+- Marker→room matching is **per-floor** (floors share the same canvas
+  coordinates — without scoping, a smaller upstairs room can "steal" a
+  marker).
+- Browser cache: the card JS is served with a `?v=` that doesn't always
+  bump — **hard-refresh** (Ctrl+Shift+R) after updates.
 - `floorplan_upload_svg` auto-injects the toolbar (skips if present,
   respects `toolbar_enabled`).
 - The toolbar shows on the **dashboard card only** — never inside studio.

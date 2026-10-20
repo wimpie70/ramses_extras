@@ -19,6 +19,7 @@ Produces everything the ha-floorplan card consumes:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from copy import deepcopy
@@ -38,6 +39,7 @@ from .const import (
     FLOORPLAN_DEVICE_ICON_MAP,
     FLOORPLAN_GENERATED_BASE,
     FLOORPLAN_GENERATED_DIR_NAME,
+    FLOORPLAN_ICON_MDI,
     FLOORPLAN_ICONS,
     FLOORPLAN_STATIC_BASE,
     GENERATED_CARD_YAML,
@@ -61,6 +63,12 @@ from .const import (
     TOOLBAR_ELEMENT_IMPORT,
     TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
+)
+from .importer import (
+    best_floor_for_svg,
+    load_latest_project,
+    rooms_from_svg,
+    studio_marker_positions,
 )
 from .mapping import (
     get_floorplan_options,
@@ -280,6 +288,108 @@ def _group_devices(
         return (1, 0.0, key)
 
     return [(k, labels[k], v) for k, v in sorted(groups.items(), key=sort_key)]
+
+
+# mdi icon name (studio marker style.icon) → our icon key — inverse of
+# FLOORPLAN_ICON_MDI, so a studio marker keeps its chosen icon.
+_MDI_TO_ICON_KEY = {v: k for k, v in FLOORPLAN_ICON_MDI.items()}
+
+_VIEWBOX_RE = re.compile(r'viewBox="[^"]*?\s([\d.]+)\s+([\d.]+)"')
+
+
+def _svg_viewbox_size(svg_text: str) -> tuple[float, float]:
+    m = _VIEWBOX_RE.search(svg_text)
+    return (float(m.group(1)), float(m.group(2))) if m else (960.0, 640.0)
+
+
+def build_overlay_fragment(
+    model: dict[str, Any],
+    options: dict[str, Any],
+    positions: dict[str, dict[str, Any]],
+    svg_text: str,
+) -> tuple[str, list[str]]:
+    """Build the marker/toolbar fragment to splice into a user SVG.
+
+    Device markers are placed at their studio-project coordinates
+    (studio canvas == SVG viewBox space); devices without a marker fall
+    back to the centroid of their area's ``area.*`` element, then to a
+    staging strip just below the canvas.
+
+    :param positions: entity_id → ``{x, y, size, icon}`` (from
+        :func:`importer.studio_marker_positions`)
+    :return: ``(fragment, warnings)``
+    """
+    svg_rooms = {r["slug"]: r for r in rooms_from_svg(svg_text)}
+    vb_w, vb_h = _svg_viewbox_size(svg_text)
+    warnings: list[str] = []
+    used_icons: set[str] = set()
+    body: list[str] = []
+    staged = 0
+
+    for dev in model.get("devices", []):
+        element_id = _xml_id(_element_id_for_device(dev, options))
+        icon_key = _icon_for_device(dev, options)
+        pos: dict[str, Any] | None = None
+        candidates = [dev.get("primary_entity")] + [
+            e.get("entity_id") for e in dev.get("entities") or []
+        ]
+        for ent in candidates:
+            if ent and ent in positions:
+                pos = positions[ent]
+                break
+        if pos is not None:
+            icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), icon_key)
+            x, y, size = pos["x"], pos["y"], float(pos.get("size") or 20)
+        elif dev.get("area_id") and dev["area_id"] in svg_rooms:
+            x, y = svg_rooms[dev["area_id"]]["centroid"]
+            size = 20.0
+        else:
+            staged += 1
+            x, y = 20.0 + staged * 36.0, vb_h + 30.0
+            size = 20.0
+        used_icons.add(icon_key)
+        body.append(
+            f'<g id="{element_id}" transform="translate({x:.1f},{y:.1f})">'
+            f'<use href="#icon.{icon_key}" xlink:href="#icon.{icon_key}" '
+            f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
+            f'width="{size:.0f}" height="{size:.0f}"/>'
+            f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
+            f'text-anchor="middle"></text>'
+            "</g>"
+        )
+    if staged:
+        warnings.append(
+            f"{staged} device(s) have no studio marker or area room — "
+            "parked below the canvas (off-viewBox)"
+        )
+
+    symbols = [s for s in (_load_icon_symbol(k) for k in sorted(used_icons)) if s]
+    parts = [
+        "<defs>",
+        *symbols,
+        "</defs>",
+        '<g id="floorplan.markers">',
+        *body,
+        "</g>",
+    ]
+    if (
+        options.get(OPTION_TOOLBAR_ENABLED, True)
+        and "floorplan.toolbar" not in svg_text
+    ):
+        tx = max(0.0, vb_w - 5 * 34 - 8)
+        ty = max(0.0, vb_h - 32)
+        parts.append(
+            f'<g transform="translate({tx:.0f},{ty:.0f})">{build_toolbar_svg()}</g>'
+        )
+    return "\n".join(parts), warnings
+
+
+def merge_svg_overlay(svg_text: str, fragment: str) -> str:
+    """Splice an overlay fragment into an SVG document before ``</svg>``."""
+    idx = svg_text.rfind("</svg>")
+    if idx == -1:
+        return svg_text + "\n" + fragment
+    return svg_text[:idx] + fragment + "\n" + svg_text[idx:]
 
 
 def build_elements_svg(model: dict[str, Any], options: dict[str, Any]) -> str:
@@ -502,17 +612,84 @@ def _parse_extra_rules(raw: Any) -> list[dict[str, Any]]:
     return rules
 
 
-def _build_card_yaml(rules: list[dict[str, Any]], options: dict[str, Any]) -> str:
+async def _build_merged_svg(
+    hass: HomeAssistant,
+    model: dict[str, Any],
+    options: dict[str, Any],
+) -> tuple[str | None, list[str], str | None]:
+    """Splice device markers + toolbar into the user's custom SVG.
+
+    Marker positions come from the stored studio project (latest.json),
+    read from the floor whose room names match the SVG's ``area.*`` ids.
+
+    :return: ``(merged filename, warnings, merged SVG text or None)``
+    """
+    ref = options.get(OPTION_CUSTOM_SVG_PATH) or ""
+    if ref.startswith("/local/"):
+        src = Path(hass.config.config_dir) / "www" / ref[len("/local/") :]
+    else:
+        src = (
+            Path(hass.config.config_dir)
+            / "www"
+            / "ramses_extras"
+            / "floorplan"
+            / Path(ref).name
+        )
+
+    def _read() -> str | None:
+        try:
+            return src.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    svg_text = await hass.async_add_executor_job(_read)
+    if svg_text is None:
+        return (
+            None,
+            [f"Custom SVG not readable: {ref} — image left unchanged"],
+            None,
+        )
+
+    positions: dict[str, dict[str, Any]] = {}
+    warnings: list[str] = []
+    project_json = await hass.async_add_executor_job(load_latest_project, hass)
+    project: dict[str, Any] | None = None
+    if project_json:
+        try:
+            project = json.loads(project_json)
+        except json.JSONDecodeError:
+            project = None
+    if project:
+        floor = best_floor_for_svg(project, svg_text)
+        positions = studio_marker_positions(
+            project, str(floor.get("name")) if floor else None
+        )
+    else:
+        warnings.append("No stored studio project — markers placed at area centroids")
+
+    fragment, frag_warnings = build_overlay_fragment(
+        model, options, positions, svg_text
+    )
+    warnings.extend(frag_warnings)
+    return f"{src.stem}.merged.svg", warnings, merge_svg_overlay(svg_text, fragment)
+
+
+def _build_card_yaml(
+    rules: list[dict[str, Any]],
+    options: dict[str, Any],
+    image_path: str | None = None,
+) -> str:
     """Render the paste-ready floorplan card config.
 
     The generated rules sit inside BEGIN/END markers so a re-export can
     replace just that block; user rules outside the markers survive.
     """
     svg_mode = options.get(OPTION_SVG_MODE, "generated")
-    if svg_mode == SVG_MODE_CUSTOM and options.get(OPTION_CUSTOM_SVG_PATH):
-        image_path = options[OPTION_CUSTOM_SVG_PATH]
-    else:
-        image_path = f"{FLOORPLAN_GENERATED_BASE}/{GENERATED_ELEMENTS_SVG}"
+    if image_path is None:
+        if svg_mode == SVG_MODE_CUSTOM and options.get(OPTION_CUSTOM_SVG_PATH):
+            image_path = options[OPTION_CUSTOM_SVG_PATH]
+        else:
+            image_path = f"{FLOORPLAN_GENERATED_BASE}/{GENERATED_ELEMENTS_SVG}"
 
     card = {
         "type": "custom:floorplan-card",
@@ -595,15 +772,26 @@ async def async_generate_bundle(
 
     rules = _build_rules(model, options)
     svg_text = build_elements_svg(model, options)
-    card_yaml = _build_card_yaml(rules, options)
 
-    files_written = await _write_generated_files(
-        hass,
-        {
-            GENERATED_ELEMENTS_SVG: svg_text,
-            GENERATED_CARD_YAML: card_yaml,
-        },
-    )
+    files: dict[str, str] = {}
+    warnings: list[str] = []
+    image_path: str | None = None
+    if options.get(OPTION_SVG_MODE) == SVG_MODE_CUSTOM and options.get(
+        OPTION_CUSTOM_SVG_PATH
+    ):
+        merged_name, merged_warnings, merged_text = await _build_merged_svg(
+            hass, model, options
+        )
+        warnings.extend(merged_warnings)
+        if merged_text is not None and merged_name:
+            files[merged_name] = merged_text
+            image_path = f"{FLOORPLAN_GENERATED_BASE}/{merged_name}"
+
+    card_yaml = _build_card_yaml(rules, options, image_path)
+    files[GENERATED_ELEMENTS_SVG] = svg_text
+    files[GENERATED_CARD_YAML] = card_yaml
+
+    files_written = await _write_generated_files(hass, files)
 
     new_snapshot = model_snapshot(model)
     previous = options.get(OPTION_LAST_SNAPSHOT) or {}
@@ -611,7 +799,6 @@ async def async_generate_bundle(
     options[OPTION_LAST_SNAPSHOT] = new_snapshot
     persist_floorplan_options(hass, config_entry, options)
 
-    warnings: list[str] = []
     if not await _floorplan_resource_present(hass):
         warnings.append(
             "No floorplan.js lovelace resource detected — install "
@@ -633,5 +820,7 @@ async def async_generate_bundle(
 __all__ = [
     "async_generate_bundle",
     "build_elements_svg",
+    "build_overlay_fragment",
     "build_toolbar_svg",
+    "merge_svg_overlay",
 ]

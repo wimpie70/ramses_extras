@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -470,13 +471,122 @@ def studio_marker(
     }
 
 
+# ---------------------------------------------------------------------------
+# Server-side project storage — the canonical "current" studio project
+# (written by floorplan_store_project; read when services get no
+# project_json). Timestamped copies go alongside for history.
+# ---------------------------------------------------------------------------
+
+PROJECT_LATEST_NAME = "latest.json"
+
+
+def _projects_dir(hass: Any) -> Path:
+    path = Path(hass.config.path("ramses_extras/floorplan/projects"))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def backup_project(hass: Any, project_json: str) -> str:
+    """Write a timestamped copy of a studio project for backup/history."""
+    from homeassistant.util import dt as dt_util
+
+    stamp = dt_util.now().strftime("%Y%m%d-%H%M%S")
+    path = _projects_dir(hass) / f"project-{stamp}.json"
+    path.write_text(project_json, "utf-8")
+    return str(path)
+
+
+def store_latest_project(hass: Any, project_json: str) -> str:
+    """Write/overwrite the canonical latest studio project."""
+    latest = _projects_dir(hass) / PROJECT_LATEST_NAME
+    latest.write_text(project_json, "utf-8")
+    return str(latest)
+
+
+def load_latest_project(hass: Any) -> str | None:
+    """Return the stored studio project text, or None if none stored."""
+    latest = Path(hass.config.path("ramses_extras/floorplan/projects")) / (
+        PROJECT_LATEST_NAME
+    )
+    try:
+        return latest.read_text("utf-8")
+    except OSError:
+        return None
+
+
+def studio_marker_positions(
+    project: dict[str, Any], floor_name: str | None = None
+) -> dict[str, dict[str, Any]]:
+    """Map entity_id → marker position/style from a studio project.
+
+    :param project: parsed project dict (``{"floors": [...]}``)
+    :param floor_name: when given, only markers on that floor are read
+    :return: ``{entity_id: {"x", "y", "size", "icon", "label", "floor"}}``
+    """
+    positions: dict[str, dict[str, Any]] = {}
+    for floor in project.get("floors") or []:
+        fname = str(floor.get("name") or floor.get("id") or "")
+        if floor_name is not None and fname != floor_name:
+            continue
+        for marker in floor.get("markers") or []:
+            style = marker.get("style") or {}
+            for entity_id in marker.get("entities") or []:
+                positions.setdefault(
+                    str(entity_id),
+                    {
+                        "x": float(marker.get("x") or 0),
+                        "y": float(marker.get("y") or 0),
+                        "size": float(style.get("size") or 20),
+                        "icon": style.get("icon"),
+                        "label": style.get("label"),
+                        "floor": fname,
+                    },
+                )
+    return positions
+
+
+def best_floor_for_svg(project: dict[str, Any], svg_text: str) -> dict[str, Any] | None:
+    """Pick the project floor whose room names match the SVG's area ids.
+
+    Floors share the same canvas coordinate space, so marker positions
+    only make sense for the floor the SVG was seeded from. Scores each
+    floor by how many of its room names appear as ``id="area.<slug>"``
+    in the SVG; falls back to the floor with the most markers.
+    """
+
+    def slug(name: Any) -> str:
+        return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", str(name).lower())).strip(
+            "_"
+        )
+
+    area_ids = set(re.findall(r'id="area\.([^"]+)"', svg_text))
+    floors = project.get("floors") or []
+    best: dict[str, Any] | None = None
+    best_score = -1
+    for floor in floors:
+        score = sum(
+            1 for room in floor.get("rooms") or [] if slug(room.get("name")) in area_ids
+        )
+        if score > best_score:
+            best, best_score = floor, score
+    if best is None and floors:
+        best = max(floors, key=lambda f: len(f.get("markers") or []))
+    return best
+
+
 __all__ = [
+    "PROJECT_LATEST_NAME",
+    "backup_project",
+    "best_floor_for_svg",
     "build_studio_project",
+    "load_latest_project",
     "parse_floorplan_yaml",
     "parse_studio_project",
     "room_for_point",
     "rooms_from_svg",
+    "store_latest_project",
     "studio_floor",
     "studio_marker",
+    "studio_marker_positions",
     "svg_viewbox",
 ]
