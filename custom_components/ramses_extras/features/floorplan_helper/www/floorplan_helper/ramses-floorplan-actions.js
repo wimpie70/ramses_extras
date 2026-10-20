@@ -847,7 +847,9 @@ class RamsesFloorplanActions extends HTMLElement {
         this._devCard = card;
         title.textContent =
           `${dev.display_name || dev.device_id} (${dev.device_id})`;
-        const view = this._tweak('device_view_url');
+        const view =
+          this._tweak('device_view_url') ||
+          ((this._fpConfig || {}).device_view_url || '');
         const full = this.shadowRoot.getElementById('devfull');
         if (full) full.style.display = view ? '' : 'none';
         panel.style.display = 'flex';

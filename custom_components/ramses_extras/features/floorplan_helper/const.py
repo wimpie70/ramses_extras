@@ -66,6 +66,10 @@ OPTION_LAST_SNAPSHOT = "last_snapshot"
 # opens the device card.  Maps ramses device id → {"areas": [area_id],
 # "color": "#hex"}.
 OPTION_DEVICE_ZONES = "device_zones"
+# Optional dashboard/view path for a zoned device's double-tap — when set,
+# the rule navigates there instead of firing the ll-custom popup event
+# (which needs the ramses-floorplan-actions card on the same view).
+OPTION_DEVICE_VIEW_URL = "device_view_url"
 OPTION_TOOLBAR_ENABLED = "toolbar_enabled"
 OPTION_EDITOR_URL = "editor_url"
 OPTION_PLANNER_URL = "planner_url"
@@ -99,6 +103,7 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_AREA_OVERRIDES: {},
     OPTION_EXTRA_RULES: [],
     OPTION_DEVICE_ZONES: {},
+    OPTION_DEVICE_VIEW_URL: "",
     OPTION_TOOLBAR_ENABLED: True,
     OPTION_EDITOR_URL: DEFAULT_EDITOR_URL,
     OPTION_PLANNER_URL: DEFAULT_PLANNER_URL,
@@ -278,6 +283,7 @@ __all__ = [
     "GENERATED_ELEMENTS_SVG",
     "OPTION_AREA_OVERRIDES",
     "OPTION_CUSTOM_SVG_PATH",
+    "OPTION_DEVICE_VIEW_URL",
     "OPTION_DEVICE_ZONES",
     "OPTION_EDITOR_URL",
     "OPTION_ELEMENT_BINDINGS",

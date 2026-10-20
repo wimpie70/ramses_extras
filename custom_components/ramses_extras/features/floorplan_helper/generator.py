@@ -46,6 +46,7 @@ from .const import (
     GENERATED_ELEMENTS_SVG,
     OPTION_AREA_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
     OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
@@ -366,19 +367,29 @@ def build_overlay_fragment(
             "parked below the canvas (off-viewBox)"
         )
 
-    # Zone highlight classes (toggled by the marker's tap_action rule).
-    # Kept as a <style> block — class selectors need no id escaping.
+    # Zone highlight (toggled by the marker's tap_action rule): the class
+    # swaps the room's fill for a translucent diagonal hatch in the zone
+    # colour + a solid outline — clearly visible over any base fill.
     zone_css: list[str] = []
+    zone_patterns: list[str] = []
     zones = options.get(OPTION_DEVICE_ZONES) or {}
     for dev in model.get("devices", []):
         z = zones.get(dev.get("device_id"))
         if not (z and z.get("areas")):
             continue
         color = z.get("color") or "#22c55e"
+        pat = f"rx-zonepat-{_slugify(str(dev.get('device_id')))}"
+        zone_patterns.append(
+            f'<pattern id="{pat}" width="10" height="10" '
+            f'patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+            f'<rect width="10" height="10" fill="{color}" fill-opacity="0.12"/>'
+            f'<line x1="0" y1="0" x2="0" y2="10" stroke="{color}" '
+            f'stroke-opacity="0.5" stroke-width="3"/></pattern>'
+        )
         zone_css.append(
-            f".{_zone_class(dev['device_id'])} {{ stroke: {color} !important; "
-            f"stroke-width: 3px !important; stroke-dasharray: 6 4 !important; "
-            f"filter: drop-shadow(0 0 5px {color}) !important; }}"
+            f".{_zone_class(str(dev.get('device_id')))} {{ "
+            f"fill: url(#{pat}) !important; fill-opacity: 1 !important; "
+            f"stroke: {color} !important; stroke-width: 3px !important; }}"
         )
     style_block = f"<style>\n{chr(10).join(zone_css)}\n</style>" if zone_css else ""
 
@@ -387,6 +398,7 @@ def build_overlay_fragment(
         *([style_block] if style_block else []),
         "<defs>",
         *symbols,
+        *zone_patterns,
         "</defs>",
         '<g id="floorplan.markers">',
         *body,
@@ -600,13 +612,22 @@ def _build_rules(
                     },
                 }
                 tap_rule["hold_action"] = {"action": "more-info"}
-                tap_rule["double_tap_action"] = {
-                    "action": "fire-dom-event",
-                    # picked up by the ramses-floorplan-actions card to
-                    # open the device popup (hvac-fan-card etc.)
-                    "ramses_device_id": dev.get("device_id"),
-                    "ramses_entity": primary,
-                }
+                view_url = options.get(OPTION_DEVICE_VIEW_URL) or ""
+                if view_url:
+                    # self-contained: navigate to a view with the device
+                    # card — no listener card needed on this dashboard
+                    tap_rule["double_tap_action"] = {
+                        "action": "navigate",
+                        "navigation_path": view_url,
+                    }
+                else:
+                    tap_rule["double_tap_action"] = {
+                        "action": "fire-dom-event",
+                        # picked up by the ramses-floorplan-actions card to
+                        # open the device popup (hvac-fan-card etc.)
+                        "ramses_device_id": dev.get("device_id"),
+                        "ramses_entity": primary,
+                    }
             else:
                 tap_rule["tap_action"] = {"action": "more-info"}
             rules.append(tap_rule)

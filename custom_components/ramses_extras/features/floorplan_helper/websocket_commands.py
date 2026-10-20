@@ -26,6 +26,7 @@ from .const import (
     FLOORPLAN_ICONS,
     FLOORPLAN_STATIC_BASE,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
     OPTION_EDITOR_URL,
     OPTION_PLANNER_URL,
@@ -135,6 +136,7 @@ async def ws_get_config(
             "planner_url": options.get(OPTION_PLANNER_URL),
             "toolbar_enabled": options.get(OPTION_TOOLBAR_ENABLED),
             "device_zones": options.get(OPTION_DEVICE_ZONES, {}),
+            "device_view_url": options.get(OPTION_DEVICE_VIEW_URL, ""),
         },
     )
 
