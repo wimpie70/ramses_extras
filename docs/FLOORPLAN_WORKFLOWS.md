@@ -78,10 +78,14 @@ autosave, Ctrl+Z-able); a DOM+IndexedDB patch is the fallback.
 **Device zones** (`floorplan_set_device_zone` or the ⚙ Tweaks "◧ rooms
 → zone" flow): declare which rooms a device serves, then
 
-- **click a marker** → its zone's rooms get a dashed outline
-- **double-click a marker** → device card popup (hvac-fan-card for
-  FAN/HVAC, native more-info otherwise); `device_view_url` adds a
-  "⤢ dashboard" button that navigates to a full view
+- **click a marker** (in the exported floorplan card) → its zone's
+  rooms get a translucent hatch + outline (`.rx-zone-<dev>` class)
+- **double-tap** → device popup (hvac-fan-card for FAN/HVAC). The
+  rule fires `ll-custom`; a module-level listener in the actions-card
+  JS catches it on **any** view. If the floorplan option
+  `device_view_url` is set, double-tap navigates there instead —
+  self-contained, no listener needed.
+- **hold** → native more-info on the primary entity
 
 **Drop zone** — fallback for a project JSON from another machine or a
 backup file (e.g. migrating to prod): stores + syncs it the same way.
