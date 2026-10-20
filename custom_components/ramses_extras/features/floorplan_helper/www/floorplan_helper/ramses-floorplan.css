@@ -78,9 +78,10 @@
   fill: #e53935;
 }
 
-/* Fan spin animation. Apply to a <g> wrapper — never to an element that
- * already carries its own transform attribute (floorplan transforms
- * conflict with element transforms; wrap and transform the group). */
+/* Fan spin animation, speed-proportional. The rx-spin* class is set on
+ * the marker <g> (which already carries a translate transform — a CSS
+ * transform there would override it), so the animation applies to the
+ * inner .rx-rotor wrapper around the icon instead. */
 @keyframes rx-spin {
   from {
     transform: rotate(0deg);
@@ -90,10 +91,23 @@
   }
 }
 
-.rx-spin {
-  animation: rx-spin 1.4s linear infinite;
+.rx-spin-slow .rx-rotor,
+.rx-spin .rx-rotor,
+.rx-spin-fast .rx-rotor {
   transform-origin: center;
   transform-box: fill-box;
+}
+
+.rx-spin-slow .rx-rotor {
+  animation: rx-spin 3.2s linear infinite;
+}
+
+.rx-spin .rx-rotor {
+  animation: rx-spin 1.4s linear infinite;
+}
+
+.rx-spin-fast .rx-rotor {
+  animation: rx-spin 0.7s linear infinite;
 }
 
 /* --- in-plan toolbar buttons (floorplan.* element ids) --- */

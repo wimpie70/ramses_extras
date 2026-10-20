@@ -104,53 +104,8 @@ _GROUP_PAD_Y = 56
 _GROUP_GAP = 48
 _ICON_SIZE = 24
 
-# Role → rule templates emitted inside the managed block. ``{entity}`` and
-# ``{element}`` placeholders are filled per element. Templates mirror the
-# floorplan docs' class_set/text_set services.
+# Non-class rule templates emitted inside the managed block.
 _ROLE_RULE_TEMPLATES: dict[str, list[dict[str, Any]]] = {
-    "status": [
-        {
-            "state_action": {
-                "service": "floorplan.class_set",
-                "service_data": {
-                    "class": ('${entity.state === "on" ? "rx-online" : "rx-offline"}')
-                },
-            }
-        }
-    ],
-    "heat_demand": [
-        {
-            "state_action": {
-                "service": "floorplan.class_set",
-                "service_data": {
-                    "class": ('${Number(entity.state) > 0 ? "rx-heat-demand" : ""}')
-                },
-            }
-        }
-    ],
-    "window_open": [
-        {
-            "state_action": {
-                "service": "floorplan.class_set",
-                "service_data": {
-                    "class": ('${entity.state === "on" ? "rx-window-open" : ""}')
-                },
-            }
-        }
-    ],
-    "fan_rate": [
-        {
-            "state_action": {
-                "service": "floorplan.class_set",
-                "service_data": {
-                    "class": (
-                        '${["high","boost"].includes('
-                        'String(entity.state).toLowerCase()) ? "rx-spin" : ""}'
-                    )
-                },
-            }
-        }
-    ],
     "temperature": [
         {
             "state_action": {
@@ -160,6 +115,91 @@ _ROLE_RULE_TEMPLATES: dict[str, list[dict[str, Any]]] = {
         }
     ],
 }
+
+
+_CLASS_ROLES = ("status", "heat_demand", "window_open", "fan_rate")
+
+
+def _role_class_expr(role: str | None, ents: list[str]) -> str | None:
+    """JS expression yielding the class(es) for ``role`` entity(ies).
+
+    Reads ``states[...]`` rather than ``entity`` so the expression can be
+    combined with others — see :func:`_element_class_expr`. Multiple
+    entities of one role fold into a single OR-ed term, so the same
+    class is never emitted twice.
+    """
+    sts = [f'states["{e}"]' for e in ents]
+    if not sts:
+        return None
+    if role == "status":
+        cond = " || ".join(f'({s} && {s}.state === "on")' for s in sts)
+        return f'(({cond}) ? "rx-online" : "rx-offline")'
+    if role == "heat_demand":
+        exprs = " || ".join(
+            f'({s} && Number({s}.state) > 0 ? "rx-heat-demand" : "")' for s in sts
+        )
+        return f"({exprs})"
+    if role == "window_open":
+        exprs = " || ".join(
+            f'({s} && {s}.state === "on" ? "rx-window-open" : "")' for s in sts
+        )
+        return f"({exprs})"
+    if role == "fan_rate":
+        # speed-proportional spin: numeric % state, else mode names;
+        # entities OR-ed — first one carrying a value wins
+        def spin(st: str) -> str:
+            return (
+                f"(function(){{var s={st}?String({st}.state).toLowerCase()"
+                ':"";var n=parseFloat(s);'
+                'if(!isNaN(n))return n>75?"rx-spin-fast":n>40?"rx-spin"'
+                ':n>0?"rx-spin-slow":"";'
+                'return s==="high"||s==="boost"?"rx-spin-fast"'
+                ':s==="medium"||s==="normal"?"rx-spin"'
+                ':s==="low"||s==="auto"||s==="away"?"rx-spin-slow":"";})()'
+            )
+
+        return "(" + " || ".join(spin(s) for s in sts) + ")"
+    return None
+
+
+def _sorted_role_ents(by_role: dict[str, list[str]], role: str) -> list[str]:
+    """fan_rate entities sorted: actual speed% first, then rate, mode."""
+    ents = by_role.get(role) or []
+    if role != "fan_rate":
+        return ents
+    return sorted(
+        ents, key=lambda e: 0 if "fan_speed" in e else 1 if "fan_rate" in e else 2
+    )
+
+
+def _element_class_expr(dev: dict[str, Any]) -> str | None:
+    """Combined ``${}`` class expression for a device's element.
+
+    ``floorplan.class_set`` *replaces* the element's whole class
+    attribute, so every class rule bound to the element must re-emit the
+    complete set — otherwise rules clobber each other (a fan_mode update
+    would wipe ``rx-online``). The trailing term re-emits any toggled
+    ``rx-zone-*`` classes so a status update can't drop a zone highlight.
+    """
+    by_role: dict[str, list[str]] = {}
+    for ent in dev.get("entities", []):
+        role = ent.get("role") or ""
+        eid = str(ent.get("entity_id") or "")
+        if eid and role in _CLASS_ROLES:
+            by_role.setdefault(role, []).append(eid)
+    parts = [
+        expr
+        for role in _CLASS_ROLES
+        if (expr := _role_class_expr(role, _sorted_role_ents(by_role, role)))
+    ]
+    if not parts:
+        return None
+    parts.append(
+        '((typeof element=="object"&&element&&element.getAttribute'
+        '?(String(element.getAttribute("class")||"")'
+        '.match(/rx-zone-\\S+/g)||[]):[]).join(" "))'
+    )
+    return "${" + ' + " " + '.join(parts) + "}"
 
 
 def _binding_maps(
@@ -444,9 +484,10 @@ def build_overlay_fragment(
         body.append(
             f'<g id="{element_id}" transform="translate({x:.1f},{y:.1f})" '
             f'fill="{color}" color="{DEFAULT_TEXT_COLOR}">'
+            f'<g class="rx-rotor">'
             f'<use href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
-            f'width="{size:.0f}" height="{size:.0f}"/>'
+            f'width="{size:.0f}" height="{size:.0f}"/></g>'
             f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
             f'text-anchor="middle"></text>'
             "</g>"
@@ -467,9 +508,10 @@ def build_overlay_fragment(
         body.append(
             f'<g id="{_xml_id(ent)}" transform="translate({x:.1f},{y:.1f})" '
             f'fill="{color}" color="{DEFAULT_TEXT_COLOR}">'
+            f'<g class="rx-rotor">'
             f'<use href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
-            f'width="{size:.0f}" height="{size:.0f}"/>'
+            f'width="{size:.0f}" height="{size:.0f}"/></g>'
             f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
             f'text-anchor="middle"></text>'
             "</g>"
@@ -648,9 +690,10 @@ def build_elements_svg(model: dict[str, Any], options: dict[str, Any]) -> str:
                 f'transform="translate({x},{cy})">'
                 f'<rect class="rx-cell" width="{_CELL_W - 16}" '
                 f'height="{_CELL_H - 16}" rx="8"/>'
+                f'<g class="rx-rotor">'
                 f'<use href="#icon.{icon_key}" '
                 f'xlink:href="#icon.{icon_key}" x="12" y="14" '
-                f'width="{_ICON_SIZE}" height="{_ICON_SIZE}"/>'
+                f'width="{_ICON_SIZE}" height="{_ICON_SIZE}"/></g>'
                 f'<text class="rx-label" x="44" y="30">'
                 f"{_xml_text(_short_label(dev))}</text>"
                 f'<text class="rx-state" x="44" y="52"></text>'
@@ -698,21 +741,30 @@ def _build_rules(
         primary = dev.get("primary_entity")
         element_id = _element_id_for_device(dev, options)
 
+        combined_class = _element_class_expr(dev)
         for ent in dev.get("entities", []):
-            templates = _ROLE_RULE_TEMPLATES.get(ent.get("role") or "")
-            if not templates:
+            role = ent.get("role") or ""
+            eid = ent["entity_id"]
+            is_class_role = role in _CLASS_ROLES
+            templates = _ROLE_RULE_TEMPLATES.get(role)
+            if not is_class_role and not templates:
                 continue
-            for template in templates:
-                rule: dict[str, Any] = {"entity": ent["entity_id"]}
-                if ent["entity_id"] != element_id:
-                    rule["element"] = element_id
-                rule.update(deepcopy(template))
-                if ent["entity_id"] != primary:
-                    # every rule bound to the element fires its tap_action;
-                    # suppress it here so the primary-entity rule below is
-                    # the one more-info opens ("none" is a no-op action)
-                    rule["tap_action"] = {"action": "none"}
-                rules.append(rule)
+            rule: dict[str, Any] = {"entity": eid}
+            if eid != element_id:
+                rule["element"] = element_id
+            if is_class_role:
+                rule["state_action"] = {
+                    "service": "floorplan.class_set",
+                    "service_data": {"class": combined_class},
+                }
+            elif templates:
+                rule.update(deepcopy(templates[0]))
+            if eid != primary:
+                # every rule bound to the element fires its tap_action;
+                # suppress it here so the primary-entity rule below is
+                # the one more-info opens ("none" is a no-op action)
+                rule["tap_action"] = {"action": "none"}
+            rules.append(rule)
 
         if primary:
             # tap the marker → more-info on the device's own entity
@@ -837,7 +889,21 @@ def _build_rules(
             if "." in ent and ent not in model_entities:
                 standalone.add(ent)
     for ent in sorted(standalone):
-        rules.append({"entity": ent, "tap_action": {"action": "more-info"}})
+        rules.append(
+            {
+                "entity": ent,
+                "state_action": {
+                    "service": "floorplan.class_set",
+                    "service_data": {
+                        "class": (
+                            '${["unavailable","unknown"].includes('
+                            'String(entity.state)) ? "rx-offline" : "rx-online"}'
+                        )
+                    },
+                },
+                "tap_action": {"action": "more-info"},
+            }
+        )
 
     # Global extra rules appended last.
     rules.extend(_parse_extra_rules(options.get(OPTION_EXTRA_RULES)))
