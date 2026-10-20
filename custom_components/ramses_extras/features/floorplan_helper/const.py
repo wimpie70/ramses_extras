@@ -179,6 +179,7 @@ FLOORPLAN_ICONS: tuple[str, ...] = (
     "co2",
     "gauge",
     "pipe-valve",
+    "tablet",
     "help",
 )
 
@@ -193,7 +194,7 @@ FLOORPLAN_DEVICE_ICON_MAP: dict[str, str] = {
     "DHW": "water-boiler",
     "REM": "remote",
     "RND": "remote",
-    "DIS": "thermostat",
+    "DIS": "tablet",
     "HGI": "gateway",
     "BDR": "pipe-valve",
     "UFC": "pipe-valve",
@@ -222,6 +223,7 @@ FLOORPLAN_ICON_MDI: dict[str, str] = {
     "co2": "molecule-co2",
     "gauge": "gauge",
     "pipe-valve": "pipe-valve",
+    "tablet": "tablet",
     "help": "help-circle",
 }
 

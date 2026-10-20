@@ -34,6 +34,16 @@
   opacity: 0.7;
 }
 
+/* Device-name caption above overlay markers — smaller than rx-label
+   (which labels cells in the generated elements SVG). */
+.rx-name {
+  font-family: inherit;
+  font-size: 9px;
+  fill: currentColor;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
 /* --- connectivity / availability --- */
 .rx-online {
   fill: #2e7d32;

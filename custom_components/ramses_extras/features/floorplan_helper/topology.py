@@ -45,8 +45,11 @@ _LOGGER = logging.getLogger(__name__)
 
 RAMSES_PLATFORMS = ("ramses_cc", "ramses_extras")
 
-# Domains considered for a device's "primary" element, in preference order.
-_PRIMARY_DOMAIN_ORDER = ("climate", "water_heater", "fan", "switch")
+# Domains considered for a device's "primary" element, in preference
+# order. remote.* before the bare-entity fallback: remotes carry the
+# "REM 37:…" / "DIS 37:…" friendly names — falling through to the first
+# entity (usually *_battery_low) made every marker say "battery".
+_PRIMARY_DOMAIN_ORDER = ("climate", "water_heater", "remote", "fan", "switch")
 
 
 def _classify_entity(entity_id: str) -> str:
@@ -172,7 +175,9 @@ async def build_floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
                 "parent": topo_info.get("parent"),
                 "area_id": area_id,
                 "area_name": areas.get(area_id, {}).get("name") if area_id else None,
-                "display_name": _display_name(device_id, entities, ha_device),
+                "display_name": _display_name(
+                    device_id, entities, ha_device, device_class
+                ),
                 "primary_entity": primary,
                 "entities": entities,
             }
@@ -210,12 +215,21 @@ def _display_name(
     device_id: str,
     entities: list[dict[str, Any]],
     ha_device: dr.DeviceEntry | None,
+    device_class: str = "",
 ) -> str:
-    """Human label for a device on the floorplan."""
+    """Human label for a device on the floorplan.
+
+    Prefers the HA device name (alias when the user set one), then the
+    friendly name of a representative entity (``remote.37_…`` → "REM
+    37:…"), then ``<slug> <id>`` — e.g. "REM 37:169161" — rather than a
+    bare entity slug like ``37_169161_battery_low``.
+    """
     if ha_device is not None:
         name = ha_device.name_by_user or ha_device.name
         if name:
             return str(name)
+    if device_class and device_class != "unknown":
+        return f"{device_class} {device_id}"
     for e in entities:
         if e["domain"] in _PRIMARY_DOMAIN_ORDER:
             return str(e["entity_id"]).split(".", 1)[-1]

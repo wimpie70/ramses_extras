@@ -491,6 +491,7 @@ def build_overlay_fragment(
         # amber default keeps unstyled markers visible. `color` feeds
         # currentColor for the rx-state caption on the light backdrop.
         color = (pos.get("color") if pos else None) or DEFAULT_MARKER_COLOR
+        label = _short_label(dev)
         body.append(
             f'<g id="{element_id}" transform="translate({x:.1f},{y:.1f})" '
             f'fill="{color}" color="{DEFAULT_TEXT_COLOR}">'
@@ -498,6 +499,8 @@ def build_overlay_fragment(
             f'<use href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
             f'width="{size:.0f}" height="{size:.0f}"/></g>'
+            f'<text class="rx-name" x="0" y="{-size / 2 - 3:.0f}" '
+            f'text-anchor="middle">{_xml_text(label)}</text>'
             f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
             f'text-anchor="middle"></text>'
             "</g>"
@@ -515,6 +518,9 @@ def build_overlay_fragment(
             size = 20.0
             icon_key, color = _standalone_icon(ent), DEFAULT_MARKER_COLOR
         used_icons.add(icon_key)
+        ent_label = _short_label(
+            {"device_id": ent, "display_name": ent.split(".", 1)[-1]}
+        )
         body.append(
             f'<g id="{_xml_id(ent)}" transform="translate({x:.1f},{y:.1f})" '
             f'fill="{color}" color="{DEFAULT_TEXT_COLOR}">'
@@ -522,6 +528,8 @@ def build_overlay_fragment(
             f'<use href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
             f'width="{size:.0f}" height="{size:.0f}"/></g>'
+            f'<text class="rx-name" x="0" y="{-size / 2 - 3:.0f}" '
+            f'text-anchor="middle">{_xml_text(ent_label)}</text>'
             f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
             f'text-anchor="middle"></text>'
             "</g>"
@@ -898,26 +906,42 @@ def _build_rules(
                 )
                 tap_rule["tap_action"] = zone_actions
                 tap_rule["hold_action"] = {"action": "more-info"}
+                # ha-floorplan waits ~250ms to tell a single click from a
+                # double click — a quick "second tap to deselect" is eaten
+                # as a double tap, so the toggle never fires and the zone
+                # stays lit. Double tap therefore clears the highlight
+                # deterministically (all cards, including the origin)
+                # before opening the device view/popup.
+                clear_action: dict[str, Any] = {
+                    "action": "fire-dom-event",
+                    "ramses_zone_clear": toggles,
+                }
                 view_url = options.get(OPTION_DEVICE_VIEW_URL) or ""
                 if view_url:
                     # self-contained: navigate to a view with the device
                     # card — no listener card needed on this dashboard
-                    tap_rule["double_tap_action"] = {
-                        "action": "navigate",
-                        "navigation_path": view_url,
-                    }
+                    tap_rule["double_tap_action"] = [
+                        clear_action,
+                        {
+                            "action": "navigate",
+                            "navigation_path": view_url,
+                        },
+                    ]
                 else:
-                    tap_rule["double_tap_action"] = {
-                        "action": "fire-dom-event",
-                        # picked up by the ramses-floorplan-actions module
-                        # (loaded as a Lovelace resource → works on any
-                        # view) to open the device popup
-                        "ramses_device_id": dev.get("device_id"),
-                        "ramses_entity": primary,
-                        "ramses_card": "hvac-fan"
-                        if dev.get("device_class") in ("FAN", "HVAC")
-                        else "",
-                    }
+                    tap_rule["double_tap_action"] = [
+                        clear_action,
+                        {
+                            "action": "fire-dom-event",
+                            # picked up by the ramses-floorplan-actions
+                            # module (loaded as a Lovelace resource →
+                            # works on any view) to open the device popup
+                            "ramses_device_id": dev.get("device_id"),
+                            "ramses_entity": primary,
+                            "ramses_card": "hvac-fan"
+                            if dev.get("device_class") in ("FAN", "HVAC")
+                            else "",
+                        },
+                    ]
             else:
                 tap_rule["tap_action"] = {"action": "more-info"}
             rules.append(tap_rule)

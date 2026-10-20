@@ -1679,7 +1679,7 @@ async function _openGlobalDevicePopup(detail) {
 // the same class toggles are applied to every OTHER floorplan card on
 // the dashboard (the origin card already toggled itself), so a FAN's
 // served rooms + bound devices light up on all floors at once.
-function _fpZoneSync(ev, toggles) {
+function _fpZoneSync(ev, toggles, clear) {
   const path = ev.composedPath ? ev.composedPath() : [];
   const cards = [];
   const walk = (root) => {
@@ -1690,12 +1690,17 @@ function _fpZoneSync(ev, toggles) {
   };
   walk(document);
   for (const card of cards) {
-    if (path.includes(card)) continue;
+    // toggles: the origin card already class_toggle'd itself — clear:
+    // it must be included since its highlight came from an earlier tap
+    if (!clear && path.includes(card)) continue;
     for (const t of toggles || []) {
       for (const id of t.elements || []) {
         const node =
           _fpDeepById(card.shadowRoot, id) || _fpDeepById(card, id);
-        if (node) node.classList.toggle(t.class);
+        if (node) {
+          if (clear) node.classList.remove(t.class);
+          else node.classList.toggle(t.class);
+        }
       }
     }
   }
@@ -1719,6 +1724,7 @@ window.addEventListener('ll-custom', (ev) => {
   const d = ev && ev.detail;
   if (d && d.ramses_device_id) _openGlobalDevicePopup(d);
   if (d && d.ramses_zone_sync) _fpZoneSync(ev, d.ramses_zone_sync);
+  if (d && d.ramses_zone_clear) _fpZoneSync(ev, d.ramses_zone_clear, true);
   if (d && d.ramses_fp_action) _openFpActionDialog(d.ramses_fp_action);
 });
 
