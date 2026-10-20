@@ -80,7 +80,9 @@ from .mapping import (
     set_svg_mode,
 )
 from .markers import build_toolbar_svg, strip_toolbar
+from .rules import stale_managed_rule
 from .topology import build_floorplan_model
+from .zones import model_entity_ids, standalone_members
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -393,7 +395,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Drop stale generated rules stored by earlier imports — they are
         # rebuilt from the model on every export and old copies (e.g.
         # outdated ${} class expressions) would shadow the fresh ones.
-        extra[:] = [rule for rule in extra if not is_generated_rule(rule)]
+        model = await build_floorplan_model(hass)
+        managed = model_entity_ids(model) | set(
+            standalone_members(model, section.get(OPTION_DEVICE_ZONES) or {})
+        )
+        extra[:] = [
+            rule
+            for rule in extra
+            if not is_generated_rule(rule) and not stale_managed_rule(rule, managed)
+        ]
         if call.data.get("replace"):
             section[OPTION_EXTRA_RULES] = list(parsed["extra_rules"])
         else:

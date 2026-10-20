@@ -707,3 +707,60 @@ class TestZones:
         }
         # model entity ids + device ids are excluded; plain entities kept
         assert zones.standalone_members(model, zones_cfg) == ["cover.klep_1"]
+
+
+class TestCaption:
+    def _dev(self, **kw):
+        kw.setdefault(
+            "entities",
+            [
+                {
+                    "entity_id": "sensor.32_153289_indoor_temp",
+                    "role": "temperature",
+                },
+                {
+                    "entity_id": "sensor.32_153289_outdoor_temp",
+                    "role": "temperature",
+                },
+                {"entity_id": "sensor.32_153289_co2_level", "role": "co2"},
+            ],
+        )
+        return _device(**kw)
+
+    def test_fan_caption_shows_inside_and_outside(self):
+        rules = generator._build_rules(_model(devices=[self._dev()]), _options())
+        texts = [
+            r
+            for r in rules
+            if r.get("state_action", {}).get("service") == "floorplan.text_set"
+        ]
+        # one combined caption per contributing entity — indoor +
+        # outdoor, not the co2 sensor (no clobbering)
+        assert {r["entity"] for r in texts} == {
+            "sensor.32_153289_indoor_temp",
+            "sensor.32_153289_outdoor_temp",
+        }
+        exprs = {r["state_action"]["service_data"]["text"] for r in texts}
+        assert len(exprs) == 1
+        expr = exprs.pop()
+        assert 'states["sensor.32_153289_indoor_temp"]' in expr
+        assert 'states["sensor.32_153289_outdoor_temp"]' in expr
+        assert "co2" not in expr and "return" not in expr
+
+    def test_co2_marker_caption_is_ppm(self):
+        co2 = self._dev(
+            device_id="37:126776",
+            device_class="CO2",
+            primary_entity="remote.rem_37_126776",
+            entities=[
+                {"entity_id": "sensor.37_126776_co2_level", "role": "co2"},
+            ],
+        )
+        rules = generator._build_rules(_model(devices=[co2]), _options())
+        texts = [
+            r
+            for r in rules
+            if r.get("state_action", {}).get("service") == "floorplan.text_set"
+        ]
+        assert len(texts) == 1
+        assert " ppm" in texts[0]["state_action"]["service_data"]["text"]

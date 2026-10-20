@@ -91,9 +91,16 @@ def marker_svg(
     classes override (``color`` feeds currentColor for captions); the
     inner ``rx-rotor`` wrapper is what the spin animation targets — a
     CSS rotate on the outer group would clobber the translate.
+
+    Caption font sizes scale with the marker ``size`` (studio-resized
+    markers keep proportional text); the rx-name/rx-state CSS classes
+    remain the fallback for elements that don't set font-size.
     """
+    name_fs = max(6.0, size * 0.45)
+    state_fs = max(7.0, size * 0.55)
     name = (
         f'<text class="rx-name" x="0" y="{-size / 2 - 3:.0f}" '
+        f'font-size="{name_fs:.0f}" '
         f'text-anchor="middle">{xml_text(label)}</text>'
         if label
         else ""
@@ -107,7 +114,8 @@ def marker_svg(
         f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
         f'width="{size:.0f}" height="{size:.0f}"/></g>'
         f"{name}"
-        f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
+        f'<text class="rx-state" x="0" y="{size / 2 + state_fs - 2:.0f}" '
+        f'font-size="{state_fs:.0f}" '
         f'text-anchor="middle"></text>'
         "</g>"
     )

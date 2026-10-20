@@ -85,6 +85,13 @@ class DeviceDomain:
     :param class_roles: entity roles that produce class rules —
         ``None`` = the shared default set; domains may restrict or
         extend it (heat will add its own demand roles)
+    :param caption_groups: entity-name patterns + suffixes that make
+        up the marker's state caption, e.g.
+        ``((("indoor_temp",), "°"), (("outdoor_temp",), "°"))`` →
+        ``"12.9° / 9.1°"``. One entity per group (first match); groups
+        with no match are dropped. The element has a single caption
+        text — combining at the source keeps rules from clobbering
+        each other.
     """
 
     device_classes: tuple[str, ...] = ()
@@ -93,10 +100,34 @@ class DeviceDomain:
     popup_card: str = ""
     default_icon: str = ""
     class_roles: tuple[str, ...] | None = None
+    # default: first temperature-ish entity, shown with a degree mark
+    caption_groups: tuple[tuple[tuple[str, ...], str], ...] = (
+        (("indoor_temp", "temperature", "_temp"), "°"),
+    )
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "device_classes", tuple(self.device_classes or ()))
+
+    def caption_entities(self, entities: list[dict[str, Any]]) -> list[tuple[str, str]]:
+        """``[(entity_id, suffix)]`` contributing to the marker caption,
+        in display order — one per group; patterns take priority over
+        entity order (``indoor_temp`` beats ``supply_temp`` even when
+        the registry lists it later)."""
+        out: list[tuple[str, str]] = []
+        for patterns, suffix in self.caption_groups:
+            eid = next(
+                (
+                    str(e["entity_id"])
+                    for p in patterns
+                    for e in entities
+                    if e.get("entity_id") and p in str(e["entity_id"])
+                ),
+                None,
+            )
+            if eid:
+                out.append((eid, suffix))
+        return out
 
 
 # Generic fallback — every class not claimed by a registered domain.

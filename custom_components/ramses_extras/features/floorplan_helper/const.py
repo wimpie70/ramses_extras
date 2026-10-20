@@ -59,6 +59,11 @@ RULES_END_MARKER = "# <<< ramses_extras managed rules <<<"
 OPTION_SVG_MODE = "svg_mode"
 OPTION_CUSTOM_SVG_PATH = "custom_svg_path"
 OPTION_ICON_OVERRIDES = "icon_overrides"
+# Marker state-caption overrides — maps device id / device class /
+# primary entity_id → list of entity ids (each optionally carrying a
+# ``|suffix``, e.g. ``sensor.x|°``). Wins over the domain's
+# caption_groups; an empty list disables the caption.
+OPTION_CAPTION_OVERRIDES = "caption_overrides"
 OPTION_ELEMENT_BINDINGS = "element_bindings"
 OPTION_AREA_OVERRIDES = "area_overrides"
 OPTION_EXTRA_RULES = "extra_rules"
@@ -147,6 +152,7 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_SVG_MODE: SVG_MODE_GENERATED,
     OPTION_CUSTOM_SVG_PATH: "",
     OPTION_ICON_OVERRIDES: {},
+    OPTION_CAPTION_OVERRIDES: {},
     OPTION_ELEMENT_BINDINGS: {},
     OPTION_AREA_OVERRIDES: {},
     OPTION_EXTRA_RULES: [],
@@ -337,6 +343,7 @@ __all__ = [
     "GENERATED_RULE_TOKENS",
     "OPTION_AREA_OVERRIDES",
     "OPTION_BACKGROUND",
+    "OPTION_CAPTION_OVERRIDES",
     "OPTION_CUSTOM_SVG_PATH",
     "OPTION_DEVICE_VIEW_URL",
     "OPTION_DEVICE_ZONES",

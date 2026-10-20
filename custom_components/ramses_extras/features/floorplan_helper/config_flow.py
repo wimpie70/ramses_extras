@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_PLANNER_URL,
     FEATURE_ID,
     FLOORPLAN_ICONS,
+    OPTION_CAPTION_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
     OPTION_EDITOR_URL,
     OPTION_ICON_OVERRIDES,
@@ -62,6 +63,29 @@ def _format_icon_overrides(overrides: dict[str, str]) -> str:
     return "\n".join(f"{k}={v}" for k, v in sorted(overrides.items()))
 
 
+def _parse_caption_overrides(text: str) -> dict[str, list[str]]:
+    """Parse ``KEY=entity[,entity|suffix]`` lines into an overrides dict.
+
+    KEY is a ramses device id (``32:153289``), a device class (``FAN``,
+    ``CO2``…), or a primary entity_id — same precedence as icon
+    overrides. An empty entity list disables the caption for that key.
+    """
+    overrides: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key:
+            overrides[key] = [e.strip() for e in value.split(",") if e.strip()]
+    return overrides
+
+
+def _format_caption_overrides(overrides: dict[str, list[str]]) -> str:
+    return "\n".join(f"{k}={','.join(v)}" for k, v in sorted(overrides.items()))
+
+
 async def async_step_floorplan_helper_config(
     flow: Any, user_input: dict[str, Any] | None = None
 ) -> Any:
@@ -82,6 +106,9 @@ async def async_step_floorplan_helper_config(
         ).strip()
         section[OPTION_ICON_OVERRIDES] = _parse_icon_overrides(
             user_input.get("icon_overrides") or ""
+        )
+        section[OPTION_CAPTION_OVERRIDES] = _parse_caption_overrides(
+            user_input.get("caption_overrides") or ""
         )
         section[OPTION_TOOLBAR_ENABLED] = bool(user_input.get("toolbar_enabled", True))
         section[OPTION_EDITOR_URL] = (
@@ -107,6 +134,13 @@ async def async_step_floorplan_helper_config(
         "Icon overrides: one `TARGET=icon` per line, where TARGET is a "
         "device class (FAN, TRV, CTL, HGI, DHW...) or an entity_id. "
         f"Available icons: {', '.join(_VALID_ICON_KEYS)}\n\n"
+        "Caption overrides: what a marker's state text shows — one "
+        "`TARGET=entity_id[,entity_id|suffix]` per line, same TARGET "
+        "rules (device id like `32:153289`, device class, or entity_id). "
+        "Listed entity states join with ` / `, e.g. "
+        "`32:153289=sensor.32_153289_indoor_temp|°,"
+        "sensor.32_153289_outdoor_temp|°`. An empty value hides the "
+        "caption.\n\n"
         "Tool URLs open from the in-SVG toolbar buttons. Point them at "
         "vendored copies or iframe panel paths (`/...` navigates inside "
         "HA instead of a new tab)."
@@ -143,6 +177,12 @@ async def async_step_floorplan_helper_config(
             vol.Optional(
                 "icon_overrides",
                 default=_format_icon_overrides(overrides),
+            ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+            vol.Optional(
+                "caption_overrides",
+                default=_format_caption_overrides(
+                    options.get(OPTION_CAPTION_OVERRIDES, {})
+                ),
             ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
             vol.Optional(
                 "toolbar_enabled",

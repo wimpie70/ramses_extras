@@ -17,18 +17,28 @@ from __future__ import annotations
 
 from .base import DeviceDomain
 
-# The fan itself — the only marker that spins.
+# The fan itself — the only marker that spins. Caption shows the
+# inside temperature first, then outside: "12.9° / 9.1°" — exhaust/
+# supply duct temps are inside-side fallbacks.
 FAN_DOMAIN = DeviceDomain(
     device_classes=("FAN", "HVAC"),
     can_spin=True,
     popup_card="hvac-fan",
+    caption_groups=(
+        (("indoor_temp", "supply_temp", "exhaust_temp"), "°"),
+        (("outdoor_temp",), "°"),
+    ),
 )
 
-# Bound devices of a fan (remotes, displays, co2/sensors) — generic
-# marker behaviour; registered explicitly so future per-class
-# behaviour (battery icon etc.) has a home.
+# Bound devices of a fan (remotes, displays, co2/sensors). A CO2
+# sensor's value is the interesting reading on its marker — "402 ppm";
+# a temperature follows when the device reports one (thermostats).
 BOUND_DOMAIN = DeviceDomain(
     device_classes=("REM", "DIS", "CO2", "THM", "SEN", "SWI", "RND", "SW2"),
+    caption_groups=(
+        (("co2_level",), " ppm"),
+        (("indoor_temp", "temperature", "_temp"), "°"),
+    ),
 )
 
 # Transport-layer devices — visible on the plan but never part of a

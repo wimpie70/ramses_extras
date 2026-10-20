@@ -20,6 +20,7 @@ import yaml
 
 from .const import (
     GENERATED_RULE_TAG,
+    OPTION_CAPTION_OVERRIDES,
     OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
     OPTION_ELEMENT_BINDINGS,
@@ -33,7 +34,12 @@ from .const import (
     is_generated_rule,
 )
 from .domains import get_domain
-from .expressions import CLASS_ROLES, element_class_expr, standalone_status_expr
+from .expressions import (
+    CLASS_ROLES,
+    element_caption_expr,
+    element_class_expr,
+    standalone_status_expr,
+)
 from .markers import (
     binding_maps,
     editor_url,
@@ -41,6 +47,7 @@ from .markers import (
     planner_url,
 )
 from .zones import (
+    model_entity_ids,
     resolve_bound,
     standalone_members,
     zone_clear_action,
@@ -48,17 +55,15 @@ from .zones import (
     zone_toggle_specs,
 )
 
-# Non-class rule templates emitted inside the managed block.
-ROLE_RULE_TEMPLATES: dict[str, list[dict[str, Any]]] = {
-    "temperature": [
-        {
-            "state_action": {
-                "service": "floorplan.text_set",
-                "service_data": {"text": "${entity.state}"},
-            }
-        }
-    ],
-}
+# Roles handled by the domain caption spec, not per-entity templates:
+# the element has a single caption text, so every contributing entity
+# re-emits the complete combined expression (see element_caption_expr)
+# — individual text_set rules would clobber each other.
+CAPTION_ROLES = ("temperature", "co2")
+
+# Non-class rule templates emitted inside the managed block. Roles not
+# listed here and not in CLASS_ROLES/CAPTION_ROLES get no rule.
+ROLE_RULE_TEMPLATES: dict[str, list[dict[str, Any]]] = {}
 
 
 def class_set_rule(entity: str, element: str, class_expr: str) -> dict[str, Any]:
@@ -101,12 +106,36 @@ def link_action(target: str) -> dict[str, Any]:
     return {"action": "url", "url_path": target}
 
 
-def parse_extra_rules(raw: Any) -> list[dict[str, Any]]:
+def stale_managed_rule(rule: dict[str, Any], managed_entities: set[str]) -> bool:
+    """Legacy generated rule replayed via stored extras.
+
+    Pre-tagging exports wrote plain ``floorplan.*`` rules bound to
+    model entities; on import they landed verbatim in ``extra_rules``
+    and now shadow the fresh managed rules (e.g. an old
+    ``${entity.state}`` text_set clobbering the combined caption).
+    Anything tagged or flagged by ``is_generated_rule`` is already
+    filtered; this catches the untagged remainder. A genuine user rule
+    that pairs a ramses entity with a ``floorplan.*`` service is
+    indistinguishable from our own output — and the managed block
+    generates those anyway.
+    """
+    if is_generated_rule(rule) or not managed_entities:
+        return False
+    if rule.get("entity") not in managed_entities:
+        return False
+    svc = str((rule.get("state_action") or {}).get("service") or "")
+    return svc.startswith("floorplan.")
+
+
+def parse_extra_rules(
+    raw: Any, managed_entities: set[str] | None = None
+) -> list[dict[str, Any]]:
     """Parse extra_rules entries (dicts or YAML blobs) into rule dicts.
 
-    Generated rules (tagged, or matching the legacy generated
-    signature) are dropped — re-importing a generated card yaml stays
-    idempotent instead of accumulating stale copies.
+    Generated rules (tagged, matching the legacy signature, or shaped
+    like a stale managed rule on a model entity) are dropped —
+    re-importing a generated card yaml stays idempotent instead of
+    accumulating stale copies.
     """
     rules: list[dict[str, Any]] = []
     for extra in raw or []:
@@ -118,7 +147,11 @@ def parse_extra_rules(raw: Any) -> list[dict[str, Any]]:
                 parsed = yaml.safe_load(extra)
             except yaml.YAMLError:
                 parsed = None
-        if isinstance(parsed, dict) and not is_generated_rule(parsed):
+        if (
+            isinstance(parsed, dict)
+            and not is_generated_rule(parsed)
+            and not stale_managed_rule(parsed, managed_entities or set())
+        ):
             rules.append(parsed)
     return rules
 
@@ -157,6 +190,7 @@ def _device_rules(
     dev: dict[str, Any],
     options: dict[str, Any],
     entity_binding_map: dict[str, dict[str, Any]],
+    managed_entities: set[str],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """``(managed rules, binding-level extras)`` for one model device.
 
@@ -166,6 +200,7 @@ def _device_rules(
     primary = dev.get("primary_entity")
     element_id = element_id_for_device(dev, options)
     combined_class = element_class_expr(dev)
+    domain = get_domain(dev)
 
     rules: list[dict[str, Any]] = []
     for ent in dev.get("entities", []):
@@ -173,7 +208,7 @@ def _device_rules(
         eid = ent["entity_id"]
         is_class_role = role in CLASS_ROLES
         templates = ROLE_RULE_TEMPLATES.get(role)
-        if not is_class_role and not templates:
+        if role in CAPTION_ROLES or (not is_class_role and not templates):
             continue
         rule: dict[str, Any] = {"entity": eid}
         if eid != element_id:
@@ -191,6 +226,34 @@ def _device_rules(
             # the one more-info opens ("none" is a no-op action)
             rule["tap_action"] = {"action": "none"}
         rules.append(rule)
+
+    # caption: one combined ${} emitted on every contributing entity's
+    # rule — whichever state updates, the caption rewrites in full.
+    # caption_overrides (device id → class → primary entity) win over
+    # the domain default; "eid|suffix" entries carry their own suffix.
+    caption_pairs = domain.caption_entities(dev.get("entities") or [])
+    overrides: dict[str, Any] = options.get(OPTION_CAPTION_OVERRIDES) or {}
+    raw = overrides.get(str(dev.get("device_id")))
+    if raw is None and dev.get("device_class"):
+        raw = overrides.get(str(dev["device_class"]))
+    if raw is None and primary:
+        raw = overrides.get(str(primary))
+    if raw is not None:
+        caption_pairs = [
+            (eid.strip(), sfx.strip())
+            for item in raw
+            for eid, _, sfx in [str(item).partition("|")]
+            if eid.strip()
+        ]
+    caption_expr = element_caption_expr(caption_pairs)
+    if caption_expr:
+        for eid, _ in caption_pairs:
+            rule = text_set_rule(eid, element_id, caption_expr)
+            if eid == element_id:
+                rule.pop("element")
+            if eid != primary:
+                rule["tap_action"] = {"action": "none"}
+            rules.append(rule)
 
     if primary:
         # tap the marker → more-info on the device's own entity
@@ -217,7 +280,7 @@ def _device_rules(
 
     binding = entity_binding_map.get(primary or "")
     extras = (
-        parse_extra_rules(binding.get("extra_rules"))
+        parse_extra_rules(binding.get("extra_rules"), managed_entities)
         if isinstance(binding, dict)
         else []
     )
@@ -273,10 +336,17 @@ def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str
     """
     zones = options.get(OPTION_DEVICE_ZONES) or {}
     _, entity_binding_map = binding_maps(options)
+    standalone = standalone_members(model, zones)
+    # model entities + standalone members — anything the managed block
+    # already owns; untagged floorplan.* rules on these in stored
+    # extras are stale leftovers from pre-tagging exports
+    managed = model_entity_ids(model) | set(standalone)
     rules: list[dict[str, Any]] = []
     extras: list[dict[str, Any]] = []
     for dev in model.get("devices", []):
-        dev_rules, dev_extras = _device_rules(model, dev, options, entity_binding_map)
+        dev_rules, dev_extras = _device_rules(
+            model, dev, options, entity_binding_map, managed
+        )
         rules.extend(dev_rules)
         extras.extend(dev_extras)
 
@@ -284,7 +354,7 @@ def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str
     # zigbee sensors listed in a zone's devices) get a status class +
     # plain more-info on tap; their marker is rendered by
     # build_overlay_fragment.
-    for ent in standalone_members(model, zones):
+    for ent in standalone:
         rule = class_set_rule(ent, ent, standalone_status_expr())
         rule.pop("element")  # element id == entity id
         rule["tap_action"] = {"action": "more-info"}
@@ -299,12 +369,13 @@ def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str
 
     # User-authored extras appended last, untagged: binding-level ones
     # collected above, then the global extra_rules option.
-    extras.extend(parse_extra_rules(options.get(OPTION_EXTRA_RULES)))
+    extras.extend(parse_extra_rules(options.get(OPTION_EXTRA_RULES), managed))
     return rules + extras
 
 
 __all__ = [
     "ROLE_RULE_TEMPLATES",
+    "stale_managed_rule",
     "build_rules",
     "class_set_rule",
     "fire_dom_event",

@@ -152,11 +152,11 @@ def zone_defs(model: dict[str, Any], zones: dict[str, Any]) -> str:
                 f"fill: url(#{pat}) !important; fill-opacity: 1 !important; "
                 f"stroke: {color} !important; stroke-width: 3px !important; }}"
             )
-        css.append(
-            f".{zone_dev_class(device_id)} {{ "
-            f"stroke: {color} !important; stroke-width: 3px !important; "
-            f"filter: drop-shadow(0 0 5px {color}) !important; }}"
-        )
+        # bound markers recolour in the zone colour — a drop-shadow
+        # glow or a stroke on fill-path icons just reads as blur; the
+        # !important fill wins over the marker's base fill and the
+        # rx-* status classes (membership beats status while lit)
+        css.append(f".{zone_dev_class(device_id)} {{ fill: {color} !important; }}")
     if not css and not patterns:
         return ""
     parts = [f"<style>\n{chr(10).join(css)}\n</style>", "<defs>", *patterns, "</defs>"]

@@ -132,8 +132,32 @@ def standalone_status_expr() -> str:
     )
 
 
+def element_caption_expr(
+    pairs: list[tuple[str, str]],
+) -> str | None:
+    """``${}`` expression building the element's state caption.
+
+    ``pairs`` are ``(entity_id, suffix)`` from
+    ``DeviceDomain.caption_entities`` — each contributes
+    ``state + suffix``, joined with `` / `` (e.g. a FAN's
+    ``"12.9° / 9.1°"``, a CO2 sensor's ``"402 ppm"``). Reads
+    ``states[...]`` so the same expression can be emitted on every
+    contributing entity's rule — the element has one caption text,
+    so per-entity rules must all write the complete value or they'd
+    clobber each other (same lesson as ``class_set``).
+    """
+    terms = []
+    for eid, suffix in pairs:
+        s = _st(eid)
+        terms.append(f'({s} ? String({s}.state) + "{suffix}" : "")')
+    if not terms:
+        return None
+    return "${" + ' + " / " + '.join(terms) + "}"
+
+
 __all__ = [
     "CLASS_ROLES",
+    "element_caption_expr",
     "element_class_expr",
     "role_class_expr",
     "standalone_status_expr",
