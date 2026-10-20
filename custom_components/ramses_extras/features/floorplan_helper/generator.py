@@ -391,6 +391,13 @@ def build_overlay_fragment(
             f"fill: url(#{pat}) !important; fill-opacity: 1 !important; "
             f"stroke: {color} !important; stroke-width: 3px !important; }}"
         )
+        # same zone, applied to device markers — outline + glow, keep the
+        # icon fill (rx-* state classes own that)
+        zone_css.append(
+            f".{_zone_class(str(dev.get('device_id')) + '-dev')} {{ "
+            f"stroke: {color} !important; stroke-width: 3px !important; "
+            f"filter: drop-shadow(0 0 5px {color}) !important; }}"
+        )
     style_block = f"<style>\n{chr(10).join(zone_css)}\n</style>" if zone_css else ""
 
     symbols = [s for s in (_load_icon_symbol(k) for k in sorted(used_icons)) if s]
@@ -603,14 +610,39 @@ def _build_rules(
             zone = zones.get(dev.get("device_id")) or {}
             area_ids = [a for a in zone.get("areas") or [] if a]
             if area_ids:
-                tap_rule["tap_action"] = {
-                    "action": "call-service",
-                    "service": "floorplan.class_toggle",
-                    "service_data": {
-                        "elements": [f"area.{_slugify(a)}" for a in area_ids],
-                        "class": _zone_class(str(dev.get("device_id"))),
-                    },
-                }
+                device_id = str(dev.get("device_id"))
+                zone_actions: list[dict[str, Any]] = [
+                    {
+                        "action": "call-service",
+                        "service": "floorplan.class_toggle",
+                        "service_data": {
+                            "elements": [f"area.{_slugify(a)}" for a in area_ids],
+                            "class": _zone_class(device_id),
+                        },
+                    }
+                ]
+                # markers of devices located in the zone's rooms get the
+                # same treatment (gateways/HGI excluded — they serve the
+                # whole house, not a zone)
+                bound = [
+                    _element_id_for_device(d, options)
+                    for d in model.get("devices", [])
+                    if d.get("area_id") in area_ids and d.get("device_class") != "HGI"
+                ]
+                if bound:
+                    zone_actions.append(
+                        {
+                            "action": "call-service",
+                            "service": "floorplan.class_toggle",
+                            "service_data": {
+                                "elements": bound,
+                                "class": _zone_class(f"{device_id}-dev"),
+                            },
+                        }
+                    )
+                tap_rule["tap_action"] = (
+                    zone_actions[0] if len(zone_actions) == 1 else zone_actions
+                )
                 tap_rule["hold_action"] = {"action": "more-info"}
                 view_url = options.get(OPTION_DEVICE_VIEW_URL) or ""
                 if view_url:
@@ -753,10 +785,20 @@ def _parse_extra_rules(raw: Any) -> list[dict[str, Any]]:
     return rules
 
 
+def _custom_svg_refs(options: dict[str, Any]) -> list[str]:
+    """Normalize ``custom_svg_path`` — a single path or a list (one per
+    floor — each gets its own ``<stem>.merged.svg`` on export)."""
+    raw = options.get(OPTION_CUSTOM_SVG_PATH)
+    if isinstance(raw, str):
+        raw = [raw]
+    return [str(r) for r in (raw or []) if r]
+
+
 async def _build_merged_svg(
     hass: HomeAssistant,
     model: dict[str, Any],
     options: dict[str, Any],
+    ref: str,
 ) -> tuple[str | None, list[str], str | None]:
     """Splice device markers + toolbar into the user's custom SVG.
 
@@ -765,7 +807,6 @@ async def _build_merged_svg(
 
     :return: ``(merged filename, warnings, merged SVG text or None)``
     """
-    ref = options.get(OPTION_CUSTOM_SVG_PATH) or ""
     if ref.startswith("/local/"):
         src = Path(hass.config.config_dir) / "www" / ref[len("/local/") :]
     else:
@@ -834,8 +875,8 @@ def _build_card_yaml(
     """
     svg_mode = options.get(OPTION_SVG_MODE, "generated")
     if image_path is None:
-        if svg_mode == SVG_MODE_CUSTOM and options.get(OPTION_CUSTOM_SVG_PATH):
-            image_path = options[OPTION_CUSTOM_SVG_PATH]
+        if svg_mode == SVG_MODE_CUSTOM and _custom_svg_refs(options):
+            image_path = _custom_svg_refs(options)[0]
         else:
             image_path = f"{FLOORPLAN_GENERATED_BASE}/{GENERATED_ELEMENTS_SVG}"
 
@@ -924,16 +965,19 @@ async def async_generate_bundle(
     files: dict[str, str] = {}
     warnings: list[str] = []
     image_path: str | None = None
-    if options.get(OPTION_SVG_MODE) == SVG_MODE_CUSTOM and options.get(
-        OPTION_CUSTOM_SVG_PATH
-    ):
-        merged_name, merged_warnings, merged_text = await _build_merged_svg(
-            hass, model, options
-        )
-        warnings.extend(merged_warnings)
-        if merged_text is not None and merged_name:
-            files[merged_name] = merged_text
-            image_path = f"{FLOORPLAN_GENERATED_BASE}/{merged_name}"
+    if options.get(OPTION_SVG_MODE) == SVG_MODE_CUSTOM:
+        # custom_svg_path may list one SVG per floor — each is merged
+        # against the matching project floor; the card yaml targets the
+        # first (clone it and change image.location for extra floors)
+        for ref in _custom_svg_refs(options):
+            merged_name, merged_warnings, merged_text = await _build_merged_svg(
+                hass, model, options, ref
+            )
+            warnings.extend(merged_warnings)
+            if merged_text is not None and merged_name:
+                files[merged_name] = merged_text
+                if image_path is None:
+                    image_path = f"{FLOORPLAN_GENERATED_BASE}/{merged_name}"
 
     card_yaml = _build_card_yaml(rules, options, image_path)
     files[GENERATED_ELEMENTS_SVG] = svg_text

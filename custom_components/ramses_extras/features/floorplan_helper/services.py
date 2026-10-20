@@ -836,7 +836,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             _async_set_svg,
             schema=vol.Schema(
                 {
-                    vol.Optional("custom_svg_path"): cv.string,
+                    vol.Optional("custom_svg_path"): vol.Any(cv.string, [cv.string]),
                     vol.Optional("editor_url"): cv.string,
                     vol.Optional("planner_url"): cv.string,
                     vol.Optional("toolbar_enabled"): cv.boolean,
