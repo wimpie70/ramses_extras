@@ -46,6 +46,7 @@ from .const import (
     GENERATED_ELEMENTS_SVG,
     OPTION_AREA_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_DEVICE_ZONES,
     OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
@@ -307,7 +308,6 @@ def build_overlay_fragment(
     options: dict[str, Any],
     positions: dict[str, dict[str, Any]],
     svg_text: str,
-    rooms: list[dict[str, Any]] | None = None,
 ) -> tuple[str, list[str]]:
     """Build the marker/toolbar fragment to splice into a user SVG.
 
@@ -318,11 +318,6 @@ def build_overlay_fragment(
 
     :param positions: entity_id → ``{x, y, size, icon, color}`` (from
         :func:`importer.studio_marker_positions`)
-    :param rooms: studio-project rooms for this floor — their
-        ``fill``/``opacity`` are emitted as ``!important`` style
-        overrides on the matching ``area.<slug>`` elements so studio
-        recolours survive into the output (the source SVG's own class
-        styles otherwise win over presentation attributes).
     :return: ``(fragment, warnings)``
     """
     svg_rooms = {r["slug"]: r for r in rooms_from_svg(svg_text)}
@@ -358,7 +353,7 @@ def build_overlay_fragment(
         fill = f' fill="{color}"' if color else ""
         body.append(
             f'<g id="{element_id}" transform="translate({x:.1f},{y:.1f})">'
-            f'<use href="#icon.{icon_key}" xlink:href="#icon.{icon_key}" '
+            f'<use href="#icon.{icon_key}" '
             f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
             f'width="{size:.0f}" height="{size:.0f}"{fill}/>'
             f'<text class="rx-state" x="0" y="{size / 2 + 9:.0f}" '
@@ -371,25 +366,25 @@ def build_overlay_fragment(
             "parked below the canvas (off-viewBox)"
         )
 
-    room_css: list[str] = []
-    for room in rooms or []:
-        slug = re.sub(
-            r"_+", "_", re.sub(r"[^a-z0-9]+", "_", str(room.get("name") or "").lower())
-        ).strip("_")
-        if not slug or slug not in svg_rooms:
+    # Zone highlight classes (toggled by the marker's tap_action rule).
+    # Kept as a <style> block — class selectors need no id escaping.
+    zone_css: list[str] = []
+    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    for dev in model.get("devices", []):
+        z = zones.get(dev.get("device_id"))
+        if not (z and z.get("areas")):
             continue
-        decl = []
-        if room.get("fill"):
-            decl.append(f"fill: {room['fill']} !important")
-        if room.get("opacity") is not None:
-            decl.append(f"fill-opacity: {room['opacity']} !important")
-        if decl:
-            room_css.append(f"#area\\.{slug} {{ {'; '.join(decl)}; }}")
-    room_style = f"<style>\n{chr(10).join(room_css)}\n</style>" if room_css else ""
+        color = z.get("color") or "#22c55e"
+        zone_css.append(
+            f".{_zone_class(dev['device_id'])} {{ stroke: {color} !important; "
+            f"stroke-width: 3px !important; stroke-dasharray: 6 4 !important; "
+            f"filter: drop-shadow(0 0 5px {color}) !important; }}"
+        )
+    style_block = f"<style>\n{chr(10).join(zone_css)}\n</style>" if zone_css else ""
 
     symbols = [s for s in (_load_icon_symbol(k) for k in sorted(used_icons)) if s]
     parts = [
-        *([room_style] if room_style else []),
+        *([style_block] if style_block else []),
         "<defs>",
         *symbols,
         "</defs>",
@@ -407,6 +402,65 @@ def build_overlay_fragment(
             f'<g transform="translate({tx:.0f},{ty:.0f})">{build_toolbar_svg()}</g>'
         )
     return "\n".join(parts), warnings
+
+
+def _slugify(value: Any) -> str:
+    return re.sub(
+        r"_+", "_", re.sub(r"[^a-z0-9]+", "_", str(value or "").lower())
+    ).strip("_")
+
+
+def _zone_class(device_id: str) -> str:
+    """CSS class toggled on zone rooms when the device marker is tapped."""
+    return f"rx-zone-{_slugify(device_id)}"
+
+
+_AREA_ELEMENT_RE = re.compile(
+    r"<(?:rect|polygon|path|circle|ellipse|g)\b[^>]*?\bid=\"area\.([a-z0-9_]+)\""
+    r"[^>]*?>",
+    re.S,
+)
+
+
+def apply_room_styles(svg_text: str, rooms: list[dict[str, Any]] | None) -> str:
+    """Patch ``area.<slug>`` elements with the studio room fill/opacity.
+
+    Writes an inline ``style`` attribute — presentation attributes would
+    lose to the SVG's embedded ``.room`` class rules, and an injected
+    ``<style>`` block with escaped-dot selectors isn't honoured by every
+    SVG consumer. Studio is the source of truth for room appearance.
+    """
+    by_slug: dict[str, dict[str, Any]] = {}
+    for room in rooms or []:
+        slug = _slugify(room.get("name"))
+        if slug and (room.get("fill") or room.get("opacity") is not None):
+            by_slug[slug] = room
+    if not by_slug:
+        return svg_text
+
+    def repl(m: re.Match[str]) -> str:
+        room = by_slug.get(m.group(1))
+        if not room:
+            return m.group(0)
+        decl = []
+        if room.get("fill"):
+            decl.append(f"fill:{room['fill']}")
+        if room.get("opacity") is not None:
+            decl.append(f"fill-opacity:{room['opacity']}")
+        extra = "; ".join(decl)
+        tag = m.group(0)
+        if 'style="' in tag:
+            return re.sub(
+                r'style="([^"]*)"',
+                lambda sm: f'style="{sm.group(1).rstrip(";")}; {extra}"',
+                tag,
+                count=1,
+            )
+        if tag.endswith("/>"):
+            return f'{tag[:-2]} style="{extra}"/>'
+        return f'{tag[:-1]} style="{extra}">'
+
+    return _AREA_ELEMENT_RE.sub(repl, svg_text)
 
 
 def merge_svg_overlay(svg_text: str, fragment: str) -> str:
@@ -503,6 +557,7 @@ def _build_rules(
     target the bound element.
     """
     _, entity_binding_map = _binding_maps(options)
+    zones = options.get(OPTION_DEVICE_ZONES) or {}
 
     rules: list[dict[str, Any]] = []
     for dev in model.get("devices", []):
@@ -527,13 +582,33 @@ def _build_rules(
 
         if primary:
             # tap the marker → more-info on the device's own entity
-            # (climate dialog for a FAN), not a secondary stat sensor
-            tap_rule: dict[str, Any] = {
-                "entity": primary,
-                "tap_action": {"action": "more-info"},
-            }
+            # (climate dialog for a FAN), not a secondary stat sensor;
+            # zoned devices get tap = highlight served rooms instead,
+            # keep the entity dialog on hold
+            tap_rule: dict[str, Any] = {"entity": primary}
             if primary != element_id:
                 tap_rule["element"] = element_id
+            zone = zones.get(dev.get("device_id")) or {}
+            area_ids = [a for a in zone.get("areas") or [] if a]
+            if area_ids:
+                tap_rule["tap_action"] = {
+                    "action": "call-service",
+                    "service": "floorplan.class_toggle",
+                    "service_data": {
+                        "elements": [f"area.{_slugify(a)}" for a in area_ids],
+                        "class": _zone_class(str(dev.get("device_id"))),
+                    },
+                }
+                tap_rule["hold_action"] = {"action": "more-info"}
+                tap_rule["double_tap_action"] = {
+                    "action": "fire-dom-event",
+                    # picked up by the ramses-floorplan-actions card to
+                    # open the device popup (hvac-fan-card etc.)
+                    "ramses_device_id": dev.get("device_id"),
+                    "ramses_entity": primary,
+                }
+            else:
+                tap_rule["tap_action"] = {"action": "more-info"}
             rules.append(tap_rule)
 
         binding = entity_binding_map.get(primary or "")
@@ -712,9 +787,13 @@ async def _build_merged_svg(
         warnings.append("No stored studio project — markers placed at area centroids")
 
     fragment, frag_warnings = build_overlay_fragment(
-        model, options, positions, svg_text, rooms
+        model, options, positions, svg_text
     )
     warnings.extend(frag_warnings)
+    # Studio room fill/opacity win over the SVG's embedded .room classes —
+    # patch the elements' inline style directly (survives every consumer,
+    # unlike a <style> block with escaped-id selectors).
+    svg_text = apply_room_styles(svg_text, rooms)
     return f"{src.stem}.merged.svg", warnings, merge_svg_overlay(svg_text, fragment)
 
 

@@ -189,12 +189,43 @@ class RamsesFloorplanActions extends HTMLElement {
     if (!this._watch) {
       this._watch = setInterval(() => this._pollSelection(), 700);
     }
+    if (!this._llHandler) {
+      // ha-floorplan double_tap_action: fire-dom-event bubbles an
+      // 'll-custom' Event with detail = the action config. We emit
+      // ramses_device_id on zoned markers → open the device popup.
+      this._llHandler = (ev) => this._onCustomEvent(ev);
+      window.addEventListener('ll-custom', this._llHandler);
+    }
   }
 
   disconnectedCallback() {
     clearInterval(this._watch);
     this._watch = null;
     this._clearZoneHighlight();
+    if (this._llHandler) {
+      window.removeEventListener('ll-custom', this._llHandler);
+      this._llHandler = null;
+    }
+  }
+
+  _onCustomEvent(ev) {
+    const detail = ev && ev.detail;
+    const deviceId = detail && detail.ramses_device_id;
+    if (!deviceId) return; // someone else's ll-custom
+    const dev = ((this._topology && this._topology.devices) || []).find(
+      (d) => d.device_id === deviceId
+    );
+    if (dev) {
+      this._run(() => this._openDeviceCard(dev));
+    } else if (detail.ramses_entity) {
+      this.dispatchEvent(
+        new CustomEvent('hass-more-info', {
+          detail: { entityId: detail.ramses_entity },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    }
   }
 
   getCardSize() {
