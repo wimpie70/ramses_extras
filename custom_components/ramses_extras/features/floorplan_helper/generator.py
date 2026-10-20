@@ -623,10 +623,14 @@ def _build_rules(
                 else:
                     tap_rule["double_tap_action"] = {
                         "action": "fire-dom-event",
-                        # picked up by the ramses-floorplan-actions card to
-                        # open the device popup (hvac-fan-card etc.)
+                        # picked up by the ramses-floorplan-actions module
+                        # (loaded as a Lovelace resource → works on any
+                        # view) to open the device popup
                         "ramses_device_id": dev.get("device_id"),
                         "ramses_entity": primary,
+                        "ramses_card": "hvac-fan"
+                        if dev.get("device_class") in ("FAN", "HVAC")
+                        else "",
                     }
             else:
                 tap_rule["tap_action"] = {"action": "more-info"}

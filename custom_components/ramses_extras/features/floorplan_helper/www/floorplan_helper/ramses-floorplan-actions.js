@@ -189,43 +189,14 @@ class RamsesFloorplanActions extends HTMLElement {
     if (!this._watch) {
       this._watch = setInterval(() => this._pollSelection(), 700);
     }
-    if (!this._llHandler) {
-      // ha-floorplan double_tap_action: fire-dom-event bubbles an
-      // 'll-custom' Event with detail = the action config. We emit
-      // ramses_device_id on zoned markers → open the device popup.
-      this._llHandler = (ev) => this._onCustomEvent(ev);
-      window.addEventListener('ll-custom', this._llHandler);
-    }
+    // ll-custom is handled by the module-level popup below — it works on
+    // every view, not only ones containing this card.
   }
 
   disconnectedCallback() {
     clearInterval(this._watch);
     this._watch = null;
     this._clearZoneHighlight();
-    if (this._llHandler) {
-      window.removeEventListener('ll-custom', this._llHandler);
-      this._llHandler = null;
-    }
-  }
-
-  _onCustomEvent(ev) {
-    const detail = ev && ev.detail;
-    const deviceId = detail && detail.ramses_device_id;
-    if (!deviceId) return; // someone else's ll-custom
-    const dev = ((this._topology && this._topology.devices) || []).find(
-      (d) => d.device_id === deviceId
-    );
-    if (dev) {
-      this._run(() => this._openDeviceCard(dev));
-    } else if (detail.ramses_entity) {
-      this.dispatchEvent(
-        new CustomEvent('hass-more-info', {
-          detail: { entityId: detail.ramses_entity },
-          bubbles: true,
-          composed: true,
-        })
-      );
-    }
   }
 
   getCardSize() {
@@ -1271,6 +1242,164 @@ class RamsesFloorplanActions extends HTMLElement {
 }
 
 customElements.define('ramses-floorplan-actions', RamsesFloorplanActions);
+
+// ---------------------------------------------------------------------------
+// Global device popup
+// ---------------------------------------------------------------------------
+// ha-floorplan rules fire 'll-custom' (composed + bubbles) with
+// {ramses_device_id, ramses_entity, ramses_card} on a zoned marker's
+// double_tap. This listener lives at module level — once the file is
+// loaded as a Lovelace resource it works on ANY view; the actions card
+// itself does not have to be rendered.
+
+const FP_POPUP_ID = 'ramses-fp-device-popup';
+let _fpPopCard = null;   // the embedded device card element
+let _fpPopHassTimer = null; // keeps card.hass fresh while open
+let _fpPopView; // undefined = not fetched yet
+
+function _fpHass() {
+  const ha = document.querySelector('home-assistant');
+  return ha ? ha.hass : null;
+}
+
+function _fpPopClose() {
+  const el = document.getElementById(FP_POPUP_ID);
+  if (el) el.remove();
+  _fpPopCard = null;
+  if (_fpPopHassTimer) {
+    clearInterval(_fpPopHassTimer);
+    _fpPopHassTimer = null;
+  }
+}
+
+async function _fpDeviceViewUrl(hass) {
+  if (_fpPopView !== undefined) return _fpPopView;
+  try {
+    const cfg = await hass.callWS({
+      type: 'ramses_extras/floorplan_helper/get_config',
+    });
+    _fpPopView = cfg.device_view_url || '';
+  } catch {
+    _fpPopView = '';
+  }
+  return _fpPopView;
+}
+
+async function _openGlobalDevicePopup(detail) {
+  const hass = _fpHass();
+  if (!hass) return;
+  const deviceId = detail.ramses_device_id;
+
+  let pop = document.getElementById(FP_POPUP_ID);
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = FP_POPUP_ID;
+    pop.innerHTML = `
+      <style>
+        #${FP_POPUP_ID} {
+          position: fixed; inset: 0; z-index: 999;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(0,0,0,0.5);
+        }
+        #${FP_POPUP_ID} .dlg {
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+          width: min(440px, 92vw); max-height: 85vh; overflow-y: auto;
+          padding: 10px 14px 14px;
+        }
+        #${FP_POPUP_ID} .head {
+          display: flex; align-items: center;
+          justify-content: space-between; margin-bottom: 6px;
+        }
+        #${FP_POPUP_ID} .lbl { font-size: 14px; font-weight: 600; }
+        #${FP_POPUP_ID} button {
+          background: none; border: 1px solid var(--divider-color, #ccc);
+          border-radius: 6px; color: inherit; cursor: pointer;
+          padding: 3px 8px; font-size: 12px;
+        }
+      </style>
+      <div class="dlg">
+        <div class="head">
+          <span class="lbl"></span>
+          <span>
+            <button class="view" style="display:none">⤢ dashboard</button>
+            <button class="x">✕</button>
+          </span>
+        </div>
+        <div class="host"></div>
+      </div>`;
+    pop.addEventListener('click', (e) => {
+      if (e.target === pop) _fpPopClose();
+    });
+    pop.querySelector('.x').addEventListener('click', _fpPopClose);
+    pop.querySelector('.view').addEventListener('click', () => {
+      if (_fpPopView) {
+        _fpPopClose();
+        window.history.pushState(null, '', _fpPopView);
+        window.dispatchEvent(new window.Event('location-changed'));
+      }
+    });
+    document.body.appendChild(pop);
+  }
+
+  pop.querySelector('.lbl').textContent = deviceId;
+  const viewUrl = await _fpDeviceViewUrl(hass);
+  pop.querySelector('.view').style.display = viewUrl ? '' : 'none';
+
+  const host = pop.querySelector('.host');
+  host.innerHTML = '';
+  _fpPopCard = null;
+
+  if (detail.ramses_card === 'hvac-fan') {
+    if (!customElements.get('hvac-fan-card')) {
+      try {
+        await import(
+          '/local/ramses_extras/features/hvac_fan_card/hvac-fan-card.js'
+        );
+      } catch (e) {
+        dwarn('hvac-fan-card module failed to load:', e);
+      }
+    }
+    if (customElements.get('hvac-fan-card')) {
+      const card = document.createElement('hvac-fan-card');
+      card.setConfig({
+        type: 'custom:hvac-fan-card',
+        device_id: deviceId,
+      });
+      card.hass = hass;
+      host.appendChild(card);
+      _fpPopCard = card;
+    }
+  }
+  if (!_fpPopCard) {
+    // fallback: native entity dialog
+    _fpPopClose();
+    if (detail.ramses_entity) {
+      document.querySelector('home-assistant').dispatchEvent(
+        new CustomEvent('hass-more-info', {
+          detail: { entityId: detail.ramses_entity },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    }
+    return;
+  }
+
+  // Keep the embedded card's hass fresh while the popup is open —
+  // it has no card parent pushing updates to it.
+  if (_fpPopHassTimer) clearInterval(_fpPopHassTimer);
+  _fpPopHassTimer = setInterval(() => {
+    const h = _fpHass();
+    if (h && _fpPopCard) _fpPopCard.hass = h;
+  }, 1000);
+}
+
+window.addEventListener('ll-custom', (ev) => {
+  const d = ev && ev.detail;
+  if (d && d.ramses_device_id) _openGlobalDevicePopup(d);
+});
 
 window.customCards = window.customCards || [];
 window.customCards.push({
