@@ -32,6 +32,7 @@ from homeassistant.helpers.storage import Store
 
 from ...const import INTEGRATION_DIR
 from .const import (
+    CARD_YAML_STEM,
     DEFAULT_EDITOR_URL,
     DEFAULT_ICON,
     DEFAULT_PLANNER_URL,
@@ -323,10 +324,12 @@ def build_overlay_fragment(
     """
     svg_rooms = {r["slug"]: r for r in rooms_from_svg(svg_text)}
     vb_w, vb_h = _svg_viewbox_size(svg_text)
+    zones = options.get(OPTION_DEVICE_ZONES) or {}
     warnings: list[str] = []
     used_icons: set[str] = set()
     body: list[str] = []
     staged = 0
+    docked = 0
 
     for dev in model.get("devices", []):
         element_id = _xml_id(_element_id_for_device(dev, options))
@@ -344,6 +347,14 @@ def build_overlay_fragment(
             x, y, size = pos["x"], pos["y"], float(pos.get("size") or 20)
         elif dev.get("area_id") and dev["area_id"] in svg_rooms:
             x, y = svg_rooms[dev["area_id"]]["centroid"]
+            size = 20.0
+        elif zones.get(str(dev.get("device_id"))):
+            # zone devices stay tappable on every floor's card — park
+            # them in a visible dock just inside the canvas bottom edge
+            # (their zone may span floors: tap here highlights the
+            # rooms of this floor that belong to the zone)
+            docked += 1
+            x, y = 20.0 + docked * 36.0, vb_h - 20.0
             size = 20.0
         else:
             staged += 1
@@ -372,7 +383,6 @@ def build_overlay_fragment(
     # colour + a solid outline — clearly visible over any base fill.
     zone_css: list[str] = []
     zone_patterns: list[str] = []
-    zones = options.get(OPTION_DEVICE_ZONES) or {}
     for dev in model.get("devices", []):
         z = zones.get(dev.get("device_id"))
         if not (z and z.get("areas")):
@@ -621,13 +631,25 @@ def _build_rules(
                         },
                     }
                 ]
-                # markers of devices located in the zone's rooms get the
-                # same treatment (gateways/HGI excluded — they serve the
-                # whole house, not a zone)
+                # markers of devices bound to this device get the same
+                # treatment — binding comes from the ramses schema
+                # (remotes/sensors under the FAN = parent link), not
+                # from which room they sit in; gateways/HGI excluded
+                # (they serve the whole house, not a zone). Extra
+                # device ids can be added via the zone's "devices" list.
+                bound_ids = {
+                    str(d.get("device_id"))
+                    for d in model.get("devices", [])
+                    if d.get("parent") == dev.get("device_id")
+                    and d.get("device_class") != "HGI"
+                }
+                bound_ids.update(str(b) for b in zone.get("devices") or [])
+                bound_ids.add(str(dev.get("device_id")))
                 bound = [
                     _element_id_for_device(d, options)
                     for d in model.get("devices", [])
-                    if d.get("area_id") in area_ids and d.get("device_class") != "HGI"
+                    if str(d.get("device_id")) in bound_ids
+                    and d.get("device_class") != "HGI"
                 ]
                 if bound:
                     zone_actions.append(
@@ -964,11 +986,10 @@ async def async_generate_bundle(
 
     files: dict[str, str] = {}
     warnings: list[str] = []
-    image_path: str | None = None
+    merged_names: list[str] = []
     if options.get(OPTION_SVG_MODE) == SVG_MODE_CUSTOM:
         # custom_svg_path may list one SVG per floor — each is merged
-        # against the matching project floor; the card yaml targets the
-        # first (clone it and change image.location for extra floors)
+        # against the matching project floor and gets its own card yaml
         for ref in _custom_svg_refs(options):
             merged_name, merged_warnings, merged_text = await _build_merged_svg(
                 hass, model, options, ref
@@ -976,12 +997,24 @@ async def async_generate_bundle(
             warnings.extend(merged_warnings)
             if merged_text is not None and merged_name:
                 files[merged_name] = merged_text
-                if image_path is None:
-                    image_path = f"{FLOORPLAN_GENERATED_BASE}/{merged_name}"
+                merged_names.append(merged_name)
 
-    card_yaml = _build_card_yaml(rules, options, image_path)
+    # One card yaml per merged floor; the un-suffixed file keeps the
+    # first floor for backwards compatibility.
+    card_yamls: dict[str, str] = {}
+    for i, merged_name in enumerate(merged_names):
+        stem = Path(merged_name).stem.removesuffix(".merged")
+        yml = _build_card_yaml(
+            rules, options, f"{FLOORPLAN_GENERATED_BASE}/{merged_name}"
+        )
+        card_yamls[stem] = yml
+        files[GENERATED_CARD_YAML if i == 0 else f"{CARD_YAML_STEM}-{stem}.yaml"] = yml
+    if not card_yamls:
+        card_yamls["default"] = _build_card_yaml(rules, options)
+
+    card_yaml = next(iter(card_yamls.values()))
     files[GENERATED_ELEMENTS_SVG] = svg_text
-    files[GENERATED_CARD_YAML] = card_yaml
+    files.setdefault(GENERATED_CARD_YAML, card_yaml)
 
     files_written = await _write_generated_files(hass, files)
 
@@ -999,6 +1032,7 @@ async def async_generate_bundle(
 
     return {
         "card_yaml": card_yaml,
+        "card_yamls": card_yamls,
         "rules": rules,
         "elements_svg_url": f"{FLOORPLAN_GENERATED_BASE}/{GENERATED_ELEMENTS_SVG}",
         "stylesheet_url": f"{FLOORPLAN_STATIC_BASE}/{STYLESHEET_FILENAME}",

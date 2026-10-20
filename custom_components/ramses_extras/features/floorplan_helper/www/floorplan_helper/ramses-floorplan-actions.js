@@ -1002,12 +1002,45 @@ class RamsesFloorplanActions extends HTMLElement {
       }
     }
     const r = await this._call('floorplan_export', {});
-    if (r.card_yaml) {
-      this._copy(r.card_yaml, 'card_yaml');
-      this._status(`Exported ${(r.rules || []).length} rules${stored} — card_yaml copied to clipboard.`);
+    const yamls = r.card_yamls || (r.card_yaml ? { default: r.card_yaml } : {});
+    const floors = Object.keys(yamls);
+    this._renderYamlButtons(yamls);
+    if (floors.length) {
+      this._copy(yamls[floors[0]], `card yaml (${floors[0]})`);
+      this._status(
+        `Exported ${(r.rules || []).length} rules${stored} — ` +
+          `card yaml for '${floors[0]}' copied` +
+          (floors.length > 1
+            ? `; ${floors.length} floors — use the copy buttons below for the other card(s).`
+            : '.'),
+      );
     } else {
       this._status(`Export finished${stored} (no card_yaml in response)`);
     }
+  }
+
+  _renderYamlButtons(yamls) {
+    const row = this.shadowRoot.getElementById('yaml-copies');
+    if (!row) return;
+    row.innerHTML = '';
+    const floors = Object.keys(yamls || {});
+    if (!floors.length) {
+      row.style.display = 'none';
+      return;
+    }
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = 'card yaml →';
+    row.appendChild(lbl);
+    for (const floor of floors) {
+      const b = document.createElement('button');
+      b.className = 'secondary';
+      b.textContent = `⧉ ${floor}`;
+      b.title = `Copy the floorplan card yaml for '${floor}' — paste as a separate card (e.g. one per floor)`;
+      b.onclick = () => this._copy(yamls[floor], `card yaml (${floor})`);
+      row.appendChild(b);
+    }
+    row.style.display = 'flex';
   }
 
   async _sync() {
@@ -1120,6 +1153,7 @@ class RamsesFloorplanActions extends HTMLElement {
         </div>
         <textarea class="log" id="status" readonly
           title="Result log — selectable, copy with Ctrl+C"></textarea>
+        <div class="row" id="yaml-copies" style="display:none"></div>
         <div class="devoverlay" id="devpanel" style="display:none">
           <div class="devdialog">
             <div class="row" style="justify-content:space-between">

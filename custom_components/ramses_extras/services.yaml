@@ -377,9 +377,10 @@ floorplan_set_device_zone:
   name: Floorplan Set Device Zone
   description: >-
     Declare which rooms a device serves (its "zone") — e.g. the rooms a
-    WTW ventilates. The floorplan actions card highlights these rooms
-    when the device's studio marker is selected, and double-clicking the
-    marker opens the device card.
+    WTW ventilates, on any floor. Tapping the device's marker on a
+    floorplan card highlights those rooms plus the markers of devices
+    bound to it (ramses schema remotes/sensors, or the "devices" list);
+    double-tapping opens the device card.
   fields:
     device_id:
       name: Device ID
@@ -391,10 +392,23 @@ floorplan_set_device_zone:
     areas:
       name: Areas
       description: >-
-        HA area ids the device serves. Matched against a studio room's
-        explicit HA-area link first, then its slugified name.
+        HA area ids the device serves — may span floors; each floorplan
+        card highlights the subset present in its own SVG. Matched
+        against a studio room's explicit HA-area link first, then its
+        slugified name.
       required: false
       example: "[potstal, garage, cv_ruimte, hal_bg]"
+      selector:
+        object:
+    devices:
+      name: Bound devices
+      description: >-
+        Extra RAMSES device ids whose markers are highlighted on tap, on
+        top of devices bound via the ramses schema (remotes/sensors of a
+        FAN get parent=<fan id> automatically). Gateways (HGI) are never
+        highlighted.
+      required: false
+      example: "[37:169161]"
       selector:
         object:
     color:

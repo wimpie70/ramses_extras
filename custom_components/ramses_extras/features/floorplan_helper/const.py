@@ -43,6 +43,7 @@ FLOORPLAN_GENERATED_DIR_NAME = "floorplan/generated"
 
 GENERATED_ELEMENTS_SVG = "ramses-elements.svg"
 GENERATED_CARD_YAML = "ramses-floorplan-card.yaml"
+CARD_YAML_STEM = GENERATED_CARD_YAML.removesuffix(".yaml")
 STYLESHEET_FILENAME = "ramses-floorplan.css"
 
 # Markers wrapping generated rules inside the card YAML.  Users keep their
@@ -279,6 +280,7 @@ __all__ = [
     "FLOORPLAN_SWITCH_CONFIGS",
     "FLOORPLAN_UPLOAD_DIR_NAME",
     "FLOORPLAN_WEBSOCKET_COMMANDS",
+    "CARD_YAML_STEM",
     "GENERATED_CARD_YAML",
     "GENERATED_ELEMENTS_SVG",
     "OPTION_AREA_OVERRIDES",

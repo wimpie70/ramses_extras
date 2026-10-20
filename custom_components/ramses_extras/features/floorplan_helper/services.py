@@ -319,6 +319,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not remove:
             zone = {
                 "areas": list(call.data.get("areas") or []),
+                "devices": list(call.data.get("devices") or []),
                 "color": call.data.get("color") or None,
             }
         section = set_device_zone(hass, _config_entry(hass), device_id, zone)
@@ -821,6 +822,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 {
                     vol.Required("device_id"): cv.string,
                     vol.Optional("areas"): vol.All(cv.ensure_list, [cv.string]),
+                    vol.Optional("devices"): vol.All(cv.ensure_list, [cv.string]),
                     vol.Optional("color"): cv.string,
                     vol.Optional("remove", default=False): cv.boolean,
                 },

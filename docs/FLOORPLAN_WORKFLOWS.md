@@ -65,7 +65,12 @@ card reads/writes studio storage directly. No export/download needed:
   In custom-SVG mode it also writes a **merged SVG**
   (`generated/<name>.merged.svg`): your drawing + device markers at
   their studio positions + the toolbar — that is what the card loads,
-  so rules actually bind and `rx-*` classes apply.
+  so rules actually bind and `rx-*` classes apply. `custom_svg_path`
+  may list one SVG per floor; each gets its own `*.merged.svg` and its
+  own card yaml (`ramses-floorplan-card.yaml` = first floor, plus
+  `ramses-floorplan-card-<stem>.yaml` for the rest) — the card shows
+  per-floor ⧉ copy buttons after export. Paste each yaml as a separate
+  card to put multiple floors on one dashboard.
 - **Sync areas** — `sync_areas` on the stored project
 - **Resize ◉ selected** — apply the tweak icon size to the markers
   selected in studio (multi-select works — studio's own inspector can't)
@@ -79,7 +84,17 @@ autosave, Ctrl+Z-able); a DOM+IndexedDB patch is the fallback.
 → zone" flow): declare which rooms a device serves, then
 
 - **click a marker** (in the exported floorplan card) → its zone's
-  rooms get a translucent hatch + outline (`.rx-zone-<dev>` class)
+  rooms get a translucent hatch + outline (`.rx-zone-<dev>` class),
+  and the markers of the device's **bound devices** get an outline +
+  glow (`.rx-zone-<dev>-dev`). Binding comes from the ramses schema —
+  remotes/sensors under a FAN get `parent=<fan id>` — not from which
+  room a device sits in (a remote bound to the WTW highlights even
+  when placed in a non-zone room). Extra devices can be added via the
+  zone's `devices` list; HGI gateways are never highlighted.
+- Zones may **span floors**: list areas from every floor. A zone
+  device without a marker on a floor is docked just inside that
+  card's bottom edge so it stays tappable — tapping it on the 1e
+  card highlights only the zone rooms present in that SVG.
 - **double-tap** → device popup (hvac-fan-card for FAN/HVAC). The
   rule fires `ll-custom`; a module-level listener in the actions-card
   JS catches it on **any** view. If the floorplan option
