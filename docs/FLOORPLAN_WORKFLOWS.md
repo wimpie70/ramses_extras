@@ -101,7 +101,13 @@ autosave, Ctrl+Z-able); a DOM+IndexedDB patch is the fallback.
   — the largest `outside`-class room if the drawing has one (e.g.
   terras), else a strip along the top-right canvas edge — so it stays
   visible and tappable. Tapping a zone member on the 1e card
-  highlights only the zone rooms present in that SVG.
+  highlights only the zone rooms present in that SVG — and the same
+  tap **syncs the highlight to every other floorplan card** on the
+  dashboard: the rule broadcasts `ramses_zone_sync` via `ll-custom`,
+  and the module-level listener applies the identical class toggles
+  (`floorplan.*` actions alone can only reach the card that fired
+  them). The class names + pattern defs are identical in each merged
+  SVG, so both cards render the same highlight.
 - **double-tap** → device popup (hvac-fan-card for FAN/HVAC). The
   rule fires `ll-custom`; a module-level listener in the actions-card
   JS catches it on **any** view. If the floorplan option

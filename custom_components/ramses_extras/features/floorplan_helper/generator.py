@@ -763,32 +763,40 @@ def _build_rules(
                     bound.append(el)
             if area_ids or (zone.get("devices") and bound):
                 device_id = str(dev.get("device_id"))
-                zone_actions: list[dict[str, Any]] = []
+                toggles: list[dict[str, Any]] = []
                 if area_ids:
-                    zone_actions.append(
+                    toggles.append(
                         {
-                            "action": "call-service",
-                            "service": "floorplan.class_toggle",
-                            "service_data": {
-                                "elements": [f"area.{_slugify(a)}" for a in area_ids],
-                                "class": _zone_class(device_id),
-                            },
+                            "class": _zone_class(device_id),
+                            "elements": [f"area.{_slugify(a)}" for a in area_ids],
                         }
                     )
                 if bound:
-                    zone_actions.append(
+                    toggles.append(
                         {
-                            "action": "call-service",
-                            "service": "floorplan.class_toggle",
-                            "service_data": {
-                                "elements": bound,
-                                "class": _zone_class(f"{device_id}-dev"),
-                            },
+                            "class": _zone_class(f"{device_id}-dev"),
+                            "elements": bound,
                         }
                     )
-                tap_rule["tap_action"] = (
-                    zone_actions[0] if len(zone_actions) == 1 else zone_actions
+                zone_actions: list[dict[str, Any]] = [
+                    {
+                        "action": "call-service",
+                        "service": "floorplan.class_toggle",
+                        "service_data": t,
+                    }
+                    for t in toggles
+                ]
+                # floorplan.* actions are scoped to the card that fired
+                # them — broadcast the same toggles so the module-level
+                # listener applies them to every other floorplan card on
+                # the dashboard too (a zone may span floors)
+                zone_actions.append(
+                    {
+                        "action": "fire-dom-event",
+                        "ramses_zone_sync": toggles,
+                    }
                 )
+                tap_rule["tap_action"] = zone_actions
                 tap_rule["hold_action"] = {"action": "more-info"}
                 view_url = options.get(OPTION_DEVICE_VIEW_URL) or ""
                 if view_url:
@@ -1064,7 +1072,19 @@ def _build_card_yaml(
             "rules": rules,
         },
     }
-    text = yaml.dump(card, sort_keys=False, default_flow_style=False)
+
+    # no aliases — shared dicts (zone toggles reused as service_data and
+    # in ramses_zone_sync) must render as repeated blocks, not anchors
+    class _NoAliasDumper(yaml.Dumper):
+        def ignore_aliases(self, data: Any) -> bool:
+            return True
+
+    text = yaml.dump(
+        card,
+        sort_keys=False,
+        default_flow_style=False,
+        Dumper=_NoAliasDumper,
+    )
 
     lines = text.splitlines()
     out: list[str] = []

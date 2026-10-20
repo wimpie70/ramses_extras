@@ -1508,9 +1508,52 @@ async function _openGlobalDevicePopup(detail) {
   }, 1000);
 }
 
+// 'floorplan.*' service calls are handled inside the card instance that
+// fired the rule — they cannot reach other floorplan cards. Zone tap
+// rules therefore also broadcast a ramses_zone_sync spec via ll-custom;
+// the same class toggles are applied to every OTHER floorplan card on
+// the dashboard (the origin card already toggled itself), so a FAN's
+// served rooms + bound devices light up on all floors at once.
+function _fpZoneSync(ev, toggles) {
+  const path = ev.composedPath ? ev.composedPath() : [];
+  const cards = [];
+  const walk = (root) => {
+    for (const el of root.querySelectorAll('*')) {
+      if (el.tagName === 'FLOORPLAN-CARD') cards.push(el);
+      if (el.shadowRoot) walk(el.shadowRoot);
+    }
+  };
+  walk(document);
+  for (const card of cards) {
+    if (path.includes(card)) continue;
+    for (const t of toggles || []) {
+      for (const id of t.elements || []) {
+        const node =
+          _fpDeepById(card.shadowRoot, id) || _fpDeepById(card, id);
+        if (node) node.classList.toggle(t.class);
+      }
+    }
+  }
+}
+
+function _fpDeepById(root, id) {
+  if (!root) return null;
+  const node = root.getElementById ? root.getElementById(id) : null;
+  if (node) return node;
+  for (const el of root.querySelectorAll('*')) {
+    if (el.id === id) return el;
+    if (el.shadowRoot) {
+      const hit = _fpDeepById(el.shadowRoot, id);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
 window.addEventListener('ll-custom', (ev) => {
   const d = ev && ev.detail;
   if (d && d.ramses_device_id) _openGlobalDevicePopup(d);
+  if (d && d.ramses_zone_sync) _fpZoneSync(ev, d.ramses_zone_sync);
 });
 
 window.customCards = window.customCards || [];
