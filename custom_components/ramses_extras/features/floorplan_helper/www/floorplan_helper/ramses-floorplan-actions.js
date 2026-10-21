@@ -143,6 +143,19 @@ function idbReq(req) {
   });
 }
 
+// Piercing selector — lovelace nests cards inside several shadow roots.
+function _deepQuery(selector, root = document) {
+  if (!root || !root.querySelectorAll) return null;
+  for (const el of root.querySelectorAll('*')) {
+    if (el.matches && el.matches(selector)) return el;
+    if (el.shadowRoot) {
+      const hit = _deepQuery(selector, el.shadowRoot);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
 class RamsesFloorplanActions extends HTMLElement {
   constructor() {
     super();
@@ -798,11 +811,26 @@ class RamsesFloorplanActions extends HTMLElement {
     project.id = project.id || `seed-${Date.now()}`;
     project.updatedAt = Date.now();
     const db = await openFpDb();
-    await idbReq(
-      db.transaction('projects', 'readwrite').objectStore('projects').put(project)
-    );
+    const tx = db.transaction(['projects', 'meta'], 'readwrite');
+    await idbReq(tx.objectStore('projects').put(project));
+    // studio reloads `meta:lastProjectId` on mount — point it at the
+    // project we just wrote so a remount lands on it
+    await idbReq(tx.objectStore('meta').put(project.id, 'lastProjectId'));
     db.close();
     return project;
+  }
+
+  // After an IndexedDB write, an open studio still shows its stale
+  // in-memory copy — and its autosave would clobber our write on the
+  // next edit. Remount the card so it reloads the pushed project.
+  _reloadStudioCard() {
+    const el = _deepQuery('floorplan-studio-card');
+    if (el && el.mounted) {
+      el.disconnectedCallback();
+      el.connectedCallback();
+      return true;
+    }
+    return false;
   }
 
   async _seed() {
@@ -824,7 +852,13 @@ class RamsesFloorplanActions extends HTMLElement {
     if (r.project_json) {
       try {
         const p = await this._pushToStudio(r.project_json);
-        this._status(`Seeded: ${placed} placed, ${unplaced} parked — merged into studio project '${p.name}' (select it via Projects if it isn't open).`);
+        const reloaded = this._reloadStudioCard();
+        this._status(
+          `Seeded: ${placed} placed, ${unplaced} parked — merged into studio project '${p.name}'` +
+            (reloaded
+              ? ' (studio reloaded).'
+              : ' (select it via Projects if it isn\'t open).'),
+        );
       } catch {
         this._copy(r.project_json, 'Project JSON');
         this._status(`Seeded: ${placed} placed, ${unplaced} parked — could not write to studio storage; JSON copied to clipboard instead.`);
@@ -844,9 +878,12 @@ class RamsesFloorplanActions extends HTMLElement {
       return;
     }
     const p = await this._pushToStudio(r.project_json);
+    const reloaded = this._reloadStudioCard();
     this._status(
-      `Pushed stored project '${p.name || p.id}' into studio — ` +
-        'open it via Projects (studio autosaves to this browser).'
+      `Pushed stored project '${p.name || p.id}' into studio` +
+        (reloaded
+          ? ' — studio reloaded.'
+          : ' — open it via Projects (studio autosaves to this browser).')
     );
     this._refreshProjects();
   }
