@@ -7,6 +7,8 @@
   return it; powers a "copy card YAML" action in extras cards.
 - ``get_topology`` — return the floorplan model (devices, groups,
   areas, entities) without generating files; used for previews.
+- ``get_project`` — return the stored studio project (latest.json) so
+  the actions card can push it back into studio's IndexedDB.
 - ``list_icons`` — return the shipped icon keys.
 
 :platform: Home Assistant
@@ -29,12 +31,12 @@ from .const import (
     OPTION_CUSTOM_SVG_PATH,
     OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
-    OPTION_EDITOR_URL,
-    OPTION_PLANNER_URL,
     OPTION_SVG_MODE,
     OPTION_TOOLBAR_ENABLED,
 )
+from .importer import load_latest_project
 from .mapping import get_floorplan_options
+from .markers import editor_url
 from .topology import build_floorplan_model
 
 if TYPE_CHECKING:
@@ -132,8 +134,7 @@ async def ws_get_config(
         {
             "svg_mode": options.get(OPTION_SVG_MODE),
             "custom_svg_path": options.get(OPTION_CUSTOM_SVG_PATH),
-            "editor_url": options.get(OPTION_EDITOR_URL),
-            "planner_url": options.get(OPTION_PLANNER_URL),
+            "editor_url": editor_url(options),
             "toolbar_enabled": options.get(OPTION_TOOLBAR_ENABLED),
             "device_zones": options.get(OPTION_DEVICE_ZONES, {}),
             "device_view_url": options.get(OPTION_DEVICE_VIEW_URL, ""),
@@ -141,9 +142,29 @@ async def ws_get_config(
     )
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ramses_extras/floorplan_helper/get_project",
+    }
+)
+@websocket_api.async_response
+async def ws_get_project(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Return the stored studio project (latest.json), if any."""
+    text = await hass.async_add_executor_job(load_latest_project, hass)
+    if text is None:
+        connection.send_error(
+            msg["id"], "no_project", "No stored studio project (latest.json)"
+        )
+        return
+    connection.send_result(msg["id"], {"project_json": text})
+
+
 __all__ = [
     "ws_get_bundle",
     "ws_get_config",
+    "ws_get_project",
     "ws_get_topology",
     "ws_list_icons",
 ]

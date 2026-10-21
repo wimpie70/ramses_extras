@@ -7,14 +7,22 @@
  * Studio stores its projects in this origin's IndexedDB
  * (db 'floorplan-studio', store 'projects', meta 'lastProjectId') and
  * autosaves ~600ms after every change — so this card can pull the live
- * project and push seeded projects with no export/download round-trip:
+ * project and push seeded/stored projects with no export/download
+ * round-trip. The workflow row reads left→right:
  *
- *   - Project picker lists studio's own projects; "Pull" stores it
- *     server-side (latest.json + backup) and syncs HA areas
- *   - "Seed markers" runs floorplan_seed_studio and writes the result
- *     back into studio's project list (open it via Projects)
- *   - "Open studio" / "Open editor" navigate to the configured tool URLs
- *   - "Export bundle" runs floorplan_export and copies card_yaml
+ *   1. "Open studio" — navigate to the studio view (editor_url option)
+ *   2. project picker — studio's own projects in this browser
+ *   3. "⟵ Store ← studio" — store the selected project server-side
+ *      (latest.json + backup) and sync HA areas
+ *   4. "Export ⇒" — snapshot the live project, run floorplan_export,
+ *      copy the card yaml
+ *
+ * Tools row:
+ *   - "＋ Add devices" — seed/merge new device markers into the
+ *     selected project (or the stored one), written back into studio
+ *   - "⇒ Push → studio" — write the stored latest.json back into
+ *     studio's project list (restores a project this browser lost)
+ *   - "Sync areas" — re-run marker-in-room → entity area_id sync
  *   - Drop zone: fallback for JSON files from another machine/backup
  *
  * Config (all optional):
@@ -992,17 +1000,19 @@ class RamsesFloorplanActions extends HTMLElement {
     );
   }
 
-  async _readStudioProject() {
+  async _readStudioProject(quiet) {
     const id = this._selectedProjectId();
-    if (!id) { this._status('No studio project selected'); return null; }
+    if (!id) {
+      if (!quiet) this._status('No studio project selected');
+      return null;
+    }
     const db = await openFpDb();
     const project = await idbReq(
       db.transaction('projects').objectStore('projects').get(id)
     );
     db.close();
-    if (!project) {
+    if (!project && !quiet) {
       this._status('Project not found in studio storage');
-      return null;
     }
     return project;
   }
@@ -1042,13 +1052,19 @@ class RamsesFloorplanActions extends HTMLElement {
     if (size) data.marker_size = size;
     const seedName = this._tweak('seed_name');
     if (seedName) data.name = seedName;
+    // Merge into the selected studio project when one is open — keeps
+    // walls, background and existing placement, only *new* devices get
+    // centroid markers. Without a selection the service falls back to
+    // the stored latest.json; with neither it emits a fresh project.
+    const selected = await this._readStudioProject(true);
+    if (selected) data.project_json = JSON.stringify(selected);
     const r = await this._call('floorplan_seed_studio', data);
     const placed = Object.keys(r.placed || {}).length;
     const unplaced = (r.unplaced || []).length;
     if (r.project_json) {
       try {
         const p = await this._pushToStudio(r.project_json);
-        this._status(`Seeded: ${placed} placed, ${unplaced} parked — written to studio as '${p.name}'. Open it via Projects.`);
+        this._status(`Seeded: ${placed} placed, ${unplaced} parked — merged into studio project '${p.name}' (select it via Projects if it isn't open).`);
       } catch {
         this._copy(r.project_json, 'Project JSON');
         this._status(`Seeded: ${placed} placed, ${unplaced} parked — could not write to studio storage; JSON copied to clipboard instead.`);
@@ -1057,6 +1073,22 @@ class RamsesFloorplanActions extends HTMLElement {
     } else {
       this._status(`Seeded: ${placed} placed, ${unplaced} parked`);
     }
+  }
+
+  async _pushStored() {
+    const r = await this._hass.callWS({
+      type: 'ramses_extras/floorplan_helper/get_project',
+    }).catch((err) => ({ __err: (err && err.message) || String(err) }));
+    if (r.__err) {
+      this._status(`Push → studio: ${r.__err}`);
+      return;
+    }
+    const p = await this._pushToStudio(r.project_json);
+    this._status(
+      `Pushed stored project '${p.name || p.id}' into studio — ` +
+        'open it via Projects (studio autosaves to this browser).'
+    );
+    this._refreshProjects();
   }
 
   async _export() {
@@ -1158,21 +1190,26 @@ class RamsesFloorplanActions extends HTMLElement {
       <ha-card>
         <div class="title">Floorplan</div>
         <div class="hint">
-          Bridge between floorplan-studio and Home Assistant — pull the
-          drawing into HA areas, or seed device markers back into studio.
+          Edit markers in studio, store the project, export — the studio
+          project is the source of truth; export compiles it into the
+          floorplan bundle (rules + CSS + card YAML).
         </div>
         <div class="row">
           <button id="b-studio"
-            title="Open the floorplan-studio editor (planner_url from your floorplan settings)">Open studio</button>
+            title="Open the floorplan-studio editor (editor_url from your floorplan settings)">Open studio</button>
           <span class="lbl">studio project:</span>
           <select id="project"
             title="Projects stored in floorplan-studio (this browser). The one studio is currently editing is marked (current)."></select>
           <button id="b-pull" class="secondary"
-            title="Read the selected project straight from studio (it autosaves ~0.6s after each change), store it as latest.json + backup, and sync marker positions into HA areas">Pull ← studio</button>
-          <button id="b-seed" class="secondary"
-            title="Pre-place a marker for every device whose HA area matches a room (at the room's centre), park unassigned devices below the canvas, and write the result into studio's project list">Seed → studio</button>
+            title="Read the selected project straight from studio (it autosaves ~0.6s after each change), store it as latest.json + backup, and sync marker positions into HA areas">⟵ Store ← studio</button>
           <button id="b-export" class="secondary"
-            title="Regenerate the ha-floorplan bundle (SVG + rules + CSS) and copy the dashboard card YAML to your clipboard">Export bundle</button>
+            title="Snapshot the selected studio project, regenerate the ha-floorplan bundle (SVG + rules + CSS) and copy the dashboard card YAML to your clipboard">Export ⇒</button>
+        </div>
+        <div class="row">
+          <button id="b-seed" class="secondary"
+            title="Add markers for devices not yet in the selected project — merged into it (existing placement kept; new devices at their room's centre or parked below the canvas), written back into studio">＋ Add devices</button>
+          <button id="b-push" class="secondary"
+            title="Write the stored latest.json back into this browser's studio project list — restores the project after a browser/profile switch">⇒ Push → studio</button>
           <button id="b-sync" class="secondary"
             title="Re-run area sync on the stored project: marker-in-room → entity area_id, missing areas created">Sync areas</button>
           <button id="b-resize" class="secondary"
@@ -1248,9 +1285,10 @@ class RamsesFloorplanActions extends HTMLElement {
 
     const $ = (id) => this.shadowRoot.getElementById(id);
     $('b-studio').onclick = () =>
-      this._navigate(this._config.studio_url || (this._fpConfig || {}).planner_url || '/floorplan-studio');
+      this._navigate(this._config.studio_url || (this._fpConfig || {}).editor_url || '/floorplan-studio');
     $('b-pull').onclick = () => this._run(() => this._pull());
     $('b-seed').onclick = () => this._run(() => this._seed());
+    $('b-push').onclick = () => this._run(() => this._pushStored());
     $('b-export').onclick = () => this._run(() => this._export());
     $('b-sync').onclick = () => this._run(() => this._sync());
     $('b-resize').onclick = () => this._run(() => this._resizeSelected());

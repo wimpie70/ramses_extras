@@ -28,8 +28,6 @@ from .const import (
     OPTION_TOOLBAR_ENABLED,
     TOOLBAR_ELEMENT_EDITOR,
     TOOLBAR_ELEMENT_EXPORT,
-    TOOLBAR_ELEMENT_IMPORT,
-    TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
     ZONE_TOGGLE_SERVICE,
     is_generated_rule,
@@ -47,7 +45,6 @@ from .markers import (
     effective_zones,
     element_id_for_device,
     marker_meta_for_device,
-    planner_url,
 )
 from .zones import (
     model_entity_ids,
@@ -412,17 +409,13 @@ def _toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
     if not options.get(OPTION_TOOLBAR_ENABLED, True):
         return []
     rules: list[dict[str, Any]] = [
-        # export/import/upload need service data or a response — they go
+        # export/upload need service data or a response — they go
         # through ll-custom so the module-level listener can show real
         # dialogs (file picker, results, copy buttons) instead of just
         # dumping the user on the developer-tools page
         {
             "element": TOOLBAR_ELEMENT_EXPORT,
             "tap_action": fire_dom_event(ramses_fp_action="export"),
-        },
-        {
-            "element": TOOLBAR_ELEMENT_IMPORT,
-            "tap_action": fire_dom_event(ramses_fp_action="import"),
         },
         {
             "element": TOOLBAR_ELEMENT_UPLOAD,
@@ -433,13 +426,6 @@ def _toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
             "tap_action": link_action(editor_url(options)),
         },
     ]
-    if planner_url(options) != editor_url(options):
-        rules.append(
-            {
-                "element": TOOLBAR_ELEMENT_PLANNER,
-                "tap_action": link_action(planner_url(options)),
-            }
-        )
     return rules
 
 

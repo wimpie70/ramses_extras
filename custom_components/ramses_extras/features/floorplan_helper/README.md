@@ -158,17 +158,22 @@ conflict with studio-owned fields.
 
 ## In-SVG toolbar
 
-`build_toolbar_svg()` emits a `<g id="floorplan.toolbar">` with five
-glyph buttons; `_build_toolbar_rules()` emits their `tap_action` rules
+`build_toolbar_svg()` emits a `<g id="floorplan.toolbar">` with three
+glyph buttons; `_toolbar_rules()` emits their `tap_action` rules
 inside the managed block:
 
 | Element | Action |
 |---------|--------|
-| `floorplan.export` | calls `ramses_extras.floorplan_export` |
-| `floorplan.import` | navigates to Dev Tools with `floorplan_import` preselected (`?action=` deep-link) |
-| `floorplan.upload` | same for `floorplan_upload_svg` |
-| `floorplan.editor` | opens `editor_url` option (default: ha-floorplan-editor) |
-| `floorplan.planner` | opens `planner_url` option (default: HA-floorplanner-gui) |
+| `floorplan.export` | fires `ramses_fp_action="export"` → module-level dialog runs `floorplan_export` |
+| `floorplan.upload` | fires `ramses_fp_action="upload"` → file-picker → `floorplan_upload_svg` |
+| `floorplan.editor` | navigates to `editor_url` — the floorplan-studio view (default `/floorplan-studio`) |
+
+`floorplan.import` and `floorplan.planner` are retired glyph ids — no
+rules are emitted for them anymore (studio is the editor and project
+JSON is the import format). `floorplan_import` remains as a service
+for legacy `element_bindings`/`extra_rules` workflows, and the
+module-level `import`/`upload`/`export` dialogs still respond if an
+older pasted toolbar triggers them.
 
 Internal tool URLs (`/...`) emit `navigate`; external URLs emit `url`
 (new tab). The generated SVG includes the toolbar at the bottom-right;

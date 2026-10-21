@@ -296,32 +296,23 @@ class TestToolbar:
     def test_toolbar_rules_emitted(self):
         rules = generator._build_rules(_model(), _options())
         by_element = {r.get("element"): r for r in rules if "element" in r}
-        # export/import/upload go through ll-custom so the module-level
-        # listener can run dialogs (file picker, results, copy buttons)
+        # export/upload go through ll-custom so the module-level
+        # listener can run dialogs (file picker, results, copy buttons);
+        # legacy import/planner glyphs get no rules — studio is the
+        # editor and project JSON the import format
         for element_id, action in (
             (TOOLBAR_ELEMENT_EXPORT, "export"),
-            (TOOLBAR_ELEMENT_IMPORT, "import"),
             (TOOLBAR_ELEMENT_UPLOAD, "upload"),
         ):
             tap = by_element[element_id]["tap_action"]
             assert tap["action"] == "fire-dom-event"
             assert tap["ramses_fp_action"] == action
-        assert by_element[TOOLBAR_ELEMENT_EDITOR]["tap_action"]["action"] == "url"
-        assert by_element[TOOLBAR_ELEMENT_PLANNER]["tap_action"]["action"] == "url"
-
-    def test_toolbar_planner_deduped_when_same_url(self):
-        # planner button is skipped when it resolves to the editor URL
-        rules = generator._build_rules(
-            _model(), _options(planner_url=None, editor_url=None)
-        )
-        by_element = {r.get("element"): r for r in rules if "element" in r}
-        same = generator._build_rules(
-            _model(),
-            _options(editor_url="/studio", planner_url="/studio"),
-        )
-        same_elements = {r.get("element") for r in same}
-        assert TOOLBAR_ELEMENT_PLANNER not in same_elements
-        assert TOOLBAR_ELEMENT_PLANNER in by_element
+        assert TOOLBAR_ELEMENT_IMPORT not in by_element
+        assert TOOLBAR_ELEMENT_PLANNER not in by_element
+        # editor → studio view path (internal navigate, not url)
+        editor = by_element[TOOLBAR_ELEMENT_EDITOR]["tap_action"]
+        assert editor["action"] == "navigate"
+        assert editor["navigation_path"] == "/floorplan-studio"
 
     def test_toolbar_disabled(self):
         rules = generator._build_rules(_model(), _options(toolbar_enabled=False))
@@ -341,12 +332,13 @@ class TestToolbar:
         snippet = generator.build_toolbar_svg()
         for element_id in (
             TOOLBAR_ELEMENT_EXPORT,
-            TOOLBAR_ELEMENT_IMPORT,
             TOOLBAR_ELEMENT_UPLOAD,
             TOOLBAR_ELEMENT_EDITOR,
-            TOOLBAR_ELEMENT_PLANNER,
         ):
             assert f'id="{element_id}"' in snippet
+        # legacy glyphs are not emitted anymore
+        assert f'id="{TOOLBAR_ELEMENT_IMPORT}"' not in snippet
+        assert f'id="{TOOLBAR_ELEMENT_PLANNER}"' not in snippet
 
     def test_generated_svg_includes_toolbar(self):
         svg = generator.build_elements_svg(_model(devices=[_device()]), _options())

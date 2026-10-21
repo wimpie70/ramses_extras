@@ -28,11 +28,9 @@ from homeassistant.helpers import selector
 
 from .const import (
     DEFAULT_EDITOR_URL,
-    DEFAULT_PLANNER_URL,
     FEATURE_ID,
     OPTION_CUSTOM_SVG_PATH,
     OPTION_EDITOR_URL,
-    OPTION_PLANNER_URL,
     OPTION_SVG_MODE,
     OPTION_TOOLBAR_ENABLED,
     SVG_MODE_CUSTOM,
@@ -65,9 +63,6 @@ async def async_step_floorplan_helper_config(
         section[OPTION_EDITOR_URL] = (
             user_input.get("editor_url") or DEFAULT_EDITOR_URL
         ).strip()
-        section[OPTION_PLANNER_URL] = (
-            user_input.get("planner_url") or DEFAULT_PLANNER_URL
-        ).strip()
         persist_floorplan_options(flow.hass, config_entry, section)
         _LOGGER.info("Floorplan Helper options saved")
         return await flow.async_step_main_menu()
@@ -87,9 +82,11 @@ async def async_step_floorplan_helper_config(
         "`ramsesCaption`, `style.glyph/ring/opacity`); any older "
         "stored overrides migrate into the project on the next export "
         "and stay as fallback only for elements without a marker.\n\n"
-        "Tool URLs open from the in-SVG toolbar buttons. Point them at "
-        "vendored copies or iframe panel paths (`/...` navigates inside "
-        "HA instead of a new tab)."
+        "`editor_url` is the dashboard view holding the "
+        "floorplan-studio card (default `/floorplan-studio`) — the "
+        "in-SVG `⛓` toolbar button and the actions card's 'Open studio' "
+        "navigate there. Point it at another view path or a vendored "
+        "copy under `/local/...` if yours lives elsewhere."
     )
 
     schema = vol.Schema(
@@ -127,10 +124,6 @@ async def async_step_floorplan_helper_config(
             vol.Optional(
                 "editor_url",
                 default=options.get(OPTION_EDITOR_URL) or DEFAULT_EDITOR_URL,
-            ): selector.TextSelector(selector.TextSelectorConfig(multiline=False)),
-            vol.Optional(
-                "planner_url",
-                default=options.get(OPTION_PLANNER_URL) or DEFAULT_PLANNER_URL,
             ): selector.TextSelector(selector.TextSelectorConfig(multiline=False)),
         }
     )

@@ -93,15 +93,19 @@ OPTION_PLANNER_URL = "planner_url"
 SVG_MODE_GENERATED = "generated"
 SVG_MODE_CUSTOM = "custom"
 
-# External helper tools (client-side only — no HA auth/API). Point these at
-# vendored copies under /local/... or an iframe panel path to keep the
-# round-trip inside HA. Internal paths (leading '/') emit a `navigate`
-# tap_action; anything else emits `url` (new tab).
-DEFAULT_EDITOR_URL = "https://qaddodi.github.io/ha-floorplan-editor/"
+# floorplan-studio view path (or a vendored/iframe-panel editor URL).
+# Internal paths (leading '/') emit a `navigate` tap_action; anything
+# else emits `url` (new tab).
+DEFAULT_EDITOR_URL = "/floorplan-studio"
+# Legacy planner tool URL — no longer surfaced in the UI; kept so stored
+# options and the floorplan_set_svg service field stay compatible.
 DEFAULT_PLANNER_URL = "https://sleien.github.io/HA-floorplanner-gui/"
 
 # Element ids of the in-SVG toolbar glyphs. Users paste the toolbar <g>
 # snippet into custom SVGs; generated SVGs include it automatically.
+# ``floorplan.import`` / ``floorplan.planner`` are legacy ids — no rules
+# are emitted for them anymore (studio is the editor and project JSON is
+# the import format) but older pasted toolbars may still carry them.
 TOOLBAR_ELEMENT_EXPORT = "floorplan.export"
 TOOLBAR_ELEMENT_IMPORT = "floorplan.import"
 TOOLBAR_ELEMENT_UPLOAD = "floorplan.upload"
@@ -194,7 +198,6 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_BACKGROUND: "#ffffff",
     OPTION_TOOLBAR_ENABLED: True,
     OPTION_EDITOR_URL: DEFAULT_EDITOR_URL,
-    OPTION_PLANNER_URL: DEFAULT_PLANNER_URL,
 }
 
 # ---------------------------------------------------------------------------

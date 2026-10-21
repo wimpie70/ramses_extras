@@ -17,7 +17,6 @@ from typing import Any
 from .const import (
     DEFAULT_EDITOR_URL,
     DEFAULT_ICON,
-    DEFAULT_PLANNER_URL,
     FLOORPLAN_DEVICE_ICON_MAP,
     FLOORPLAN_ICON_MDI,
     OPTION_AREA_OVERRIDES,
@@ -26,12 +25,9 @@ from .const import (
     OPTION_ELEMENT_BINDINGS,
     OPTION_ICON_OVERRIDES,
     OPTION_MARKER_STYLE_OVERRIDES,
-    OPTION_PLANNER_URL,
     OPTION_TOOLBAR_ENABLED,
     TOOLBAR_ELEMENT_EDITOR,
     TOOLBAR_ELEMENT_EXPORT,
-    TOOLBAR_ELEMENT_IMPORT,
-    TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
     split_top_level_commas,
 )
@@ -550,30 +546,30 @@ def build_elements_svg(model: dict[str, Any], options: dict[str, Any]) -> str:
 
 
 def editor_url(options: dict[str, Any]) -> str:
-    return str(options.get(OPTION_EDITOR_URL) or DEFAULT_EDITOR_URL)
+    """The floorplan-studio view URL — the in-SVG `⛓` button target.
 
-
-def planner_url(options: dict[str, Any]) -> str:
-    return str(options.get(OPTION_PLANNER_URL) or DEFAULT_PLANNER_URL)
+    A stored value equal to the old external-editor default is treated
+    as unset: it was written before studio became the editor.
+    """
+    url = str(options.get(OPTION_EDITOR_URL) or "")
+    if not url or url == "https://qaddodi.github.io/ha-floorplan-editor/":
+        return DEFAULT_EDITOR_URL
+    return url
 
 
 def build_toolbar_svg(options: dict[str, Any] | None = None) -> str:
     """Return the toolbar ``<g>`` snippet — paste once into a custom SVG.
 
-    Up to five 26px glyph buttons spaced 34px apart, styled via the
+    Three 26px glyph buttons spaced 34px apart, styled via the
     ``rx-toolbar*`` classes in ramses-floorplan.css; each carries a
     ``<title>`` tooltip. Wrap coordinates with a
-    ``transform="translate(x,y)"`` to position it. The planner button is
-    skipped when it resolves to the same URL as the editor button.
+    ``transform="translate(x,y)"`` to position it.
     """
     glyphs = [
         (TOOLBAR_ELEMENT_EXPORT, "↻", "Export bundle (merged SVGs + card yamls)"),
-        (TOOLBAR_ELEMENT_IMPORT, "⇣", "Import floorplan YAML (bindings + rules)"),
         (TOOLBAR_ELEMENT_UPLOAD, "⇡", "Upload an SVG to the floorplan folder"),
         (TOOLBAR_ELEMENT_EDITOR, "⛓", "Open floorplan studio"),
     ]
-    if options is None or planner_url(options) != editor_url(options):
-        glyphs.append((TOOLBAR_ELEMENT_PLANNER, "✎", "Open floor planner"))
     parts = ['<g id="floorplan.toolbar">']
     for idx, (element_id, glyph, tooltip) in enumerate(glyphs):
         parts.append(svg_button(element_id, glyph, tooltip, idx * 34))
@@ -592,7 +588,6 @@ __all__ = [
     "element_id_for_device",
     "group_devices",
     "icon_for_device",
-    "planner_url",
     "effective_zones",
     "marker_meta_for_device",
     "short_label",
