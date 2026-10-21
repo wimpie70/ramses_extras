@@ -868,22 +868,23 @@ class RamsesFloorplanActions extends HTMLElement {
         await this._call('floorplan_sync_areas', {});
       }
     }
-    const r = await this._call('floorplan_export', {});
+    // the service applies the generated card to matching storage
+    // dashboards itself (apply:false / apply_dashboard / apply_match
+    // are passed through from this card's config)
+    const data = {};
+    if (this._config.apply === false) data.apply = false;
+    if (this._config.apply_dashboard) data.apply_dashboard = this._config.apply_dashboard;
+    if (this._config.apply_match) data.apply_match = this._config.apply_match;
+    const r = await this._call('floorplan_export', data);
     const yamls = r.card_yamls || (r.card_yaml ? { default: r.card_yaml } : {});
     const floors = Object.keys(yamls);
     this._renderYamlButtons(yamls);
-    let applied = '';
-    const cards = r.cards || {};
-    if (this._config.apply !== false && Object.keys(cards).length) {
-      try {
-        const res = await this._applyToDashboards(cards);
-        applied = res.cards
-          ? ` — applied to ${res.cards} card(s) on ${res.dashes} dashboard(s)`
-          : ' — no matching floorplan card found (nothing applied)';
-      } catch (err) {
-        applied = ` — dashboard apply failed: ${(err && err.message) || err}`;
-      }
-    }
+    const applied =
+      r.applied && r.applied.cards
+        ? ` — applied to ${r.applied.cards} card(s) on ${r.applied.dashboards} dashboard(s)`
+        : data.apply !== false
+          ? ' — no matching floorplan card found (nothing applied)'
+          : '';
     if (floors.length) {
       this._copy(yamls[floors[0]], `card yaml (${floors[0]})`);
       this._status(
@@ -899,68 +900,9 @@ class RamsesFloorplanActions extends HTMLElement {
     }
   }
 
-  // Replace generated floorplan card(s) on storage dashboards via the
-  // lovelace ws api — no dashboard edit mode needed. A card is matched
-  // by the *map file it displays*: exact `config.image.location` match
-  // against each generated card (so multiple floorplan cards with
-  // different maps stay untouched), or the `apply_match` substring
-  // override. `apply_dashboard` limits the scan to one dashboard;
-  // `apply: false` disables applying entirely.
-  async _applyToDashboards(cardCfgs) {
-    let urlPaths = [];
-    if (this._config.apply_dashboard) {
-      urlPaths = [this._config.apply_dashboard];
-    } else {
-      const list = await this._hass.callWS({ type: 'lovelace/dashboards/list' });
-      urlPaths = [null, ...(list || []).map((d) => d.url_path)];
-    }
-    const match = this._config.apply_match;
-    const firstCfg = Object.values(cardCfgs)[0];
-    const imageOf = (c) =>
-      String((c && c.config && c.config.image && c.config.image.location) || '');
-    const replacementFor = (c) => {
-      if (!c || c.type !== 'custom:floorplan-card') return null;
-      if (match) return imageOf(c).includes(match) ? firstCfg : null;
-      return (
-        Object.values(cardCfgs).find(
-          (cc) => cc.config && cc.config.image && cc.config.image.location === imageOf(c),
-        ) || null
-      );
-    };
-    let cards = 0;
-    const dashes = new Set();
-    for (const urlPath of urlPaths) {
-      let conf;
-      try {
-        conf = await this._hass.callWS({ type: 'lovelace/config', url_path: urlPath });
-      } catch {
-        continue; // yaml-mode or gone dashboard — nothing to patch
-      }
-      let n = 0;
-      for (const view of conf.views || []) {
-        (view.cards || []).forEach((c, i) => {
-          const rep = replacementFor(c);
-          if (rep) { view.cards[i] = rep; n++; }
-        });
-        for (const sec of view.sections || []) {
-          (sec.cards || []).forEach((c, i) => {
-            const rep = replacementFor(c);
-            if (rep) { sec.cards[i] = rep; n++; }
-          });
-        }
-      }
-      if (n) {
-        await this._hass.callWS({
-          type: 'lovelace/config/save',
-          url_path: urlPath,
-          config: conf,
-        });
-        cards += n;
-        dashes.add(urlPath || 'default');
-      }
-    }
-    return { cards, dashes: dashes.size };
-  }
+  // Dashboard apply lives server-side in floorplan_export — every
+  // export path (this button, the in-SVG toolbar, automations)
+  // replaces cards whose image.location matches a generated map.
 
   _renderYamlButtons(yamls) {
     const row = this.shadowRoot.getElementById('yaml-copies');
@@ -1378,7 +1320,10 @@ async function _fpExportDialog(host) {
     const files = r.files_written || {};
     _fpMsg(
       host,
-      `Wrote ${Object.keys(files).length} file(s) to /local/ramses_extras/floorplan/generated/`
+      `Wrote ${Object.keys(files).length} file(s) to /local/ramses_extras/floorplan/generated/` +
+        (r.applied && r.applied.cards
+          ? ` — applied to ${r.applied.cards} card(s) on ${r.applied.dashboards} dashboard(s)`
+          : '')
     );
     for (const w of r.warnings || []) _fpMsg(host, w, 'warn');
     const yamls =
