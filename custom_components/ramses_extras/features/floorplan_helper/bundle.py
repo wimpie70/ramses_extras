@@ -276,6 +276,9 @@ def build_card_yaml(
 
     card = {
         "type": "custom:floorplan-card",
+        # full-width in sections dashboards (clamped by HA at the
+        # section's max column count)
+        "layout_options": {"grid_columns": 200},
         "config": {
             "image": {"location": image_path, "cache": False},
             "stylesheet": f"{FLOORPLAN_STATIC_BASE}/{STYLESHEET_FILENAME}",
