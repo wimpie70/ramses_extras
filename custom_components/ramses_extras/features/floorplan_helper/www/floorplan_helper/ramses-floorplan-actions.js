@@ -872,6 +872,19 @@ class RamsesFloorplanActions extends HTMLElement {
     const yamls = r.card_yamls || (r.card_yaml ? { default: r.card_yaml } : {});
     const floors = Object.keys(yamls);
     this._renderYamlButtons(yamls);
+    let applied = '';
+    const cards = r.cards || {};
+    const cardCfg = cards[floors[0]] || cards.default;
+    if (this._config.apply_dashboard && cardCfg) {
+      try {
+        const n = await this._applyToDashboard(cardCfg);
+        applied = n
+          ? ` — applied to ${n} card(s) on '${this._config.apply_dashboard}'`
+          : ` — no matching floorplan card found on '${this._config.apply_dashboard}' (nothing applied)`;
+      } catch (err) {
+        applied = ` — dashboard apply failed: ${(err && err.message) || err}`;
+      }
+    }
     if (floors.length) {
       this._copy(yamls[floors[0]], `card yaml (${floors[0]})`);
       this._status(
@@ -879,11 +892,46 @@ class RamsesFloorplanActions extends HTMLElement {
           `card yaml for '${floors[0]}' copied` +
           (floors.length > 1
             ? `; ${floors.length} floors — use the copy buttons below for the other card(s).`
-            : '.'),
+            : '.') +
+          applied,
       );
     } else {
-      this._status(`Export finished${stored} (no card_yaml in response)`);
+      this._status(`Export finished${stored} (no card_yaml in response)${applied}`);
     }
+  }
+
+  // Replace the generated floorplan card on a storage dashboard via the
+  // lovelace ws api — no dashboard edit mode needed. Matches cards of
+  // type custom:floorplan-card whose image.location contains
+  // `apply_match` (default: our generated folder), so hand-made cards
+  // are left alone.
+  async _applyToDashboard(cardCfg) {
+    const urlPath = this._config.apply_dashboard;
+    const match = this._config.apply_match || 'ramses_extras/floorplan/generated';
+    const conf = await this._hass.callWS({ type: 'lovelace/config', url_path: urlPath });
+    let n = 0;
+    const isOurs = (c) =>
+      c &&
+      c.type === 'custom:floorplan-card' &&
+      String((c.config && c.config.image && c.config.image.location) || '').includes(match);
+    for (const view of conf.views || []) {
+      (view.cards || []).forEach((c, i) => {
+        if (isOurs(c)) { view.cards[i] = cardCfg; n++; }
+      });
+      for (const sec of view.sections || []) {
+        (sec.cards || []).forEach((c, i) => {
+          if (isOurs(c)) { sec.cards[i] = cardCfg; n++; }
+        });
+      }
+    }
+    if (n) {
+      await this._hass.callWS({
+        type: 'lovelace/config/save',
+        url_path: urlPath,
+        config: conf,
+      });
+    }
+    return n;
   }
 
   _renderYamlButtons(yamls) {

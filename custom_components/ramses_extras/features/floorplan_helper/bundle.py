@@ -257,16 +257,12 @@ async def _build_merged_svg(
     return f"{src.stem}.merged.svg", warnings, merge_svg_overlay(svg_text, fragment)
 
 
-def build_card_yaml(
+def build_card_config(
     rules: list[dict[str, Any]],
     options: dict[str, Any],
     image_path: str | None = None,
-) -> str:
-    """Render the paste-ready floorplan card config.
-
-    The generated rules sit inside BEGIN/END markers so a re-export can
-    replace just that block; user rules outside the markers survive.
-    """
+) -> dict[str, Any]:
+    """Return the floorplan card config as a dict (pre-serialisation)."""
     svg_mode = options.get(OPTION_SVG_MODE, "generated")
     if image_path is None:
         if svg_mode == SVG_MODE_CUSTOM and custom_svg_refs(options):
@@ -274,7 +270,7 @@ def build_card_yaml(
         else:
             image_path = f"{FLOORPLAN_GENERATED_BASE}/{GENERATED_ELEMENTS_SVG}"
 
-    card = {
+    return {
         "type": "custom:floorplan-card",
         # full-width in sections dashboards (clamped by HA at the
         # section's max column count)
@@ -288,6 +284,19 @@ def build_card_yaml(
             "rules": rules,
         },
     }
+
+
+def build_card_yaml(
+    rules: list[dict[str, Any]],
+    options: dict[str, Any],
+    image_path: str | None = None,
+) -> str:
+    """Render the paste-ready floorplan card config.
+
+    The generated rules sit inside BEGIN/END markers so a re-export can
+    replace just that block; user rules outside the markers survive.
+    """
+    card = build_card_config(rules, options, image_path)
 
     # no aliases — shared dicts (zone toggles reused as service_data and
     # in ramses_zone_sync) must render as repeated blocks, not anchors
@@ -415,17 +424,21 @@ async def async_generate_bundle(
                 merged_names.append(merged_name)
 
     # One card yaml per merged floor; the un-suffixed file keeps the
-    # first floor for backwards compatibility.
+    # first floor for backwards compatibility. ``cards`` carries the
+    # same configs as dicts so callers (the actions card) can patch a
+    # dashboard directly, without re-parsing yaml.
     card_yamls: dict[str, str] = {}
+    cards: dict[str, dict[str, Any]] = {}
     for i, merged_name in enumerate(merged_names):
         stem = Path(merged_name).stem.removesuffix(".merged")
-        yml = build_card_yaml(
-            rules, options, f"{FLOORPLAN_GENERATED_BASE}/{merged_name}"
-        )
+        image_path = f"{FLOORPLAN_GENERATED_BASE}/{merged_name}"
+        yml = build_card_yaml(rules, options, image_path)
         card_yamls[stem] = yml
+        cards[stem] = build_card_config(rules, options, image_path)
         files[GENERATED_CARD_YAML if i == 0 else f"{CARD_YAML_STEM}-{stem}.yaml"] = yml
     if not card_yamls:
         card_yamls["default"] = build_card_yaml(rules, options)
+        cards["default"] = build_card_config(rules, options)
 
     card_yaml = next(iter(card_yamls.values()))
     files[GENERATED_ELEMENTS_SVG] = svg_text
@@ -448,6 +461,7 @@ async def async_generate_bundle(
     return {
         "card_yaml": card_yaml,
         "card_yamls": card_yamls,
+        "cards": cards,
         "rules": rules,
         "elements_svg_url": f"{FLOORPLAN_GENERATED_BASE}/{GENERATED_ELEMENTS_SVG}",
         "stylesheet_url": f"{FLOORPLAN_STATIC_BASE}/{STYLESHEET_FILENAME}",
@@ -460,6 +474,7 @@ async def async_generate_bundle(
 
 __all__ = [
     "async_generate_bundle",
+    "build_card_config",
     "build_card_yaml",
     "custom_svg_refs",
 ]
