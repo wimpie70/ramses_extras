@@ -186,10 +186,32 @@ async def build_floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
             }
         )
 
+    # Non-ramses entities wired into _extras features (paired-valve
+    # zones, zone sensors/actuators) — the floorplan treats them as
+    # standalone members so everything _extras uses is visible and
+    # draggable in studio.
+    from ...framework.helpers.zones import get_zone_registry
+
+    model_ids = {str(e["entity_id"]) for d in devices for e in d.get("entities") or []}
+    extras_entities: set[str] = set()
+    for zones in get_zone_registry(hass).list_all_zones().values():
+        for zone in zones:
+            for key in ("inlet_valve_entity", "outlet_valve_entity"):
+                if zone.get(key):
+                    extras_entities.add(str(zone[key]))
+            extras_entities.update(
+                str(ent) for ent in (zone.get("sensors") or {}).values() if ent
+            )
+            actuator = zone.get("actuator") or {}
+            if actuator.get("entity_id"):
+                extras_entities.add(str(actuator["entity_id"]))
+    extras_entities.difference_update(model_ids)
+
     return {
         "devices": devices,
         "areas": areas,
         "floors": floors,
+        "extras_entities": sorted(extras_entities),
     }
 
 

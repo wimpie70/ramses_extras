@@ -231,7 +231,7 @@ def standalone_icon(entity_id: str) -> str:
     return _ENTITY_DOMAIN_ICONS.get(entity_id.split(".", 1)[0], DEFAULT_ICON)
 
 
-def _dock_anchor(
+def dock_anchor(
     svg_rooms: dict[str, dict[str, Any]], vb_w: float
 ) -> tuple[float, float]:
     """Anchor (row start) for the unplaced-device dock.
@@ -343,7 +343,7 @@ def build_overlay_fragment(
     warnings: list[str] = []
     used_icons: set[str] = set()
     body: list[str] = []
-    dock_x, dock_y = _dock_anchor(svg_rooms, vb_w)
+    dock_x, dock_y = dock_anchor(svg_rooms, vb_w)
     unplaced = 0
 
     def _dock_pos() -> tuple[float, float]:
@@ -584,6 +584,7 @@ __all__ = [
     "build_elements_svg",
     "build_overlay_fragment",
     "build_toolbar_svg",
+    "dock_anchor",
     "editor_url",
     "element_id_for_device",
     "group_devices",

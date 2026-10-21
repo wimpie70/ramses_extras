@@ -111,7 +111,10 @@ def model_entity_ids(model: dict[str, Any]) -> set[str]:
 
 def standalone_members(model: dict[str, Any], zones: dict[str, Any]) -> list[str]:
     """Entity ids listed in zones' ``devices`` that aren't ramses model
-    devices — DIY valves, zigbee area sensors… (deduped, sorted)."""
+    devices — DIY valves, zigbee area sensors… — plus the non-ramses
+    entities _extras features wire up (paired-valve zones, zone
+    sensors/actuators), carried on the model as ``extras_entities``
+    (deduped, sorted)."""
     ids = model_entity_ids(model)
     out: set[str] = set()
     for z in zones.values():
@@ -119,6 +122,10 @@ def standalone_members(model: dict[str, Any], zones: dict[str, Any]) -> list[str
             ent = str(ent)
             if "." in ent and ent not in ids:
                 out.add(ent)
+    for ent in model.get("extras_entities") or []:
+        ent = str(ent)
+        if "." in ent and ent not in ids:
+            out.add(ent)
     return sorted(out)
 
 

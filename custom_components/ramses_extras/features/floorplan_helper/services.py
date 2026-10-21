@@ -94,6 +94,7 @@ from .mapping import (
 )
 from .markers import (
     build_toolbar_svg,
+    dock_anchor,
     effective_zones,
     element_id_for_device,
     icon_for_device,
@@ -175,6 +176,51 @@ def _load_latest_project(hass: HomeAssistant) -> str:
     return text
 
 
+def _room_key(room: dict[str, Any]) -> str:
+    """Stable identity for a studio room — slug (``areaId``) else name."""
+    return str(room.get("areaId") or room.get("name") or "").lower()
+
+
+def _room_centroid(room: dict[str, Any]) -> tuple[float, float]:
+    """Centroid of a studio room's ``[{x, y}, …]`` polygon."""
+    pts = room.get("polygon") or []
+    if not pts:
+        return 0.0, 0.0
+    return (
+        sum(float(p.get("x") or 0) for p in pts) / len(pts),
+        sum(float(p.get("y") or 0) for p in pts) / len(pts),
+    )
+
+
+def _host_floor(
+    floors: list[dict[str, Any]], new_floor: dict[str, Any]
+) -> tuple[dict[str, Any] | None, tuple[float, float]]:
+    """Find the existing floor already holding *new_floor*'s rooms.
+
+    A combined drawing folds every source floor into one studio floor,
+    so an incoming ``begane grond``/``1e verdieping`` must merge into
+    the combined host rather than append a duplicate floor. Returns
+    ``(floor, (ox, oy))`` where the offset translates the incoming
+    floor's coordinates into the host's (e.g. ``+800`` for a folded
+    upper floor); ``(None, (0, 0))`` when no existing floor holds any
+    of the incoming rooms — the caller appends it as genuinely new.
+    """
+    new_rooms = new_floor.get("rooms") or []
+    best: dict[str, Any] | None = None
+    best_hits: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for fl in floors:
+        have = {_room_key(r): r for r in fl.get("rooms") or []}
+        hits = [(have[_room_key(r)], r) for r in new_rooms if _room_key(r) in have]
+        if len(hits) > len(best_hits):
+            best, best_hits = fl, hits
+    if not best_hits:
+        return None, (0.0, 0.0)
+    dx = sorted(_room_centroid(h)[0] - _room_centroid(n)[0] for h, n in best_hits)
+    dy = sorted(_room_centroid(h)[1] - _room_centroid(n)[1] for h, n in best_hits)
+    mid = len(best_hits) // 2
+    return best, (dx[mid], dy[mid])
+
+
 def _merge_studio_project(
     existing: dict[str, Any],
     floors_json: list[dict[str, Any]],
@@ -185,22 +231,27 @@ def _merge_studio_project(
     zones: dict[str, Any] | None = None,
     zone_toggles: dict[str, list[dict[str, Any]]] | None = None,
     entity_device: dict[str, str] | None = None,
+    dock: dict[str, tuple[float, float]] | None = None,
 ) -> dict[str, Any]:
     """Merge generated floors into an existing studio project.
 
-    Floors match by name; rooms are added when missing (by name);
-    markers whose *device* is already present anywhere in the project
-    are skipped (user's own placement wins) — dedup is by device via
-    ``entity_device``, since an older marker may bind a different
-    entity of the same device (e.g. ``*_battery_low`` from an older
-    primary-entity choice). ``extra_markers`` are devices without a
-    matching room — parked in a strip below the first floor's canvas
-    so they can be dragged into place.
+    Floors match by name; when the name misses, a floor whose rooms
+    already live inside another floor (a combined drawing) merges into
+    that host, translated by the room offset — only floors with zero
+    matching rooms are appended as genuinely new. Rooms are added when
+    missing; markers whose *device* is already present anywhere in the
+    project are skipped (user's own placement wins) — dedup is by
+    device via ``entity_device``, since an older marker may bind a
+    different entity of the same device (e.g. ``*_battery_low`` from an
+    older primary-entity choice). ``extra_markers`` are devices without
+    a matching room — parked at the in-canvas dock (same anchor the
+    merged-SVG export uses) so they stay visible in studio.
     """
     project = dict(existing)
     project["floors"] = list(existing.get("floors") or [])
     by_name = {str(f.get("name", "")).lower(): f for f in project["floors"]}
     entity_device = entity_device or {}
+    dock = dock or {}
 
     def _placed() -> tuple[set[str], set[str]]:
         ents = {
@@ -219,13 +270,25 @@ def _merge_studio_project(
 
     for new_floor in floors_json:
         floor = by_name.get(str(new_floor["name"]).lower())
+        ox = oy = 0.0
         if floor is None:
-            project["floors"].append(new_floor)
-            by_name[str(new_floor["name"]).lower()] = new_floor
-            continue
-        have_rooms = {str(r.get("name", "")).lower() for r in floor.get("rooms", [])}
+            floor, (ox, oy) = _host_floor(project["floors"], new_floor)
+            if floor is None:
+                project["floors"].append(new_floor)
+                by_name[str(new_floor["name"]).lower()] = new_floor
+                continue
+            # host-floor merge: shift incoming geometry into host space
+            for m in new_floor.get("markers") or []:
+                m["x"], m["y"] = (
+                    float(m.get("x") or 0) + ox,
+                    float(m.get("y") or 0) + oy,
+                )
+            for r in new_floor.get("rooms") or []:
+                for p in r.get("polygon") or []:
+                    p["x"], p["y"] = p.get("x", 0) + ox, p.get("y", 0) + oy
+        have_rooms = {_room_key(r) for r in floor.get("rooms", [])}
         floor.setdefault("rooms", []).extend(
-            r for r in new_floor["rooms"] if str(r["name"]).lower() not in have_rooms
+            r for r in new_floor["rooms"] if _room_key(r) not in have_rooms
         )
         placed_e, placed_d = _placed()
         floor.setdefault("markers", []).extend(
@@ -234,7 +297,7 @@ def _merge_studio_project(
 
     if staging and project["floors"]:
         placed_e, placed_d = _placed()
-        x = 30.0
+        slot = 0
         for dev in extra_markers:
             primary = dev.get("primary_entity")
             if not primary or primary in placed_e or dev.get("device_id") in placed_d:
@@ -243,16 +306,20 @@ def _merge_studio_project(
             # home floor — stage a marker on every floor so the user
             # can drag the copy on the floor the device lives on; the
             # merged export already renders them per floor anyway.
-            # Model devices stage on the first floor only.
+            # Model devices stage on the first floor only. The dock
+            # sits inside the canvas so studio actually shows it.
             floors_for = (
                 project["floors"] if dev.get("standalone") else project["floors"][:1]
             )
             for fl in floors_for:
-                height = float(fl.get("canvas", {}).get("height") or 560)
+                anchor = dock.get(str(fl.get("name") or "").lower())
+                if anchor is None:
+                    width = float(fl.get("canvas", {}).get("width") or 800)
+                    anchor = (width - 8 * 30.0 - 20.0, 44.0)
                 marker = studio_marker(
                     primary,
-                    x,
-                    height + 30,
+                    anchor[0] + (slot % 8) * 30.0,
+                    anchor[1] + (slot // 8) * 30.0,
                     mdi(dev),
                     label=str(dev.get("display_name") or dev["device_id"]),
                     size=marker_size,
@@ -267,7 +334,7 @@ def _merge_studio_project(
                 )
                 fl.setdefault("markers", []).append(marker)
             placed_e.add(primary)
-            x += 44
+            slot += 1
     return project
 
 
@@ -984,9 +1051,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         placed_entities: set[str] = set()
         floors_json: list[dict[str, Any]] = []
         floor_stats: list[dict[str, Any]] = []
+        dock: dict[str, tuple[float, float]] = {}
         for fname, svg_text in floor_svgs.items():
             rooms = rooms_from_svg(svg_text)
             width, height = svg_viewbox(svg_text)
+            # same anchor the merged-SVG export parks unplaced markers
+            # at — studio staging lands where the card docks them
+            dock[fname.lower()] = dock_anchor({r["slug"]: r for r in rooms}, width)
             by_slug = {r["slug"]: r for r in rooms}
             markers: list[dict[str, Any]] = []
             per_room: dict[str, int] = {}
@@ -1061,10 +1132,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 zones=zones,
                 zone_toggles=zone_toggles,
                 entity_device=entity_device,
+                dock=dock,
             )
         else:
-            # Park devices with no matching room below the first floor's
-            # canvas — drag them into a room in studio to assign the area.
+            # Park devices with no matching room at the in-canvas dock
+            # (same anchor the export uses) — drag them into a room in
+            # studio to assign the area.
             if call.data.get("staging", True) and floors_json:
                 for i, dev in enumerate(unplaced):
                     # standalone members stage on every floor — no home
@@ -1074,10 +1147,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         floors_json if dev.get("standalone") else floors_json[:1]
                     )
                     for fl in floors_for:
+                        anchor = dock.get(
+                            str(fl.get("name") or "").lower(),
+                            (
+                                float(fl["canvas"]["width"]) - 8 * 30.0 - 20.0,
+                                44.0,
+                            ),
+                        )
                         marker = studio_marker(
                             dev["primary_entity"],
-                            30 + i * 44,
-                            float(fl["canvas"]["height"]) + 30,
+                            anchor[0] + (i % 8) * 30.0,
+                            anchor[1] + (i // 8) * 30.0,
                             _mdi(dev),
                             label=str(dev.get("display_name") or dev["device_id"]),
                             size=marker_size,

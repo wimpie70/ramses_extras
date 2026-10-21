@@ -312,6 +312,7 @@ FLOORPLAN_BINARY_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {}
 FLOORPLAN_WEBSOCKET_COMMANDS: dict[str, str] = {
     "get_bundle": "ramses_extras/floorplan_helper/get_bundle",
     "get_config": "ramses_extras/floorplan_helper/get_config",
+    "get_project": "ramses_extras/floorplan_helper/get_project",
     "get_topology": "ramses_extras/floorplan_helper/get_topology",
     "list_icons": "ramses_extras/floorplan_helper/list_icons",
 }
