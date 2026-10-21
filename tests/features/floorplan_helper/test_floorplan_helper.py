@@ -28,6 +28,9 @@ from custom_components.ramses_extras.features.floorplan_helper.const import (
     TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
 )
+from custom_components.ramses_extras.features.floorplan_helper.platforms import (
+    binary_sensor as fp_binary_sensor,
+)
 from custom_components.ramses_extras.framework.helpers.ramses_topology import (
     build_owner_map,
     build_topology,
@@ -1240,3 +1243,27 @@ class TestCombineFloors:
         project = {"floors": [{"id": "f1", "rooms": [], "markers": []}]}
         importer.merge_project_floors(project, [0.0], 640, 560)
         assert len(project["floors"]) == 1
+
+
+class TestHeatDemandMirrorDeviceAttachment:
+    """The derived heat-demand binary sensor must attach to the source
+    ramses_cc device directly, not redeclare its identifiers.
+
+    Device-registry lookup by identifiers is scoped to the config entry,
+    so copying the ramses_cc identifiers into ``DeviceInfo`` created a
+    nameless duplicate device under ramses_extras that shadowed the real
+    zone device (device-name lookups and remove_device registry checks
+    then hit the stub).
+    """
+
+    def test_attaches_via_device_entry_not_device_info(self):
+        source_device = MagicMock()
+        source_device.id = "ha_device_1"
+        source_device.identifiers = {("ramses_cc", "01:150000_03")}
+
+        entity = fp_binary_sensor.FloorplanHeatDemandBinarySensor(
+            MagicMock(), "sensor.01_150000_03_heat_demand", source_device
+        )
+
+        assert entity.device_entry is source_device
+        assert entity.device_info is None

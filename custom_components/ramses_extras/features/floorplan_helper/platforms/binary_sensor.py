@@ -27,7 +27,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -65,10 +64,12 @@ class FloorplanHeatDemandBinarySensor(BinarySensorEntity):
         self._attr_unique_id = f"floorplan_helper_{suffix}"
         self.entity_id = f"binary_sensor.{suffix}"
         self._attr_name = f"Heat demand {suffix.removesuffix('_heat_demand')}"
-        if device_entry is not None:
-            self._attr_device_info = DeviceInfo(
-                identifiers=set(device_entry.identifiers)
-            )
+        # Attach to the source entity's device entry directly rather than
+        # via DeviceInfo: device-registry lookup by identifiers is scoped
+        # to this config entry, so redeclaring the ramses_cc identifiers
+        # would create a nameless duplicate device under ramses_extras
+        # that shadows the real device.
+        self.device_entry = device_entry
         self._demand_pct: float | None = None
         self._is_on = False
 
