@@ -1140,6 +1140,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             DOMAIN,
             SVC_ZONE_TOGGLE,
             _async_zone_toggle,
+            # ALLOW_EXTRA: ha-floorplan's call-service injects the
+            # rule's own entity_id into service_data automatically —
+            # it is ignored; toggles carry the payload.
             schema=vol.Schema(
                 {
                     vol.Optional("toggles"): [
@@ -1150,7 +1153,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     ],
                     vol.Optional("clear", default=False): cv.boolean,
                 },
-                extra=vol.PREVENT_EXTRA,
+                extra=vol.ALLOW_EXTRA,
             ),
             supports_response=SupportsResponse.OPTIONAL,
         )
@@ -1165,8 +1168,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Optional("device_id"): cv.string,
                     vol.Optional("entity"): cv.string,
                     vol.Optional("card"): cv.string,
+                    # ha-floorplan injects entity_id (see zone_toggle)
+                    vol.Optional("entity_id"): cv.string,
                 },
-                extra=vol.PREVENT_EXTRA,
+                extra=vol.ALLOW_EXTRA,
             ),
             supports_response=SupportsResponse.OPTIONAL,
         )
