@@ -588,6 +588,17 @@ def load_latest_project(hass: Any) -> str | None:
         return None
 
 
+def project_backups(hass: Any) -> list[str]:
+    """Timestamped project backups, newest first (text, unread skipped)."""
+    out: list[str] = []
+    for path in sorted(_projects_dir(hass).glob("project-*.json"), reverse=True):
+        try:
+            out.append(path.read_text("utf-8"))
+        except OSError:
+            continue
+    return out
+
+
 def studio_marker_positions(
     project: dict[str, Any], floor_name: str | None = None
 ) -> dict[str, dict[str, Any]]:
@@ -850,9 +861,16 @@ def _compose_backgrounds(
             ).convert("RGBA")
         except Exception:  # noqa: BLE001 - un-decodable image
             continue
+        # the dataUri may be higher-res than the displayed size —
+        # studio renders it at naturalW/H × scale, so composite at
+        # that size or the bottom/right gets clipped
         scale = float(bg.get("scale") or 1)
-        if scale != 1:
-            img = img.resize((int(img.width * scale), int(img.height * scale)))
+        target = (
+            max(1, int(float(bg.get("naturalW") or img.width) * scale)),
+            max(1, int(float(bg.get("naturalH") or img.height) * scale)),
+        )
+        if img.size != target:
+            img = img.resize(target)
         opacity = float(bg.get("opacity") or 1)
         if opacity < 1:
             alpha = img.getchannel("A").point(lambda a, o=opacity: int(a * o))
@@ -885,6 +903,7 @@ __all__ = [
     "load_latest_project",
     "parse_floorplan_yaml",
     "parse_studio_project",
+    "project_backups",
     "room_for_point",
     "rooms_from_svg",
     "store_latest_project",

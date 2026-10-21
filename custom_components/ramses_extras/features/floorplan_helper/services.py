@@ -72,6 +72,7 @@ from .importer import (
     merge_project_floors,
     parse_floorplan_yaml,
     parse_studio_project,
+    project_backups,
     room_for_point,
     rooms_from_svg,
     store_latest_project,
@@ -1177,20 +1178,46 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         web_path = f"/local/ramses_extras/{FLOORPLAN_UPLOAD_DIR_NAME}/{out_name}"
 
-        # fold the stored studio project into the same single floor
+        # fold the stored studio project into the same single floor —
+        # an already-combined project re-merges from the newest
+        # multi-floor backup so a re-run with a different gap stays
+        # correct (studio edits to the combined floor are lost then,
+        # so it's reported in warnings)
         project_merged = False
         stored = await hass.async_add_executor_job(load_latest_project, hass)
-        if stored:
+
+        def _multi_floor_project() -> dict[str, Any] | None:
+            for text in (stored, *project_backups(hass)):
+                if not text:
+                    continue
+                try:
+                    cand = json.loads(text)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(cand, dict) and len(cand.get("floors") or []) > 1:
+                    return dict(cand)
+            return None
+
+        project = await hass.async_add_executor_job(_multi_floor_project)
+        if project is not None:
             try:
-                project = json.loads(stored)
+                already = (
+                    bool(stored)
+                    and len(json.loads(stored or "{}").get("floors") or []) <= 1
+                )
             except json.JSONDecodeError:
-                project = None
-            if isinstance(project, dict) and len(project.get("floors") or []) > 1:
-                merge_project_floors(project, offsets, width, height)
-                stamped = json.dumps(project)
-                await hass.async_add_executor_job(_store_latest_project, hass, stamped)
-                await hass.async_add_executor_job(_backup_project, hass, stamped)
-                project_merged = True
+                already = False
+            if already:
+                warnings.append(
+                    "Stored project was already combined — re-merged from "
+                    "the newest multi-floor backup; any studio edits made "
+                    "to the combined floor since are lost"
+                )
+            merge_project_floors(project, offsets, width, height)
+            stamped = json.dumps(project)
+            await hass.async_add_executor_job(_store_latest_project, hass, stamped)
+            await hass.async_add_executor_job(_backup_project, hass, stamped)
+            project_merged = True
 
         section = dict(options)
         section[OPTION_CUSTOM_SVG_PATH] = [web_path]
