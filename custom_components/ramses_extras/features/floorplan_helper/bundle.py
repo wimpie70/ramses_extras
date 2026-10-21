@@ -60,6 +60,7 @@ from .mapping import (
 )
 from .markers import (
     apply_area_overrides,
+    apply_room_labels,
     apply_room_styles,
     build_elements_svg,
     build_overlay_fragment,
@@ -258,6 +259,9 @@ async def _build_merged_svg(
     # patch the elements' inline style directly (survives every consumer,
     # unlike a <style> block with escaped-id selectors).
     svg_text = apply_room_styles(svg_text, rooms)
+    # room names come from the project too — the drawing's baked
+    # <text> keeps its position but carries the studio name
+    svg_text = apply_room_labels(svg_text, rooms)
     return f"{src.stem}.merged.svg", warnings, merge_svg_overlay(svg_text, fragment)
 
 

@@ -12,6 +12,8 @@ device looks like on the plan*.
 
 from __future__ import annotations
 
+import re
+import xml.etree.ElementTree as ET
 from typing import Any
 
 from .const import (
@@ -32,7 +34,7 @@ from .const import (
     split_top_level_commas,
 )
 from .domains import get_domain
-from .importer import rooms_from_svg
+from .importer import _point_in_polygon, _polygon_area, _svg_parse, rooms_from_svg
 from .svg_utils import (
     load_icon_symbol,
     marker_svg,
@@ -482,6 +484,76 @@ def strip_toolbar(svg_text: str) -> str:
     return strip_element(svg_text, "floorplan.toolbar")
 
 
+_LABEL_CLASSES = {"label", "label-sm"}
+_TRANSLATE_RE = re.compile(r"translate\(\s*(-?[\d.eE+-]+)[,\s]+(-?[\d.eE+-]+)\s*\)")
+
+
+def apply_room_labels(svg_text: str, rooms: list[dict[str, Any]] | None) -> str:
+    """Rewrite ``label``/``label-sm`` text contents to the studio room
+    containing each label's anchor point.
+
+    The project's room names are the single source of truth for what a
+    room is called — the drawing's baked ``<text>`` only contributes a
+    hand-placed position. When several texts land in one room (a
+    fixture note beside the room name), only the label nearest the
+    room's centroid is renamed; other in-room texts and labels outside
+    every room (scale legend, detached notes) keep their content.
+    Studio room polygons are in combined-floor space, so ancestor
+    ``translate()`` offsets are composed per element (floor-2 content
+    sits inside a wrapper group).
+    """
+    if not rooms:
+        return svg_text
+    polys = [
+        (r, r.get("polygon") or [], _polygon_area(r.get("polygon") or []))
+        for r in rooms
+    ]
+
+    def _room_at(x: float, y: float) -> dict[str, Any] | None:
+        hits = [t for t in polys if t[1] and _point_in_polygon(x, y, t[1])]
+        # overlapping fills happen — the smallest containing room is
+        # the most specific label target (mirrors room_for_point)
+        return min(hits, key=lambda t: t[2])[0] if hits else None
+
+    root = _svg_parse(svg_text)
+    found: list[tuple[ET.Element, dict[str, Any], float, float]] = []
+
+    def _walk(el: ET.Element, dx: float, dy: float) -> None:
+        m = _TRANSLATE_RE.search(el.get("transform") or "")
+        if m:
+            dx += float(m.group(1))
+            dy += float(m.group(2))
+        if el.tag.rsplit("}", 1)[-1] == "text" and (
+            set((el.get("class") or "").split()) & _LABEL_CLASSES
+        ):
+            x = float(el.get("x") or 0) + dx
+            y = float(el.get("y") or 0) + dy
+            room = _room_at(x, y)
+            if room is not None:
+                found.append((el, room, x, y))
+        for child in list(el):
+            _walk(child, dx, dy)
+
+    _walk(root, 0.0, 0.0)
+
+    # several texts may land in one room (a fixture note beside the
+    # room name) — only the label nearest the centroid takes the room
+    # name; the rest keep their authored content
+    by_room: dict[int, list[tuple[ET.Element, dict[str, Any], float]]] = {}
+    for el, room, x, y in found:
+        pts = room.get("polygon") or []
+        cx = sum(float(p.get("x") or 0) for p in pts) / len(pts)
+        cy = sum(float(p.get("y") or 0) for p in pts) / len(pts)
+        by_room.setdefault(id(room), []).append(
+            (el, room, (x - cx) ** 2 + (y - cy) ** 2)
+        )
+    for entries in by_room.values():
+        el, room, _ = min(entries, key=lambda t: t[2])
+        if room.get("name"):
+            el.text = str(room["name"])
+    return ET.tostring(root, encoding="unicode")
+
+
 def apply_room_styles(svg_text: str, rooms: list[dict[str, Any]] | None) -> str:
     """Patch ``area.<slug>`` elements with the studio room fill/opacity.
 
@@ -596,6 +668,7 @@ def build_toolbar_svg(options: dict[str, Any] | None = None) -> str:
 
 __all__ = [
     "apply_area_overrides",
+    "apply_room_labels",
     "apply_room_styles",
     "binding_maps",
     "build_elements_svg",
