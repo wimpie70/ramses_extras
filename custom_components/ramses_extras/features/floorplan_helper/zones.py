@@ -126,8 +126,8 @@ def zone_defs(model: dict[str, Any], zones: dict[str, Any]) -> str:
 
     The room class swaps the fill for a translucent diagonal hatch in
     the zone colour plus a solid outline — visible over any base fill.
-    The ``-dev`` variant outlines the bound markers with a glow and
-    leaves their icon fill to the rx-* state classes.
+    The ``-dev`` variant rings the bound markers' badge in the zone
+    colour and leaves their disc/glyph to the rx-* state classes.
     """
     css: list[str] = []
     patterns: list[str] = []
@@ -152,11 +152,13 @@ def zone_defs(model: dict[str, Any], zones: dict[str, Any]) -> str:
                 f"fill: url(#{pat}) !important; fill-opacity: 1 !important; "
                 f"stroke: {color} !important; stroke-width: 3px !important; }}"
             )
-        # bound markers recolour in the zone colour — a drop-shadow
-        # glow or a stroke on fill-path icons just reads as blur; the
-        # !important fill wins over the marker's base fill and the
-        # rx-* status classes (membership beats status while lit)
-        css.append(f".{zone_dev_class(device_id)} {{ fill: {color} !important; }}")
+        # bound markers show membership on the badge ring — a crisp
+        # circle outline in the zone colour (a glow/stroke on fill-path
+        # icons just reads as blur); !important wins over the rx-*
+        # status ring classes (membership beats status while lit)
+        css.append(
+            f".{zone_dev_class(device_id)} .rx-ring {{ stroke: {color} !important; }}"
+        )
     if not css and not patterns:
         return ""
     parts = [f"<style>\n{chr(10).join(css)}\n</style>", "<defs>", *patterns, "</defs>"]

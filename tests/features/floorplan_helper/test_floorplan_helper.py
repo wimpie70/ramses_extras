@@ -607,8 +607,38 @@ class TestDomains:
         assert not hgi.zone_eligible
         assert not zone_eligible(_device(device_id="18:1", device_class="HGI"))
         assert zone_eligible(_device())
-        # heat classes resolve to the registered heat domain
-        assert get_domain("TRV").device_classes
+        # heat classes resolve to their registered heat domains
+        assert get_domain("TRV").default_icon == "radiator"
+        assert get_domain("CTL").default_icon == "thermostat"
+        assert get_domain("OTB").default_icon == "water-boiler"
+        assert get_domain("DHW").default_icon == "water-boiler"
+        assert get_domain("OUT").default_icon == "thermometer"
+
+    def test_heat_captions(self):
+        from custom_components.ramses_extras.features.floorplan_helper.domains import (
+            get_domain,
+        )
+
+        trv = get_domain("TRV").caption_entities(
+            [
+                {"entity_id": "number.04_000001_heat_demand"},
+                {"entity_id": "sensor.04_000001_temperature"},
+            ]
+        )
+        assert trv == [
+            ("number.04_000001_heat_demand", "%"),
+            ("sensor.04_000001_temperature", "°"),
+        ]
+        otb = get_domain("OTB").caption_entities(
+            [
+                {"entity_id": "sensor.10_000001_rel_modulation_level"},
+                {"entity_id": "sensor.10_000001_boiler_water_temp"},
+            ]
+        )
+        assert otb == [
+            ("sensor.10_000001_boiler_water_temp", "°"),
+            ("sensor.10_000001_rel_modulation_level", "%"),
+        ]
 
 
 class TestSvgUtils:
@@ -630,6 +660,7 @@ class TestSvgUtils:
         assert 'id="climate.32_153289"' in m
         assert "translate(10.0,20.0)" in m
         assert "rx-rotor" in m and "FAN 32:153289" in m and "rx-name" in m
+        assert "rx-disc" in m and "rx-ring" in m
         b = svg_utils.svg_button("floorplan.export", "X", "tip", 34)
         assert 'id="floorplan.export"' in b and "<title>tip</title>" in b
 

@@ -44,16 +44,45 @@
   pointer-events: none;
 }
 
+/* --- marker badge (overlay markers) --- */
+/* The glyph stays light on the coloured disc; status shows on the
+ * rx-ring stroke — a crisp circle outline, never a blurred icon. */
+.rx-disc {
+  stroke: none;
+}
+
+.rx-ring {
+  stroke: transparent;
+}
+
+.rx-name,
+.rx-state {
+  pointer-events: none;
+}
+
 /* --- connectivity / availability --- */
+/* Element-level fills remain the fallback for non-badge elements
+ * (generated elements SVG) — badge markers restyle disc/ring instead. */
 .rx-online {
   fill: #2e7d32;
 }
 
 .rx-offline {
   fill: #9e9e9e;
+  opacity: 0.65;
+}
+
+.rx-offline .rx-disc {
+  fill: #9e9e9e;
+}
+
+.rx-offline .rx-ring {
   stroke: #9e9e9e;
   stroke-dasharray: 3 3;
-  opacity: 0.55;
+}
+
+.rx-offline .rx-rotor use {
+  fill: #e0e0e0;
 }
 
 .rx-rssi-warn {
@@ -61,18 +90,33 @@
   stroke-width: 2;
 }
 
+.rx-rssi-warn .rx-ring {
+  stroke: #f9a825;
+}
+
 /* --- heating --- */
 .rx-heat-demand {
   fill: #ef6c00;
-  filter: drop-shadow(0 0 6px rgba(239, 108, 0, 0.7));
+}
+
+.rx-heat-demand .rx-ring {
+  stroke: #ef6c00;
 }
 
 .rx-valve-open {
   fill: #ef6c00;
 }
 
+.rx-valve-open .rx-ring {
+  stroke: #ef6c00;
+}
+
 .rx-window-open {
   fill: #039be5;
+}
+
+.rx-window-open .rx-ring {
+  stroke: #039be5;
 }
 
 /* --- fan --- */
@@ -85,6 +129,18 @@
 }
 
 .rx-fan-high {
+  fill: #e53935;
+}
+
+.rx-fan-low .rx-disc {
+  fill: #7cb342;
+}
+
+.rx-fan-medium .rx-disc {
+  fill: #fb8c00;
+}
+
+.rx-fan-high .rx-disc {
   fill: #e53935;
 }
 

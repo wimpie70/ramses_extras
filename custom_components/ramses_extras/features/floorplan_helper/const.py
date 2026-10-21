@@ -143,7 +143,7 @@ def is_generated_rule(rule: Any) -> bool:
         return True
     try:
         blob = json.dumps(rule)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
     return any(token in blob for token in GENERATED_RULE_TOKENS)
 

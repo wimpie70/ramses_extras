@@ -33,6 +33,7 @@ from .const import (
     TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
 )
+from .domains import get_domain
 from .importer import rooms_from_svg
 from .svg_utils import (
     load_icon_symbol,
@@ -113,7 +114,7 @@ def icon_for_device(device: dict[str, Any], options: dict[str, Any]) -> str:
     """Resolve the icon key for a device.
 
     Precedence: per-entity override → per-class override → element
-    binding icon → device-class default table → DEFAULT_ICON.
+    binding icon → domain default → device-class table → DEFAULT_ICON.
     """
     overrides: dict[str, str] = options.get(OPTION_ICON_OVERRIDES, {}) or {}
     bindings: dict[str, Any] = options.get(OPTION_ELEMENT_BINDINGS, {}) or {}
@@ -134,7 +135,9 @@ def icon_for_device(device: dict[str, Any], options: dict[str, Any]) -> str:
                 continue
             if isinstance(binding, dict) and binding.get("icon"):
                 return str(binding["icon"])
-    return FLOORPLAN_DEVICE_ICON_MAP.get(device_class, DEFAULT_ICON)
+    return get_domain(device).default_icon or FLOORPLAN_DEVICE_ICON_MAP.get(
+        device_class, DEFAULT_ICON
+    )
 
 
 def apply_area_overrides(model: dict[str, Any], options: dict[str, Any]) -> None:
