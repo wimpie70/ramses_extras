@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .const import ZONE_TOGGLE_SERVICE
 from .domains import zone_eligible
 from .svg_utils import slugify
 
@@ -177,29 +178,41 @@ def zone_toggle_specs(
     return toggles
 
 
+def zone_tap_action(
+    toggles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Single-tap action: one ``call-service`` to the zone bridge.
+
+    ``ramses_extras.floorplan_zone_toggle`` fires an HA event the
+    frontend module turns into class toggles on every floorplan card —
+    so the action is a plain service call (fully expressible in
+    studio's marker actions and surviving studio's own export),
+    instead of a client-side list mixing class_toggle + ll-custom.
+    """
+    return {
+        "action": "call-service",
+        "service": ZONE_TOGGLE_SERVICE,
+        "service_data": {"toggles": toggles},
+    }
+
+
 def zone_tap_actions(
     toggles: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Single-tap action list: local class_toggle + cross-card sync."""
-    actions: list[dict[str, Any]] = [
-        {
-            "action": "call-service",
-            "service": "floorplan.class_toggle",
-            "service_data": t,
-        }
-        for t in toggles
-    ]
-    actions.append({"action": "fire-dom-event", "ramses_zone_sync": toggles})
-    return actions
+) -> dict[str, Any]:
+    """Backwards-compatible alias for :func:`zone_tap_action`.
+
+    Older exports emitted an action *list*; the current shape is a
+    single call-service dict — same return value either way.
+    """
+    return zone_tap_action(toggles)
 
 
 def zone_clear_action(toggles: list[dict[str, Any]]) -> dict[str, Any]:
-    """fire-dom-event spec that removes the zone classes on ALL cards.
+    """Legacy ll-custom clear spec — kept for previously exported yaml.
 
-    Unlike the toggle broadcast, the listener includes the originating
-    card — a quick second click is eaten as a double tap by
-    ha-floorplan's gesture handler, so this deterministic clear is what
-    keeps "tap again to deselect" working before the device view opens.
+    New exports clear zones inside the device-view event handler
+    instead; the module's ll-custom listener still honours this so
+    old generated cards keep working.
     """
     return {"action": "fire-dom-event", "ramses_zone_clear": toggles}
 
@@ -213,6 +226,7 @@ __all__ = [
     "zone_clear_action",
     "zone_defs",
     "zone_dev_class",
+    "zone_tap_action",
     "zone_tap_actions",
     "zone_toggle_specs",
 ]

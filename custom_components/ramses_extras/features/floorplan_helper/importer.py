@@ -23,7 +23,7 @@ from typing import Any
 
 import yaml
 
-from .const import is_generated_rule
+from .const import DEVICE_VIEW_SERVICE, ZONE_TOGGLE_SERVICE, is_generated_rule
 
 _MISSING = object()
 
@@ -462,6 +462,10 @@ def studio_marker(
         "x": round(x, 1),
         "y": round(y, 1),
         "entities": [entity_id],
+        # keeps studio's own rule export bound to the same element ids
+        # our generated rules target (elementId wins over the
+        # marker_<id> fallback for multi-entity markers)
+        "elementId": entity_id,
         "style": {
             "type": "icon",
             "icon": icon,
@@ -482,36 +486,63 @@ def studio_marker(
 
 
 def studio_actions_for_device(
-    dev: dict[str, Any], zones: dict[str, Any]
+    dev: dict[str, Any],
+    zones: dict[str, Any],
+    toggles: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Marker ``actions`` to write when seeding — makes our generated
-    gesture defaults visible (and overridable) in studio's right panel.
+    """Marker ``actions`` to write when seeding.
 
-    A zoned parent's tap can't be expressed by studio's kinds (it is a
-    class_toggle + cross-card sync action list), so it is seeded as
-    ``call-service: floorplan.class_toggle`` — readable shorthand that
-    the rule generator recognises and expands back to the real zone
-    actions (see ``rules._device_rules``). Anything the user replaces
-    it with is honoured verbatim.
+    Everything here is expressed with studio-native action kinds, so
+    the marker's right panel shows the real semantics and studio's own
+    ha-floorplan export emits working actions — the project stays the
+    single source of truth. The service calls are the bridges our
+    frontend module handles (see ``const.ZONE_TOGGLE_SERVICE`` /
+    ``DEVICE_VIEW_SERVICE``); the rule generator regenerates them from
+    live config at export, so a stale ``serviceData`` here can never
+    drift the behaviour.
     """
     device_id = str(dev.get("device_id") or "")
     if device_id and device_id in (zones or {}):
-        from .svg_utils import slugify
-
         return {
             "tap": {
                 "kind": "call-service",
-                "service": "floorplan.class_toggle",
-                "serviceData": f'class: "rx-zone-{slugify(device_id)}"',
+                "service": ZONE_TOGGLE_SERVICE,
+                **(
+                    {"serviceData": yaml.safe_dump({"toggles": toggles})}
+                    if toggles
+                    else {}
+                ),
             },
             "hold": {"kind": "more-info"},
-            "double": {"kind": "none"},
+            "double": {
+                "kind": "call-service",
+                "service": DEVICE_VIEW_SERVICE,
+                "serviceData": yaml.safe_dump(
+                    {
+                        "device_id": device_id,
+                        "entity": dev.get("primary_entity") or "",
+                    }
+                ),
+            },
         }
     return {
         "tap": {"kind": "more-info"},
         "hold": {"kind": "none"},
         "double": {"kind": "none"},
     }
+
+
+def studio_marker_zone(marker: dict[str, Any], zone: dict[str, Any] | None) -> None:
+    """Write (or clear) the zone config on a studio marker.
+
+    ``marker.ramsesZone`` is unknown to studio, which is the point —
+    it round-trips untouched through import/edit/export, so the zone
+    definition lives *in the project* instead of in our options.
+    """
+    if zone:
+        marker["ramsesZone"] = zone
+    else:
+        marker.pop("ramsesZone", None)
 
 
 # ---------------------------------------------------------------------------
@@ -565,12 +596,16 @@ def studio_marker_positions(
     :param project: parsed project dict (``{"floors": [...]}``)
     :param floor_name: when given, only markers on that floor are read
     :return: ``{entity_id: {"x", "y", "size", "icon", "color", "label",
-        "show_state", "actions", "state_rules", "visibility", "floor"}}``
+        "show_state", "actions", "state_rules", "visibility",
+        "ramses_zone", "glyph", "ring", "opacity", "element_id",
+        "floor"}}``
 
-    ``actions``/``state_rules``/``visibility`` come straight from the
-    marker so the rule generator can honour studio edits (studio is
-    the per-marker editor; our tweaks only cover what it can't
-    express).
+    The project is the single source of truth: ``actions`` /
+    ``ramsesZone`` / ``state_rules`` / style extras come straight from
+    the marker so studio edits are honoured by the rule generator —
+    our tweaks only cover what studio can't express. ``ramsesZone``
+    and ``style.glyph/ring/opacity`` are our own keys; studio
+    round-trips unknown fields untouched.
     """
     positions: dict[str, dict[str, Any]] = {}
     for floor in project.get("floors") or []:
@@ -593,6 +628,11 @@ def studio_marker_positions(
                         "actions": marker.get("actions") or {},
                         "state_rules": marker.get("stateRules") or [],
                         "visibility": marker.get("visibility"),
+                        "ramses_zone": marker.get("ramsesZone"),
+                        "glyph": style.get("glyph"),
+                        "ring": style.get("ring"),
+                        "opacity": style.get("opacity"),
+                        "element_id": marker.get("elementId"),
                         "floor": fname,
                     },
                 )
@@ -643,5 +683,6 @@ __all__ = [
     "studio_floor",
     "studio_marker",
     "studio_marker_positions",
+    "studio_marker_zone",
     "svg_viewbox",
 ]

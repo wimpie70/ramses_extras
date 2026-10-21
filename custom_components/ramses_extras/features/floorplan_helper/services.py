@@ -40,6 +40,8 @@ from ...const import DOMAIN
 from .bundle import async_generate_bundle
 from .const import (
     DEFAULT_ICON,
+    EVENT_DEVICE_VIEW,
+    EVENT_ZONE_TOGGLE,
     FEATURE_ID,
     FLOORPLAN_DEVICE_ICON_MAP,
     FLOORPLAN_ICON_MDI,
@@ -69,6 +71,7 @@ from .importer import (
     studio_actions_for_device,
     studio_floor,
     studio_marker,
+    studio_marker_zone,
     svg_viewbox,
 )
 from .mapping import (
@@ -80,10 +83,19 @@ from .mapping import (
     set_icon_override,
     set_svg_mode,
 )
-from .markers import build_toolbar_svg, strip_toolbar
+from .markers import (
+    build_toolbar_svg,
+    element_id_for_device,
+    strip_toolbar,
+)
 from .rules import stale_managed_rule
 from .topology import build_floorplan_model
-from .zones import model_entity_ids, standalone_members
+from .zones import (
+    model_entity_ids,
+    resolve_bound,
+    standalone_members,
+    zone_toggle_specs,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,6 +110,8 @@ SVC_UPLOAD_SVG = "floorplan_upload_svg"
 SVC_SYNC_AREAS = "floorplan_sync_areas"
 SVC_SEED_STUDIO = "floorplan_seed_studio"
 SVC_STORE_PROJECT = "floorplan_store_project"
+SVC_ZONE_TOGGLE = "floorplan_zone_toggle"
+SVC_DEVICE_VIEW = "floorplan_device_view"
 
 # Canonical server-side location for the "current" studio project
 # (written by floorplan_store_project; read when services get no
@@ -156,6 +170,7 @@ def _merge_studio_project(
     mdi: Any,
     marker_size: int = 20,
     zones: dict[str, Any] | None = None,
+    zone_toggles: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Merge generated floors into an existing studio project.
 
@@ -203,19 +218,62 @@ def _merge_studio_project(
             primary = dev.get("primary_entity")
             if not primary or primary in have_entities:
                 continue
-            first.setdefault("markers", []).append(
-                studio_marker(
-                    primary,
-                    x,
-                    height + 30,
-                    mdi(dev),
-                    label=str(dev.get("display_name") or dev["device_id"]),
-                    size=marker_size,
-                    actions=studio_actions_for_device(dev, zones or {}),
-                )
+            marker = studio_marker(
+                primary,
+                x,
+                height + 30,
+                mdi(dev),
+                label=str(dev.get("display_name") or dev["device_id"]),
+                size=marker_size,
+                actions=studio_actions_for_device(
+                    dev,
+                    zones or {},
+                    (zone_toggles or {}).get(str(dev.get("device_id") or "")),
+                ),
             )
+            studio_marker_zone(
+                marker, (zones or {}).get(str(dev.get("device_id") or ""))
+            )
+            first.setdefault("markers", []).append(marker)
             x += 44
     return project
+
+
+async def _write_zone_to_project(
+    hass: HomeAssistant, device_id: str, zone: dict[str, Any] | None
+) -> None:
+    """Write/clear ``marker.ramsesZone`` in the stored studio project.
+
+    The project is the single source of truth for zone config —
+    option-level zones only fill in devices without a marker zone
+    (see ``markers.effective_zones``). Unknown fields round-trip
+    untouched through studio's import/edit/export.
+    """
+    raw = await hass.async_add_executor_job(load_latest_project, hass)
+    if not raw:
+        return
+    try:
+        project = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    model = await build_floorplan_model(hass)
+    dev = next(
+        (d for d in model.get("devices") or [] if d.get("device_id") == device_id),
+        None,
+    )
+    targets = {dev.get("primary_entity")} if dev else set()
+    targets.update(e.get("entity_id") for e in (dev or {}).get("entities") or [])
+    targets.discard(None)
+    changed = False
+    for floor in project.get("floors") or []:
+        for marker in floor.get("markers") or []:
+            if set(marker.get("entities") or []) & targets:
+                studio_marker_zone(marker, zone)
+                changed = True
+    if changed:
+        await hass.async_add_executor_job(
+            store_latest_project, hass, json.dumps(project)
+        )
 
 
 def _config_entry(hass: HomeAssistant) -> ConfigEntry:
@@ -345,6 +403,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "color": call.data.get("color") or prev.get("color"),
             }
         section = set_device_zone(hass, _config_entry(hass), device_id, zone)
+        # the studio project is the source of truth — write the zone
+        # onto the marker too (round-trips untouched through studio)
+        await _write_zone_to_project(hass, device_id, None if remove else zone)
         return {
             "device_id": device_id,
             "zone": section.get(OPTION_DEVICE_ZONES, {}).get(device_id),
@@ -631,6 +692,37 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _LOGGER.info("Floorplan project stored: %s (%s)", latest, stats)
         return {"latest_path": latest, "backup_path": backup, "floors": stats}
 
+    async def _async_zone_toggle(call: ServiceCall) -> dict[str, Any]:
+        """Bridge service: zone marker tap → class toggles on all cards.
+
+        Emitting a plain ``call-service`` keeps the gesture
+        expressible in studio's marker actions (and in studio's own
+        ha-floorplan export); the frontend module subscribes to the
+        fired event and toggles the classes on every floorplan card.
+        """
+        payload = {
+            "toggles": call.data.get("toggles") or [],
+            "clear": bool(call.data.get("clear", False)),
+        }
+        hass.bus.async_fire(EVENT_ZONE_TOGGLE, payload)
+        return payload
+
+    async def _async_device_view(call: ServiceCall) -> dict[str, Any]:
+        """Bridge service: marker double-tap → device popup event.
+
+        The frontend module clears all zone highlights (a fast second
+        tap is eaten as a double tap by ha-floorplan's gesture
+        handler, so the clear lives here rather than in the action)
+        and opens the device view for the given entity/card.
+        """
+        payload = {
+            "device_id": call.data.get("device_id") or "",
+            "entity": call.data.get("entity") or "",
+            "card": call.data.get("card") or "",
+        }
+        hass.bus.async_fire(EVENT_DEVICE_VIEW, payload)
+        return payload
+
     async def _async_seed_studio(call: ServiceCall) -> dict[str, Any]:
         """Emit a studio project JSON with markers pre-placed.
 
@@ -663,9 +755,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         model = await build_floorplan_model(hass)
         marker_size: int = int(call.data.get("marker_size") or 20)
-        zones = (
-            get_floorplan_options(_config_entry(hass)).get(OPTION_DEVICE_ZONES) or {}
-        )
+        options = get_floorplan_options(_config_entry(hass))
+        zones = options.get(OPTION_DEVICE_ZONES) or {}
+        # resolve each zone to concrete toggle specs — written into the
+        # marker's serviceData so studio shows (and exports) the real
+        # action; the generated rules regenerate it anyway, so the
+        # copy here is display, not truth
+        zone_toggles: dict[str, list[dict[str, Any]]] = {}
+        for zid, zone in zones.items():
+            zdev = next(
+                (d for d in model.get("devices") or [] if d.get("device_id") == zid),
+                None,
+            )
+            if zdev:
+                areas, bound = resolve_bound(
+                    model, zdev, zone, lambda d: element_id_for_device(d, options)
+                )
+                zone_toggles[zid] = zone_toggle_specs(zid, areas, bound)
 
         def _mdi(dev: dict[str, Any]) -> str:
             key = FLOORPLAN_DEVICE_ICON_MAP.get(
@@ -717,17 +823,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 n = per_room.get(room["slug"], 0)
                 per_room[room["slug"]] = n + 1
                 cx, cy = room["centroid"]
-                markers.append(
-                    studio_marker(
-                        primary,
-                        cx + (n % 3) * 36 - 36,
-                        cy + (n // 3) * 36,
-                        _mdi(dev),
-                        label=str(dev.get("display_name") or dev["device_id"]),
-                        size=marker_size,
-                        actions=studio_actions_for_device(dev, zones),
-                    )
+                marker = studio_marker(
+                    primary,
+                    cx + (n % 3) * 36 - 36,
+                    cy + (n // 3) * 36,
+                    _mdi(dev),
+                    label=str(dev.get("display_name") or dev["device_id"]),
+                    size=marker_size,
+                    actions=studio_actions_for_device(
+                        dev, zones, zone_toggles.get(dev.get("device_id"))
+                    ),
                 )
+                studio_marker_zone(marker, zones.get(dev.get("device_id")))
+                markers.append(marker)
                 placed[dev["device_id"]] = f"{fname} / {room['name']}"
                 placed_entities.add(primary)
             floors_json.append(studio_floor(fname, width, height, rooms, markers))
@@ -750,23 +858,27 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 mdi=_mdi,
                 marker_size=marker_size,
                 zones=zones,
+                zone_toggles=zone_toggles,
             )
         else:
             # Park devices with no matching room below the first floor's
             # canvas — drag them into a room in studio to assign the area.
             if call.data.get("staging", True) and floors_json:
-                staging_markers = [
-                    studio_marker(
+                staging_markers = []
+                for i, dev in enumerate(unplaced):
+                    marker = studio_marker(
                         dev["primary_entity"],
                         30 + i * 44,
                         float(floors_json[0]["canvas"]["height"]) + 30,
                         _mdi(dev),
                         label=str(dev.get("display_name") or dev["device_id"]),
                         size=marker_size,
-                        actions=studio_actions_for_device(dev, zones),
+                        actions=studio_actions_for_device(
+                            dev, zones, zone_toggles.get(dev.get("device_id"))
+                        ),
                     )
-                    for i, dev in enumerate(unplaced)
-                ]
+                    studio_marker_zone(marker, zones.get(dev.get("device_id")))
+                    staging_markers.append(marker)
                 floors_json[0]["markers"].extend(staging_markers)
             project = build_studio_project(
                 call.data.get("name") or "Floorplan", floors_json
@@ -965,6 +1077,42 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    if not hass.services.has_service(DOMAIN, SVC_ZONE_TOGGLE):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_ZONE_TOGGLE,
+            _async_zone_toggle,
+            schema=vol.Schema(
+                {
+                    vol.Optional("toggles"): [
+                        {
+                            vol.Required("class"): cv.string,
+                            vol.Required("elements"): [cv.string],
+                        }
+                    ],
+                    vol.Optional("clear", default=False): cv.boolean,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_DEVICE_VIEW):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_DEVICE_VIEW,
+            _async_device_view,
+            schema=vol.Schema(
+                {
+                    vol.Optional("device_id"): cv.string,
+                    vol.Optional("entity"): cv.string,
+                    vol.Optional("card"): cv.string,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     _LOGGER.info("Registered floorplan_helper services")
 
 
@@ -980,6 +1128,8 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SVC_UPLOAD_SVG,
         SVC_SYNC_AREAS,
         SVC_SEED_STUDIO,
+        SVC_ZONE_TOGGLE,
+        SVC_DEVICE_VIEW,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

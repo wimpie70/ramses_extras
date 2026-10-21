@@ -279,6 +279,51 @@ def marker_meta_for_device(
     return None
 
 
+def _studio_style(
+    pos: dict[str, Any] | None, overrides: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge studio marker style fields over menu style overrides.
+
+    The studio project is the single source of truth: ``style.color``
+    owns the badge disc, and our extra keys ``style.glyph`` /
+    ``style.ring`` / ``style.opacity`` (unknown to studio, but
+    round-tripped untouched) beat the option-level overrides. Menu
+    overrides remain the fallback for elements without a studio
+    marker.
+    """
+    if not pos:
+        return overrides
+    style = dict(overrides)
+    for key in ("glyph", "ring", "opacity"):
+        if pos.get(key) is not None:
+            style[key] = pos[key]
+    if pos.get("color"):
+        style["disc"] = pos["color"]
+    return style
+
+
+def effective_zones(
+    model: dict[str, Any],
+    options: dict[str, Any],
+    marker_meta: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Zone config, project-first.
+
+    ``marker.ramsesZone`` in the studio project is the single source
+    of truth — the ``device_zones`` option only fills in devices that
+    have no marker zone yet (back-compat for pre-project zones).
+    """
+    zones = dict(options.get(OPTION_DEVICE_ZONES) or {})
+    if not marker_meta:
+        return zones
+    for dev in model.get("devices") or []:
+        meta = marker_meta_for_device(dev, marker_meta)
+        rz = (meta or {}).get("ramses_zone")
+        if isinstance(rz, dict) and dev.get("device_id"):
+            zones[str(dev["device_id"])] = rz
+    return zones
+
+
 def build_overlay_fragment(
     model: dict[str, Any],
     options: dict[str, Any],
@@ -298,7 +343,7 @@ def build_overlay_fragment(
     """
     svg_rooms = {r["slug"]: r for r in rooms_from_svg(svg_text)}
     vb_w, vb_h = svg_viewbox_size(svg_text)
-    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    zones = effective_zones(model, options, positions)
     warnings: list[str] = []
     used_icons: set[str] = set()
     body: list[str] = []
@@ -347,7 +392,7 @@ def build_overlay_fragment(
                 label=str((pos or {}).get("label") or short_label(dev)),
                 color=color,
                 text_color=DEFAULT_TEXT_COLOR,
-                style=marker_style_for_key(dev, options),
+                style=_studio_style(pos, marker_style_for_key(dev, options)),
             )
         )
 
@@ -370,14 +415,20 @@ def build_overlay_fragment(
                 y,
                 size,
                 icon_key,
-                label=short_label(
-                    {"device_id": ent, "display_name": ent.split(".", 1)[-1]}
+                label=str(
+                    (pos or {}).get("label")
+                    or short_label(
+                        {"device_id": ent, "display_name": ent.split(".", 1)[-1]}
+                    )
                 ),
                 color=color,
                 text_color=DEFAULT_TEXT_COLOR,
                 # standalone members have no device — entity_id is the key
-                style=parse_marker_style(
-                    (options.get(OPTION_MARKER_STYLE_OVERRIDES) or {}).get(ent)
+                style=_studio_style(
+                    pos,
+                    parse_marker_style(
+                        (options.get(OPTION_MARKER_STYLE_OVERRIDES) or {}).get(ent)
+                    ),
                 ),
             )
         )
@@ -542,6 +593,7 @@ __all__ = [
     "group_devices",
     "icon_for_device",
     "planner_url",
+    "effective_zones",
     "marker_meta_for_device",
     "short_label",
     "strip_toolbar",

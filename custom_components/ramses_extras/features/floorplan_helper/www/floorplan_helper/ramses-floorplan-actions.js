@@ -1673,14 +1673,13 @@ async function _openGlobalDevicePopup(detail) {
   }, 1000);
 }
 
-// 'floorplan.*' service calls are handled inside the card instance that
-// fired the rule — they cannot reach other floorplan cards. Zone tap
-// rules therefore also broadcast a ramses_zone_sync spec via ll-custom;
-// the same class toggles are applied to every OTHER floorplan card on
-// the dashboard (the origin card already toggled itself), so a FAN's
-// served rooms + bound devices light up on all floors at once.
-function _fpZoneSync(ev, toggles, clear) {
-  const path = ev.composedPath ? ev.composedPath() : [];
+// Zone tap rules call ramses_extras.floorplan_zone_toggle — a real HA
+// service (studio-expressible, unlike fire-dom-event lists) that fires
+// an event we subscribe to here. The handler applies the class
+// toggles to EVERY floorplan card, so a FAN's served rooms + bound
+// devices light up on all floors (and all open browsers) at once.
+// The legacy ll-custom path stays for previously exported yaml.
+function _fpFloorplanCards() {
   const cards = [];
   const walk = (root) => {
     for (const el of root.querySelectorAll('*')) {
@@ -1689,10 +1688,25 @@ function _fpZoneSync(ev, toggles, clear) {
     }
   };
   walk(document);
-  for (const card of cards) {
-    // toggles: the origin card already class_toggle'd itself — clear:
-    // it must be included since its highlight came from an earlier tap
-    if (!clear && path.includes(card)) continue;
+  return cards;
+}
+
+function _fpZoneApply(toggles, clear, skipCard) {
+  for (const card of _fpFloorplanCards()) {
+    if (skipCard && card === skipCard) continue;
+    if (clear && !(toggles || []).length) {
+      // blanket clear: strip every rx-zone-* class on this card —
+      // used by the device-view bridge before the popup opens
+      const strip = (root) => {
+        for (const el of root.querySelectorAll('[class]')) {
+          for (const c of [...(el.classList || [])]) {
+            if (c.startsWith('rx-zone-')) el.classList.remove(c);
+          }
+        }
+      };
+      strip(card.shadowRoot || card);
+      continue;
+    }
     for (const t of toggles || []) {
       for (const id of t.elements || []) {
         const node =
@@ -1704,6 +1718,18 @@ function _fpZoneSync(ev, toggles, clear) {
       }
     }
   }
+}
+
+// legacy ll-custom broadcast: origin card already class_toggle'd
+// itself, so it is skipped (clear must include it — the highlight came
+// from an earlier tap)
+function _fpZoneSync(ev, toggles, clear) {
+  const path = ev.composedPath ? ev.composedPath() : [];
+  _fpZoneApply(
+    toggles,
+    clear,
+    clear ? null : _fpFloorplanCards().find((c) => path.includes(c))
+  );
 }
 
 function _fpDeepById(root, id) {
@@ -1727,6 +1753,48 @@ window.addEventListener('ll-custom', (ev) => {
   if (d && d.ramses_zone_clear) _fpZoneSync(ev, d.ramses_zone_clear, true);
   if (d && d.ramses_fp_action) _openFpActionDialog(d.ramses_fp_action);
 });
+
+// --- Backend event bridges ---------------------------------------------
+// Marker gestures call real HA services (ramses_extras.floorplan_*),
+// which is the only shape studio's action editor can express — the
+// service fires one of these events and every open dashboard reacts.
+// Subscribe as soon as a hass connection exists.
+let _fpEventsBound = false;
+function _fpBindEvents() {
+  if (_fpEventsBound) return;
+  const hass = _fpHass();
+  if (!hass || !hass.connection || !hass.connection.subscribeEvents) return;
+  _fpEventsBound = true;
+  hass.connection.subscribeEvents(
+    (e) => {
+      const d = (e && e.data) || {};
+      _fpZoneApply(d.toggles, !!d.clear);
+    },
+    'ramses_extras_floorplan_zone_toggle'
+  );
+  hass.connection.subscribeEvents(
+    (e) => {
+      const d = (e && e.data) || {};
+      // clear every zone highlight first — a fast second tap is eaten
+      // as a double tap, so a deterministic clear keeps "tap again to
+      // deselect" from leaving a lit zone behind the popup
+      _fpZoneApply(null, true);
+      _openGlobalDevicePopup({
+        ramses_device_id: d.device_id,
+        ramses_entity: d.entity,
+        ramses_card: d.card,
+      });
+    },
+    'ramses_extras_floorplan_device_view'
+  );
+}
+_fpBindEvents();
+if (!_fpEventsBound) {
+  const _fpEvtTimer = setInterval(() => {
+    _fpBindEvents();
+    if (_fpEventsBound) clearInterval(_fpEvtTimer);
+  }, 1500);
+}
 
 // --- Pan/zoom on floorplan card SVGs ----------------------------------
 // ha-floorplan has no zoom support — we pan/zoom by rewriting the svg's

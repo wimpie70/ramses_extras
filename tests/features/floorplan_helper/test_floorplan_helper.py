@@ -717,9 +717,13 @@ class TestZones:
         toggles = zones.zone_toggle_specs("32:153289", areas, bound)
         assert toggles[0]["class"] == "rx-zone-32_153289"
         assert toggles[1]["class"] == "rx-zone-32_153289_dev"
-        # actions: N local toggles + one sync broadcast + clear event
-        acts = zones.zone_tap_actions(toggles)
-        assert acts[-1]["ramses_zone_sync"] == toggles
+        # tap = one call-service to the zone bridge — the shape studio
+        # can express, so the action survives studio's own export
+        act = zones.zone_tap_actions(toggles)
+        assert act["action"] == "call-service"
+        assert act["service"] == "ramses_extras.floorplan_zone_toggle"
+        assert act["service_data"]["toggles"] == toggles
+        # legacy ll-custom clear stays for previously exported yaml
         assert zones.zone_clear_action(toggles)["ramses_zone_clear"] == toggles
 
     def test_standalone_members_dedupes(self):
@@ -928,13 +932,22 @@ class TestStudioMarkerMeta:
                     "serviceData": 'class: "rx-zone-32_153289"',
                 }
             },
+            {
+                "tap": {
+                    "kind": "call-service",
+                    "service": "ramses_extras.floorplan_zone_toggle",
+                    "serviceData": "toggles: []",
+                }
+            },
         ):
             rules = generator._build_rules(
                 _model(devices=[dev]), opts, self._meta(actions)
             )
-            acts = self._tap_rule(rules)["tap_action"]
-            assert isinstance(acts, list)
-            assert acts[0]["service"] == "floorplan.class_toggle"
+            act = self._tap_rule(rules)["tap_action"]
+            assert act["action"] == "call-service"
+            assert act["service"] == "ramses_extras.floorplan_zone_toggle"
+            toggles = act["service_data"]["toggles"]
+            assert toggles[0]["class"] == "rx-zone-32_153289"
 
     def test_zoned_parent_honours_explicit_studio_gestures(self):
         dev = _device()
@@ -1004,10 +1017,47 @@ class TestStudioMarkerMeta:
             studio_actions_for_device,
         )
 
-        zoned = studio_actions_for_device(_device(), {"32:153289": {}})
+        toggles = [{"class": "rx-zone-32_153289", "elements": ["area.a"]}]
+        zoned = studio_actions_for_device(_device(), {"32:153289": {}}, toggles)
         assert zoned["tap"]["kind"] == "call-service"
-        assert zoned["tap"]["service"] == "floorplan.class_toggle"
+        assert zoned["tap"]["service"] == "ramses_extras.floorplan_zone_toggle"
         assert "rx-zone-32_153289" in zoned["tap"]["serviceData"]
         assert zoned["hold"]["kind"] == "more-info"
+        assert zoned["double"]["service"] == "ramses_extras.floorplan_device_view"
         plain = studio_actions_for_device(_device(), {})
         assert plain["tap"]["kind"] == "more-info"
+
+    def test_marker_ramses_zone_is_ssot(self):
+        # marker.ramsesZone in the project wins over the option map —
+        # studio stores the zone, not our config menu
+        dev = _device()
+        meta = self._meta()
+        meta["sensor.32_153289_fan_rate"]["ramses_zone"] = {"areas": ["vide_wing"]}
+        rules = generator._build_rules(
+            _model(devices=[dev]),
+            _options(device_zones={"32:153289": {"areas": ["woonkamer"]}}),
+            meta,
+        )
+        act = self._tap_rule(rules)["tap_action"]
+        elements = act["service_data"]["toggles"][0]["elements"]
+        assert elements == ["area.vide_wing"]
+
+    def test_device_view_shorthand_regenerated(self):
+        # seeded double-tap bridge call is expanded from live config,
+        # so stale serviceData can't drift the popup target
+        dev = _device()
+        opts = _options(device_zones={"32:153289": {"areas": ["w"]}})
+        meta = self._meta(
+            {
+                "double": {
+                    "kind": "call-service",
+                    "service": "ramses_extras.floorplan_device_view",
+                    "serviceData": "device_id: stale",
+                }
+            }
+        )
+        rules = generator._build_rules(_model(devices=[dev]), opts, meta)
+        dbl = self._tap_rule(rules)["double_tap_action"]
+        assert dbl["service"] == "ramses_extras.floorplan_device_view"
+        assert dbl["service_data"]["device_id"] == "32:153289"
+        assert dbl["service_data"]["card"]  # domain popup_card filled in

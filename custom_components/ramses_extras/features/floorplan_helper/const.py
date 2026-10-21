@@ -111,6 +111,16 @@ TOOLBAR_ELEMENT_PLANNER = "floorplan.planner"
 # Dir under <config>/www/ramses_extras/ where user SVGs are uploaded.
 FLOORPLAN_UPLOAD_DIR_NAME = "floorplan"
 
+# HA services that bridge marker gestures to frontend events. They are
+# deliberately `call-service`-shaped — that is a studio action kind, so
+# the full zone/popup semantics persist in the studio project and
+# survive studio's own ha-floorplan export. The frontend module
+# subscribes to the events and applies classes/dialogs on every card.
+ZONE_TOGGLE_SERVICE = "ramses_extras.floorplan_zone_toggle"
+DEVICE_VIEW_SERVICE = "ramses_extras.floorplan_device_view"
+EVENT_ZONE_TOGGLE = "ramses_extras_floorplan_zone_toggle"
+EVENT_DEVICE_VIEW = "ramses_extras_floorplan_device_view"
+
 # Key stamped on every generated rule. ha-floorplan ignores unknown
 # rule keys; the importer uses it to skip our own rules so re-importing
 # a generated card yaml is idempotent (stale rules never accumulate in
@@ -357,7 +367,11 @@ __all__ = [
     "FLOORPLAN_STANDALONE_ENTITIES",
     "FLOORPLAN_STATIC_BASE",
     "FLOORPLAN_SWITCH_CONFIGS",
+    "DEVICE_VIEW_SERVICE",
+    "EVENT_DEVICE_VIEW",
+    "EVENT_ZONE_TOGGLE",
     "FLOORPLAN_UPLOAD_DIR_NAME",
+    "ZONE_TOGGLE_SERVICE",
     "FLOORPLAN_WEBSOCKET_COMMANDS",
     "CARD_YAML_STEM",
     "GENERATED_CARD_YAML",

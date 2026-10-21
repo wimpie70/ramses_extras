@@ -93,6 +93,42 @@ ramses_cc entities/devices          options (config entry)
 - `config_flow.py` — options step (`async_step_floorplan_helper_config`)
   dispatched from the main options flow via `async_step_feature_config`.
 
+## Studio as the single source of truth
+
+The floorplan-studio **project is the SSOT for everything it can
+express**. Our export is a pure function of (project + topology +
+conventions) — we never keep a second copy of per-marker semantics
+that could conflict.
+
+| Studio field | Used for |
+|---|---|
+| `marker.actions.tap/hold/double` | gesture actions (see bridges below) |
+| `marker.entities` + `elementId` | rule binding / element id |
+| `marker.style.icon/color/size/label/showState` | icon, disc color, marker size, name caption, state text on/off |
+| `style.glyph/ring/opacity` *(our keys)* | badge inner styling — unknown fields round-trip untouched |
+| `marker.ramsesZone` *(our key)* | zone config (`areas`/`devices`/`color`) — read via `effective_zones`; `device_zones` option is fallback only |
+| `room` stateRules/fill/opacity | room styling |
+
+Action kinds studio can't express (`fire-dom-event`, action lists)
+are bridged through real HA services, which *are* expressible as
+`call-service`:
+
+- `ramses_extras.floorplan_zone_toggle` — `{toggles:[{class,elements}],
+  clear}` → fires `ramses_extras_floorplan_zone_toggle`; the actions
+  module toggles the classes on **every** floorplan card.
+- `ramses_extras.floorplan_device_view` — `{device_id,entity,card}` →
+  fires `ramses_extras_floorplan_device_view`; the module clears all
+  zone highlights and opens the device popup.
+
+The seeded marker writes the full `serviceData` YAML, so studio's own
+export emits working actions verbatim; our export regenerates them
+from live config (service name = shorthand → never stale).
+
+Studio has no fields for: multi-entity caption expressions, `rx-*`
+status classes, the toolbar, and the merged-artwork SVG itself —
+those remain generated/managed and additive-only, so they cannot
+conflict with studio-owned fields.
+
 ## Managed regeneration
 
 - Generated rules live between `RULES_BEGIN_MARKER`/`RULES_END_MARKER`

@@ -19,10 +19,10 @@ from typing import Any
 import yaml
 
 from .const import (
+    DEVICE_VIEW_SERVICE,
     GENERATED_RULE_TAG,
     OPTION_CAPTION_OVERRIDES,
     OPTION_DEVICE_VIEW_URL,
-    OPTION_DEVICE_ZONES,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
     OPTION_TOOLBAR_ENABLED,
@@ -31,6 +31,7 @@ from .const import (
     TOOLBAR_ELEMENT_IMPORT,
     TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
+    ZONE_TOGGLE_SERVICE,
     is_generated_rule,
 )
 from .domains import get_domain
@@ -43,6 +44,7 @@ from .expressions import (
 from .markers import (
     binding_maps,
     editor_url,
+    effective_zones,
     element_id_for_device,
     marker_meta_for_device,
     planner_url,
@@ -51,7 +53,6 @@ from .zones import (
     model_entity_ids,
     resolve_bound,
     standalone_members,
-    zone_clear_action,
     zone_tap_actions,
     zone_toggle_specs,
 )
@@ -144,15 +145,19 @@ def studio_tap_action(action: Any) -> dict[str, Any] | None:
     return None
 
 
-def _studio_zone_shorthand(action: Any) -> bool:
-    """Studio ``call-service → floorplan.class_toggle`` is our seeded
-    representation of the zone toggle (see
-    ``importer.studio_actions_for_device``) — expand it to the real
-    zone actions rather than emitting it verbatim."""
+_ZONE_SHORTHAND_SERVICES = {ZONE_TOGGLE_SERVICE, "floorplan.class_toggle"}
+_DEVICE_VIEW_SHORTHAND_SERVICES = {DEVICE_VIEW_SERVICE}
+
+
+def _studio_shorthand(action: Any, services: set[str]) -> bool:
+    """Studio ``call-service`` pointing at one of our bridge services
+    is a seeded representation — regenerate the real action from
+    current config so stale serviceData can't drift (zone members or
+    the popup card may have changed since seeding)."""
     return (
         isinstance(action, dict)
         and action.get("kind") == "call-service"
-        and action.get("service") == "floorplan.class_toggle"
+        and action.get("service") in services
     )
 
 
@@ -211,28 +216,29 @@ def _device_view_actions(
     primary: str,
     toggles: list[dict[str, Any]],
     options: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """double_tap list: deterministic zone clear, then the device view.
+) -> dict[str, Any]:
+    """double_tap action: open the device view via the service bridge.
 
-    ha-floorplan waits ~250ms to tell a single click from a double
-    click — a quick "second tap to deselect" is eaten as a double tap,
-    so the clear fires first (all cards, including the origin) and the
-    highlight can't get stuck.
+    ``ramses_extras.floorplan_device_view`` fires an HA event — the
+    module clears every zone highlight (covering the old deterministic
+    zone_clear list, which a fast second tap needs since ha-floorplan
+    waits ~250ms before deciding single-vs-double) and then opens the
+    popup. A configured ``device_view_url`` still wins with a plain
+    navigate action — both shapes are a single call, expressible in
+    studio's marker actions.
     """
     view_url = options.get(OPTION_DEVICE_VIEW_URL) or ""
-    view = (
-        {"action": "navigate", "navigation_path": view_url}
-        if view_url
-        else fire_dom_event(
-            # picked up by the ramses-floorplan-actions module (loaded
-            # as a Lovelace resource → works on any view) to open the
-            # device popup
-            ramses_device_id=dev.get("device_id"),
-            ramses_entity=primary,
-            ramses_card=get_domain(dev).popup_card,
-        )
-    )
-    return [zone_clear_action(toggles), view]
+    if view_url:
+        return {"action": "navigate", "navigation_path": view_url}
+    return {
+        "action": "call-service",
+        "service": DEVICE_VIEW_SERVICE,
+        "service_data": {
+            "device_id": dev.get("device_id"),
+            "entity": primary,
+            "card": get_domain(dev).popup_card,
+        },
+    }
 
 
 def _device_rules(
@@ -242,12 +248,13 @@ def _device_rules(
     entity_binding_map: dict[str, dict[str, Any]],
     managed_entities: set[str],
     marker_meta: dict[str, dict[str, Any]] | None = None,
+    zones: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """``(managed rules, binding-level extras)`` for one model device.
 
     Binding extras stay separate from the managed list — they are
     user-authored, so they get appended *after* the tagged block."""
-    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    zones = zones if zones is not None else effective_zones(model, options, marker_meta)
     primary = dev.get("primary_entity")
     element_id = element_id_for_device(dev, options)
     combined_class = element_class_expr(dev)
@@ -326,7 +333,7 @@ def _device_rules(
         # — resolve_bound always folds the device into its own bound
         # set, so bound alone can't be the gate (every unzoned device
         # would emit a self-referencing class_toggle)
-        zone = zones.get(dev.get("device_id"))
+        zone = zones.get(str(dev.get("device_id") or ""))
         area_elements, bound = (
             ([], [])
             if zone is None
@@ -343,15 +350,22 @@ def _device_rules(
             if (
                 tap_override is None
                 or tap_override.get("action") == "more-info"
-                or _studio_zone_shorthand(studio_actions.get("tap"))
+                or _studio_shorthand(
+                    studio_actions.get("tap"), _ZONE_SHORTHAND_SERVICES
+                )
             ):
                 tap_rule["tap_action"] = zone_tap_actions(toggles)
             else:
                 tap_rule["tap_action"] = tap_override
             tap_rule["hold_action"] = hold_override or {"action": "more-info"}
-            tap_rule["double_tap_action"] = double_override or _device_view_actions(
-                dev, str(primary), toggles, options
-            )
+            if double_override and not _studio_shorthand(
+                studio_actions.get("double"), _DEVICE_VIEW_SHORTHAND_SERVICES
+            ):
+                tap_rule["double_tap_action"] = double_override
+            else:
+                tap_rule["double_tap_action"] = _device_view_actions(
+                    dev, str(primary), toggles, options
+                )
         else:
             tap_rule["tap_action"] = tap_override or {"action": "more-info"}
             if hold_override:
@@ -426,7 +440,7 @@ def build_rules(
         here; studio is the per-marker editor, tweaks only cover what
         it can't express.
     """
-    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    zones = effective_zones(model, options, marker_meta)
     _, entity_binding_map = binding_maps(options)
     standalone = standalone_members(model, zones)
     # model entities + standalone members — anything the managed block
@@ -437,7 +451,7 @@ def build_rules(
     extras: list[dict[str, Any]] = []
     for dev in model.get("devices", []):
         dev_rules, dev_extras = _device_rules(
-            model, dev, options, entity_binding_map, managed, marker_meta
+            model, dev, options, entity_binding_map, managed, marker_meta, zones
         )
         rules.extend(dev_rules)
         extras.extend(dev_extras)
