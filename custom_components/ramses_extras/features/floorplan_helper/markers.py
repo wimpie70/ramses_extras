@@ -302,21 +302,37 @@ def effective_zones(
     model: dict[str, Any],
     options: dict[str, Any],
     marker_meta: dict[str, dict[str, Any]] | None = None,
+    room_fills: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Zone config, project-first.
 
     ``marker.ramsesZone`` in the studio project is the single source
     of truth — the ``device_zones`` option only fills in devices that
     have no marker zone yet (back-compat for pre-project zones).
+
+    Colour is project-first too: the highlight uses the *fill* of the
+    zone's first studio room (``room_fills`` from
+    :func:`importer.studio_room_fills`) — the studio inspector edits
+    room fills natively, so no parallel colour store. The stored
+    ``zone.color`` remains the fallback for zones without a room yet.
     """
     zones = dict(options.get(OPTION_DEVICE_ZONES) or {})
-    if not marker_meta:
-        return zones
     for dev in model.get("devices") or []:
         meta = marker_meta_for_device(dev, marker_meta)
         rz = (meta or {}).get("ramses_zone")
         if isinstance(rz, dict) and dev.get("device_id"):
             zones[str(dev["device_id"])] = rz
+    if room_fills:
+        for dev_id, z in list(zones.items()):
+            if not isinstance(z, dict):
+                continue
+            for area in z.get("areas") or []:
+                fill = room_fills.get(slugify(str(area)))
+                if fill:
+                    z = dict(z)
+                    z["color"] = fill
+                    zones[dev_id] = z
+                    break
     return zones
 
 
@@ -325,6 +341,7 @@ def build_overlay_fragment(
     options: dict[str, Any],
     positions: dict[str, dict[str, Any]],
     svg_text: str,
+    room_fills: dict[str, str] | None = None,
 ) -> tuple[str, list[str]]:
     """Build the marker/toolbar fragment to splice into a user SVG.
 
@@ -339,7 +356,7 @@ def build_overlay_fragment(
     """
     svg_rooms = {r["slug"]: r for r in rooms_from_svg(svg_text)}
     vb_w, vb_h = svg_viewbox_size(svg_text)
-    zones = effective_zones(model, options, positions)
+    zones = effective_zones(model, options, positions, room_fills)
     warnings: list[str] = []
     used_icons: set[str] = set()
     body: list[str] = []

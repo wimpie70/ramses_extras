@@ -459,6 +459,7 @@ class RamsesFloorplanActions extends HTMLElement {
           m.set(r.id, {
             name: r.name,
             areaId: r.areaId || this._slug(r.name),
+            fill: r.fill,
             floor: f.name,
           });
         }
@@ -531,8 +532,13 @@ class RamsesFloorplanActions extends HTMLElement {
     if (!zone) return;
     const areas = new Set(zone.areas || []);
     if (!areas.size) return;
-    const color = zone.color || '#f59e0b';
     const rooms = await this._projectRooms();
+    // same resolution as the export: the zone's first studio room
+    // fill, then the stored zone colour, then the default
+    let color = zone.color || '#f59e0b';
+    for (const room of rooms.values()) {
+      if (room.fill && areas.has(room.areaId)) { color = room.fill; break; }
+    }
     const root = this._studioRoot();
     if (!root) return;
 
@@ -665,13 +671,48 @@ class RamsesFloorplanActions extends HTMLElement {
     this._fillZoneColor();
   }
 
-  _fillZoneColor() {
+  // The zone colour IS the studio room fill — the only colour the
+  // studio inspector can edit. The swatch paints the zone's rooms
+  // inside the project itself (no parallel store); `zone.color` stays
+  // as the fallback for zones that have no rooms yet.
+  async _fillZoneColor() {
     const sel = this.shadowRoot.getElementById('zone-dev');
     const inp = this.shadowRoot.getElementById('zone-color');
     if (!sel || !inp) return;
     const z = (((this._fpConfig || {}).device_zones || {})[sel.value]) || {};
-    inp.value = z.color || '#22c55e';
+    const rooms = await this._projectRooms();
+    const want = new Set((z.areas || []).map((a) => this._slug(a)));
+    let fill = null;
+    for (const r of rooms.values()) {
+      if (r.fill && want.has(this._slug(r.areaId))) { fill = r.fill; break; }
+    }
+    if (fill && /^#[0-9a-f]{6}$/i.test(fill)) inp.value = fill;
+    else if (z.color && /^#[0-9a-f]{6}$/i.test(z.color)) inp.value = z.color;
+    else inp.value = '#22c55e';
     inp.disabled = !sel.value;
+  }
+
+  async _paintZoneRooms(areas, color) {
+    // Set `fill` on the zone's rooms in the studio project — the
+    // colour lives where studio owns it. Returns rooms painted.
+    const project = await this._readStudioProject(true);
+    if (!project) return 0;
+    const want = new Set((areas || []).map((a) => this._slug(a)));
+    let painted = 0;
+    for (const f of project.floors || []) {
+      for (const r of f.rooms || []) {
+        if (want.has(this._slug(r.areaId || r.name))) {
+          r.fill = color;
+          painted++;
+        }
+      }
+    }
+    if (painted) {
+      await this._pushToStudio(JSON.stringify(project));
+      this._reloadStudioCard();
+      this._roomsCache = null;
+    }
+    return painted;
   }
 
   async _setZoneColor(color) {
@@ -679,6 +720,10 @@ class RamsesFloorplanActions extends HTMLElement {
     const devId = devSel && devSel.value;
     if (!devId) return;
     const zone = (((this._fpConfig || {}).device_zones || {})[devId]) || {};
+    let painted = 0;
+    try {
+      painted = await this._paintZoneRooms(zone.areas || [], color);
+    } catch { /* project unreachable — the option fallback still saves */ }
     await this._call('floorplan_set_device_zone', {
       device_id: devId,
       areas: zone.areas || [],
@@ -686,7 +731,12 @@ class RamsesFloorplanActions extends HTMLElement {
       color,
     });
     await this._fetchConfig();
-    this._status(`Zone ${devId}: colour ${color} — click its marker in studio to preview`);
+    this._status(
+      `Zone ${devId}: colour ${color}` +
+        (painted
+          ? ` — painted ${painted} room(s) in studio`
+          : ' — no zone rooms in studio to paint yet')
+    );
   }
 
   async _assignZone() {
@@ -720,6 +770,11 @@ class RamsesFloorplanActions extends HTMLElement {
     const color = (colorInput && colorInput.value) || undefined;
     const existing =
       (((this._fpConfig || {}).device_zones || {})[devId]) || {};
+    if (color) {
+      // the swatch paints the rooms in the project — the studio
+      // inspector stays the colour editor
+      try { await this._paintZoneRooms(areas, color); } catch { /* optional */ }
+    }
     await this._call('floorplan_set_device_zone', {
       device_id: devId,
       areas,
@@ -1071,7 +1126,7 @@ class RamsesFloorplanActions extends HTMLElement {
             <select id="zone-dev" style="max-width:220px"
               title="Device whose zone you are editing — its current zone areas are shown after ▸"></select>
             <input id="zone-color" type="color" style="width:36px;padding:0;height:24px"
-              title="This zone's highlight colour — stored on the zone itself, applies on change">
+              title="Zone colour = the rooms' studio fill — paints the zone's rooms in the studio project, so the studio inspector stays the editor. Applies on change">
             <button id="b-zone" class="secondary"
               title="1) pick the device, 2) shift-click its rooms in studio, 3) click — stores the selected rooms as the zone">◧ rooms → zone</button>
             <button id="b-zonedev" class="secondary"
@@ -1131,8 +1186,9 @@ class RamsesFloorplanActions extends HTMLElement {
     twSync.onchange = () => this._saveTweak('sync_on_pull', twSync.checked);
     twNorm.onchange = () => this._saveTweak('normalize_sizes', twNorm.checked);
 
-    // zone row: colour is stored on the zone itself (SSOT), shown and
-    // edited for the device picked in the dropdown
+    // zone row: the colour swatch shows the zone's resolved colour
+    // (studio room fill → zone.color → default) and paints the zone's
+    // rooms in the project on change
     $('zone-dev').onchange = () => this._fillZoneColor();
     $('zone-color').onchange = (e) => this._run(() => this._setZoneColor(e.target.value));
     $('b-zone').onclick = () => this._run(() => this._assignZone());

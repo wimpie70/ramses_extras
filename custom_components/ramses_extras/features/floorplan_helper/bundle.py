@@ -45,10 +45,12 @@ from .const import (
 )
 from .importer import (
     best_floor_for_svg,
+    dedupe_rooms,
     load_latest_project,
     store_latest_project,
     studio_marker_positions,
     studio_marker_zone,
+    studio_room_fills,
 )
 from .mapping import (
     get_floorplan_options,
@@ -236,7 +238,9 @@ async def _build_merged_svg(
     if project:
         floor = best_floor_for_svg(project, svg_text)
         if floor:
-            rooms = floor.get("rooms") or []
+            # dedupe name-/area-bound double copies — the stored
+            # project still holds them until the next merge cleans up
+            rooms = dedupe_rooms(floor.get("rooms"))
         positions = studio_marker_positions(
             project, str(floor.get("name")) if floor else None
         )
@@ -247,7 +251,7 @@ async def _build_merged_svg(
     # one is re-injected inside build_overlay_fragment below
     svg_text = strip_toolbar(svg_text)
     fragment, frag_warnings = build_overlay_fragment(
-        model, options, positions, svg_text
+        model, options, positions, svg_text, studio_room_fills(rooms)
     )
     warnings.extend(frag_warnings)
     # Studio room fill/opacity win over the SVG's embedded .room classes —

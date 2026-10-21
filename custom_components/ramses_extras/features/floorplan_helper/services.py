@@ -68,6 +68,7 @@ from .importer import (
     backup_project,
     build_studio_project,
     combine_svgs,
+    dedupe_rooms,
     load_latest_project,
     merge_project_floors,
     parse_floorplan_yaml,
@@ -102,6 +103,7 @@ from .markers import (
     strip_toolbar,
 )
 from .rules import stale_managed_rule
+from .svg_utils import slugify
 from .topology import build_floorplan_model
 from .zones import (
     model_entity_ids,
@@ -177,8 +179,11 @@ def _load_latest_project(hass: HomeAssistant) -> str:
 
 
 def _room_key(room: dict[str, Any]) -> str:
-    """Stable identity for a studio room — slug (``areaId``) else name."""
-    return str(room.get("areaId") or room.get("name") or "").lower()
+    """Stable identity for a studio room — slug of ``areaId`` else of
+    ``name``. Both sides slug-normalised so a name-bound copy
+    (``deel bg``) and an area-bound copy (``deel_bg``) of the same
+    room collide instead of duplicating."""
+    return slugify(str(room.get("areaId") or room.get("name") or ""))
 
 
 def _room_centroid(room: dict[str, Any]) -> tuple[float, float]:
@@ -290,6 +295,10 @@ def _merge_studio_project(
         floor.setdefault("rooms", []).extend(
             r for r in new_floor["rooms"] if _room_key(r) not in have_rooms
         )
+        # collapse pre-existing same-room duplicates (name-bound vs
+        # area-bound copies) — first entry wins style, later copies
+        # fill gaps like a seeded clone's areaId
+        floor["rooms"] = dedupe_rooms(floor["rooms"])
         placed_e, placed_d = _placed()
         floor.setdefault("markers", []).extend(
             m for m in new_floor["markers"] if _new_marker(m, placed_e, placed_d)

@@ -24,6 +24,7 @@ from typing import Any
 import yaml
 
 from .const import DEVICE_VIEW_SERVICE, ZONE_TOGGLE_SERVICE, is_generated_rule
+from .svg_utils import slugify
 
 _MISSING = object()
 
@@ -680,6 +681,55 @@ def best_floor_for_svg(project: dict[str, Any], svg_text: str) -> dict[str, Any]
     return best
 
 
+def dedupe_rooms(rooms: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Collapse same-room duplicates into one entry.
+
+    Earlier merges appended an area-bound clone of a room that already
+    existed name-bound (``areaId`` and ``name`` keyed differently), so
+    a floor may carry two entries per name — studio shows overlapping
+    polygons and export consumers disagree about which copy wins.
+    The first entry is the base (its authored fill/opacity/etc. win);
+    later copies only fill missing fields (a seeded clone's
+    ``areaId`` grafts onto the original).
+    """
+    out: list[dict[str, Any]] = []
+    by_key: dict[str, dict[str, Any]] = {}
+    for room in rooms or []:
+        key = slugify(str(room.get("areaId") or room.get("name") or ""))
+        if not key:
+            out.append(room)
+            continue
+        base = by_key.get(key)
+        if base is None:
+            by_key[key] = room
+            out.append(room)
+            continue
+        for field, value in room.items():
+            base.setdefault(field, value)
+    return out
+
+
+def studio_room_fills(rooms: list[dict[str, Any]] | None) -> dict[str, str]:
+    """Map slugified room key → ``fill`` for a floor's studio rooms.
+
+    Room fill is the colour studio owns (the inspector edits it), so
+    zone highlights derive their colour from it instead of keeping a
+    separate zone colour. Keyed by slugified ``name`` — the same key
+    ``area.<slug>`` elements and zone ``areas`` entries resolve to —
+    plus the room's ``areaId`` when set.
+    """
+    fills: dict[str, str] = {}
+    for room in rooms or []:
+        fill = room.get("fill")
+        if not fill:
+            continue
+        if room.get("name"):
+            fills.setdefault(slugify(str(room["name"])), str(fill))
+        if room.get("areaId"):
+            fills.setdefault(str(room["areaId"]), str(fill))
+    return fills
+
+
 # ---------------------------------------------------------------------------
 # Side-by-side floor combining — one drawing, one studio floor
 # ---------------------------------------------------------------------------
@@ -907,6 +957,7 @@ __all__ = [
     "best_floor_for_svg",
     "build_studio_project",
     "combine_svgs",
+    "dedupe_rooms",
     "merge_project_floors",
     "load_latest_project",
     "parse_floorplan_yaml",
@@ -919,6 +970,7 @@ __all__ = [
     "studio_floor",
     "studio_marker",
     "studio_marker_positions",
+    "studio_room_fills",
     "studio_marker_zone",
     "svg_viewbox",
 ]
