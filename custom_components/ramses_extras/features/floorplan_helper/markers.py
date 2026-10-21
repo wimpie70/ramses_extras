@@ -257,6 +257,28 @@ def short_label(dev: dict[str, Any]) -> str:
     return name if len(name) <= 24 else name[:22] + "…"
 
 
+def marker_meta_for_device(
+    dev: dict[str, Any],
+    marker_meta: dict[str, dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Find a device's studio-marker entry in a positions map.
+
+    Matches the marker bound to the primary entity first, then any of
+    the device's entities — same lookup as the overlay placement.
+    ``marker_meta`` is the value map of
+    :func:`importer.studio_marker_positions`.
+    """
+    if not marker_meta:
+        return None
+    candidates = [dev.get("primary_entity")] + [
+        e.get("entity_id") for e in dev.get("entities") or []
+    ]
+    for ent in candidates:
+        if ent and ent in marker_meta:
+            return marker_meta[ent]
+    return None
+
+
 def build_overlay_fragment(
     model: dict[str, Any],
     options: dict[str, Any],
@@ -296,14 +318,7 @@ def build_overlay_fragment(
     for dev in model.get("devices", []):
         element_id = element_id_for_device(dev, options)
         icon_key = icon_for_device(dev, options)
-        pos: dict[str, Any] | None = None
-        candidates = [dev.get("primary_entity")] + [
-            e.get("entity_id") for e in dev.get("entities") or []
-        ]
-        for ent in candidates:
-            if ent and ent in positions:
-                pos = positions[ent]
-                break
+        pos = marker_meta_for_device(dev, positions)
         if pos is not None:
             icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), icon_key)
             x, y, size = pos["x"], pos["y"], float(pos.get("size") or 20)
@@ -327,7 +342,9 @@ def build_overlay_fragment(
                 y,
                 size,
                 icon_key,
-                label=short_label(dev),
+                # a label typed into studio wins over the generated
+                # slug; it persists with the project
+                label=str((pos or {}).get("label") or short_label(dev)),
                 color=color,
                 text_color=DEFAULT_TEXT_COLOR,
                 style=marker_style_for_key(dev, options),
@@ -525,6 +542,7 @@ __all__ = [
     "group_devices",
     "icon_for_device",
     "planner_url",
+    "marker_meta_for_device",
     "short_label",
     "strip_toolbar",
 ]

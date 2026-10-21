@@ -66,6 +66,7 @@ from .importer import (
     room_for_point,
     rooms_from_svg,
     store_latest_project,
+    studio_actions_for_device,
     studio_floor,
     studio_marker,
     svg_viewbox,
@@ -154,6 +155,7 @@ def _merge_studio_project(
     extra_markers: list[dict[str, Any]],
     mdi: Any,
     marker_size: int = 20,
+    zones: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Merge generated floors into an existing studio project.
 
@@ -209,6 +211,7 @@ def _merge_studio_project(
                     mdi(dev),
                     label=str(dev.get("display_name") or dev["device_id"]),
                     size=marker_size,
+                    actions=studio_actions_for_device(dev, zones or {}),
                 )
             )
             x += 44
@@ -660,6 +663,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         model = await build_floorplan_model(hass)
         marker_size: int = int(call.data.get("marker_size") or 20)
+        zones = (
+            get_floorplan_options(_config_entry(hass)).get(OPTION_DEVICE_ZONES) or {}
+        )
 
         def _mdi(dev: dict[str, Any]) -> str:
             key = FLOORPLAN_DEVICE_ICON_MAP.get(
@@ -719,6 +725,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         _mdi(dev),
                         label=str(dev.get("display_name") or dev["device_id"]),
                         size=marker_size,
+                        actions=studio_actions_for_device(dev, zones),
                     )
                 )
                 placed[dev["device_id"]] = f"{fname} / {room['name']}"
@@ -742,6 +749,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 extra_markers=unplaced,
                 mdi=_mdi,
                 marker_size=marker_size,
+                zones=zones,
             )
         else:
             # Park devices with no matching room below the first floor's
@@ -755,6 +763,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         _mdi(dev),
                         label=str(dev.get("display_name") or dev["device_id"]),
                         size=marker_size,
+                        actions=studio_actions_for_device(dev, zones),
                     )
                     for i, dev in enumerate(unplaced)
                 ]

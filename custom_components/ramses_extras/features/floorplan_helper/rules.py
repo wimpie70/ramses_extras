@@ -44,6 +44,7 @@ from .markers import (
     binding_maps,
     editor_url,
     element_id_for_device,
+    marker_meta_for_device,
     planner_url,
 )
 from .zones import (
@@ -104,6 +105,55 @@ def link_action(target: str) -> dict[str, Any]:
     if str(target).startswith("/"):
         return {"action": "navigate", "navigation_path": target}
     return {"action": "url", "url_path": target}
+
+
+def studio_tap_action(action: Any) -> dict[str, Any] | None:
+    """Translate a studio marker action to an ha-floorplan action.
+
+    Studio stores ``{kind, service, serviceData, navPath, url}`` —
+    same mapping its own exporter uses. ``kind: none`` (or an
+    incomplete action) returns ``None`` → inherit our defaults.
+    """
+    if not isinstance(action, dict):
+        return None
+    kind = action.get("kind")
+    if kind == "more-info":
+        return {"action": "more-info"}
+    if kind == "toggle":
+        return {"action": "toggle"}
+    if kind == "navigate":
+        path = action.get("navPath")
+        return {"action": "navigate", "navigation_path": path} if path else None
+    if kind == "url":
+        url = action.get("url")
+        return {"action": "url", "url_path": url} if url else None
+    if kind == "call-service":
+        service = action.get("service")
+        if not service:
+            return None
+        data: Any = action.get("serviceData")
+        if isinstance(data, str) and data.strip():
+            try:
+                data = yaml.safe_load(data)
+            except yaml.YAMLError:
+                data = None
+        rule: dict[str, Any] = {"action": "call-service", "service": service}
+        if isinstance(data, dict) and data:
+            rule["service_data"] = data
+        return rule
+    return None
+
+
+def _studio_zone_shorthand(action: Any) -> bool:
+    """Studio ``call-service → floorplan.class_toggle`` is our seeded
+    representation of the zone toggle (see
+    ``importer.studio_actions_for_device``) — expand it to the real
+    zone actions rather than emitting it verbatim."""
+    return (
+        isinstance(action, dict)
+        and action.get("kind") == "call-service"
+        and action.get("service") == "floorplan.class_toggle"
+    )
 
 
 def stale_managed_rule(rule: dict[str, Any], managed_entities: set[str]) -> bool:
@@ -191,6 +241,7 @@ def _device_rules(
     options: dict[str, Any],
     entity_binding_map: dict[str, dict[str, Any]],
     managed_entities: set[str],
+    marker_meta: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """``(managed rules, binding-level extras)`` for one model device.
 
@@ -232,6 +283,11 @@ def _device_rules(
     # caption_overrides (device id → class → primary entity) win over
     # the domain default; "eid|suffix" entries carry their own suffix.
     caption_pairs = domain.caption_entities(dev.get("entities") or [])
+    meta = marker_meta_for_device(dev, marker_meta)
+    if meta and meta.get("show_state") is False:
+        # studio's "Show state" toggle persists with the project —
+        # unticking it is the per-marker way to hide the caption
+        caption_pairs = []
     overrides: dict[str, Any] = options.get(OPTION_CAPTION_OVERRIDES) or {}
     raw = overrides.get(str(dev.get("device_id")))
     if raw is None and dev.get("device_class"):
@@ -259,23 +315,49 @@ def _device_rules(
         # tap the marker → more-info on the device's own entity
         # (climate dialog for a FAN), not a secondary stat sensor;
         # zoned devices get tap = highlight served rooms instead,
-        # keep the entity dialog on hold
+        # keep the entity dialog on hold. Studio marker actions
+        # override: a deliberate non-default gesture wins, while
+        # "none"/more-info/our seeded class_toggle shorthand keep the
+        # zone behaviour.
         tap_rule: dict[str, Any] = {"entity": primary}
         if primary != element_id:
             tap_rule["element"] = element_id
-        zone = zones.get(dev.get("device_id")) or {}
-        area_elements, bound = resolve_bound(
-            model, dev, zone, lambda d: element_id_for_device(d, options)
+        # presence in device_zones is what makes a device a zone parent
+        # — resolve_bound always folds the device into its own bound
+        # set, so bound alone can't be the gate (every unzoned device
+        # would emit a self-referencing class_toggle)
+        zone = zones.get(dev.get("device_id"))
+        area_elements, bound = (
+            ([], [])
+            if zone is None
+            else resolve_bound(
+                model, dev, zone, lambda d: element_id_for_device(d, options)
+            )
         )
+        studio_actions = (meta or {}).get("actions") or {}
+        tap_override = studio_tap_action(studio_actions.get("tap"))
+        hold_override = studio_tap_action(studio_actions.get("hold"))
+        double_override = studio_tap_action(studio_actions.get("double"))
         if area_elements or bound:
             toggles = zone_toggle_specs(str(dev.get("device_id")), area_elements, bound)
-            tap_rule["tap_action"] = zone_tap_actions(toggles)
-            tap_rule["hold_action"] = {"action": "more-info"}
-            tap_rule["double_tap_action"] = _device_view_actions(
+            if (
+                tap_override is None
+                or tap_override.get("action") == "more-info"
+                or _studio_zone_shorthand(studio_actions.get("tap"))
+            ):
+                tap_rule["tap_action"] = zone_tap_actions(toggles)
+            else:
+                tap_rule["tap_action"] = tap_override
+            tap_rule["hold_action"] = hold_override or {"action": "more-info"}
+            tap_rule["double_tap_action"] = double_override or _device_view_actions(
                 dev, str(primary), toggles, options
             )
         else:
-            tap_rule["tap_action"] = {"action": "more-info"}
+            tap_rule["tap_action"] = tap_override or {"action": "more-info"}
+            if hold_override:
+                tap_rule["hold_action"] = hold_override
+            if double_override:
+                tap_rule["double_tap_action"] = double_override
         rules.append(tap_rule)
 
     binding = entity_binding_map.get(primary or "")
@@ -327,12 +409,22 @@ def _toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
     return rules
 
 
-def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str, Any]]:
+def build_rules(
+    model: dict[str, Any],
+    options: dict[str, Any],
+    marker_meta: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Build the managed floorplan rules list.
 
     Element bindings may be keyed by the bound entity id or by a custom
     element id carrying ``entity_id`` — either way the device's rules
     target the bound element.
+
+    :param marker_meta: entity_id → studio-marker map (the value map
+        of ``studio_marker_positions``) — studio edits to actions /
+        showState / label persist in the project and are honoured
+        here; studio is the per-marker editor, tweaks only cover what
+        it can't express.
     """
     zones = options.get(OPTION_DEVICE_ZONES) or {}
     _, entity_binding_map = binding_maps(options)
@@ -345,7 +437,7 @@ def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str
     extras: list[dict[str, Any]] = []
     for dev in model.get("devices", []):
         dev_rules, dev_extras = _device_rules(
-            model, dev, options, entity_binding_map, managed
+            model, dev, options, entity_binding_map, managed, marker_meta
         )
         rules.extend(dev_rules)
         extras.extend(dev_extras)
@@ -357,7 +449,10 @@ def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str
     for ent in standalone:
         rule = class_set_rule(ent, ent, standalone_status_expr())
         rule.pop("element")  # element id == entity id
-        rule["tap_action"] = {"action": "more-info"}
+        meta = (marker_meta or {}).get(ent) or {}
+        rule["tap_action"] = studio_tap_action(
+            (meta.get("actions") or {}).get("tap")
+        ) or {"action": "more-info"}
         rules.append(rule)
 
     rules.extend(_toolbar_rules(options))
@@ -381,5 +476,6 @@ __all__ = [
     "fire_dom_event",
     "link_action",
     "parse_extra_rules",
+    "studio_tap_action",
     "text_set_rule",
 ]

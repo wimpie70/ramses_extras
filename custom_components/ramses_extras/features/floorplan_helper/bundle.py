@@ -266,7 +266,17 @@ async def async_generate_bundle(
     options = get_floorplan_options(config_entry)
     apply_area_overrides(model, options)
 
-    rules = build_rules(model, options)
+    # studio is the per-marker editor: actions/showState/label edits
+    # persist in the project and are honoured by the rule builder
+    marker_meta: dict[str, dict[str, Any]] | None = None
+    raw_project = await hass.async_add_executor_job(load_latest_project, hass)
+    if raw_project:
+        try:
+            marker_meta = studio_marker_positions(json.loads(raw_project))
+        except json.JSONDecodeError:
+            marker_meta = None
+
+    rules = build_rules(model, options, marker_meta)
     svg_text = build_elements_svg(model, options)
 
     files: dict[str, str] = {}

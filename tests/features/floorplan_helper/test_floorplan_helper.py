@@ -864,3 +864,150 @@ class TestMarkerStyle:
             "climate.01_000001", 0, 0, 20, "fan", color="#ffc107", text_color="#334155"
         )
         assert 'stroke="transparent"' in plain and 'fill="#f8fafc"' in plain
+
+
+class TestStudioMarkerMeta:
+    """Studio edits persist in the project — the rule builder honours
+    marker actions / showState instead of regenerating over them."""
+
+    def _meta(self, actions=None, show_state=True):
+        return {
+            "sensor.32_153289_fan_rate": {
+                "actions": actions or {},
+                "show_state": show_state,
+            }
+        }
+
+    def _tap_rule(self, rules, entity="sensor.32_153289_fan_rate"):
+        return next(r for r in rules if r.get("entity") == entity and "tap_action" in r)
+
+    def test_studio_tap_action_mapping(self):
+        from custom_components.ramses_extras.features.floorplan_helper.rules import (
+            studio_tap_action,
+        )
+
+        assert studio_tap_action({"kind": "more-info"}) == {"action": "more-info"}
+        assert studio_tap_action({"kind": "toggle"}) == {"action": "toggle"}
+        assert studio_tap_action({"kind": "navigate", "navPath": "/lovelace/x"}) == {
+            "action": "navigate",
+            "navigation_path": "/lovelace/x",
+        }
+        assert studio_tap_action({"kind": "url", "url": "https://x"}) == {
+            "action": "url",
+            "url_path": "https://x",
+        }
+        assert studio_tap_action(
+            {
+                "kind": "call-service",
+                "service": "fan.toggle",
+                "serviceData": "speed: high",
+            }
+        ) == {
+            "action": "call-service",
+            "service": "fan.toggle",
+            "service_data": {"speed": "high"},
+        }
+        assert studio_tap_action({"kind": "none"}) is None
+        # missing path → incomplete, inherit our default
+        assert studio_tap_action({"kind": "navigate"}) is None
+        assert studio_tap_action({"kind": "call-service"}) is None
+
+    def test_zoned_parent_keeps_zone_tap_on_studio_defaults(self):
+        dev = _device()
+        opts = _options(device_zones={"32:153289": {"areas": ["woonkamer"]}})
+        # studio's default kinds + our seeded class_toggle shorthand all
+        # mean "keep the zone behaviour"
+        for actions in (
+            {},
+            {"tap": {"kind": "none"}},
+            {"tap": {"kind": "more-info"}},
+            {
+                "tap": {
+                    "kind": "call-service",
+                    "service": "floorplan.class_toggle",
+                    "serviceData": 'class: "rx-zone-32_153289"',
+                }
+            },
+        ):
+            rules = generator._build_rules(
+                _model(devices=[dev]), opts, self._meta(actions)
+            )
+            acts = self._tap_rule(rules)["tap_action"]
+            assert isinstance(acts, list)
+            assert acts[0]["service"] == "floorplan.class_toggle"
+
+    def test_zoned_parent_honours_explicit_studio_gestures(self):
+        dev = _device()
+        opts = _options(device_zones={"32:153289": {"areas": ["woonkamer"]}})
+        meta = self._meta(
+            {
+                "tap": {"kind": "navigate", "navPath": "/dash/fan"},
+                "hold": {"kind": "toggle"},
+                "double": {"kind": "url", "url": "https://example.com"},
+            }
+        )
+        rules = generator._build_rules(_model(devices=[dev]), opts, meta)
+        tap = self._tap_rule(rules)
+        assert tap["tap_action"] == {
+            "action": "navigate",
+            "navigation_path": "/dash/fan",
+        }
+        assert tap["hold_action"] == {"action": "toggle"}
+        assert tap["double_tap_action"] == {
+            "action": "url",
+            "url_path": "https://example.com",
+        }
+
+    def test_non_zoned_studio_actions_applied(self):
+        dev = _device()
+        meta = self._meta(
+            {
+                "tap": {"kind": "toggle"},
+                "double": {"kind": "navigate", "navPath": "/x"},
+            }
+        )
+        rules = generator._build_rules(_model(devices=[dev]), _options(), meta)
+        tap = self._tap_rule(rules)
+        assert tap["tap_action"] == {"action": "toggle"}
+        assert tap["double_tap_action"]["navigation_path"] == "/x"
+
+    def test_no_meta_falls_back_to_defaults(self):
+        dev = _device()
+        rules = generator._build_rules(_model(devices=[dev]), _options(), None)
+        assert self._tap_rule(rules)["tap_action"] == {"action": "more-info"}
+
+    def test_show_state_false_hides_caption(self):
+        dev = _device(
+            entities=[
+                {"entity_id": "sensor.32_153289_indoor_temp", "role": "temperature"},
+            ]
+        )
+
+        def texts(rs):
+            return [
+                r
+                for r in rs
+                if r.get("state_action", {}).get("service") == "floorplan.text_set"
+            ]
+
+        with_caption = generator._build_rules(
+            _model(devices=[dev]), _options(), self._meta()
+        )
+        assert texts(with_caption)
+        hidden = generator._build_rules(
+            _model(devices=[dev]), _options(), self._meta(show_state=False)
+        )
+        assert not texts(hidden)
+
+    def test_studio_actions_for_device(self):
+        from custom_components.ramses_extras.features.floorplan_helper.importer import (
+            studio_actions_for_device,
+        )
+
+        zoned = studio_actions_for_device(_device(), {"32:153289": {}})
+        assert zoned["tap"]["kind"] == "call-service"
+        assert zoned["tap"]["service"] == "floorplan.class_toggle"
+        assert "rx-zone-32_153289" in zoned["tap"]["serviceData"]
+        assert zoned["hold"]["kind"] == "more-info"
+        plain = studio_actions_for_device(_device(), {})
+        assert plain["tap"]["kind"] == "more-info"

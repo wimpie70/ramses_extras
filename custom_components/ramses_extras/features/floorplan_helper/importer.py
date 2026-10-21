@@ -452,6 +452,7 @@ def studio_marker(
     icon: str,
     label: str | None = None,
     size: int = 20,
+    actions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one studio ``Marker`` (icon type, more-info tap action)."""
     import uuid
@@ -470,12 +471,46 @@ def studio_marker(
             **({"label": label} if label else {}),
         },
         "stateRules": [],
-        "actions": {
+        "actions": actions
+        or {
             "tap": {"kind": "more-info"},
             "hold": {"kind": "none"},
             "double": {"kind": "none"},
         },
         "visibility": None,
+    }
+
+
+def studio_actions_for_device(
+    dev: dict[str, Any], zones: dict[str, Any]
+) -> dict[str, Any]:
+    """Marker ``actions`` to write when seeding — makes our generated
+    gesture defaults visible (and overridable) in studio's right panel.
+
+    A zoned parent's tap can't be expressed by studio's kinds (it is a
+    class_toggle + cross-card sync action list), so it is seeded as
+    ``call-service: floorplan.class_toggle`` — readable shorthand that
+    the rule generator recognises and expands back to the real zone
+    actions (see ``rules._device_rules``). Anything the user replaces
+    it with is honoured verbatim.
+    """
+    device_id = str(dev.get("device_id") or "")
+    if device_id and device_id in (zones or {}):
+        from .svg_utils import slugify
+
+        return {
+            "tap": {
+                "kind": "call-service",
+                "service": "floorplan.class_toggle",
+                "serviceData": f'class: "rx-zone-{slugify(device_id)}"',
+            },
+            "hold": {"kind": "more-info"},
+            "double": {"kind": "none"},
+        }
+    return {
+        "tap": {"kind": "more-info"},
+        "hold": {"kind": "none"},
+        "double": {"kind": "none"},
     }
 
 
@@ -529,7 +564,13 @@ def studio_marker_positions(
 
     :param project: parsed project dict (``{"floors": [...]}``)
     :param floor_name: when given, only markers on that floor are read
-    :return: ``{entity_id: {"x", "y", "size", "icon", "label", "floor"}}``
+    :return: ``{entity_id: {"x", "y", "size", "icon", "color", "label",
+        "show_state", "actions", "state_rules", "visibility", "floor"}}``
+
+    ``actions``/``state_rules``/``visibility`` come straight from the
+    marker so the rule generator can honour studio edits (studio is
+    the per-marker editor; our tweaks only cover what it can't
+    express).
     """
     positions: dict[str, dict[str, Any]] = {}
     for floor in project.get("floors") or []:
@@ -548,6 +589,10 @@ def studio_marker_positions(
                         "icon": style.get("icon"),
                         "color": style.get("color"),
                         "label": style.get("label"),
+                        "show_state": style.get("showState", True),
+                        "actions": marker.get("actions") or {},
+                        "state_rules": marker.get("stateRules") or [],
+                        "visibility": marker.get("visibility"),
                         "floor": fname,
                     },
                 )
@@ -594,6 +639,7 @@ __all__ = [
     "room_for_point",
     "rooms_from_svg",
     "store_latest_project",
+    "studio_actions_for_device",
     "studio_floor",
     "studio_marker",
     "studio_marker_positions",
