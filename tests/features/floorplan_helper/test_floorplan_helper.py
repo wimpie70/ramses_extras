@@ -1157,3 +1157,86 @@ class TestStudioMarkerMeta:
         assert dbl["service"] == "ramses_extras.floorplan_device_view"
         assert dbl["service_data"]["device_id"] == "32:153289"
         assert dbl["service_data"]["card"]  # domain popup_card filled in
+
+
+class TestCombineFloors:
+    """Side-by-side floor combining (SVG + studio project)."""
+
+    _SVG1 = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560">'
+        '<rect id="area.a" x="10" y="10" width="100" height="80"/></svg>'
+    )
+    _SVG2 = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560">'
+        '<rect id="area.b" x="20" y="30" width="50" height="40"/>'
+        '<circle id="other" cx="5" cy="5" r="2"/></svg>'
+    )
+
+    def test_combine_svgs_offsets_and_wraps(self):
+        merged, offsets, warnings = importer.combine_svgs(
+            [("bg", self._SVG1), ("e1", self._SVG2)], gap=120
+        )
+        assert offsets == [0.0, 760.0]
+        assert 'viewBox="0 0 1400 560"' in merged
+        assert '<g id="floor.e1" transform="translate(760,0)">' in merged
+        assert warnings == []
+        # room extraction follows the wrapping transform
+        rooms = {r["slug"]: r for r in importer.rooms_from_svg(merged)}
+        assert rooms["a"]["centroid"][0] == pytest.approx(60)
+        assert rooms["b"]["centroid"][0] == pytest.approx(760 + 45)
+
+    def test_combine_svgs_renames_colliding_ids(self):
+        svg2 = self._SVG2.replace('id="other"', 'id="area.a"')
+        merged, _, warnings = importer.combine_svgs(
+            [("bg", self._SVG1), ("e1", svg2)], gap=0
+        )
+        assert any("renamed" in w for w in warnings)
+        # nothing is dropped — the colliding rect survives renamed
+        assert 'id="e1.area.a"' in merged
+        assert merged.count('id="area.a"') == 1
+
+    def test_combine_svgs_strips_generated_floorplan_elements(self):
+        svg2 = self._SVG2.replace(
+            "</svg>", '<g id="floorplan.toolbar"><rect/></g></svg>'
+        )
+        merged, _, _ = importer.combine_svgs([("bg", self._SVG1), ("e1", svg2)])
+        assert "floorplan.toolbar" not in merged
+
+    def test_merge_project_floors_translates_contents(self):
+        project = {
+            "name": "Plattegrond",
+            "activeFloorId": "f1",
+            "floors": [
+                {
+                    "id": "f1",
+                    "name": "Begane grond",
+                    "canvas": {"width": 640, "height": 560},
+                    "rooms": [{"id": "r1", "polygon": [{"x": 10, "y": 20}]}],
+                    "walls": [],
+                    "markers": [{"id": "m1", "x": 100, "y": 50}],
+                },
+                {
+                    "id": "f2",
+                    "name": "1e verdieping",
+                    "canvas": {"width": 640, "height": 560},
+                    "rooms": [{"id": "r2", "polygon": [{"x": 30, "y": 40}]}],
+                    "walls": [],
+                    "markers": [{"id": "m2", "x": 200, "y": 60}],
+                },
+            ],
+        }
+        importer.merge_project_floors(project, [0.0, 760.0], 1400, 560)
+        assert len(project["floors"]) == 1
+        merged = project["floors"][0]
+        assert merged["canvas"] == {"width": 1400, "height": 560}
+        assert project["activeFloorId"] == "f1"
+        assert merged["name"] == "Plattegrond"
+        xs = {r["id"]: r["polygon"][0]["x"] for r in merged["rooms"]}
+        assert xs == {"r1": 10, "r2": 790}
+        xs = {m["id"]: m["x"] for m in merged["markers"]}
+        assert xs == {"m1": 100, "m2": 960}
+
+    def test_merge_single_floor_is_noop(self):
+        project = {"floors": [{"id": "f1", "rooms": [], "markers": []}]}
+        importer.merge_project_floors(project, [0.0], 640, 560)
+        assert len(project["floors"]) == 1

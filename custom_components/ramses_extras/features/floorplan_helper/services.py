@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -66,7 +67,9 @@ from .const import (
 from .importer import (
     backup_project,
     build_studio_project,
+    combine_svgs,
     load_latest_project,
+    merge_project_floors,
     parse_floorplan_yaml,
     parse_studio_project,
     room_for_point,
@@ -117,6 +120,7 @@ SVC_IMPORT = "floorplan_import"
 SVC_UPLOAD_SVG = "floorplan_upload_svg"
 SVC_SYNC_AREAS = "floorplan_sync_areas"
 SVC_SEED_STUDIO = "floorplan_seed_studio"
+SVC_COMBINE_FLOORS = "floorplan_combine_floors"
 SVC_STORE_PROJECT = "floorplan_store_project"
 SVC_ZONE_TOGGLE = "floorplan_zone_toggle"
 SVC_DEVICE_VIEW = "floorplan_device_view"
@@ -1119,6 +1123,95 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "floors": floor_stats,
         }
 
+    async def _async_combine_floors(call: ServiceCall) -> dict[str, Any]:
+        """Merge the configured floor SVGs into one side-by-side drawing.
+
+        Floor N renders to the right of the previous with ``gap`` px in
+        between — one drawing, one studio floor, so markers never have
+        to live on the "wrong" floor. The stored project is folded the
+        same way: rooms/markers keep their (x-offset) positions and the
+        floor backgrounds are composited horizontally. Writes the merged
+        SVG to the upload dir and points ``custom_svg_path`` at it.
+        """
+        options = get_floorplan_options(_config_entry(hass))
+        refs = call.data.get("sources") or options.get(OPTION_CUSTOM_SVG_PATH) or []
+        refs = [r for r in (refs if isinstance(refs, list) else [refs]) if r]
+        if len(refs) < 2:
+            raise vol.Invalid(
+                "Need at least two custom SVGs configured to combine floors"
+            )
+        gap = float(call.data.get("gap") or 120)
+
+        svg_texts: list[tuple[str, str]] = []
+        missing: list[str] = []
+        for ref in refs:
+            path = _resolve_svg_path(ref)
+            try:
+                svg_texts.append(
+                    (
+                        path.stem,
+                        await hass.async_add_executor_job(path.read_text, "utf-8"),
+                    )
+                )
+            except OSError:
+                missing.append(str(ref))
+        if missing:
+            raise vol.Invalid(f"SVG file(s) not found: {', '.join(missing)}")
+
+        merged_svg, offsets, warnings = combine_svgs(svg_texts, gap)
+        boxes = [svg_viewbox(t) for _, t in svg_texts]
+        width = offsets[-1] + boxes[-1][0]
+        height = max(h for _, h in boxes)
+
+        prefix = os.path.commonprefix([Path(r).stem for r in refs]).strip("-_ ")
+        out_name = f"{prefix or 'floors'}-all.svg"
+        out_dir = (
+            Path(hass.config.config_dir)
+            / "www"
+            / "ramses_extras"
+            / FLOORPLAN_UPLOAD_DIR_NAME
+        )
+        out_dir.mkdir(parents=True, exist_ok=True)
+        await hass.async_add_executor_job(
+            (out_dir / out_name).write_text, merged_svg, "utf-8"
+        )
+        web_path = f"/local/ramses_extras/{FLOORPLAN_UPLOAD_DIR_NAME}/{out_name}"
+
+        # fold the stored studio project into the same single floor
+        project_merged = False
+        stored = await hass.async_add_executor_job(load_latest_project, hass)
+        if stored:
+            try:
+                project = json.loads(stored)
+            except json.JSONDecodeError:
+                project = None
+            if isinstance(project, dict) and len(project.get("floors") or []) > 1:
+                merge_project_floors(project, offsets, width, height)
+                stamped = json.dumps(project)
+                await hass.async_add_executor_job(_store_latest_project, hass, stamped)
+                await hass.async_add_executor_job(_backup_project, hass, stamped)
+                project_merged = True
+
+        section = dict(options)
+        section[OPTION_CUSTOM_SVG_PATH] = [web_path]
+        section[OPTION_SVG_MODE] = SVG_MODE_CUSTOM
+        persist_floorplan_options(hass, _config_entry(hass), section)
+
+        _LOGGER.info(
+            "Floorplan floors combined: %d → 1 (%s, %gx%g, gap %g)",
+            len(svg_texts),
+            web_path,
+            width,
+            height,
+            gap,
+        )
+        return {
+            "svg": web_path,
+            "offsets": offsets,
+            "project_merged": project_merged,
+            "warnings": warnings,
+        }
+
     if not hass.services.has_service(DOMAIN, SVC_EXPORT):
         hass.services.async_register(
             DOMAIN,
@@ -1288,6 +1381,21 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    if not hass.services.has_service(DOMAIN, SVC_COMBINE_FLOORS):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_COMBINE_FLOORS,
+            _async_combine_floors,
+            schema=vol.Schema(
+                {
+                    vol.Optional("gap", default=120): vol.Coerce(float),
+                    vol.Optional("sources"): [cv.string],
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     if not hass.services.has_service(DOMAIN, SVC_ZONE_TOGGLE):
         hass.services.async_register(
             DOMAIN,
@@ -1344,6 +1452,7 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SVC_UPLOAD_SVG,
         SVC_SYNC_AREAS,
         SVC_SEED_STUDIO,
+        SVC_COMBINE_FLOORS,
         SVC_ZONE_TOGGLE,
         SVC_DEVICE_VIEW,
     ):

@@ -669,11 +669,219 @@ def best_floor_for_svg(project: dict[str, Any], svg_text: str) -> dict[str, Any]
     return best
 
 
+# ---------------------------------------------------------------------------
+# Side-by-side floor combining — one drawing, one studio floor
+# ---------------------------------------------------------------------------
+
+
+_SVG_NS = "http://www.w3.org/2000/svg"
+
+
+def _svg_parse(svg_text: str) -> ET.Element:
+    """Parse an SVG, registering its namespaces so serialisation keeps
+    the original prefixes (inkscape's ``sodipodi:`` etc.)."""
+    import io
+
+    for _, ns in ET.iterparse(io.BytesIO(svg_text.encode()), events=["start-ns"]):
+        prefix, uri = str(ns[0] or ""), str(ns[1])
+        ET.register_namespace(prefix, uri)
+    return ET.fromstring(svg_text)
+
+
+def _strip_generated(svg_root: ET.Element) -> None:
+    """Remove elements we regenerate at export (``floorplan.*`` ids —
+    stale toolbars/markers baked into earlier merged SVGs)."""
+    for parent in svg_root.iter():
+        for el in list(parent):
+            if str(el.get("id") or "").startswith("floorplan."):
+                parent.remove(el)
+
+
+def _rename_ids(root: ET.Element, taken: set[str], prefix: str) -> list[str]:
+    """Rename ``id`` collisions in ``root``'s subtree (and fix the
+    ``url(#id)``/``href``/``xlink:href`` references inside it)."""
+    renamed: list[str] = []
+    mapping: dict[str, str] = {}
+    for el in root.iter():
+        el_id = el.get("id")
+        if el_id and el_id in taken:
+            new = f"{prefix}.{el_id}"
+            mapping[el_id] = new
+            el.set("id", new)
+            renamed.append(el_id)
+        elif el_id:
+            taken.add(el_id)
+    if not mapping:
+        return renamed
+    for el in root.iter():
+        for attr, value in el.attrib.items():
+            new_value = value
+            for old, new in mapping.items():
+                new_value = new_value.replace(f"url(#{old})", f"url(#{new})")
+                if new_value == f"#{old}":
+                    new_value = f"#{new}"
+            if new_value != value:
+                el.set(attr, new_value)
+    return renamed
+
+
+def combine_svgs(
+    svg_texts: list[tuple[str, str]], gap: float = 120.0
+) -> tuple[str, list[float], list[str]]:
+    """Merge per-floor SVGs into one drawing laid out left→right.
+
+    Floor N's content is wrapped in ``<g id="floor.<name>"
+    transform="translate(off,0)">`` — ``rooms_from_svg`` composes
+    ancestor transforms, so room centroids land in the combined
+    viewBox (= studio canvas) space. All floors should share the same
+    scale (equal viewBox sizes strongly suggested). Colliding element
+    ids are renamed ``<floor>.<id>`` (references rewritten); generated
+    ``floorplan.*`` elements are stripped — export re-injects them.
+
+    :param svg_texts: ``[(floor_name, svg_text), …]`` in left→right order
+    :param gap: px of breathing room between floors
+    :return: ``(merged_svg, offsets, warnings)`` — ``offsets[i]`` is the
+        x-shift applied to floor *i*, for translating project contents
+    """
+    warnings: list[str] = []
+    boxes = [svg_viewbox(t) for _, t in svg_texts]
+    if len({round(h) for _, h in boxes}) > 1:
+        warnings.append(
+            "Floor heights differ — floors are top-aligned, "
+            "shorter ones leave empty space below"
+        )
+    offsets: list[float] = []
+    off = 0.0
+    for w, _ in boxes:
+        offsets.append(off)
+        off += w + gap
+    width, height = off - gap, max(h for _, h in boxes)
+
+    merged = _svg_parse(svg_texts[0][1])
+    _strip_generated(merged)
+    seen: set[str] = {str(el.get("id")) for el in merged.iter() if el.get("id")}
+    for (name, text), off_i in zip(svg_texts[1:], offsets[1:], strict=True):
+        root = _svg_parse(text)
+        _strip_generated(root)
+        renamed = _rename_ids(root, seen, name)
+        if renamed:
+            warnings.append(
+                f"Floor '{name}': {len(renamed)} colliding ids renamed → {name}.<id>"
+            )
+        group = ET.Element(
+            "g", {"id": f"floor.{name}", "transform": f"translate({off_i:g},0)"}
+        )
+        group.extend(list(root))
+        merged.append(group)
+    merged.set("viewBox", f"0 0 {width:g} {height:g}")
+    return ET.tostring(merged, encoding="unicode"), offsets, warnings
+
+
+def merge_project_floors(
+    project: dict[str, Any], offsets: list[float], width: float, height: float
+) -> dict[str, Any]:
+    """Fold a multi-floor project into a single side-by-side floor.
+
+    Floor *i*'s rooms/markers/walls are shifted right by ``offsets[i]``
+    — matching :func:`combine_svgs` — so studio positions stay aligned
+    with the merged SVG. Backgrounds compose horizontally when they
+    carry PNG ``dataUri``s at scale 1 / rotation 0 (see
+    :func:`compose_backgrounds`); otherwise floor 1's background wins.
+
+    :return: the same project dict, mutated to a single floor
+    """
+    floors = list(project.get("floors") or [])
+    if len(floors) < 2:
+        return project
+    merged = dict(floors[0])
+    merged["name"] = str(project.get("name") or floors[0].get("name") or "All floors")
+    merged["canvas"] = {"width": width, "height": height}
+
+    for i, floor in enumerate(floors[1:], start=1):
+        off = offsets[i] if i < len(offsets) else offsets[-1]
+        for room in floor.get("rooms") or []:
+            for pt in room.get("polygon") or []:
+                pt["x"] = round(float(pt.get("x") or 0) + off, 2)
+        for wall in floor.get("walls") or []:
+            for pt in wall.get("points") or []:
+                pt["x"] = round(float(pt.get("x") or 0) + off, 2)
+        for marker in floor.get("markers") or []:
+            marker["x"] = round(float(marker.get("x") or 0) + off, 2)
+        merged.setdefault("rooms", []).extend(floor.get("rooms") or [])
+        merged.setdefault("walls", []).extend(floor.get("walls") or [])
+        merged.setdefault("openings", []).extend(floor.get("openings") or [])
+        merged.setdefault("markers", []).extend(floor.get("markers") or [])
+
+    merged["background"] = _compose_backgrounds(floors, offsets, width, height)
+    project["floors"] = [merged]
+    project["activeFloorId"] = merged["id"]
+    return project
+
+
+def _compose_backgrounds(
+    floors: list[dict[str, Any]], offsets: list[float], width: float, height: float
+) -> dict[str, Any]:
+    """Horizontally compose per-floor PNG backgrounds (Pillow).
+
+    Falls back to floor 1's background (with the combined canvas as
+    natural size) when Pillow is unavailable or a floor uses a
+    rotation/non-image background.
+    """
+    import base64
+    import io
+
+    fallback = dict(floors[0].get("background") or {})
+    fallback["naturalW"], fallback["naturalH"] = width, height
+    try:
+        from PIL import Image  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - Pillow ships with HA
+        return fallback
+
+    canvas = Image.new("RGBA", (max(1, int(width)), max(1, int(height))), (0, 0, 0, 0))
+    composed = False
+    for i, floor in enumerate(floors):
+        bg = floor.get("background") or {}
+        uri = str(bg.get("dataUri") or "")
+        if "base64," not in uri or bg.get("rotation"):
+            continue
+        try:
+            img = Image.open(
+                io.BytesIO(base64.b64decode(uri.split("base64,", 1)[1]))
+            ).convert("RGBA")
+        except Exception:  # noqa: BLE001 - un-decodable image
+            continue
+        scale = float(bg.get("scale") or 1)
+        if scale != 1:
+            img = img.resize((int(img.width * scale), int(img.height * scale)))
+        opacity = float(bg.get("opacity") or 1)
+        if opacity < 1:
+            alpha = img.getchannel("A").point(lambda a, o=opacity: int(a * o))
+            img.putalpha(alpha)
+        canvas.alpha_composite(
+            img,
+            (
+                int(offsets[i] + float(bg.get("x") or 0)),
+                int(float(bg.get("y") or 0)),
+            ),
+        )
+        composed = True
+    if not composed:
+        return fallback
+    buf = io.BytesIO()
+    canvas.save(buf, "PNG")
+    return {
+        **fallback,
+        "dataUri": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode(),
+    }
+
+
 __all__ = [
     "PROJECT_LATEST_NAME",
     "backup_project",
     "best_floor_for_svg",
     "build_studio_project",
+    "combine_svgs",
+    "merge_project_floors",
     "load_latest_project",
     "parse_floorplan_yaml",
     "parse_studio_project",
