@@ -874,13 +874,12 @@ class RamsesFloorplanActions extends HTMLElement {
     this._renderYamlButtons(yamls);
     let applied = '';
     const cards = r.cards || {};
-    const cardCfg = cards[floors[0]] || cards.default;
-    if (this._config.apply_dashboard && cardCfg) {
+    if (this._config.apply !== false && Object.keys(cards).length) {
       try {
-        const n = await this._applyToDashboard(cardCfg);
-        applied = n
-          ? ` — applied to ${n} card(s) on '${this._config.apply_dashboard}'`
-          : ` — no matching floorplan card found on '${this._config.apply_dashboard}' (nothing applied)`;
+        const res = await this._applyToDashboards(cards);
+        applied = res.cards
+          ? ` — applied to ${res.cards} card(s) on ${res.dashes} dashboard(s)`
+          : ' — no matching floorplan card found (nothing applied)';
       } catch (err) {
         applied = ` — dashboard apply failed: ${(err && err.message) || err}`;
       }
@@ -900,38 +899,67 @@ class RamsesFloorplanActions extends HTMLElement {
     }
   }
 
-  // Replace the generated floorplan card on a storage dashboard via the
-  // lovelace ws api — no dashboard edit mode needed. Matches cards of
-  // type custom:floorplan-card whose image.location contains
-  // `apply_match` (default: our generated folder), so hand-made cards
-  // are left alone.
-  async _applyToDashboard(cardCfg) {
-    const urlPath = this._config.apply_dashboard;
-    const match = this._config.apply_match || 'ramses_extras/floorplan/generated';
-    const conf = await this._hass.callWS({ type: 'lovelace/config', url_path: urlPath });
-    let n = 0;
-    const isOurs = (c) =>
-      c &&
-      c.type === 'custom:floorplan-card' &&
-      String((c.config && c.config.image && c.config.image.location) || '').includes(match);
-    for (const view of conf.views || []) {
-      (view.cards || []).forEach((c, i) => {
-        if (isOurs(c)) { view.cards[i] = cardCfg; n++; }
-      });
-      for (const sec of view.sections || []) {
-        (sec.cards || []).forEach((c, i) => {
-          if (isOurs(c)) { sec.cards[i] = cardCfg; n++; }
+  // Replace generated floorplan card(s) on storage dashboards via the
+  // lovelace ws api — no dashboard edit mode needed. A card is matched
+  // by the *map file it displays*: exact `config.image.location` match
+  // against each generated card (so multiple floorplan cards with
+  // different maps stay untouched), or the `apply_match` substring
+  // override. `apply_dashboard` limits the scan to one dashboard;
+  // `apply: false` disables applying entirely.
+  async _applyToDashboards(cardCfgs) {
+    let urlPaths = [];
+    if (this._config.apply_dashboard) {
+      urlPaths = [this._config.apply_dashboard];
+    } else {
+      const list = await this._hass.callWS({ type: 'lovelace/dashboards/list' });
+      urlPaths = [null, ...(list || []).map((d) => d.url_path)];
+    }
+    const match = this._config.apply_match;
+    const firstCfg = Object.values(cardCfgs)[0];
+    const imageOf = (c) =>
+      String((c && c.config && c.config.image && c.config.image.location) || '');
+    const replacementFor = (c) => {
+      if (!c || c.type !== 'custom:floorplan-card') return null;
+      if (match) return imageOf(c).includes(match) ? firstCfg : null;
+      return (
+        Object.values(cardCfgs).find(
+          (cc) => cc.config && cc.config.image && cc.config.image.location === imageOf(c),
+        ) || null
+      );
+    };
+    let cards = 0;
+    const dashes = new Set();
+    for (const urlPath of urlPaths) {
+      let conf;
+      try {
+        conf = await this._hass.callWS({ type: 'lovelace/config', url_path: urlPath });
+      } catch {
+        continue; // yaml-mode or gone dashboard — nothing to patch
+      }
+      let n = 0;
+      for (const view of conf.views || []) {
+        (view.cards || []).forEach((c, i) => {
+          const rep = replacementFor(c);
+          if (rep) { view.cards[i] = rep; n++; }
         });
+        for (const sec of view.sections || []) {
+          (sec.cards || []).forEach((c, i) => {
+            const rep = replacementFor(c);
+            if (rep) { sec.cards[i] = rep; n++; }
+          });
+        }
+      }
+      if (n) {
+        await this._hass.callWS({
+          type: 'lovelace/config/save',
+          url_path: urlPath,
+          config: conf,
+        });
+        cards += n;
+        dashes.add(urlPath || 'default');
       }
     }
-    if (n) {
-      await this._hass.callWS({
-        type: 'lovelace/config/save',
-        url_path: urlPath,
-        config: conf,
-      });
-    }
-    return n;
+    return { cards, dashes: dashes.size };
   }
 
   _renderYamlButtons(yamls) {
