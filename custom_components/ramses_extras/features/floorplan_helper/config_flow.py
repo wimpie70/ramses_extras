@@ -1,8 +1,14 @@
 """Floorplan Helper feature options flow.
 
-Lets users edit the floorplan mapping inside ramses_extras: SVG mode,
-custom SVG path, and icon overrides — then regenerate via
-``ramses_extras.floorplan_export``.
+Lets users pick the floorplan SVG mode and toolbar tool URLs inside
+ramses_extras — then regenerate via ``ramses_extras.floorplan_export``.
+
+Per-marker settings (icon, colours, label, state text, tap/hold/double
+actions, zone) are **not** configured here — they live on the marker in
+the floorplan-studio project, which is the single source of truth.
+Stored ``icon_overrides``/``caption_overrides``/``marker_style_overrides``
+options still apply as a fallback for elements without a marker, and
+are migrated into the project on the next export.
 
 Follows the feature config flow contract: exposes
 ``async_step_floorplan_helper_config(flow, user_input)`` which the main
@@ -24,103 +30,17 @@ from .const import (
     DEFAULT_EDITOR_URL,
     DEFAULT_PLANNER_URL,
     FEATURE_ID,
-    FLOORPLAN_ICONS,
-    OPTION_CAPTION_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
     OPTION_EDITOR_URL,
-    OPTION_ICON_OVERRIDES,
-    OPTION_MARKER_STYLE_OVERRIDES,
     OPTION_PLANNER_URL,
     OPTION_SVG_MODE,
     OPTION_TOOLBAR_ENABLED,
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
-    split_top_level_commas,
 )
 from .mapping import get_floorplan_options, persist_floorplan_options
 
 _LOGGER = logging.getLogger(__name__)
-
-_VALID_ICON_KEYS = sorted(FLOORPLAN_ICONS)
-
-
-def _parse_icon_overrides(text: str) -> dict[str, str]:
-    """Parse ``KEY=icon`` lines into an overrides dict.
-
-    Invalid lines are skipped; unknown icon keys are dropped.
-    """
-    overrides: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key, value = key.strip(), value.strip()
-        if key and value in _VALID_ICON_KEYS:
-            overrides[key] = value
-    return overrides
-
-
-def _format_icon_overrides(overrides: dict[str, str]) -> str:
-    return "\n".join(f"{k}={v}" for k, v in sorted(overrides.items()))
-
-
-def _parse_caption_overrides(text: str) -> dict[str, list[str]]:
-    """Parse ``KEY=entity[,entity|suffix]`` lines into an overrides dict.
-
-    KEY is a ramses device id (``32:153289``), a device class (``FAN``,
-    ``CO2``…), or a primary entity_id — same precedence as icon
-    overrides. An empty entity list disables the caption for that key.
-    """
-    overrides: dict[str, list[str]] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        if key:
-            overrides[key] = [e.strip() for e in value.split(",") if e.strip()]
-    return overrides
-
-
-def _format_caption_overrides(overrides: dict[str, list[str]]) -> str:
-    return "\n".join(f"{k}={','.join(v)}" for k, v in sorted(overrides.items()))
-
-
-_STYLE_PARTS = ("disc", "glyph", "ring", "opacity")
-
-
-def _parse_marker_style_overrides(text: str) -> dict[str, dict[str, str]]:
-    """Parse ``KEY=part:colour[,part:colour]`` lines into overrides.
-
-    KEY is a ramses device id, device class, or entity_id — same
-    precedence as icon/caption overrides. Parts: ``disc`` (badge fill),
-    ``glyph`` (icon colour), ``ring`` (always-on border), ``opacity``
-    (whole marker). Colours may carry alpha — ``rgba()``/8-digit
-    hex/``none``.
-    """
-    overrides: dict[str, dict[str, str]] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        parts: dict[str, str] = {}
-        for item in split_top_level_commas(value):
-            part, _, colour = item.strip().partition(":")
-            if part.strip() in _STYLE_PARTS and colour.strip():
-                parts[part.strip()] = colour.strip()
-        if key.strip() and parts:
-            overrides[key.strip()] = parts
-    return overrides
-
-
-def _format_marker_style_overrides(overrides: dict[str, dict[str, str]]) -> str:
-    return "\n".join(
-        f"{k}={','.join(f'{p}:{v}' for p, v in sorted(vv.items()))}"
-        for k, vv in sorted(overrides.items())
-    )
 
 
 async def async_step_floorplan_helper_config(
@@ -141,15 +61,6 @@ async def async_step_floorplan_helper_config(
         section[OPTION_CUSTOM_SVG_PATH] = (
             user_input.get("custom_svg_path") or ""
         ).strip()
-        section[OPTION_ICON_OVERRIDES] = _parse_icon_overrides(
-            user_input.get("icon_overrides") or ""
-        )
-        section[OPTION_CAPTION_OVERRIDES] = _parse_caption_overrides(
-            user_input.get("caption_overrides") or ""
-        )
-        section[OPTION_MARKER_STYLE_OVERRIDES] = _parse_marker_style_overrides(
-            user_input.get("marker_style_overrides") or ""
-        )
         section[OPTION_TOOLBAR_ENABLED] = bool(user_input.get("toolbar_enabled", True))
         section[OPTION_EDITOR_URL] = (
             user_input.get("editor_url") or DEFAULT_EDITOR_URL
@@ -161,7 +72,6 @@ async def async_step_floorplan_helper_config(
         _LOGGER.info("Floorplan Helper options saved")
         return await flow.async_step_main_menu()
 
-    overrides = options.get(OPTION_ICON_OVERRIDES, {})
     info_text = (
         "🗺️ **Floorplan Helper**\n\n"
         "Generates the ha-floorplan bundle (icons, CSS, rules YAML) from "
@@ -169,25 +79,14 @@ async def async_step_floorplan_helper_config(
         "`ramses_extras.floorplan_export` to regenerate.\n\n"
         f"- SVG mode: `{options.get(OPTION_SVG_MODE)}`\n"
         f"- Element bindings stored: "
-        f"{len(options.get('element_bindings', {}))}\n"
-        f"- Icon overrides: {len(overrides)}\n\n"
-        "Icon overrides: one `TARGET=icon` per line, where TARGET is a "
-        "device class (FAN, TRV, CTL, HGI, DHW...) or an entity_id. "
-        f"Available icons: {', '.join(_VALID_ICON_KEYS)}\n\n"
-        "Caption overrides: what a marker's state text shows — one "
-        "`TARGET=entity_id[,entity_id|suffix]` per line, same TARGET "
-        "rules (device id like `32:153289`, device class, or entity_id). "
-        "Listed entity states join with ` / `, e.g. "
-        "`32:153289=sensor.32_153289_indoor_temp|°,"
-        "sensor.32_153289_outdoor_temp|°`. An empty value hides the "
-        "caption.\n\n"
-        "Marker style overrides: badge part colours — one "
-        "`TARGET=part:colour[,part:colour]` per line, same TARGET "
-        "rules. Parts: `disc` (badge fill), `glyph` (icon colour), "
-        "`ring` (always-on border — status/zone rings still override "
-        "it), `opacity` (whole marker). Alpha works everywhere: "
-        "`ring:rgba(0,0,0,0.4)`, `disc:#22c55e80`, `glyph:none`. E.g. "
-        "`FAN=disc:#22c55e,glyph:#ffffff,ring:#15803d`.\n\n"
+        f"{len(options.get('element_bindings', {}))}\n\n"
+        "Per-marker settings (icon, colours, label, state text, "
+        "tap/hold/double-tap actions, zone) are edited **in studio** on "
+        "the marker itself — the project is the single source of truth. "
+        "Our extras ride in the project too (`ramsesZone`, "
+        "`ramsesCaption`, `style.glyph/ring/opacity`); any older "
+        "stored overrides migrate into the project on the next export "
+        "and stay as fallback only for elements without a marker.\n\n"
         "Tool URLs open from the in-SVG toolbar buttons. Point them at "
         "vendored copies or iframe panel paths (`/...` navigates inside "
         "HA instead of a new tab)."
@@ -221,22 +120,6 @@ async def async_step_floorplan_helper_config(
                     multiline=False,
                 )
             ),
-            vol.Optional(
-                "icon_overrides",
-                default=_format_icon_overrides(overrides),
-            ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
-            vol.Optional(
-                "caption_overrides",
-                default=_format_caption_overrides(
-                    options.get(OPTION_CAPTION_OVERRIDES, {})
-                ),
-            ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
-            vol.Optional(
-                "marker_style_overrides",
-                default=_format_marker_style_overrides(
-                    options.get(OPTION_MARKER_STYLE_OVERRIDES, {})
-                ),
-            ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
             vol.Optional(
                 "toolbar_enabled",
                 default=options.get(OPTION_TOOLBAR_ENABLED, True),

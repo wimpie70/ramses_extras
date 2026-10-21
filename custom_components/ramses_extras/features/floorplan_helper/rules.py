@@ -211,6 +211,26 @@ def parse_extra_rules(
     return rules
 
 
+def caption_override_for_device(
+    dev: dict[str, Any], options: dict[str, Any]
+) -> list[str] | None:
+    """Stored ``caption_overrides`` entry for a device.
+
+    Precedence: device id → device class → primary entity. Returns the
+    raw ``"eid|suffix"`` item list, or None when no override applies.
+    """
+    overrides: dict[str, Any] = options.get(OPTION_CAPTION_OVERRIDES) or {}
+    for key in (
+        dev.get("device_id"),
+        dev.get("device_class"),
+        dev.get("primary_entity"),
+    ):
+        if key is not None and str(key) in overrides:
+            raw = overrides[str(key)]
+            return list(raw) if isinstance(raw, list) else [str(raw)]
+    return None
+
+
 def _device_view_actions(
     dev: dict[str, Any],
     primary: str,
@@ -287,20 +307,20 @@ def _device_rules(
 
     # caption: one combined ${} emitted on every contributing entity's
     # rule — whichever state updates, the caption rewrites in full.
-    # caption_overrides (device id → class → primary entity) win over
-    # the domain default; "eid|suffix" entries carry their own suffix.
+    # marker.ramsesCaption (studio project) wins over caption_overrides
+    # (device id → class → primary entity), which wins over the domain
+    # default; "eid|suffix" entries carry their own suffix.
     caption_pairs = domain.caption_entities(dev.get("entities") or [])
     meta = marker_meta_for_device(dev, marker_meta)
     if meta and meta.get("show_state") is False:
         # studio's "Show state" toggle persists with the project —
         # unticking it is the per-marker way to hide the caption
         caption_pairs = []
-    overrides: dict[str, Any] = options.get(OPTION_CAPTION_OVERRIDES) or {}
-    raw = overrides.get(str(dev.get("device_id")))
-    if raw is None and dev.get("device_class"):
-        raw = overrides.get(str(dev["device_class"]))
-    if raw is None and primary:
-        raw = overrides.get(str(primary))
+    raw = (meta or {}).get("ramses_caption")
+    if raw is None:
+        raw = caption_override_for_device(dev, options)
+    elif isinstance(raw, str):
+        raw = [raw]
     if raw is not None:
         caption_pairs = [
             (eid.strip(), sfx.strip())
@@ -486,6 +506,7 @@ __all__ = [
     "ROLE_RULE_TEMPLATES",
     "stale_managed_rule",
     "build_rules",
+    "caption_override_for_device",
     "class_set_rule",
     "fire_dom_event",
     "link_action",

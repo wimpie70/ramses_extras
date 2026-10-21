@@ -27,11 +27,15 @@ from .const import (
     CARD_YAML_STEM,
     FLOORPLAN_GENERATED_BASE,
     FLOORPLAN_GENERATED_DIR_NAME,
+    FLOORPLAN_ICON_MDI,
     FLOORPLAN_STATIC_BASE,
     GENERATED_CARD_YAML,
     GENERATED_ELEMENTS_SVG,
     OPTION_BACKGROUND,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_DEVICE_VIEW_URL,
+    OPTION_DEVICE_ZONES,
+    OPTION_ICON_OVERRIDES,
     OPTION_LAST_SNAPSHOT,
     OPTION_SVG_MODE,
     RULES_BEGIN_MARKER,
@@ -42,7 +46,9 @@ from .const import (
 from .importer import (
     best_floor_for_svg,
     load_latest_project,
+    store_latest_project,
     studio_marker_positions,
+    studio_marker_zone,
 )
 from .mapping import (
     get_floorplan_options,
@@ -56,9 +62,10 @@ from .markers import (
     build_elements_svg,
     build_overlay_fragment,
     build_toolbar_svg,
+    marker_style_for_key,
     strip_toolbar,
 )
-from .rules import build_rules
+from .rules import build_rules, caption_override_for_device
 from .svg_utils import merge_svg_overlay
 from .topology import build_floorplan_model
 
@@ -70,6 +77,98 @@ def custom_svg_refs(options: dict[str, Any]) -> list[str]:
     if isinstance(raw, str):
         raw = [raw]
     return [str(r) for r in (raw or []) if r]
+
+
+# option override → studio project field it migrates into
+_STYLE_PART_KEYS = {
+    "disc": "color",  # studio's colour picker owns the badge disc
+    "glyph": "glyph",
+    "ring": "ring",
+    "opacity": "opacity",
+}
+
+
+def migrate_overrides_to_project(
+    project: dict[str, Any],
+    model: dict[str, Any],
+    options: dict[str, Any],
+) -> bool:
+    """Copy stored option-level overrides into studio project fields.
+
+    Studio round-trips unknown marker fields untouched, so stamping our
+    values into markers makes the project self-describing — the single
+    source of truth the config-menu text fields used to duplicate.
+    Only *absent* fields are written: once stamped, the project owns
+    the value and further menu/service writes no longer reach it.
+
+    ``disc`` migrates into ``style.color`` (studio's colour picker then
+    owns it); ``ramsesCaption``/``ramsesZone`` and ``style.glyph`` /
+    ``style.ring`` / ``style.opacity`` are our own round-tripped keys.
+
+    :return: True when the project was mutated (caller should persist)
+    """
+    ent_to_dev: dict[str, dict[str, Any]] = {}
+    for dev in model.get("devices") or []:
+        for eid in [dev.get("primary_entity")] + [
+            e.get("entity_id") for e in dev.get("entities") or []
+        ]:
+            if eid:
+                ent_to_dev.setdefault(str(eid), dev)
+
+    icon_overrides: dict[str, Any] = options.get(OPTION_ICON_OVERRIDES) or {}
+    zones: dict[str, Any] = options.get(OPTION_DEVICE_ZONES) or {}
+    changed = False
+    for floor in project.get("floors") or []:
+        for marker in floor.get("markers") or []:
+            dev = next(
+                (
+                    ent_to_dev[e]
+                    for e in marker.get("entities") or []
+                    if str(e) in ent_to_dev
+                ),
+                None,
+            )
+            if dev is None:
+                continue
+            style = marker.setdefault("style", {})
+
+            icon_key = next(
+                (
+                    icon_overrides[str(key)]
+                    for key in (dev.get("primary_entity"), dev.get("device_class"))
+                    if key is not None and str(key) in icon_overrides
+                ),
+                None,
+            )
+            if icon_key and not style.get("icon"):
+                mdi = FLOORPLAN_ICON_MDI.get(str(icon_key))
+                if mdi:
+                    style["icon"] = mdi
+                    changed = True
+
+            parts = marker_style_for_key(dev, options)
+            for part, skey in _STYLE_PART_KEYS.items():
+                if part in parts and style.get(skey) is None:
+                    style[skey] = parts[part]
+                    changed = True
+
+            if "ramsesCaption" not in marker:
+                raw = caption_override_for_device(dev, options)
+                if raw is not None:
+                    marker["ramsesCaption"] = [
+                        str(item) for item in (raw if isinstance(raw, list) else [raw])
+                    ]
+                    changed = True
+
+            device_id = str(dev.get("device_id") or "")
+            if "ramsesZone" not in marker and device_id in zones:
+                studio_marker_zone(marker, zones[device_id])
+                changed = True
+
+    if "ramsesDeviceViewUrl" not in project and options.get(OPTION_DEVICE_VIEW_URL):
+        project["ramsesDeviceViewUrl"] = str(options[OPTION_DEVICE_VIEW_URL])
+        changed = True
+    return changed
 
 
 async def _build_merged_svg(
@@ -269,14 +368,32 @@ async def async_generate_bundle(
     # studio is the per-marker editor: actions/showState/label edits
     # persist in the project and are honoured by the rule builder
     marker_meta: dict[str, dict[str, Any]] | None = None
+    rules_options = options
     raw_project = await hass.async_add_executor_job(load_latest_project, hass)
     if raw_project:
         try:
-            marker_meta = studio_marker_positions(json.loads(raw_project))
+            project = json.loads(raw_project)
         except json.JSONDecodeError:
-            marker_meta = None
+            project = None
+        else:
+            # option-level overrides migrate into the project once —
+            # afterwards the marker fields own them (SSOT)
+            if migrate_overrides_to_project(project, model, options):
+                await hass.async_add_executor_job(
+                    store_latest_project, hass, json.dumps(project)
+                )
+            marker_meta = studio_marker_positions(project)
+            url = project.get("ramsesDeviceViewUrl")
+            if url:
+                # project-level field wins; the stored option is the
+                # fallback for projects without one — keep storage
+                # clean by applying it to a throwaway copy
+                rules_options = {
+                    **options,
+                    OPTION_DEVICE_VIEW_URL: str(url),
+                }
 
-    rules = build_rules(model, options, marker_meta)
+    rules = build_rules(model, rules_options, marker_meta)
     svg_text = build_elements_svg(model, options)
 
     files: dict[str, str] = {}

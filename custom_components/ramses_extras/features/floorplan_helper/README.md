@@ -107,7 +107,18 @@ that could conflict.
 | `marker.style.icon/color/size/label/showState` | icon, disc color, marker size, name caption, state text on/off |
 | `style.glyph/ring/opacity` *(our keys)* | badge inner styling — unknown fields round-trip untouched |
 | `marker.ramsesZone` *(our key)* | zone config (`areas`/`devices`/`color`) — read via `effective_zones`; `device_zones` option is fallback only |
+| `marker.ramsesCaption` *(our key)* | caption spec — `["eid|suffix", …]` wins over `caption_overrides`; `[]` hides it |
+| `project.ramsesDeviceViewUrl` *(our key)* | double-tap navigate target — wins over `device_view_url` option |
 | `room` stateRules/fill/opacity | room styling |
+
+**Option migration.** Stored `icon_overrides` / `caption_overrides` /
+`marker_style_overrides` / `device_zones` / `device_view_url` still
+work as fallback for elements without a marker, and
+`migrate_overrides_to_project` (bundle.py) stamps them into the
+project on export — *absent fields only*, so studio-owned values are
+never clobbered. `floorplan_set_icon` / `floorplan_set_device_zone`
+write both stores directly. The config menu no longer exposes the
+override text fields; per-marker settings are edited in studio.
 
 Action kinds studio can't express (`fire-dom-event`, action lists)
 are bridged through real HA services, which *are* expressible as

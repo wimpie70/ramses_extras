@@ -597,15 +597,15 @@ def studio_marker_positions(
     :param floor_name: when given, only markers on that floor are read
     :return: ``{entity_id: {"x", "y", "size", "icon", "color", "label",
         "show_state", "actions", "state_rules", "visibility",
-        "ramses_zone", "glyph", "ring", "opacity", "element_id",
-        "floor"}}``
+        "ramses_zone", "ramses_caption", "glyph", "ring", "opacity",
+        "element_id", "floor"}}``
 
     The project is the single source of truth: ``actions`` /
     ``ramsesZone`` / ``state_rules`` / style extras come straight from
     the marker so studio edits are honoured by the rule generator —
-    our tweaks only cover what studio can't express. ``ramsesZone``
-    and ``style.glyph/ring/opacity`` are our own keys; studio
-    round-trips unknown fields untouched.
+    our tweaks only cover what studio can't express. ``ramsesZone``,
+    ``ramsesCaption`` and ``style.glyph/ring/opacity`` are our own
+    keys; studio round-trips unknown fields untouched.
     """
     positions: dict[str, dict[str, Any]] = {}
     for floor in project.get("floors") or []:
@@ -629,6 +629,7 @@ def studio_marker_positions(
                         "state_rules": marker.get("stateRules") or [],
                         "visibility": marker.get("visibility"),
                         "ramses_zone": marker.get("ramsesZone"),
+                        "ramses_caption": marker.get("ramsesCaption"),
                         "glyph": style.get("glyph"),
                         "ring": style.get("ring"),
                         "opacity": style.get("opacity"),

@@ -86,6 +86,7 @@ from .mapping import (
 from .markers import (
     build_toolbar_svg,
     element_id_for_device,
+    icon_for_device,
     strip_toolbar,
 )
 from .rules import stale_managed_rule
@@ -276,6 +277,59 @@ async def _write_zone_to_project(
         )
 
 
+async def _write_icon_to_project(
+    hass: HomeAssistant, target: str, icon_key: str | None
+) -> None:
+    """Write/clear ``marker.style.icon`` in the stored studio project.
+
+    ``floorplan_set_icon`` still stores the option-level override (the
+    fallback for elements without a marker), but the marker is the
+    single source of truth — stamping the mdi name here keeps studio
+    showing the same icon we render. On clear, the marker falls back
+    to the device's domain default so studio never sees a missing
+    icon.
+
+    :param target: device id, device class, or entity id — the same
+        keys the option-level override resolves against
+    """
+    raw = await hass.async_add_executor_job(load_latest_project, hass)
+    if not raw:
+        return
+    try:
+        project = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    model = await build_floorplan_model(hass)
+    options = get_floorplan_options(_config_entry(hass))
+
+    def icon_for(dev: dict[str, Any]) -> str | None:
+        key = icon_key or icon_for_device(dev, options)
+        return FLOORPLAN_ICON_MDI.get(str(key))
+
+    targets: dict[str, str] = {}
+    for dev in model.get("devices") or []:
+        keys = {str(dev.get("device_id")), str(dev.get("device_class"))}
+        keys.add(str(dev.get("primary_entity") or ""))
+        keys.update(str(e.get("entity_id")) for e in dev.get("entities") or [])
+        if target in keys:
+            mdi = icon_for(dev)
+            for eid in keys:
+                if eid:
+                    targets[eid] = mdi or ""
+    changed = False
+    for floor in project.get("floors") or []:
+        for marker in floor.get("markers") or []:
+            ents = [str(e) for e in marker.get("entities") or []]
+            hit = next((e for e in ents if e in targets), None)
+            if hit and targets[hit]:
+                marker.setdefault("style", {})["icon"] = targets[hit]
+                changed = True
+    if changed:
+        await hass.async_add_executor_job(
+            store_latest_project, hass, json.dumps(project)
+        )
+
+
 def _config_entry(hass: HomeAssistant) -> ConfigEntry:
     """Return the integration's config entry."""
     entry = hass.data.get(DOMAIN, {}).get("config_entry")
@@ -354,6 +408,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 f"Unknown icon '{icon}'. Available: {', '.join(FLOORPLAN_ICONS)}"
             )
         section = set_icon_override(hass, _config_entry(hass), target, icon)
+        # the studio project is the source of truth — stamp the icon
+        # onto matching markers too (round-trips untouched through
+        # studio, like marker.ramsesZone)
+        await _write_icon_to_project(hass, target, icon)
         return {
             "target": target,
             "icon": icon,

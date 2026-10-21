@@ -13,10 +13,6 @@ from custom_components.ramses_extras.features.floorplan_helper import (
     mapping,
     topology,
 )
-from custom_components.ramses_extras.features.floorplan_helper.config_flow import (
-    _format_icon_overrides,
-    _parse_icon_overrides,
-)
 from custom_components.ramses_extras.features.floorplan_helper.const import (
     DEFAULT_FLOORPLAN_OPTIONS,
     DEFAULT_ICON,
@@ -570,12 +566,6 @@ class TestMapping:
         same = mapping.snapshot_diff(snap, snap)
         assert same["devices_added"] == [] and same["devices_changed"] == []
 
-    def test_parse_and_format_icon_overrides(self):
-        text = "FAN=gauge\n# comment\nbogusline\nTRV=notanicon\nCTL=thermostat"
-        parsed = _parse_icon_overrides(text)
-        assert parsed == {"FAN": "gauge", "CTL": "thermostat"}
-        assert _format_icon_overrides(parsed) == "CTL=thermostat\nFAN=gauge"
-
 
 class TestDomains:
     def test_device_class_from_id(self):
@@ -1041,6 +1031,86 @@ class TestStudioMarkerMeta:
         act = self._tap_rule(rules)["tap_action"]
         elements = act["service_data"]["toggles"][0]["elements"]
         assert elements == ["area.vide_wing"]
+
+    def test_marker_ramses_caption_is_ssot(self):
+        # marker.ramsesCaption in the project wins over caption_overrides
+        # — same SSOT rule as ramsesZone
+        dev = _device(
+            entities=[
+                {"entity_id": "sensor.32_153289_indoor_temp", "role": "temperature"},
+                {"entity_id": "sensor.32_153289_outdoor_temp", "role": "temperature"},
+            ]
+        )
+        meta = self._meta()
+        meta["sensor.32_153289_fan_rate"]["ramses_caption"] = [
+            "sensor.32_153289_outdoor_temp|!"
+        ]
+        rules = generator._build_rules(
+            _model(devices=[dev]),
+            _options(
+                caption_overrides={"32:153289": ["sensor.32_153289_indoor_temp|?"]}
+            ),
+            meta,
+        )
+        texts = [
+            r
+            for r in rules
+            if r.get("state_action", {}).get("service") == "floorplan.text_set"
+        ]
+        assert {r["entity"] for r in texts} == {"sensor.32_153289_outdoor_temp"}
+        expr = texts[0]["state_action"]["service_data"]["text"]
+        assert "outdoor_temp" in expr and "indoor_temp" not in expr
+        # empty list on the marker hides the caption outright
+        meta["sensor.32_153289_fan_rate"]["ramses_caption"] = []
+        rules = generator._build_rules(_model(devices=[dev]), _options(), meta)
+        assert not [
+            r
+            for r in rules
+            if r.get("state_action", {}).get("service") == "floorplan.text_set"
+        ]
+
+    def test_migrate_overrides_to_project(self):
+        # option-level overrides stamp into marker/project fields once;
+        # absent-only — afterwards the project owns them
+        from custom_components.ramses_extras.features.floorplan_helper.bundle import (
+            migrate_overrides_to_project,
+        )
+        from custom_components.ramses_extras.features.floorplan_helper.const import (
+            FLOORPLAN_ICON_MDI,
+        )
+
+        dev = _device()
+        marker = importer.studio_marker("sensor.32_153289_fan_rate", 10, 10, "mdi:fan")
+        project = importer.build_studio_project(
+            "P", [importer.studio_floor("bg", 640, 560, [], [marker])]
+        )
+        # seeded marker already carries an icon → only absent fields stamp
+        marker["style"].pop("icon", None)
+        opts = _options(
+            icon_overrides={"FAN": "gauge"},
+            marker_style_overrides={"32:153289": {"disc": "#111", "glyph": "#222"}},
+            caption_overrides={"32:153289": ["sensor.32_153289_fan_rate|%"]},
+            device_zones={"32:153289": {"areas": ["woonkamer"]}},
+            device_view_url="/dash/fan",
+        )
+        assert migrate_overrides_to_project(project, _model(devices=[dev]), opts)
+        assert marker["style"]["icon"] == FLOORPLAN_ICON_MDI["gauge"]
+        # disc→style.color doesn't stamp: studio's colour field already
+        # owns the disc (seeded #ffc107) — studio-owned keys only fill
+        # gaps, never clobber
+        assert marker["style"]["color"] == "#ffc107"
+        assert marker["style"]["glyph"] == "#222"
+        assert marker["ramsesCaption"] == ["sensor.32_153289_fan_rate|%"]
+        assert marker["ramsesZone"] == {"areas": ["woonkamer"]}
+        assert project["ramsesDeviceViewUrl"] == "/dash/fan"
+        # absent-only: second run is a no-op even if options change
+        opts2 = _options(
+            caption_overrides={"32:153289": ["sensor.other|x"]},
+            device_zones={"32:153289": {"areas": ["other"]}},
+        )
+        assert not migrate_overrides_to_project(project, _model(devices=[dev]), opts2)
+        assert marker["ramsesCaption"] == ["sensor.32_153289_fan_rate|%"]
+        assert marker["ramsesZone"] == {"areas": ["woonkamer"]}
 
     def test_device_view_shorthand_regenerated(self):
         # seeded double-tap bridge call is expanded from live config,
