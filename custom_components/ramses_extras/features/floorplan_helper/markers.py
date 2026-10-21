@@ -226,7 +226,7 @@ def group_devices(
     return [(k, labels[k], v) for k, v in sorted(groups.items(), key=sort_key)]
 
 
-def _standalone_icon(entity_id: str) -> str:
+def standalone_icon(entity_id: str) -> str:
     """Icon key for a non-ramses zone member, based on entity domain."""
     return _ENTITY_DOMAIN_ICONS.get(entity_id.split(".", 1)[0], DEFAULT_ICON)
 
@@ -396,13 +396,13 @@ def build_overlay_fragment(
         pos = positions.get(ent)
         if pos is not None:
             x, y, size = pos["x"], pos["y"], float(pos.get("size") or 20)
-            icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), _standalone_icon(ent))
+            icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), standalone_icon(ent))
             color = pos.get("color") or DEFAULT_MARKER_COLOR
         else:
             x, y = _dock_pos()
             unplaced += 1
             size = 20.0
-            icon_key, color = _standalone_icon(ent), DEFAULT_MARKER_COLOR
+            icon_key, color = standalone_icon(ent), DEFAULT_MARKER_COLOR
         used_icons.add(icon_key)
         body.append(
             marker_svg(
@@ -591,5 +591,6 @@ __all__ = [
     "effective_zones",
     "marker_meta_for_device",
     "short_label",
+    "standalone_icon",
     "strip_toolbar",
 ]

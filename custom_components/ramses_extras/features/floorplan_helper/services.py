@@ -87,6 +87,7 @@ from .markers import (
     build_toolbar_svg,
     element_id_for_device,
     icon_for_device,
+    standalone_icon,
     strip_toolbar,
 )
 from .rules import stale_managed_rule
@@ -843,9 +844,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 zone_toggles[zid] = zone_toggle_specs(zid, areas, bound)
 
         def _mdi(dev: dict[str, Any]) -> str:
-            key = FLOORPLAN_DEVICE_ICON_MAP.get(
-                dev.get("device_class") or "", DEFAULT_ICON
-            )
+            if dev.get("standalone"):
+                key = standalone_icon(str(dev.get("primary_entity") or ""))
+            else:
+                key = FLOORPLAN_DEVICE_ICON_MAP.get(
+                    dev.get("device_class") or "", DEFAULT_ICON
+                )
             return FLOORPLAN_ICON_MDI.get(key, "help-circle")
 
         # Merging into an existing project preserves the background image,
@@ -917,6 +921,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             for dev in model["devices"]
             if dev["device_id"] not in placed and dev.get("primary_entity")
         ]
+        # Non-ramses zone members (DIY valves, zigbee sensors…) get
+        # markers too — pseudo-devices so they flow through the same
+        # staging/merge path; their rules/overlay already key on the
+        # entity id.
+        unplaced.extend(
+            {
+                "device_id": ent,
+                "primary_entity": ent,
+                "display_name": ent.split(".", 1)[-1],
+                "standalone": True,
+            }
+            for ent in standalone_members(model, zones)
+        )
 
         # entity → device map for device-level merge dedup: an old
         # marker may bind e.g. the battery entity while the current
