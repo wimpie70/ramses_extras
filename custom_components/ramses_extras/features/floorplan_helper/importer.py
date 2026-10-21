@@ -690,12 +690,19 @@ _SVG_NS = "http://www.w3.org/2000/svg"
 
 def _svg_parse(svg_text: str) -> ET.Element:
     """Parse an SVG, registering its namespaces so serialisation keeps
-    the original prefixes (inkscape's ``sodipodi:`` etc.)."""
+    the original prefixes (inkscape's ``sodipodi:`` etc.).
+
+    The SVG namespace itself stays the *default* prefix — a source that
+    declares ``xmlns:svg=`` would otherwise serialise as ``<svg:svg>``,
+    which downstream ``</svg>`` splices (and some renderers) choke on.
+    """
     import io
 
     for _, ns in ET.iterparse(io.BytesIO(svg_text.encode()), events=["start-ns"]):
         prefix, uri = str(ns[0] or ""), str(ns[1])
-        ET.register_namespace(prefix, uri)
+        if uri != _SVG_NS:
+            ET.register_namespace(prefix, uri)
+    ET.register_namespace("", _SVG_NS)
     return ET.fromstring(svg_text)
 
 
@@ -780,7 +787,8 @@ def combine_svgs(
                 f"Floor '{name}': {len(renamed)} colliding ids renamed → {name}.<id>"
             )
         group = ET.Element(
-            "g", {"id": f"floor.{name}", "transform": f"translate({off_i:g},0)"}
+            f"{{{_SVG_NS}}}g",
+            {"id": f"floor.{name}", "transform": f"translate({off_i:g},0)"},
         )
         group.extend(list(root))
         merged.append(group)

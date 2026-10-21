@@ -200,8 +200,11 @@ def set_element_style(
 
 
 def merge_svg_overlay(svg_text: str, fragment: str) -> str:
-    """Splice an overlay fragment into an SVG document before ``</svg>``."""
-    idx = svg_text.rfind("</svg>")
+    """Splice an overlay fragment into an SVG document before ``</svg>``
+    — tolerates a namespaced root (``</svg:svg>`` etc.)."""
+    idx = -1
+    for m in re.finditer(r"</svg(?::[\w.-]+)?\s*>", svg_text):
+        idx = m.start()
     if idx == -1:
         return svg_text + "\n" + fragment
     return svg_text[:idx] + fragment + "\n" + svg_text[idx:]
