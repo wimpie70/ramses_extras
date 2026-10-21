@@ -675,7 +675,13 @@ class TestGetZoneDemandRegistry:
         registry.clear_demand("18:000730", "office", DemandSource.HUMIDITY)
 
     def test_schedule_actuation_with_existing_handle(self, registry):
-        """Test that existing handle is cancelled when scheduling new actuation."""
+        """Test a pending handle absorbs the update instead of being reset.
+
+        The actuation cycle evaluates the latest demand/veto state when it
+        fires, so a scheduled call already covers newer signals — resetting
+        the timer on every signal would starve actuation under a sustained
+        signal stream (issue 292).
+        """
         import asyncio
 
         # Mock the event loop
@@ -707,5 +713,8 @@ class TestGetZoneDemandRegistry:
             has_demand=True,
         )
 
-        # Existing handle should have been cancelled
-        existing_handle.cancel.assert_called_once()
+        # The pending handle is kept (coalesced), not cancelled/re-armed,
+        # and no second timer is scheduled
+        existing_handle.cancel.assert_not_called()
+        call_later.assert_not_called()
+        assert registry._actuation_debounce_handles["18:000730"] is existing_handle
