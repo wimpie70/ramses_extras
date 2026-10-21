@@ -413,246 +413,6 @@ class RamsesFloorplanActions extends HTMLElement {
     return null;
   }
 
-  _fiberCommit(f, label) {
-    // Scan a fiber's hook list for the first function-valued hook — in
-    // studio's panels that is useStore((s) => s.commit).
-    let h = f.memoizedState;
-    let hi = 0;
-    while (h) {
-      const v = h.memoizedState;
-      dlog(`  ${label} hook[${hi}] type=${typeof v}`,
-        v && typeof v === 'object' ? Object.keys(v) : v);
-      const cand =
-        typeof v === 'function' ? v
-        : v && typeof v.value === 'function' ? v.value
-        : null;
-      if (cand) {
-        dlog(`commit candidate at ${label} hook[${hi}]`);
-        return cand;
-      }
-      h = h.next;
-      hi += 1;
-    }
-    return null;
-  }
-
-  _studioCommit() {
-    // Studio persists edits via store.commit(recipe) (immer produce →
-    // set → re-render + autosave + undo history). Two ways to lift the
-    // function: LayerPanel (.fp-layers — always mounted, its hooks are
-    // [project, commit]), then MarkerEditor (single-selection only).
-    const root = this._studioRoot();
-    if (!root) return null;
-
-    const layers = root.querySelector('.fp-layers');
-    if (layers) {
-      let f = this._fiberOf(layers);
-      let hops = 0;
-      while (f && hops++ < 15) {
-        if (f.memoizedState) {
-          const cand = this._fiberCommit(f, 'layers');
-          if (cand) return cand;
-        }
-        f = f.return;
-      }
-    } else {
-      dwarn('.fp-layers anchor not found');
-    }
-
-    for (const el of root.querySelectorAll('input, select, button, div')) {
-      let f = this._fiberOf(el);
-      let hops = 0;
-      while (f && hops++ < 40) {
-        const p = f.memoizedProps;
-        if (p && p.marker && p.floor && !p.screenToDoc) {
-          dlog('MarkerEditor fiber found, scanning hooks…');
-          const cand = this._fiberCommit(f, 'editor');
-          if (cand) return cand;
-        }
-        f = f.return;
-      }
-    }
-    dwarn('no commit found');
-    return null;
-  }
-
-  _patchMarkerDom(g, size) {
-    for (const child of g.children) {
-      const tag = child.tagName.toLowerCase();
-      if (tag === 'circle') {
-        if (child.getAttribute('stroke-dasharray')) child.setAttribute('r', size * 0.72);
-        else if (child.getAttribute('fill') === 'rgba(20,24,33,0.55)') child.setAttribute('r', size * 0.5);
-        else if (child.getAttribute('stroke') === '#fff') child.setAttribute('r', size * 0.4);
-      } else if (tag === 'path') {
-        child.setAttribute('transform', `translate(${-size * 0.35} ${-size * 0.35}) scale(${(size * 0.7) / 24})`);
-      } else if (tag === 'image') {
-        child.setAttribute('x', -size / 2);
-        child.setAttribute('y', -size / 2);
-        child.setAttribute('width', size);
-        child.setAttribute('height', size);
-      } else if (tag === 'g') {
-        child.setAttribute('transform', `scale(${size / 24})`);
-      } else if (tag === 'text') {
-        child.setAttribute('y', size * 0.5 + 14);
-      }
-    }
-  }
-
-  async _resizeSelected() {
-    const size = Number(this._tweak('marker_size') || 20);
-    const sel = this._studioSelectedMarkers();
-    if (!this._studioRoot()) {
-      this._status('Studio card not found on this view');
-      return;
-    }
-    if (!sel.length) {
-      const layer = this._studioRoot().querySelector('g[data-layer="entities"]');
-      const total = layer ? layer.children.length : 0;
-      this._status(
-        `No selected markers found (${total} marker(s) on canvas). ` +
-          'In studio: pick the select tool in edit mode and click a marker — a dashed blue ring appears around the selection.'
-      );
-      return;
-    }
-
-    // Collect the marker ids behind the selected <g> elements.
-    const ids = new Set();
-    for (const m of sel) {
-      const marker = this._fiberMarker(m.el);
-      dlog('fiber marker for selected g:', marker && { id: marker.id, size: marker.style && marker.style.size });
-      if (marker && marker.id) ids.add(marker.id);
-    }
-
-    // Preferred path: studio's own commit() (immer produce -> re-render
-    // -> autosave -> undo history). Available while a single marker is
-    // selected (MarkerEditor mounted in the inspector).
-    const commit = this._studioCommit();
-    dlog('commit:', typeof commit, '| ids:', [...ids]);
-    if (commit && ids.size) {
-      try {
-        commit((p) => {
-          for (const floor of p.floors || []) {
-            for (const mk of floor.markers || []) {
-              if (ids.has(mk.id)) mk.style.size = size;
-            }
-          }
-        });
-        this._status(
-          `Resized ${ids.size} selected marker(s) to ${size}px via studio's own commit — re-rendered, autosaved, undo-able`
-        );
-        return;
-      } catch (e) {
-        dwarn('commit threw:', e);
-        this._status(`commit failed (${e.message || e}), falling back to DOM+IDB patch…`);
-      }
-    }
-
-    // Fallback: write sizes into the IndexedDB project + live DOM patch
-    // (studio's in-memory copy may overwrite on its next autosave).
-    for (const m of sel) this._patchMarkerDom(m.el, size);
-    const id = this._selectedProjectId();
-    if (id) {
-      try {
-        const db = await openFpDb();
-        const project = await idbReq(db.transaction('projects').objectStore('projects').get(id));
-        if (project) {
-          for (const floor of project.floors || []) {
-            for (const mk of floor.markers || []) {
-              if (ids.has(mk.id) || sel.some((s) => Math.abs(mk.x - s.x) < 0.5 && Math.abs(mk.y - s.y) < 0.5)) {
-                mk.style.size = size;
-              }
-            }
-          }
-          await idbReq(db.transaction('projects', 'readwrite').objectStore('projects').put(project));
-          db.close();
-          this._status(
-            `Resized ${sel.length} selected marker(s) to ${size}px — patched DOM + project storage` +
-              ` (select a single marker to also drive studio's own commit for live persistence)`
-          );
-          return;
-        }
-        db.close();
-      } catch { /* fall through */ }
-    }
-    this._status(`Resized ${sel.length} selected marker(s) to ${size}px (DOM only)`);
-  }
-
-  async _recolorSelectedRooms() {
-    const fill = this._tweak('room_fill') || '#22c55e';
-    const opRaw = this._tweak('room_opacity');
-    const opacity = opRaw === undefined || opRaw === '' ? null : Number(opRaw);
-    const root = this._studioRoot();
-    if (!root) {
-      this._status('Studio card not found on this view');
-      return;
-    }
-    const ids = this._studioSelectedRoomIds();
-    if (!ids.size) {
-      const total = root.querySelectorAll('g[data-layer="rooms"] g[data-room]').length;
-      this._status(
-        `No selected rooms found (${total} rooms on canvas). In studio edit mode: ` +
-          'select tool, click a room (shift-click for several) — a dashed blue outline marks the selection.'
-      );
-      return;
-    }
-    const label = `${fill}${opacity !== null ? ` @ ${opacity}` : ''}`;
-
-    const commit = this._studioCommit();
-    if (commit) {
-      try {
-        commit((p) => {
-          for (const floor of p.floors || []) {
-            for (const room of floor.rooms || []) {
-              if (ids.has(room.id)) {
-                room.fill = fill;
-                if (opacity !== null) room.opacity = opacity;
-              }
-            }
-          }
-        });
-        this._status(
-          `Recolored ${ids.size} selected room(s) → ${label} via studio's own commit — re-rendered, autosaved, undo-able`
-        );
-        return;
-      } catch (e) {
-        dwarn('commit threw:', e);
-        this._status(`commit failed (${e.message || e}), falling back to DOM+IDB patch…`);
-      }
-    }
-
-    // Fallback: patch the fill path live + write the stored project.
-    for (const g of root.querySelectorAll('g[data-layer="rooms"] g[data-room]')) {
-      if (!ids.has(g.getAttribute('data-room'))) continue;
-      const path = g.querySelector(':scope > path');
-      if (path) {
-        path.setAttribute('fill', fill);
-        if (opacity !== null) path.setAttribute('fill-opacity', String(opacity));
-      }
-    }
-    const pid = this._selectedProjectId();
-    if (pid) {
-      try {
-        const db = await openFpDb();
-        const project = await idbReq(db.transaction('projects').objectStore('projects').get(pid));
-        if (project) {
-          for (const floor of project.floors || []) {
-            for (const room of floor.rooms || []) {
-              if (ids.has(room.id)) {
-                room.fill = fill;
-                if (opacity !== null) room.opacity = opacity;
-              }
-            }
-          }
-          await idbReq(db.transaction('projects', 'readwrite').objectStore('projects').put(project));
-        }
-        db.close();
-      } catch { /* fall through */ }
-    }
-    this._status(
-      `Recolored ${ids.size} selected room(s) → ${label} (DOM + stored project; studio commit unavailable)`
-    );
-  }
-
   _selectedProjectId() {
     const sel = this.shadowRoot.getElementById('project');
     return sel && sel.value ? sel.value : null;
@@ -1217,10 +977,8 @@ class RamsesFloorplanActions extends HTMLElement {
         </div>
         <div class="tweaks" id="tweaks" style="display:none">
           <div class="row">
-            <label for="tw-size" title="Icon size in px — applies immediately to markers selected in studio, and to markers Seed generates">Marker icon size</label>
+            <label for="tw-size" title="Icon size in px — applied to markers Seed generates, and to all markers on Store/Export when 'Normalize icon sizes' is on">Marker icon size</label>
             <input id="tw-size" type="number" min="8" max="80" placeholder="20">
-            <button id="b-resize" class="secondary"
-              title="Apply the tweak icon size to the markers currently selected inside studio (edit mode). Patches the studio canvas live and persists via studio's own autosave">Resize ◉ selected</button>
           </div>
           <div class="row">
             <label for="tw-name" title="Name given to the project Seed writes into studio">Seed project name</label>
@@ -1235,12 +993,8 @@ class RamsesFloorplanActions extends HTMLElement {
             <input id="tw-norm" type="checkbox">
           </div>
           <div class="row">
-            <label for="tw-fill" title="Fill colour applied to rooms selected in studio via 'Recolor ◧ rooms' — e.g. mark every room a WTW ventilates">Room fill</label>
+            <label for="tw-fill" title="Highlight colour used when assigning a zone ('◧ rooms → zone' / '◉ markers → zone') — tapping the device marker lights up its rooms and bound markers in this colour">Zone colour</label>
             <input id="tw-fill" type="color" style="width:44px;padding:0;height:24px">
-            <label for="tw-op" title="Fill opacity 0–1; leave empty to keep each room's current opacity">opacity</label>
-            <input id="tw-op" type="number" min="0" max="1" step="0.05" style="width:64px" placeholder="keep">
-            <button id="b-recolor" class="secondary"
-              title="Apply the tweak room colour to the rooms currently selected inside studio (edit mode, shift-click for several) — e.g. colour every room a device serves">Recolor ◧ rooms</button>
           </div>
           <div class="row">
             <label for="zone-dev" title="Device whose 'zone' (rooms it serves) you are editing — existing zones shown after ▸">Zone device</label>
@@ -1291,8 +1045,6 @@ class RamsesFloorplanActions extends HTMLElement {
     $('b-push').onclick = () => this._run(() => this._pushStored());
     $('b-export').onclick = () => this._run(() => this._export());
     $('b-sync').onclick = () => this._run(() => this._sync());
-    $('b-resize').onclick = () => this._run(() => this._resizeSelected());
-    $('b-recolor').onclick = () => this._run(() => this._recolorSelectedRooms());
     $('b-tweaks').onclick = () => {
       const t = $('tweaks');
       t.style.display = t.style.display === 'none' ? 'block' : 'none';
@@ -1309,14 +1061,10 @@ class RamsesFloorplanActions extends HTMLElement {
     twNorm.checked = this._tweak('normalize_sizes') !== false;
     twSize.onchange = () => {
       this._saveTweak('marker_size', twSize.value ? Number(twSize.value) : undefined);
-      // Live-apply: if markers are selected in studio right now, resize
-      // them immediately so the field acts like studio's own size input.
-      if (twSize.value && this._studioSelectedMarkers().length) {
-        this._run(() => this._resizeSelected());
-      } else if (twSize.value) {
+      if (twSize.value) {
         this._status(
-          `Icon size set to ${twSize.value}px — applied to seeded markers and to 'Resize ◉ selected'. ` +
-            'Select markers in studio to resize them now.'
+          `Icon size set to ${twSize.value}px — applied to seeded markers ` +
+            "and to all markers on Store/Export while 'Normalize icon sizes' is on."
         );
       }
     };
@@ -1325,17 +1073,8 @@ class RamsesFloorplanActions extends HTMLElement {
     twNorm.onchange = () => this._saveTweak('normalize_sizes', twNorm.checked);
 
     const twFill = $('tw-fill');
-    const twOp = $('tw-op');
     twFill.value = this._tweak('room_fill') || '#22c55e';
-    twOp.value = this._tweak('room_opacity') ?? '';
-    twFill.onchange = () => {
-      this._saveTweak('room_fill', twFill.value);
-      if (this._studioSelectedRoomIds().size) {
-        this._run(() => this._recolorSelectedRooms());
-      }
-    };
-    twOp.onchange = () =>
-      this._saveTweak('room_opacity', twOp.value === '' ? undefined : Number(twOp.value));
+    twFill.onchange = () => this._saveTweak('room_fill', twFill.value);
 
     // device zones: "◧ rooms → zone" + watch toggle + device panel close
     $('b-zone').onclick = () => this._run(() => this._assignZone());
