@@ -662,6 +662,31 @@ class RamsesFloorplanActions extends HTMLElement {
         (z ? ` ▸ ${(z.areas || []).join(',')}` : '');
       sel.appendChild(o);
     }
+    this._fillZoneColor();
+  }
+
+  _fillZoneColor() {
+    const sel = this.shadowRoot.getElementById('zone-dev');
+    const inp = this.shadowRoot.getElementById('zone-color');
+    if (!sel || !inp) return;
+    const z = (((this._fpConfig || {}).device_zones || {})[sel.value]) || {};
+    inp.value = z.color || '#22c55e';
+    inp.disabled = !sel.value;
+  }
+
+  async _setZoneColor(color) {
+    const devSel = this.shadowRoot.getElementById('zone-dev');
+    const devId = devSel && devSel.value;
+    if (!devId) return;
+    const zone = (((this._fpConfig || {}).device_zones || {})[devId]) || {};
+    await this._call('floorplan_set_device_zone', {
+      device_id: devId,
+      areas: zone.areas || [],
+      devices: zone.devices || [],
+      color,
+    });
+    await this._fetchConfig();
+    this._status(`Zone ${devId}: colour ${color} — click its marker in studio to preview`);
   }
 
   async _assignZone() {
@@ -691,7 +716,8 @@ class RamsesFloorplanActions extends HTMLElement {
       this._status('Selected rooms resolve to no HA areas');
       return;
     }
-    const color = this._tweak('room_fill') || undefined;
+    const colorInput = this.shadowRoot.getElementById('zone-color');
+    const color = (colorInput && colorInput.value) || undefined;
     const existing =
       (((this._fpConfig || {}).device_zones || {})[devId]) || {};
     await this._call('floorplan_set_device_zone', {
@@ -740,11 +766,12 @@ class RamsesFloorplanActions extends HTMLElement {
         }
       }
     }
+    const colorInput = this.shadowRoot.getElementById('zone-color');
     await this._call('floorplan_set_device_zone', {
       device_id: devId,
       areas: zone.areas || [],
       devices: [...ids],
-      color: zone.color || this._tweak('room_fill') || undefined,
+      color: zone.color || (colorInput && colorInput.value) || undefined,
     });
     await this._fetchConfig();
     this._status(
@@ -1032,32 +1059,23 @@ class RamsesFloorplanActions extends HTMLElement {
         </div>
         <div class="tweaks" id="tweaks" style="display:none">
           <div class="row">
-            <label for="tw-size" title="Icon size in px — applied to markers Seed generates, and to all markers on Store/Export when 'Normalize icon sizes' is on">Marker icon size</label>
-            <input id="tw-size" type="number" min="8" max="80" placeholder="20">
-          </div>
-          <div class="row">
-            <label for="tw-name" title="Name given to the project Seed writes into studio">Seed project name</label>
-            <input id="tw-name" type="text" placeholder="Floorplan">
-          </div>
-          <div class="row">
             <label for="tw-sync" title="After Pull (or a dropped file), also run area sync automatically">Sync areas on pull</label>
             <input id="tw-sync" type="checkbox">
           </div>
           <div class="row">
-            <label for="tw-norm" title="On Pull, set every marker's icon size in the project to the size above — also writes it back to studio so manually placed markers (studio default 40) get fixed">Normalize icon sizes on pull</label>
+            <label for="tw-norm" title="On Pull, set every marker's icon size in the project to marker_size (yaml config, default 20) — also writes it back to studio so manually placed markers (studio default 40) get fixed">Normalize icon sizes on pull</label>
             <input id="tw-norm" type="checkbox">
           </div>
           <div class="row">
-            <label for="tw-fill" title="Highlight colour used when assigning a zone ('◧ rooms → zone' / '◉ markers → zone') — tapping the device marker lights up its rooms and bound markers in this colour">Zone colour</label>
-            <input id="tw-fill" type="color" style="width:44px;padding:0;height:24px">
-          </div>
-          <div class="row">
-            <label for="zone-dev" title="Device whose 'zone' (rooms it serves) you are editing — existing zones shown after ▸">Zone device</label>
-            <select id="zone-dev" style="max-width:260px"></select>
+            <label for="zone-dev" title="A zone = the rooms a device serves + the extra markers bound to it. Tap the device's marker in studio → its rooms and bound markers light up in the zone colour.">Zone →</label>
+            <select id="zone-dev" style="max-width:220px"
+              title="Device whose zone you are editing — its current zone areas are shown after ▸"></select>
+            <input id="zone-color" type="color" style="width:36px;padding:0;height:24px"
+              title="This zone's highlight colour — stored on the zone itself, applies on change">
             <button id="b-zone" class="secondary"
-              title="Store the rooms currently selected in studio (shift-click) as this device's zone — clicking its marker then highlights them">◧ rooms → zone</button>
+              title="1) pick the device, 2) shift-click its rooms in studio, 3) click — stores the selected rooms as the zone">◧ rooms → zone</button>
             <button id="b-zonedev" class="secondary"
-              title="Bind the markers currently selected in studio (shift-click) to this device — they highlight when its marker is tapped. Works for non-ramses entities too (DIY valves, zigbee sensors); devices already bound via the ramses schema need no entry">◉ markers → zone</button>
+              title="1) pick the device, 2) shift-click markers in studio, 3) click — binds them to the zone (they highlight on tap too). Works for non-ramses entities (DIY valves, zigbee sensors); ramses devices in the schema need no entry">◉ markers → zone</button>
           </div>
           <div class="row">
             <label for="tw-zonewatch" title="When a marker is selected in studio, outline the rooms its device serves (device_zones config); double-click a marker to open the device card">Highlight zones on select</label>
@@ -1106,32 +1124,17 @@ class RamsesFloorplanActions extends HTMLElement {
     };
 
     // tweaks panel — values persist in localStorage, override YAML config
-    const twSize = $('tw-size');
-    const twName = $('tw-name');
     const twSync = $('tw-sync');
     const twNorm = $('tw-norm');
-    twSize.value = this._tweak('marker_size') ?? '';
-    twName.value = this._tweak('seed_name') ?? '';
     twSync.checked = this._tweak('sync_on_pull') !== false;
     twNorm.checked = this._tweak('normalize_sizes') !== false;
-    twSize.onchange = () => {
-      this._saveTweak('marker_size', twSize.value ? Number(twSize.value) : undefined);
-      if (twSize.value) {
-        this._status(
-          `Icon size set to ${twSize.value}px — applied to seeded markers ` +
-            "and to all markers on Store/Export while 'Normalize icon sizes' is on."
-        );
-      }
-    };
-    twName.onchange = () => this._saveTweak('seed_name', twName.value || undefined);
     twSync.onchange = () => this._saveTweak('sync_on_pull', twSync.checked);
     twNorm.onchange = () => this._saveTweak('normalize_sizes', twNorm.checked);
 
-    const twFill = $('tw-fill');
-    twFill.value = this._tweak('room_fill') || '#22c55e';
-    twFill.onchange = () => this._saveTweak('room_fill', twFill.value);
-
-    // device zones: "◧ rooms → zone" + watch toggle + device panel close
+    // zone row: colour is stored on the zone itself (SSOT), shown and
+    // edited for the device picked in the dropdown
+    $('zone-dev').onchange = () => this._fillZoneColor();
+    $('zone-color').onchange = (e) => this._run(() => this._setZoneColor(e.target.value));
     $('b-zone').onclick = () => this._run(() => this._assignZone());
     $('b-zonedev').onclick = () => this._run(() => this._assignZoneDevices());
     const twWatch = $('tw-zonewatch');
