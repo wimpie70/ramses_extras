@@ -25,6 +25,7 @@ from .const import (
     OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
     OPTION_ICON_OVERRIDES,
+    OPTION_MARKER_STYLE_OVERRIDES,
     OPTION_PLANNER_URL,
     OPTION_TOOLBAR_ENABLED,
     TOOLBAR_ELEMENT_EDITOR,
@@ -32,6 +33,7 @@ from .const import (
     TOOLBAR_ELEMENT_IMPORT,
     TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
+    split_top_level_commas,
 )
 from .domains import get_domain
 from .importer import rooms_from_svg
@@ -138,6 +140,42 @@ def icon_for_device(device: dict[str, Any], options: dict[str, Any]) -> str:
     return get_domain(device).default_icon or FLOORPLAN_DEVICE_ICON_MAP.get(
         device_class, DEFAULT_ICON
     )
+
+
+def parse_marker_style(raw: Any) -> dict[str, str]:
+    """Normalise a marker-style override value into ``{part: colour}``.
+
+    Accepts the stored dict form or the config-menu string
+    ``"disc:#22c55e,glyph:#fff,ring:rgba(0,0,0,0.4),opacity:0.8"``.
+    Unknown parts are dropped.
+    """
+    if isinstance(raw, dict):
+        return {p: str(v) for p, v in raw.items() if p in _STYLE_PARTS and v}
+    out: dict[str, str] = {}
+    for item in split_top_level_commas(str(raw or "")):
+        part, _, value = item.strip().partition(":")
+        if part.strip() in _STYLE_PARTS and value.strip():
+            out[part.strip()] = value.strip()
+    return out
+
+
+_STYLE_PARTS = ("disc", "glyph", "ring", "opacity")
+
+
+def marker_style_for_key(
+    device: dict[str, Any], options: dict[str, Any]
+) -> dict[str, str]:
+    """Badge style overrides for a device — device id → class →
+    primary entity, same precedence as icon/caption overrides."""
+    overrides: dict[str, Any] = options.get(OPTION_MARKER_STYLE_OVERRIDES) or {}
+    for key in (
+        device.get("device_id"),
+        device.get("device_class"),
+        device.get("primary_entity"),
+    ):
+        if key is not None and str(key) in overrides:
+            return parse_marker_style(overrides[str(key)])
+    return {}
 
 
 def apply_area_overrides(model: dict[str, Any], options: dict[str, Any]) -> None:
@@ -292,6 +330,7 @@ def build_overlay_fragment(
                 label=short_label(dev),
                 color=color,
                 text_color=DEFAULT_TEXT_COLOR,
+                style=marker_style_for_key(dev, options),
             )
         )
 
@@ -319,6 +358,10 @@ def build_overlay_fragment(
                 ),
                 color=color,
                 text_color=DEFAULT_TEXT_COLOR,
+                # standalone members have no device — entity_id is the key
+                style=parse_marker_style(
+                    (options.get(OPTION_MARKER_STYLE_OVERRIDES) or {}).get(ent)
+                ),
             )
         )
     if unplaced:

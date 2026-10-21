@@ -29,11 +29,13 @@ from .const import (
     OPTION_CUSTOM_SVG_PATH,
     OPTION_EDITOR_URL,
     OPTION_ICON_OVERRIDES,
+    OPTION_MARKER_STYLE_OVERRIDES,
     OPTION_PLANNER_URL,
     OPTION_SVG_MODE,
     OPTION_TOOLBAR_ENABLED,
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
+    split_top_level_commas,
 )
 from .mapping import get_floorplan_options, persist_floorplan_options
 
@@ -86,6 +88,41 @@ def _format_caption_overrides(overrides: dict[str, list[str]]) -> str:
     return "\n".join(f"{k}={','.join(v)}" for k, v in sorted(overrides.items()))
 
 
+_STYLE_PARTS = ("disc", "glyph", "ring", "opacity")
+
+
+def _parse_marker_style_overrides(text: str) -> dict[str, dict[str, str]]:
+    """Parse ``KEY=part:colour[,part:colour]`` lines into overrides.
+
+    KEY is a ramses device id, device class, or entity_id — same
+    precedence as icon/caption overrides. Parts: ``disc`` (badge fill),
+    ``glyph`` (icon colour), ``ring`` (always-on border), ``opacity``
+    (whole marker). Colours may carry alpha — ``rgba()``/8-digit
+    hex/``none``.
+    """
+    overrides: dict[str, dict[str, str]] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        parts: dict[str, str] = {}
+        for item in split_top_level_commas(value):
+            part, _, colour = item.strip().partition(":")
+            if part.strip() in _STYLE_PARTS and colour.strip():
+                parts[part.strip()] = colour.strip()
+        if key.strip() and parts:
+            overrides[key.strip()] = parts
+    return overrides
+
+
+def _format_marker_style_overrides(overrides: dict[str, dict[str, str]]) -> str:
+    return "\n".join(
+        f"{k}={','.join(f'{p}:{v}' for p, v in sorted(vv.items()))}"
+        for k, vv in sorted(overrides.items())
+    )
+
+
 async def async_step_floorplan_helper_config(
     flow: Any, user_input: dict[str, Any] | None = None
 ) -> Any:
@@ -109,6 +146,9 @@ async def async_step_floorplan_helper_config(
         )
         section[OPTION_CAPTION_OVERRIDES] = _parse_caption_overrides(
             user_input.get("caption_overrides") or ""
+        )
+        section[OPTION_MARKER_STYLE_OVERRIDES] = _parse_marker_style_overrides(
+            user_input.get("marker_style_overrides") or ""
         )
         section[OPTION_TOOLBAR_ENABLED] = bool(user_input.get("toolbar_enabled", True))
         section[OPTION_EDITOR_URL] = (
@@ -141,6 +181,13 @@ async def async_step_floorplan_helper_config(
         "`32:153289=sensor.32_153289_indoor_temp|°,"
         "sensor.32_153289_outdoor_temp|°`. An empty value hides the "
         "caption.\n\n"
+        "Marker style overrides: badge part colours — one "
+        "`TARGET=part:colour[,part:colour]` per line, same TARGET "
+        "rules. Parts: `disc` (badge fill), `glyph` (icon colour), "
+        "`ring` (always-on border — status/zone rings still override "
+        "it), `opacity` (whole marker). Alpha works everywhere: "
+        "`ring:rgba(0,0,0,0.4)`, `disc:#22c55e80`, `glyph:none`. E.g. "
+        "`FAN=disc:#22c55e,glyph:#ffffff,ring:#15803d`.\n\n"
         "Tool URLs open from the in-SVG toolbar buttons. Point them at "
         "vendored copies or iframe panel paths (`/...` navigates inside "
         "HA instead of a new tab)."
@@ -182,6 +229,12 @@ async def async_step_floorplan_helper_config(
                 "caption_overrides",
                 default=_format_caption_overrides(
                     options.get(OPTION_CAPTION_OVERRIDES, {})
+                ),
+            ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+            vol.Optional(
+                "marker_style_overrides",
+                default=_format_marker_style_overrides(
+                    options.get(OPTION_MARKER_STYLE_OVERRIDES, {})
                 ),
             ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
             vol.Optional(

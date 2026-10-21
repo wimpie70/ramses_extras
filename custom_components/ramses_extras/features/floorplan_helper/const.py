@@ -64,6 +64,10 @@ OPTION_ICON_OVERRIDES = "icon_overrides"
 # ``|suffix``, e.g. ``sensor.x|°``). Wins over the domain's
 # caption_groups; an empty list disables the caption.
 OPTION_CAPTION_OVERRIDES = "caption_overrides"
+# KEY={disc:color,glyph:color,ring:color,opacity:f} — badge part colours
+# per device id / device class / primary entity (caption precedence);
+# CSS colours incl. alpha: "#22c55e", "#22c55e80", "rgba(…)", "none"
+OPTION_MARKER_STYLE_OVERRIDES = "marker_style_overrides"
 OPTION_ELEMENT_BINDINGS = "element_bindings"
 OPTION_AREA_OVERRIDES = "area_overrides"
 OPTION_EXTRA_RULES = "extra_rules"
@@ -133,6 +137,24 @@ GENERATED_RULE_TOKENS = (
 )
 
 
+def split_top_level_commas(value: str) -> list[str]:
+    """Split on commas at parenthesis depth 0 — ``rgba(0,0,0,0.4)``
+    stays one item. Shared by the marker-style parsers."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(value):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            parts.append(value[start:i])
+            start = i + 1
+    parts.append(value[start:])
+    return parts
+
+
 def is_generated_rule(rule: Any) -> bool:
     """True for rules emitted by the generator — tagged (``rx_gen``) or
     matching the legacy generated signature (untagged rules imported
@@ -153,6 +175,7 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_CUSTOM_SVG_PATH: "",
     OPTION_ICON_OVERRIDES: {},
     OPTION_CAPTION_OVERRIDES: {},
+    OPTION_MARKER_STYLE_OVERRIDES: {},
     OPTION_ELEMENT_BINDINGS: {},
     OPTION_AREA_OVERRIDES: {},
     OPTION_EXTRA_RULES: [],
@@ -344,6 +367,7 @@ __all__ = [
     "OPTION_AREA_OVERRIDES",
     "OPTION_BACKGROUND",
     "OPTION_CAPTION_OVERRIDES",
+    "OPTION_MARKER_STYLE_OVERRIDES",
     "OPTION_CUSTOM_SVG_PATH",
     "OPTION_DEVICE_VIEW_URL",
     "OPTION_DEVICE_ZONES",
@@ -367,4 +391,5 @@ __all__ = [
     "TOOLBAR_ELEMENT_UPLOAD",
     "is_generated_rule",
     "load_feature",
+    "split_top_level_commas",
 ]

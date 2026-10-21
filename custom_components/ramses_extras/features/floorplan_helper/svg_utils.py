@@ -84,6 +84,7 @@ def marker_svg(
     label: str = "",
     color: str,
     text_color: str,
+    style: dict[str, str] | None = None,
 ) -> str:
     """Emit one positioned device marker group — badge style.
 
@@ -105,7 +106,18 @@ def marker_svg(
     Caption font sizes scale with the marker ``size`` (studio-resized
     markers keep proportional text); the rx-name/rx-state CSS classes
     remain the fallback for elements that don't set font-size.
+
+    ``style`` overrides badge parts — ``disc`` (fill colour, default
+    ``color``), ``glyph`` (icon colour, default ``#f8fafc``), ``ring``
+    (always-on border stroke, default transparent so only rx-* status
+    classes colour it), ``opacity`` (whole marker). Any CSS colour
+    including alpha forms (``rgba()``/8-digit hex) or ``none``.
     """
+    st = style or {}
+    disc_fill = st.get("disc") or color
+    glyph_fill = st.get("glyph") or "#f8fafc"
+    ring_stroke = st.get("ring") or "transparent"
+    opacity = st.get("opacity")
     disc_r = size * 0.62
     icon = size * 0.8
     name_fs = max(6.0, size * 0.45)
@@ -120,14 +132,17 @@ def marker_svg(
     return (
         f'<g id="{xml_id(element_id)}" '
         f'transform="translate({x:.1f},{y:.1f})" '
-        f'fill="{color}" color="{text_color}">'
-        f'<circle class="rx-disc" r="{disc_r:.1f}" fill="{color}"/>'
-        f'<circle class="rx-ring" r="{disc_r:.1f}" fill="none" '
-        f'stroke-width="{max(1.5, size * 0.07):.1f}"/>'
-        f'<g class="rx-rotor">'
-        f'<use href="#icon.{icon_key}" fill="#f8fafc" '
-        f'x="{-icon / 2:.1f}" y="{-icon / 2:.1f}" '
-        f'width="{icon:.0f}" height="{icon:.0f}"/></g>'
+        f'fill="{color}" color="{text_color}"'
+        + (f' opacity="{xml_text(opacity)}"' if opacity else "")
+        + ">"
+        + f'<circle class="rx-disc" r="{disc_r:.1f}" fill="{xml_text(disc_fill)}"/>'
+        + f'<circle class="rx-ring" r="{disc_r:.1f}" fill="none" '
+        + f'stroke="{xml_text(ring_stroke)}" '
+        + f'stroke-width="{max(1.5, size * 0.07):.1f}"/>'
+        + '<g class="rx-rotor">'
+        + f'<use href="#icon.{icon_key}" fill="{xml_text(glyph_fill)}" '
+        + f'x="{-icon / 2:.1f}" y="{-icon / 2:.1f}" '
+        + f'width="{icon:.0f}" height="{icon:.0f}"/></g>'
         f"{name}"
         f'<text class="rx-state" x="0" y="{disc_r + state_fs - 2:.0f}" '
         f'font-size="{state_fs:.0f}" '

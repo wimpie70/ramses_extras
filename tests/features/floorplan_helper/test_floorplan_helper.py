@@ -795,3 +795,72 @@ class TestCaption:
         ]
         assert len(texts) == 1
         assert " ppm" in texts[0]["state_action"]["service_data"]["text"]
+
+
+class TestMarkerStyle:
+    def test_parse_and_defaults(self):
+        from custom_components.ramses_extras.features.floorplan_helper.markers import (
+            marker_style_for_key,
+            parse_marker_style,
+        )
+
+        assert parse_marker_style("disc:#22c55e,glyph:#fff,ring:rgba(0,0,0,0.4)") == {
+            "disc": "#22c55e",
+            "glyph": "#fff",
+            "ring": "rgba(0,0,0,0.4)",
+        }
+        assert parse_marker_style("bogus:#000") == {}
+        assert parse_marker_style({"disc": "#000", "junk": "x"}) == {"disc": "#000"}
+        assert marker_style_for_key(_device(), _options()) == {}
+
+    def test_precedence_device_class_entity(self):
+        from custom_components.ramses_extras.features.floorplan_helper.markers import (
+            marker_style_for_key,
+        )
+
+        dev = _device()
+        opts = _options(
+            marker_style_overrides={
+                "FAN": {"disc": "#111"},
+                dev["primary_entity"]: {"glyph": "#222"},
+                dev["device_id"]: {"ring": "#333"},
+            }
+        )
+        assert marker_style_for_key(dev, opts) == {"ring": "#333"}
+        # no device-id hit → class wins over entity
+        assert marker_style_for_key(_device(device_id="99:000000"), opts) == {
+            "disc": "#111"
+        }
+        # entity is the fallback when neither id nor class matches
+        assert marker_style_for_key(
+            _device(device_id="99:000000", device_class="REM"), opts
+        ) == {"glyph": "#222"}
+
+    def test_badge_svg_parts(self):
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            svg_utils,
+        )
+
+        m = svg_utils.marker_svg(
+            "climate.01_000001",
+            5.0,
+            5.0,
+            20.0,
+            "thermostat",
+            color="#ffc107",
+            text_color="#334155",
+            style={
+                "disc": "#22c55e",
+                "glyph": "#000",
+                "ring": "#f00",
+                "opacity": "0.9",
+            },
+        )
+        assert 'class="rx-disc" r="12.4" fill="#22c55e"' in m
+        assert 'class="rx-ring" r="12.4" fill="none" stroke="#f00"' in m
+        assert 'fill="#000"' in m and 'opacity="0.9"' in m
+
+        plain = svg_utils.marker_svg(
+            "climate.01_000001", 0, 0, 20, "fan", color="#ffc107", text_color="#334155"
+        )
+        assert 'stroke="transparent"' in plain and 'fill="#f8fafc"' in plain
