@@ -132,6 +132,24 @@ class R154UfhWindowOpenAndCircuitNamesPr1360(Recipe):
             "Recipe 154: UFH window_open suppression & circuit names (PR 1360)"
         )
 
+        # Drop stale ``<tcs>_NN-window_open`` registry entries for the UFH
+        # zones before arranging: an entry left behind by an earlier
+        # lifecycle where the zone was not underfloor-heated is no longer
+        # provided, but still reads as a suppression failure.
+        stale_uids = {_UFH_NAMED_WINDOW_UID, _UFH_UNNAMED_WINDOW_UID}
+        for entry in await self._get_entity_registry(ctx):
+            if entry.get("unique_id") in stale_uids and (
+                entity_id := entry.get("entity_id")
+            ):
+                print(f"  Removing stale registry entry {entity_id}")
+                await ws_send(
+                    ctx.token,
+                    {
+                        "type": "config/entity_registry/remove",
+                        "entity_id": entity_id,
+                    },
+                )
+
         # Arrange: Load profile with RAD zone 00, named UFH zone 01,
         # unnamed UFH zone 02, and UFC 02:150050 with circuits 00 & 01.
         print("  Loading UFH + RAD profile...")
