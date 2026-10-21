@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
+import yaml
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
@@ -40,6 +41,7 @@ from ...const import DOMAIN
 from .bundle import async_generate_bundle
 from .const import (
     DEFAULT_ICON,
+    DEVICE_VIEW_SERVICE,
     EVENT_DEVICE_VIEW,
     EVENT_ZONE_TOGGLE,
     FEATURE_ID,
@@ -48,6 +50,7 @@ from .const import (
     FLOORPLAN_ICONS,
     FLOORPLAN_UPLOAD_DIR_NAME,
     OPTION_CUSTOM_SVG_PATH,
+    OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
     OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
@@ -57,6 +60,7 @@ from .const import (
     OPTION_TOOLBAR_ENABLED,
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
+    ZONE_TOGGLE_SERVICE,
     is_generated_rule,
 )
 from .importer import (
@@ -71,6 +75,7 @@ from .importer import (
     studio_actions_for_device,
     studio_floor,
     studio_marker,
+    studio_marker_positions,
     studio_marker_zone,
     svg_viewbox,
 )
@@ -85,6 +90,7 @@ from .mapping import (
 )
 from .markers import (
     build_toolbar_svg,
+    effective_zones,
     element_id_for_device,
     icon_for_device,
     standalone_icon,
@@ -222,33 +228,112 @@ def _merge_studio_project(
         )
 
     if staging and project["floors"]:
-        first = project["floors"][0]
-        height = float(first.get("canvas", {}).get("height") or 560)
         placed_e, placed_d = _placed()
         x = 30.0
         for dev in extra_markers:
             primary = dev.get("primary_entity")
             if not primary or primary in placed_e or dev.get("device_id") in placed_d:
                 continue
-            marker = studio_marker(
-                primary,
-                x,
-                height + 30,
-                mdi(dev),
-                label=str(dev.get("display_name") or dev["device_id"]),
-                size=marker_size,
-                actions=studio_actions_for_device(
-                    dev,
-                    zones or {},
-                    (zone_toggles or {}).get(str(dev.get("device_id") or "")),
-                ),
+            # standalone members (DIY valves, zigbee sensors…) have no
+            # home floor — stage a marker on every floor so the user
+            # can drag the copy on the floor the device lives on; the
+            # merged export already renders them per floor anyway.
+            # Model devices stage on the first floor only.
+            floors_for = (
+                project["floors"] if dev.get("standalone") else project["floors"][:1]
             )
-            studio_marker_zone(
-                marker, (zones or {}).get(str(dev.get("device_id") or ""))
-            )
-            first.setdefault("markers", []).append(marker)
+            for fl in floors_for:
+                height = float(fl.get("canvas", {}).get("height") or 560)
+                marker = studio_marker(
+                    primary,
+                    x,
+                    height + 30,
+                    mdi(dev),
+                    label=str(dev.get("display_name") or dev["device_id"]),
+                    size=marker_size,
+                    actions=studio_actions_for_device(
+                        dev,
+                        zones or {},
+                        (zone_toggles or {}).get(str(dev.get("device_id") or "")),
+                    ),
+                )
+                studio_marker_zone(
+                    marker, (zones or {}).get(str(dev.get("device_id") or ""))
+                )
+                fl.setdefault("markers", []).append(marker)
+            placed_e.add(primary)
             x += 44
     return project
+
+
+def _stamp_marker_actions(
+    project: dict[str, Any],
+    model: dict[str, Any],
+    zones: dict[str, Any],
+    options: dict[str, Any],
+) -> None:
+    """Write the effective gestures into ``marker.actions`` (in place).
+
+    Studio's inspector reads ``actions.tap/hold/double`` straight from
+    the marker — a default ``more-info`` hides that the generated card
+    will zone-toggle on tap and open the device view on double-tap.
+    For each zone-owner marker, gestures that are still default
+    (``none``/``more-info``) or point at our bridge services get the
+    freshly generated action — same shorthand/detection precedence as
+    ``rules._device_rules``, so a deliberate user gesture always wins
+    and stale ``serviceData`` is regenerated from live zone config.
+    """
+    entity_device: dict[str, dict[str, Any]] = {}
+    for dev in model.get("devices") or []:
+        for e in dev.get("entities") or []:
+            if e.get("entity_id"):
+                entity_device[str(e["entity_id"])] = dev
+        if dev.get("primary_entity"):
+            entity_device[str(dev["primary_entity"])] = dev
+
+    def _is_default(action: Any, shorthand: set[str]) -> bool:
+        if not isinstance(action, dict):
+            return True
+        kind = action.get("kind")
+        if kind in (None, "none", "more-info"):
+            return True
+        return kind == "call-service" and action.get("service") in shorthand
+
+    zone_shorthand = {ZONE_TOGGLE_SERVICE, "floorplan.class_toggle"}
+    view_shorthand = {DEVICE_VIEW_SERVICE}
+    view_url = str(options.get(OPTION_DEVICE_VIEW_URL) or "")
+
+    for floor in project.get("floors") or []:
+        for marker in floor.get("markers") or []:
+            dev = next(
+                (
+                    entity_device[e]
+                    for e in (marker.get("entities") or [])
+                    if e in entity_device
+                ),
+                None,
+            )
+            if dev is None:
+                continue
+            device_id = str(dev.get("device_id") or "")
+            zone = zones.get(device_id)
+            if not zone:
+                continue
+            areas, bound = resolve_bound(
+                model, dev, zone, lambda d: element_id_for_device(d, options)
+            )
+            seeded = studio_actions_for_device(
+                dev, {device_id: zone}, zone_toggle_specs(device_id, areas, bound)
+            )
+            if view_url:
+                seeded["double"] = {"kind": "navigate", "navPath": view_url}
+            actions = marker.setdefault("actions", {})
+            if _is_default(actions.get("tap"), zone_shorthand):
+                actions["tap"] = seeded["tap"]
+            if _is_default(actions.get("hold"), set()):
+                actions["hold"] = seeded["hold"]
+            if _is_default(actions.get("double"), view_shorthand):
+                actions["double"] = seeded["double"]
 
 
 async def _write_zone_to_project(
@@ -747,6 +832,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         parsed = parse_studio_project(project_json)
         if "error" in parsed:
             raise vol.Invalid(str(parsed["error"]))
+        # Stamp the effective gestures into marker.actions so studio's
+        # inspector shows what the card will actually do (defaults ->
+        # generated zone-toggle / device-view; user edits win).
+        try:
+            raw = json.loads(project_json)
+        except json.JSONDecodeError:
+            raw = None
+        if isinstance(raw, dict):
+            model = await build_floorplan_model(hass)
+            options = get_floorplan_options(_config_entry(hass))
+            zones = effective_zones(model, options, studio_marker_positions(raw))
+            _stamp_marker_actions(raw, model, zones, options)
+            project_json = json.dumps(raw)
         latest = await hass.async_add_executor_job(
             _store_latest_project, hass, project_json
         )
@@ -963,25 +1061,39 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             # Park devices with no matching room below the first floor's
             # canvas — drag them into a room in studio to assign the area.
             if call.data.get("staging", True) and floors_json:
-                staging_markers = []
                 for i, dev in enumerate(unplaced):
-                    marker = studio_marker(
-                        dev["primary_entity"],
-                        30 + i * 44,
-                        float(floors_json[0]["canvas"]["height"]) + 30,
-                        _mdi(dev),
-                        label=str(dev.get("display_name") or dev["device_id"]),
-                        size=marker_size,
-                        actions=studio_actions_for_device(
-                            dev, zones, zone_toggles.get(dev.get("device_id"))
-                        ),
+                    # standalone members stage on every floor — no home
+                    # floor, and the merged export renders them per
+                    # floor anyway; model devices go on the first only
+                    floors_for = (
+                        floors_json if dev.get("standalone") else floors_json[:1]
                     )
-                    studio_marker_zone(marker, zones.get(dev.get("device_id")))
-                    staging_markers.append(marker)
-                floors_json[0]["markers"].extend(staging_markers)
+                    for fl in floors_for:
+                        marker = studio_marker(
+                            dev["primary_entity"],
+                            30 + i * 44,
+                            float(fl["canvas"]["height"]) + 30,
+                            _mdi(dev),
+                            label=str(dev.get("display_name") or dev["device_id"]),
+                            size=marker_size,
+                            actions=studio_actions_for_device(
+                                dev, zones, zone_toggles.get(dev.get("device_id"))
+                            ),
+                        )
+                        studio_marker_zone(marker, zones.get(dev.get("device_id")))
+                        fl["markers"].append(marker)
             project = build_studio_project(
                 call.data.get("name") or "Floorplan", floors_json
             )
+        # Reflect the effective gestures into marker.actions — studio's
+        # inspector then shows what the generated card will do rather
+        # than bare more-info defaults.
+        _stamp_marker_actions(
+            project,
+            model,
+            effective_zones(model, options, studio_marker_positions(project)),
+            options,
+        )
         project_out = json.dumps(project)
         backup_path = await hass.async_add_executor_job(
             _backup_project, hass, project_out
