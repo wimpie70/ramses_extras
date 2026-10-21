@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from .base import (
     DeviceDomain,
+    caption_group_key,
+    caption_group_label,
     device_class_from_id,
     get_domain,
     register_domain,
@@ -51,6 +53,8 @@ __all__ = [
     "CTL_DOMAIN",
     "DHW_DOMAIN",
     "DeviceDomain",
+    "caption_group_key",
+    "caption_group_label",
     "FAN_DOMAIN",
     "INFRA_DOMAIN",
     "OUT_DOMAIN",

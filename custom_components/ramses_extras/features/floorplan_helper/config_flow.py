@@ -29,6 +29,7 @@ from homeassistant.helpers import selector
 from .const import (
     DEFAULT_EDITOR_URL,
     FEATURE_ID,
+    OPTION_CAPTION_FIELDS,
     OPTION_CUSTOM_SVG_PATH,
     OPTION_EDITOR_URL,
     OPTION_SVG_MODE,
@@ -36,9 +37,22 @@ from .const import (
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
 )
+from .domains import caption_group_key, caption_group_label, get_domain
 from .mapping import get_floorplan_options, persist_floorplan_options
 
 _LOGGER = logging.getLogger(__name__)
+
+_CAPTION_FIELD_PREFIX = "caption_fields__"
+
+
+def _caption_classes(devices: list[dict[str, Any]]) -> dict[str, Any]:
+    """Device classes present in the model → their domain (ordered)."""
+    classes: dict[str, Any] = {}
+    for dev in devices or []:
+        cls = str(dev.get("device_class") or "")
+        if cls:
+            classes.setdefault(cls, get_domain(cls))
+    return classes
 
 
 async def async_step_floorplan_helper_config(
@@ -53,6 +67,15 @@ async def async_step_floorplan_helper_config(
     config_entry = flow._config_entry  # noqa: SLF001
     options = get_floorplan_options(config_entry)
 
+    classes: dict[str, Any] = {}
+    try:
+        from .topology import build_floorplan_model
+
+        model = await build_floorplan_model(flow.hass)
+        classes = _caption_classes(model.get("devices") or [])
+    except Exception as err:  # pragma: no cover - model needs registries
+        _LOGGER.debug("Caption fields skipped — topology unavailable: %s", err)
+
     if user_input is not None:
         section = dict(options)
         section[OPTION_SVG_MODE] = user_input.get("svg_mode", SVG_MODE_GENERATED)
@@ -63,6 +86,12 @@ async def async_step_floorplan_helper_config(
         section[OPTION_EDITOR_URL] = (
             user_input.get("editor_url") or DEFAULT_EDITOR_URL
         ).strip()
+        fields = dict(options.get(OPTION_CAPTION_FIELDS) or {})
+        for cls in classes:
+            key = f"{_CAPTION_FIELD_PREFIX}{cls}"
+            if key in user_input:
+                fields[cls] = list(user_input.get(key) or [])
+        section[OPTION_CAPTION_FIELDS] = fields
         persist_floorplan_options(flow.hass, config_entry, section)
         _LOGGER.info("Floorplan Helper options saved")
         return await flow.async_step_main_menu()
@@ -86,7 +115,11 @@ async def async_step_floorplan_helper_config(
         "floorplan-studio card (default `/floorplan-studio`) — the "
         "in-SVG `⛓` toolbar button and the actions card's 'Open studio' "
         "navigate there. Point it at another view path or a vendored "
-        "copy under `/local/...` if yours lives elsewhere."
+        "copy under `/local/...` if yours lives elsewhere.\n\n"
+        "Below: per device *class*, pick which values the marker caption "
+        "shows (untick all to hide it). Per-marker caption control stays "
+        "in studio — `ramsesCaption` and the 'Show state' toggle win "
+        "over this class default."
     )
 
     schema = vol.Schema(
@@ -127,6 +160,37 @@ async def async_step_floorplan_helper_config(
             ): selector.TextSelector(selector.TextSelectorConfig(multiline=False)),
         }
     )
+
+    # Per-device-class caption selection — which entity values a class
+    # shows under its marker. Options are the domain's caption groups;
+    # the stored selection maps class → group keys ([] = no caption).
+    stored_fields = options.get(OPTION_CAPTION_FIELDS) or {}
+    for cls, domain in classes.items():
+        if not domain.caption_groups:
+            continue
+        field = f"{_CAPTION_FIELD_PREFIX}{cls}"
+        schema = schema.extend(
+            {
+                vol.Optional(
+                    field,
+                    default=stored_fields.get(
+                        cls, [caption_group_key(g) for g in domain.caption_groups]
+                    ),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value=caption_group_key(g),
+                                label=f"{cls}: {caption_group_label(g)}",
+                            )
+                            for g in domain.caption_groups
+                        ],
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                )
+            }
+        )
 
     return flow.async_show_form(
         step_id="feature_config",

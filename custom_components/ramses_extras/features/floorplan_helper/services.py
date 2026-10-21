@@ -172,26 +172,38 @@ def _merge_studio_project(
     marker_size: int = 20,
     zones: dict[str, Any] | None = None,
     zone_toggles: dict[str, list[dict[str, Any]]] | None = None,
+    entity_device: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Merge generated floors into an existing studio project.
 
     Floors match by name; rooms are added when missing (by name);
-    markers whose entity is already present anywhere in the project are
-    skipped (user's own placement wins). ``extra_markers`` are devices
-    without a matching room — parked in a strip below the first floor's
-    canvas so they can be dragged into place.
+    markers whose *device* is already present anywhere in the project
+    are skipped (user's own placement wins) — dedup is by device via
+    ``entity_device``, since an older marker may bind a different
+    entity of the same device (e.g. ``*_battery_low`` from an older
+    primary-entity choice). ``extra_markers`` are devices without a
+    matching room — parked in a strip below the first floor's canvas
+    so they can be dragged into place.
     """
     project = dict(existing)
     project["floors"] = list(existing.get("floors") or [])
     by_name = {str(f.get("name", "")).lower(): f for f in project["floors"]}
+    entity_device = entity_device or {}
 
-    def _placed_entities() -> set[str]:
-        return {
+    def _placed() -> tuple[set[str], set[str]]:
+        ents = {
             e
             for f in project["floors"]
             for m in f.get("markers", [])
             for e in (m.get("entities") or [])
         }
+        return ents, {entity_device[e] for e in ents if e in entity_device}
+
+    def _new_marker(m: dict[str, Any], placed_e: set[str], placed_d: set[str]) -> bool:
+        ents = set(m.get("entities") or [])
+        if ents & placed_e:
+            return False
+        return not ({entity_device.get(e) for e in ents} & placed_d)
 
     for new_floor in floors_json:
         floor = by_name.get(str(new_floor["name"]).lower())
@@ -203,21 +215,19 @@ def _merge_studio_project(
         floor.setdefault("rooms", []).extend(
             r for r in new_floor["rooms"] if str(r["name"]).lower() not in have_rooms
         )
-        have_entities = _placed_entities()
+        placed_e, placed_d = _placed()
         floor.setdefault("markers", []).extend(
-            m
-            for m in new_floor["markers"]
-            if not (set(m.get("entities") or []) & have_entities)
+            m for m in new_floor["markers"] if _new_marker(m, placed_e, placed_d)
         )
 
     if staging and project["floors"]:
         first = project["floors"][0]
         height = float(first.get("canvas", {}).get("height") or 560)
-        have_entities = _placed_entities()
+        placed_e, placed_d = _placed()
         x = 30.0
         for dev in extra_markers:
             primary = dev.get("primary_entity")
-            if not primary or primary in have_entities:
+            if not primary or primary in placed_e or dev.get("device_id") in placed_d:
                 continue
             marker = studio_marker(
                 primary,
@@ -796,7 +806,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             active = options.get(OPTION_CUSTOM_SVG_PATH)
             if not active:
                 raise vol.Invalid("No 'floors' given and no custom SVG is active")
-            floor_specs = {Path(active).stem: active}
+            paths = active if isinstance(active, list) else [active]
+            floor_specs = {Path(p).stem: p for p in paths}
 
         floor_svgs: dict[str, str] = {}
         missing: list[str] = []
@@ -907,6 +918,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             if dev["device_id"] not in placed and dev.get("primary_entity")
         ]
 
+        # entity → device map for device-level merge dedup: an old
+        # marker may bind e.g. the battery entity while the current
+        # primary is the remote — same device, still a dupe
+        entity_device: dict[str, str] = {}
+        for dev in model.get("devices") or []:
+            did = str(dev.get("device_id") or "")
+            for e in dev.get("entities") or []:
+                if e.get("entity_id"):
+                    entity_device[str(e["entity_id"])] = did
+            if dev.get("primary_entity"):
+                entity_device[str(dev["primary_entity"])] = did
+
         if existing is not None:
             project = _merge_studio_project(
                 existing,
@@ -917,6 +940,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 marker_size=marker_size,
                 zones=zones,
                 zone_toggles=zone_toggles,
+                entity_device=entity_device,
             )
         else:
             # Park devices with no matching room below the first floor's

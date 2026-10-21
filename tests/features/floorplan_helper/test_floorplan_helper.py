@@ -782,6 +782,40 @@ class TestCaption:
         assert len(texts) == 1
         assert " ppm" in texts[0]["state_action"]["service_data"]["text"]
 
+    def test_caption_fields_per_class_selection(self):
+        # caption_fields {class: [group keys]} filters the domain's
+        # caption_groups — FAN picking only outdoor_temp drops indoor
+        def _texts(rules):
+            return [
+                r
+                for r in rules
+                if r.get("state_action", {}).get("service") == "floorplan.text_set"
+            ]
+
+        rules = generator._build_rules(
+            _model(devices=[self._dev()]),
+            _options(caption_fields={"FAN": ["outdoor_temp"]}),
+        )
+        assert {r["entity"] for r in _texts(rules)} == {"sensor.32_153289_outdoor_temp"}
+        expr = _texts(rules)[0]["state_action"]["service_data"]["text"]
+        assert "outdoor_temp" in expr and "indoor_temp" not in expr
+
+        # empty list for the class = no caption
+        rules = generator._build_rules(
+            _model(devices=[self._dev()]),
+            _options(caption_fields={"FAN": []}),
+        )
+        assert not _texts(rules)
+
+        # absent class key keeps the domain default (indoor + outdoor)
+        rules = generator._build_rules(
+            _model(devices=[self._dev()]), _options(caption_fields={})
+        )
+        assert {r["entity"] for r in _texts(rules)} == {
+            "sensor.32_153289_indoor_temp",
+            "sensor.32_153289_outdoor_temp",
+        }
+
 
 class TestMarkerStyle:
     def test_parse_and_defaults(self):

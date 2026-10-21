@@ -21,6 +21,7 @@ import yaml
 from .const import (
     DEVICE_VIEW_SERVICE,
     GENERATED_RULE_TAG,
+    OPTION_CAPTION_FIELDS,
     OPTION_CAPTION_OVERRIDES,
     OPTION_DEVICE_VIEW_URL,
     OPTION_ELEMENT_BINDINGS,
@@ -32,7 +33,7 @@ from .const import (
     ZONE_TOGGLE_SERVICE,
     is_generated_rule,
 )
-from .domains import get_domain
+from .domains import caption_group_key, get_domain
 from .expressions import (
     CLASS_ROLES,
     element_caption_expr,
@@ -304,9 +305,10 @@ def _device_rules(
 
     # caption: one combined ${} emitted on every contributing entity's
     # rule — whichever state updates, the caption rewrites in full.
-    # marker.ramsesCaption (studio project) wins over caption_overrides
-    # (device id → class → primary entity), which wins over the domain
-    # default; "eid|suffix" entries carry their own suffix.
+    # Precedence: marker.ramsesCaption (studio project) > caption_overrides
+    # (device id → class → primary entity) > caption_fields (per-class
+    # config-flow selection) > domain default; "eid|suffix" entries
+    # carry their own suffix.
     caption_pairs = domain.caption_entities(dev.get("entities") or [])
     meta = marker_meta_for_device(dev, marker_meta)
     if meta and meta.get("show_state") is False:
@@ -325,6 +327,18 @@ def _device_rules(
             for eid, _, sfx in [str(item).partition("|")]
             if eid.strip()
         ]
+    else:
+        # per-class config-flow selection — caption_fields maps device
+        # class → group keys (first pattern); absent key = domain
+        # default, empty list = no caption for the class
+        selected = (options.get(OPTION_CAPTION_FIELDS) or {}).get(
+            str(dev.get("device_class") or "")
+        )
+        if selected is not None:
+            groups = tuple(
+                g for g in domain.caption_groups if caption_group_key(g) in selected
+            )
+            caption_pairs = domain.caption_entities(dev.get("entities") or [], groups)
     caption_expr = element_caption_expr(caption_pairs)
     if caption_expr:
         for eid, _ in caption_pairs:

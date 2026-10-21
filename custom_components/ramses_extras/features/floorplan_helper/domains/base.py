@@ -109,13 +109,18 @@ class DeviceDomain:
     def __post_init__(self) -> None:
         object.__setattr__(self, "device_classes", tuple(self.device_classes or ()))
 
-    def caption_entities(self, entities: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    def caption_entities(
+        self,
+        entities: list[dict[str, Any]],
+        groups: tuple[tuple[tuple[str, ...], str], ...] | None = None,
+    ) -> list[tuple[str, str]]:
         """``[(entity_id, suffix)]`` contributing to the marker caption,
         in display order — one per group; patterns take priority over
         entity order (``indoor_temp`` beats ``supply_temp`` even when
-        the registry lists it later)."""
+        the registry lists it later). ``groups`` restricts which
+        caption_groups are used (config-flow per-class selection)."""
         out: list[tuple[str, str]] = []
-        for patterns, suffix in self.caption_groups:
+        for patterns, suffix in groups if groups is not None else self.caption_groups:
             eid = next(
                 (
                     str(e["entity_id"])
@@ -128,6 +133,18 @@ class DeviceDomain:
             if eid:
                 out.append((eid, suffix))
         return out
+
+
+def caption_group_key(group: tuple[tuple[str, ...], str]) -> str:
+    """Stable key for a caption group — its first name pattern."""
+    return str(group[0][0]) if group and group[0] else ""
+
+
+def caption_group_label(group: tuple[tuple[str, ...], str]) -> str:
+    """Human label for the config-flow multi-select, e.g. ``indoor_temp °``."""
+    key = caption_group_key(group)
+    suffix = str(group[1]).strip() if group and len(group) > 1 else ""
+    return f"{key} {suffix}".rstrip()
 
 
 # Generic fallback — every class not claimed by a registered domain.
@@ -159,6 +176,8 @@ def zone_eligible(device_or_class: Any) -> bool:
 __all__ = [
     "DEVICE_ID_REGEX",
     "DeviceDomain",
+    "caption_group_key",
+    "caption_group_label",
     "GENERIC_DOMAIN",
     "device_class_from_id",
     "get_domain",

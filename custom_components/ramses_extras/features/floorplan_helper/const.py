@@ -68,6 +68,12 @@ OPTION_CAPTION_OVERRIDES = "caption_overrides"
 # per device id / device class / primary entity (caption precedence);
 # CSS colours incl. alpha: "#22c55e", "#22c55e80", "rgba(…)", "none"
 OPTION_MARKER_STYLE_OVERRIDES = "marker_style_overrides"
+# Per-device-class caption selection — maps device class → list of
+# caption-group keys (first pattern of the domain's caption_groups,
+# e.g. "indoor_temp"). Selected via the config flow multi-selects;
+# wins over the domain default but loses to marker.ramsesCaption /
+# caption_overrides. Empty list = no caption for the class.
+OPTION_CAPTION_FIELDS = "caption_fields"
 OPTION_ELEMENT_BINDINGS = "element_bindings"
 OPTION_AREA_OVERRIDES = "area_overrides"
 OPTION_EXTRA_RULES = "extra_rules"
@@ -189,6 +195,7 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_CUSTOM_SVG_PATH: "",
     OPTION_ICON_OVERRIDES: {},
     OPTION_CAPTION_OVERRIDES: {},
+    OPTION_CAPTION_FIELDS: {},
     OPTION_MARKER_STYLE_OVERRIDES: {},
     OPTION_ELEMENT_BINDINGS: {},
     OPTION_AREA_OVERRIDES: {},
@@ -384,6 +391,7 @@ __all__ = [
     "OPTION_AREA_OVERRIDES",
     "OPTION_BACKGROUND",
     "OPTION_CAPTION_OVERRIDES",
+    "OPTION_CAPTION_FIELDS",
     "OPTION_MARKER_STYLE_OVERRIDES",
     "OPTION_CUSTOM_SVG_PATH",
     "OPTION_DEVICE_VIEW_URL",
