@@ -1212,10 +1212,6 @@ class RamsesFloorplanActions extends HTMLElement {
             title="Write the stored latest.json back into this browser's studio project list — restores the project after a browser/profile switch">⇒ Push → studio</button>
           <button id="b-sync" class="secondary"
             title="Re-run area sync on the stored project: marker-in-room → entity area_id, missing areas created">Sync areas</button>
-          <button id="b-resize" class="secondary"
-            title="Apply the tweak icon size to the markers currently selected inside studio (edit mode). Patches the studio canvas live and persists via studio's own autosave">Resize ◉ selected</button>
-          <button id="b-recolor" class="secondary"
-            title="Apply the tweak room colour to the rooms currently selected inside studio (edit mode, shift-click for several) — e.g. colour every room a device serves">Recolor ◧ rooms</button>
           <button id="b-tweaks" class="secondary"
             title="Card tweaks — saved in this browser">⚙ Tweaks</button>
         </div>
@@ -1223,6 +1219,8 @@ class RamsesFloorplanActions extends HTMLElement {
           <div class="row">
             <label for="tw-size" title="Icon size in px — applies immediately to markers selected in studio, and to markers Seed generates">Marker icon size</label>
             <input id="tw-size" type="number" min="8" max="80" placeholder="20">
+            <button id="b-resize" class="secondary"
+              title="Apply the tweak icon size to the markers currently selected inside studio (edit mode). Patches the studio canvas live and persists via studio's own autosave">Resize ◉ selected</button>
           </div>
           <div class="row">
             <label for="tw-name" title="Name given to the project Seed writes into studio">Seed project name</label>
@@ -1241,6 +1239,8 @@ class RamsesFloorplanActions extends HTMLElement {
             <input id="tw-fill" type="color" style="width:44px;padding:0;height:24px">
             <label for="tw-op" title="Fill opacity 0–1; leave empty to keep each room's current opacity">opacity</label>
             <input id="tw-op" type="number" min="0" max="1" step="0.05" style="width:64px" placeholder="keep">
+            <button id="b-recolor" class="secondary"
+              title="Apply the tweak room colour to the rooms currently selected inside studio (edit mode, shift-click for several) — e.g. colour every room a device serves">Recolor ◧ rooms</button>
           </div>
           <div class="row">
             <label for="zone-dev" title="Device whose 'zone' (rooms it serves) you are editing — existing zones shown after ▸">Zone device</label>
