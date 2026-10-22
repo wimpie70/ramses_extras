@@ -192,6 +192,7 @@ class RamsesFloorplanActions extends HTMLElement {
     this._lastSoleDev = null;          // marker last seen as sole selection
     this._zoneSaveT = null;            // autosave debounce timer
     this._zonePaint = false;           // swatch changed → paint on next save
+    this._zoneRowFor = null;           // device the zone lists are built for
   }
 
   setConfig(config) {
@@ -683,19 +684,37 @@ class RamsesFloorplanActions extends HTMLElement {
     return dirty;
   }
 
-  // Menu → studio: mirror each changed checkbox into studio's own
-  // selection (shift-pointerdown toggles), then autosave. `tracked`
-  // is the last-seen studio selection for that list.
-  _pushZoneSelToStudio(selEl, tracked, elFor) {
-    this._ensureStudioEdit();
-    for (const cb of selEl.querySelectorAll('input[type=checkbox]')) {
-      if (cb.disabled) continue;
-      const cur = tracked.has(cb.value);
-      if (cb.checked === cur) continue;
-      if (this._studioClick(elFor(cb.value), true)) {
-        if (cur) tracked.delete(cb.value);
-        else tracked.add(cb.value);
+  // Menu → studio: rebuild studio's selection to match the checked
+  // boxes exactly, then autosave. A plain pointerdown on the canvas
+  // clears the selection; shift-pointerdown adds — needed because a
+  // marker's own pointerdown can only *add*, never toggle off, so
+  // deselects can't be expressed per-element.
+  _pushZoneSelToStudio() {
+    const root = this._studioRoot();
+    const roomsSel = this.shadowRoot.getElementById('zone-rooms');
+    const memSel = this.shadowRoot.getElementById('zone-members');
+    const devSel = this.shadowRoot.getElementById('zone-dev');
+    const checked = (el) =>
+      [...el.querySelectorAll('input:checked:not(:disabled)')].map(
+        (cb) => cb.value
+      );
+    if (root && roomsSel && memSel) {
+      this._ensureStudioEdit();
+      this._studioClick(root.querySelector('svg'), false); // clear
+      const roomIds = checked(roomsSel);
+      const memberIds = checked(memSel);
+      for (const id of roomIds) {
+        this._studioClick(this._studioElForRoom(id), true);
       }
+      for (const id of memberIds) {
+        this._studioClick(this._studioElForMember(id), true);
+      }
+      // owner marker last — keeps it selected for the zone preview
+      if (devSel && devSel.value) {
+        this._studioClick(this._studioElForMember(devSel.value), true);
+      }
+      this._studioRoomSel = new Set(roomIds);
+      this._studioMemberSel = new Set(memberIds);
     }
     this._queueZoneSave();
   }
@@ -952,6 +971,10 @@ class RamsesFloorplanActions extends HTMLElement {
     if (fill && /^#[0-9a-f]{6}$/i.test(fill)) inp.value = fill;
     else if (zone.color && /^#[0-9a-f]{6}$/i.test(zone.color)) inp.value = zone.color;
     else inp.value = '#22c55e';
+    // marks the lists as populated *for this device* — _saveZone
+    // refuses to snapshot while a rebuild for another device is
+    // still in flight (an empty-looking list would wipe areas)
+    this._zoneRowFor = devId;
   }
 
   async _paintZoneRooms(areas, color) {
@@ -984,22 +1007,37 @@ class RamsesFloorplanActions extends HTMLElement {
       this._status('Pick a device in the zone editor first');
       return;
     }
+    if (this._zoneRowFor !== devId) {
+      // the lists are still (re)building for this device — saving now
+      // would snapshot an empty UI and wipe the zone; retry shortly
+      this._queueZoneSave();
+      return;
+    }
     const roomsSel = this.shadowRoot.getElementById('zone-rooms');
     const memSel = this.shadowRoot.getElementById('zone-members');
     const inp = this.shadowRoot.getElementById('zone-color');
+    const zone =
+      (((this._fpConfig || {}).device_zones || {})[devId]) || {};
     const rooms = await this._projectRooms();
-    const areas = [
-      ...new Set(
-        [...roomsSel.querySelectorAll('input:checked')]
-          .map((cb) => rooms.get(cb.value))
-          .filter(Boolean)
-          .map((r) => r.areaId)
-      ),
-    ];
+    // an empty list means "never populated" (no project/topology
+    // loaded), not "user unchecked everything" — keep stored values
+    const areas = roomsSel.children.length
+      ? [
+          ...new Set(
+            [...roomsSel.querySelectorAll('input:checked')]
+              .map((cb) => rooms.get(cb.value))
+              .filter(Boolean)
+              .map((r) => r.areaId)
+          ),
+        ]
+      : zone.areas || [];
     // disabled boxes are schema children — auto-bound via their
     // parent link, never written into zone.devices
-    const devices = [...memSel.querySelectorAll('input:checked:not(:disabled)')]
-      .map((cb) => cb.value);
+    const devices = memSel.children.length
+      ? [...memSel.querySelectorAll('input:checked:not(:disabled)')].map(
+          (cb) => cb.value
+        )
+      : zone.devices || [];
     const color = (inp && inp.value) || undefined;
     // Painting remounts studio (wiping its selection), so it only
     // happens on an explicit swatch change — membership saves leave
@@ -1345,18 +1383,8 @@ class RamsesFloorplanActions extends HTMLElement {
         this._studioClick(this._studioElForMember(devSel.value), false);
       }
     };
-    $('zone-rooms').onchange = () =>
-      this._pushZoneSelToStudio(
-        $('zone-rooms'),
-        this._studioRoomSel,
-        (id) => this._studioElForRoom(id)
-      );
-    $('zone-members').onchange = () =>
-      this._pushZoneSelToStudio(
-        $('zone-members'),
-        this._studioMemberSel,
-        (id) => this._studioElForMember(id)
-      );
+    $('zone-rooms').onchange = () => this._pushZoneSelToStudio();
+    $('zone-members').onchange = () => this._pushZoneSelToStudio();
     $('zone-color').onchange = () => {
       this._zonePaint = true; // paints the zone's rooms on the autosave
       this._queueZoneSave();
