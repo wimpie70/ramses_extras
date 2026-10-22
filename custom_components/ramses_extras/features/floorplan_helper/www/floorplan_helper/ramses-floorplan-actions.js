@@ -26,11 +26,15 @@
  *     copy the card yaml (dashboard cards untouched)
  *   - "⇒ Update cards" — same export, plus every floorplan card
  *     showing a generated map is updated in place
+ *   - "⚙ Zones" — zone editor: pick a device, check the rooms it
+ *     serves and the extra markers bound to it, pick a colour
+ *     (paints the rooms' studio fill), Save
  *   - Drop zone: fallback for JSON files from another machine/backup
  *
  * Config (all optional):
  *   floors: {begane grond: plattegrond-bg.svg, ...}  floor name → SVG ref
- *   marker_size: 20
+ *   marker_size: 20  (size for newly seeded markers — studio owns size
+ *   after that; the inspector edits it per marker)
  *   studio_url: /floorplan-studio   (fallback: floorplan options)
  *   device_view_url: /lovelace/hvac  (optional — adds a '⤢ dashboard'
  *   button to the device popup opened by double-clicking a marker)
@@ -82,6 +86,11 @@ const STYLE = `
             background: var(--secondary-background-color, #f5f5f5);
             font-size: 13px; }
   .tweaks .row { margin-bottom: 6px; }
+  .zcols { align-items: flex-end; }
+  .zcol { display: flex; flex-direction: column; gap: 3px; }
+  select[multiple] {
+    min-width: 210px; min-height: 130px; max-width: none;
+  }
   .tweaks label { color: var(--secondary-text-color); min-width: 150px;
                   display: inline-block; }
   .tweaks input[type=number], .tweaks input[type=text] {
@@ -104,8 +113,6 @@ const STYLE = `
                     color: var(--primary-text-color); }
   input[type=file] { display: none; }
 `;
-
-const TWEAKS_KEY = 'ramses-floorplan-actions-tweaks';
 
 const DBG = '[fp-actions]';
 /* eslint-disable no-console -- temporary diagnostics while the studio bridge settles */
@@ -169,29 +176,10 @@ class RamsesFloorplanActions extends HTMLElement {
     this._entityDevice = {}; // entity_id -> topology device record
     this._projects = [];   // studio projects [{id, name, updatedAt}]
     this._busy = false;
-    this._tweaks = {};
     this._hiDevice = null; // device_id whose zone is highlighted
     this._hiPatched = [];  // [el, {attr: original}] pairs to restore
     this._roomsCache = null;
     this._devCard = null;
-    try {
-      this._tweaks =
-        JSON.parse(window.localStorage.getItem(TWEAKS_KEY) || '{}') || {};
-    } catch {
-      this._tweaks = {};
-    }
-  }
-
-  _tweak(key) {
-    // card tweaks (localStorage) override the YAML config
-    const v = this._tweaks[key];
-    if (v !== undefined && v !== '' && v !== null) return v;
-    return this._config[key];
-  }
-
-  _saveTweak(key, value) {
-    this._tweaks[key] = value;
-    window.localStorage.setItem(TWEAKS_KEY, JSON.stringify(this._tweaks));
   }
 
   setConfig(config) {
@@ -390,26 +378,6 @@ class RamsesFloorplanActions extends HTMLElement {
     return out;
   }
 
-  _studioSelectedRoomIds() {
-    // Selected rooms render stroke:#38bdf8 + dasharray on their fill
-    // path; the wrapping <g> carries data-room="<id>" — no fiber needed.
-    const root = this._studioRoot();
-    const ids = new Set();
-    if (!root) return ids;
-    for (const g of root.querySelectorAll('g[data-layer="rooms"] g[data-room]')) {
-      const path = g.querySelector(':scope > path');
-      if (
-        path &&
-        path.getAttribute('stroke') === '#38bdf8' &&
-        path.getAttribute('stroke-dasharray')
-      ) {
-        ids.add(g.getAttribute('data-room'));
-      }
-    }
-    dlog('selected rooms found:', ids.size);
-    return ids;
-  }
-
   _fiberOf(el) {
     const keys = Object.keys(el).filter((k) => k.startsWith('__react'));
     const key = keys.find((k) => k.startsWith('__reactFiber$'));
@@ -482,9 +450,7 @@ class RamsesFloorplanActions extends HTMLElement {
   }
 
   _pollSelection() {
-    if (this._busy || document.hidden || this._tweak('zone_watch') === false) {
-      return;
-    }
+    if (this._busy || document.hidden) return;
     const root = this._studioRoot();
     if (!root) return;
 
@@ -635,7 +601,7 @@ class RamsesFloorplanActions extends HTMLElement {
         title.textContent =
           `${dev.display_name || dev.device_id} (${dev.device_id})`;
         const view =
-          this._tweak('device_view_url') ||
+          this._config.device_view_url ||
           ((this._fpConfig || {}).device_view_url || '');
         const full = this.shadowRoot.getElementById('devfull');
         if (full) full.style.display = view ? '' : 'none';
@@ -660,38 +626,73 @@ class RamsesFloorplanActions extends HTMLElement {
     const sel = this.shadowRoot.getElementById('zone-dev');
     if (!sel) return;
     const zones = ((this._fpConfig || {}).device_zones) || {};
-    sel.innerHTML = '<option value="">(device)</option>';
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">(pick a device)</option>';
     for (const d of (this._topology && this._topology.devices) || []) {
       const o = document.createElement('option');
       o.value = d.device_id;
       const z = zones[d.device_id];
       o.textContent =
         `${d.device_id} ${d.device_class}` +
-        (z ? ` ▸ ${(z.areas || []).join(',')}` : '');
+        (z ? ` ▸ ${(z.areas || []).length} room(s)` : '');
       sel.appendChild(o);
     }
-    this._fillZoneColor();
+    if (cur) sel.value = cur;
+    this._fillZoneRow();
   }
 
   // The zone colour IS the studio room fill — the only colour the
   // studio inspector can edit. The swatch paints the zone's rooms
   // inside the project itself (no parallel store); `zone.color` stays
   // as the fallback for zones that have no rooms yet.
-  async _fillZoneColor() {
-    const sel = this.shadowRoot.getElementById('zone-dev');
+  async _fillZoneRow() {
+    // Fill the rooms + markers listboxes with the selected device's
+    // zone membership pre-checked, and the swatch with its colour.
+    const devSel = this.shadowRoot.getElementById('zone-dev');
+    const roomsSel = this.shadowRoot.getElementById('zone-rooms');
+    const memSel = this.shadowRoot.getElementById('zone-members');
     const inp = this.shadowRoot.getElementById('zone-color');
-    if (!sel || !inp) return;
-    const z = (((this._fpConfig || {}).device_zones || {})[sel.value]) || {};
-    const rooms = await this._projectRooms();
-    const want = new Set((z.areas || []).map((a) => this._slug(a)));
+    if (!devSel || !roomsSel || !memSel || !inp) return;
+    const devId = devSel.value;
+    const zone = (((this._fpConfig || {}).device_zones || {})[devId]) || {};
+    const zoneAreas = new Set((zone.areas || []).map((a) => this._slug(a)));
+    const zoneDevs = new Set(zone.devices || []);
+    roomsSel.innerHTML = '';
     let fill = null;
-    for (const r of rooms.values()) {
-      if (r.fill && want.has(this._slug(r.areaId))) { fill = r.fill; break; }
+    const rooms = await this._projectRooms();
+    for (const [id, r] of rooms) {
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = `${r.name} — ${r.floor}`;
+      o.selected = zoneAreas.has(this._slug(r.areaId));
+      if (o.selected && r.fill && !fill) fill = r.fill;
+      roomsSel.appendChild(o);
     }
+    memSel.innerHTML = '';
+    const seen = new Set([devId]);
+    for (const d of (this._topology && this._topology.devices) || []) {
+      if (seen.has(d.device_id)) continue;
+      seen.add(d.device_id);
+      const o = document.createElement('option');
+      o.value = d.device_id;
+      o.textContent = `${d.device_id} (${d.device_class})`;
+      o.selected = zoneDevs.has(d.device_id);
+      memSel.appendChild(o);
+    }
+    // bound ids that are not topology devices (DIY/zigbee entity ids) —
+    // keep them listed so they can be unchecked
+    for (const id of zoneDevs) {
+      if (seen.has(id)) continue;
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = `${id} (entity)`;
+      o.selected = true;
+      memSel.appendChild(o);
+    }
+    roomsSel.disabled = memSel.disabled = inp.disabled = !devId;
     if (fill && /^#[0-9a-f]{6}$/i.test(fill)) inp.value = fill;
-    else if (z.color && /^#[0-9a-f]{6}$/i.test(z.color)) inp.value = z.color;
+    else if (zone.color && /^#[0-9a-f]{6}$/i.test(zone.color)) inp.value = zone.color;
     else inp.value = '#22c55e';
-    inp.disabled = !sel.value;
   }
 
   async _paintZoneRooms(areas, color) {
@@ -717,143 +718,56 @@ class RamsesFloorplanActions extends HTMLElement {
     return painted;
   }
 
-  async _setZoneColor(color) {
-    const devSel = this.shadowRoot.getElementById('zone-dev');
-    const devId = devSel && devSel.value;
-    if (!devId) return;
-    const zone = (((this._fpConfig || {}).device_zones || {})[devId]) || {};
-    let painted = 0;
-    try {
-      painted = await this._paintZoneRooms(zone.areas || [], color);
-    } catch { /* project unreachable — the option fallback still saves */ }
-    await this._call('floorplan_set_device_zone', {
-      device_id: devId,
-      areas: zone.areas || [],
-      devices: zone.devices || [],
-      color,
-    });
-    await this._fetchConfig();
-    this._status(
-      `Zone ${devId}: colour ${color}` +
-        (painted
-          ? ` — painted ${painted} room(s) in studio`
-          : ' — no zone rooms in studio to paint yet')
-    );
-  }
-
-  async _assignZone() {
+  async _saveZone() {
     const devSel = this.shadowRoot.getElementById('zone-dev');
     const devId = devSel && devSel.value;
     if (!devId) {
-      this._status('Pick a device in the zone row first');
+      this._status('Pick a device in the zone editor first');
       return;
     }
-    const ids = this._studioSelectedRoomIds();
-    if (!ids.size) {
-      this._status(
-        'No rooms selected in studio — shift-click the rooms this device serves first'
-      );
-      return;
-    }
+    const roomsSel = this.shadowRoot.getElementById('zone-rooms');
+    const memSel = this.shadowRoot.getElementById('zone-members');
+    const inp = this.shadowRoot.getElementById('zone-color');
     const rooms = await this._projectRooms();
     const areas = [
       ...new Set(
-        [...ids]
-          .map((id) => rooms.get(id))
+        [...roomsSel.selectedOptions]
+          .map((o) => rooms.get(o.value))
           .filter(Boolean)
           .map((r) => r.areaId)
       ),
     ];
-    if (!areas.length) {
-      this._status('Selected rooms resolve to no HA areas');
-      return;
-    }
-    const colorInput = this.shadowRoot.getElementById('zone-color');
-    const color = (colorInput && colorInput.value) || undefined;
-    const existing =
-      (((this._fpConfig || {}).device_zones || {})[devId]) || {};
-    if (color) {
-      // the swatch paints the rooms in the project — the studio
-      // inspector stays the colour editor
-      try { await this._paintZoneRooms(areas, color); } catch { /* optional */ }
+    const devices = [...memSel.selectedOptions].map((o) => o.value);
+    const color = (inp && inp.value) || undefined;
+    let painted = 0;
+    if (color && areas.length) {
+      // the swatch colour paints the rooms in the project — the
+      // studio inspector stays the colour editor
+      try { painted = await this._paintZoneRooms(areas, color); } catch { /* optional */ }
     }
     await this._call('floorplan_set_device_zone', {
       device_id: devId,
       areas,
-      devices: existing.devices || [],
+      devices,
       ...(color ? { color } : {}),
     });
     await this._fetchConfig();
     this._status(
-      `Zone stored for ${devId}: ${areas.join(', ')}` +
-        (color ? ` (${color})` : '') +
-        ' — click its marker in studio to highlight'
-    );
-  }
-
-  async _assignZoneDevices() {
-    const devSel = this.shadowRoot.getElementById('zone-dev');
-    const devId = devSel && devSel.value;
-    if (!devId) {
-      this._status('Pick a device in the zone row first');
-      return;
-    }
-    const sel = this._studioSelectedMarkers(true);
-    if (!sel.length) {
-      this._status('Select marker(s) in studio first (shift-click)');
-      return;
-    }
-    const zones = ((this._fpConfig || {}).device_zones) || {};
-    const zone = zones[devId] || {};
-    const ids = new Set(zone.devices || []);
-    const added = [];
-    for (const m of sel) {
-      const marker = this._fiberMarker(m.el);
-      const ents =
-        marker && (marker.entities || (marker.entity ? [marker.entity] : []));
-      for (const e of ents || []) {
-        // ramses devices bind by device_id; anything else (DIY/zigbee)
-        // binds by entity id — a one-way link, so the same member can
-        // serve several zones
-        const d = this._entityDevice[e];
-        const id = d ? d.device_id : e;
-        if (id !== devId && !ids.has(id)) {
-          ids.add(id);
-          added.push(id);
-        }
-      }
-    }
-    const colorInput = this.shadowRoot.getElementById('zone-color');
-    await this._call('floorplan_set_device_zone', {
-      device_id: devId,
-      areas: zone.areas || [],
-      devices: [...ids],
-      color: zone.color || (colorInput && colorInput.value) || undefined,
-    });
-    await this._fetchConfig();
-    this._status(
-      `Zone ${devId}: bound devices ${added.length ? `+${added.join(', ')}` : 'unchanged'} ` +
-        `(total ${ids.size})`
+      `Zone ${devId}: ${areas.length ? areas.join(', ') : 'no rooms'} ` +
+        `+ ${devices.length} marker(s)` +
+        (color
+          ? ` (${color}${painted ? `, painted ${painted} room(s)` : ''})`
+          : '') +
+        ' — select its marker in studio to highlight'
     );
   }
 
   async _pull() {
     const project = await this._readStudioProject();
     if (!project) return; // _readStudioProject already reported
-    const resized = this._normalizeSizes(project);
-    if (resized) {
-      // write the normalized sizes back so studio shows them too
-      project.updatedAt = Date.now();
-      const dbw = await openFpDb();
-      await idbReq(
-        dbw.transaction('projects', 'readwrite').objectStore('projects').put(project)
-      );
-      dbw.close();
-    }
     await this._store(
       JSON.stringify(project),
-      `pulled '${project.name || project.id}'` +
-        (resized ? `, ${resized} markers resized` : '')
+      `pulled '${project.name || project.id}'`
     );
   }
 
@@ -872,22 +786,6 @@ class RamsesFloorplanActions extends HTMLElement {
       this._status('Project not found in studio storage');
     }
     return project;
-  }
-
-  _normalizeSizes(project) {
-    if (this._tweak('normalize_sizes') === false) return 0;
-    const size = Number(this._tweak('marker_size'));
-    if (!size) return 0;
-    let n = 0;
-    for (const floor of project.floors || []) {
-      for (const m of floor.markers || []) {
-        if (m.style && m.style.size !== size) {
-          m.style.size = size;
-          n += 1;
-        }
-      }
-    }
-    return n;
   }
 
   async _pushToStudio(projectJson) {
@@ -920,9 +818,9 @@ class RamsesFloorplanActions extends HTMLElement {
   async _seed() {
     const data = {};
     if (this._config.floors) data.floors = this._config.floors;
-    const size = this._tweak('marker_size');
+    const size = this._config.marker_size;
     if (size) data.marker_size = size;
-    const seedName = this._tweak('seed_name');
+    const seedName = this._config.seed_name;
     if (seedName) data.name = seedName;
     // Merge into the selected studio project when one is open — keeps
     // walls, background and existing placement, only *new* devices get
@@ -979,12 +877,10 @@ class RamsesFloorplanActions extends HTMLElement {
     const project = await this._readStudioProject();
     let stored = '';
     if (project) {
-      const resized = this._normalizeSizes(project);
       const s = await this._call('floorplan_store_project', {
         project_json: JSON.stringify(project),
       });
-      stored = ` (project snapshot: ${s.latest_path}` +
-        (resized ? `, ${resized} markers resized` : '') + ')';
+      stored = ` (project snapshot: ${s.latest_path})`;
     }
     // apply:true lets the service update every matching storage
     // dashboard itself; apply:false is generate + clipboard only
@@ -1102,33 +998,32 @@ class RamsesFloorplanActions extends HTMLElement {
           <button id="b-export" class="secondary"
             title="Snapshot the selected studio project and regenerate the card files (merged SVG + state rules + captions). The card YAML is copied to your clipboard — dashboard cards are NOT updated (use ⇒ Update cards for that)">Export ⇒</button>
           <button id="b-apply" class="secondary"
-            title="Same as Export ⇒, plus every floorplan card on your dashboards that shows a generated map is updated in place — no edit mode, no paste">⇒ Update cards</button>
+            title="Same as Export ⇒, plus every floorplan card on your dashboards that shows a generated map is updated in place — no edit mode, no paste needed">⇒ Update cards</button>
           <button id="b-tweaks" class="secondary"
-            title="Card tweaks — saved in this browser">⚙ Tweaks</button>
+            title="Zone editor — which rooms and markers belong to each device's zone">⚙ Zones</button>
         </div>
         <div class="tweaks" id="tweaks" style="display:none">
           <div class="row">
-            <label for="tw-norm" title="On Pull, set every marker's icon size in the project to marker_size (yaml config, default 20) — also writes it back to studio so manually placed markers (studio default 40) get fixed">Normalize icon sizes on pull</label>
-            <input id="tw-norm" type="checkbox">
-          </div>
-          <div class="row">
-            <label for="zone-dev" title="A zone = the rooms a device serves + the extra markers bound to it. Tap the device's marker in studio → its rooms and bound markers light up in the zone colour.">Zone →</label>
+            <label for="zone-dev"
+              title="A zone = the rooms a device serves + the extra markers bound to it. Tap the device's marker in studio → its rooms and bound markers light up in the zone colour.">Zone of</label>
             <select id="zone-dev" style="max-width:220px"
-              title="Device whose zone you are editing — its current zone areas are shown after ▸"></select>
+              title="Device whose zone you are editing"></select>
             <input id="zone-color" type="color" style="width:36px;padding:0;height:24px"
-              title="Zone colour = the rooms' studio fill — paints the zone's rooms in the studio project, so the studio inspector stays the editor. Applies on change">
-            <button id="b-zone" class="secondary"
-              title="1) pick the device, 2) shift-click its rooms in studio, 3) click — stores the selected rooms as the zone">◧ rooms → zone</button>
-            <button id="b-zonedev" class="secondary"
-              title="1) pick the device, 2) shift-click markers in studio, 3) click — binds them to the zone (they highlight on tap too). Works for non-ramses entities (DIY valves, zigbee sensors); ramses devices in the schema need no entry">◉ markers → zone</button>
+              title="Zone colour — paints the zone's rooms in the studio project on Save (the highlight follows the rooms' fill, which the studio inspector can also edit)">
           </div>
-          <div class="row">
-            <label for="tw-zonewatch" title="When a marker is selected in studio, outline the rooms its device serves (device_zones config); double-click a marker to open the device card">Highlight zones on select</label>
-            <input id="tw-zonewatch" type="checkbox">
-          </div>
-          <div class="row">
-            <label for="tw-devview" title="Optional dashboard path for device details (e.g. /lovelace/hvac) — a '⤢ dashboard' button appears in the device popup">Device dashboard URL</label>
-            <input id="tw-devview" type="text" placeholder="/lovelace/hvac" style="width:200px">
+          <div class="row zcols">
+            <div class="zcol">
+              <span class="lbl">Serves rooms</span>
+              <select id="zone-rooms" multiple
+                title="Every room in the studio project — check the rooms this device serves; they highlight when the zone marker is tapped"></select>
+            </div>
+            <div class="zcol">
+              <span class="lbl">Bound markers</span>
+              <select id="zone-members" multiple
+                title="Extra markers bound to the zone — they highlight along with the rooms (e.g. DIY valve covers under a FAN zone). Ramses child devices are already linked via their parent in the schema"></select>
+            </div>
+            <button id="b-zone-save" class="secondary"
+              title="Save the zone: checked rooms become its areas, checked markers its bound devices, and the swatch paints the rooms in the studio project">Save zone</button>
           </div>
         </div>
         <div class="drop" id="drop"
@@ -1169,27 +1064,11 @@ class RamsesFloorplanActions extends HTMLElement {
       t.style.display = t.style.display === 'none' ? 'block' : 'none';
     };
 
-    // tweaks panel — values persist in localStorage, override YAML config
-    const twNorm = $('tw-norm');
-    twNorm.checked = this._tweak('normalize_sizes') !== false;
-    twNorm.onchange = () => this._saveTweak('normalize_sizes', twNorm.checked);
-
-    // zone row: the colour swatch shows the zone's resolved colour
-    // (studio room fill → zone.color → default) and paints the zone's
-    // rooms in the project on change
-    $('zone-dev').onchange = () => this._fillZoneColor();
-    $('zone-color').onchange = (e) => this._run(() => this._setZoneColor(e.target.value));
-    $('b-zone').onclick = () => this._run(() => this._assignZone());
-    $('b-zonedev').onclick = () => this._run(() => this._assignZoneDevices());
-    const twWatch = $('tw-zonewatch');
-    twWatch.checked = this._tweak('zone_watch') !== false;
-    twWatch.onchange = () => {
-      this._saveTweak('zone_watch', twWatch.checked);
-      if (!twWatch.checked) {
-        this._hiDevice = null;
-        this._clearZoneHighlight();
-      }
-    };
+    // zone editor: picking a device pre-checks its rooms + markers and
+    // shows its colour (studio room fill → zone.color → default);
+    // Save commits the checked lists and paints the rooms in the project
+    $('zone-dev').onchange = () => this._fillZoneRow();
+    $('b-zone-save').onclick = () => this._run(() => this._saveZone());
     this._fillZoneDevices();
     const closePanel = () => {
       $('devpanel').style.display = 'none';
@@ -1200,16 +1079,12 @@ class RamsesFloorplanActions extends HTMLElement {
       if (e.target.id === 'devpanel') closePanel();
     };
     $('devfull').onclick = () => {
-      const url = this._tweak('device_view_url');
+      const url = this._config.device_view_url;
       if (url) {
         closePanel();
         this._navigate(url);
       }
     };
-    const twDevView = $('tw-devview');
-    twDevView.value = this._tweak('device_view_url') || '';
-    twDevView.onchange = () =>
-      this._saveTweak('device_view_url', twDevView.value || undefined);
 
     this._fillProjectSelect();
 
