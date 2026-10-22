@@ -163,6 +163,13 @@ class RamsesEditorEmbed extends HTMLElement {
       frame.style.height = height;
       this._el.style.height = '100%';
       this._el.style.display = 'block';
+      // hfs's panels size themselves to --fp-editor-height (fallback
+      // calc(100vh - 150px) assumes a full page); bound it to the card
+      // minus their toolbar so the side panel's own scrollbar engages
+      this._el.style.setProperty(
+        '--fp-editor-height',
+        `calc(${height} - 64px)`
+      );
       frame.appendChild(this._el);
     }
   }
