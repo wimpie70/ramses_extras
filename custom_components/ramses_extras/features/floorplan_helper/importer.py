@@ -16,6 +16,7 @@ Kept hass-free so it is unit-testable.
 from __future__ import annotations
 
 import json
+import math
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -986,6 +987,32 @@ def project_drawing_svg(floor: dict[str, Any]) -> str | None:
             f'opacity="{float(bg.get("opacity") or 1):g}"/>'
         )
 
+    # walls + openings render like studio's canvas — needed when the
+    # floor is drawn natively in studio instead of a background image
+    walls = {str(w.get("id")): w for w in floor.get("walls") or []}
+    for wall in walls.values():
+        d = _polyline_path(wall.get("points") or [])
+        if d:
+            parts.append(
+                f'<path d="{d}" fill="none" '
+                f'stroke="{xml_id(wall.get("color") or "#94a3b8")}" '
+                f'stroke-width="{float(wall.get("thickness") or 4):g}" '
+                f'stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+    for opening in floor.get("openings") or []:
+        wall = walls.get(str(opening.get("wallId") or ""))
+        if not wall:
+            continue
+        p = _point_along_wall(wall, float(opening.get("t") or 0))
+        ow = float(opening.get("width") or 40)
+        oh = float(wall.get("thickness") or 4) + 4
+        fill = "#fbbf24" if opening.get("kind") == "door" else "#93c5fd"
+        parts.append(
+            f'<rect x="{p[0] - ow / 2:g}" y="{p[1] - oh / 2:g}" '
+            f'width="{ow:g}" height="{oh:g}" fill="{fill}" '
+            f'stroke="#0f172a" stroke-width="1"/>'
+        )
+
     for room in floor.get("rooms") or []:
         pts = [
             (float(p["x"]), float(p["y"]))
@@ -1015,6 +1042,40 @@ def project_drawing_svg(floor: dict[str, Any]) -> str | None:
             )
     parts.append("</svg>")
     return "\n".join(parts) + "\n"
+
+
+def _polyline_path(points: list[dict[str, Any]]) -> str:
+    """``M x y L x y…`` for a wall polyline (no close)."""
+    pts = [
+        (float(p["x"]), float(p["y"]))
+        for p in points
+        if isinstance(p, dict) and "x" in p and "y" in p
+    ]
+    if len(pts) < 2:
+        return ""
+    return "M" + " L".join(f"{x:g} {y:g}" for x, y in pts)
+
+
+def _point_along_wall(wall: dict[str, Any], t: float) -> tuple[float, float]:
+    """Arc-length position ``t`` (0..1) along a wall's polyline."""
+    pts = [
+        (float(p["x"]), float(p["y"]))
+        for p in (wall.get("points") or [])
+        if isinstance(p, dict) and "x" in p and "y" in p
+    ]
+    if len(pts) < 2:
+        return pts[0] if pts else (0.0, 0.0)
+    seg_lens = [math.dist(pts[i - 1], pts[i]) for i in range(1, len(pts))]
+    target = t * sum(seg_lens)
+    for i, seg in enumerate(seg_lens):
+        if target <= seg or i == len(seg_lens) - 1:
+            f = target / seg if seg else 0.0
+            return (
+                pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f,
+                pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f,
+            )
+        target -= seg
+    return pts[-1]
 
 
 def _room_fill(room: dict[str, Any]) -> str:
