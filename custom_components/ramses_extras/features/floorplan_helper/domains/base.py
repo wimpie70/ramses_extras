@@ -147,6 +147,31 @@ def caption_group_label(group: tuple[tuple[str, ...], str]) -> str:
     return f"{key} {suffix}".rstrip()
 
 
+def caption_suffix_for(entity_id: str, domain: DeviceDomain) -> str:
+    """Display suffix for a caption entity id.
+
+    Domain caption-group patterns win (they know ``indoor_temp`` is a
+    temperature and ``co2_level`` is ppm); entity-name heuristics cover
+    entities the groups don't mention — a manually attached
+    ``sensor.x_indoor_humidity`` still renders as a percentage.
+    """
+    for patterns, suffix in domain.caption_groups:
+        if any(p in entity_id for p in patterns):
+            return str(suffix)
+    for needle, suffix in (
+        ("temp", "°"),
+        ("co2", " ppm"),
+        ("humidity", "%"),
+        ("moisture", "%"),
+        ("demand", "%"),
+        ("modulation", "%"),
+        ("percent", "%"),
+    ):
+        if needle in entity_id:
+            return suffix
+    return ""
+
+
 # Generic fallback — every class not claimed by a registered domain.
 GENERIC_DOMAIN = DeviceDomain()
 
@@ -178,6 +203,7 @@ __all__ = [
     "DeviceDomain",
     "caption_group_key",
     "caption_group_label",
+    "caption_suffix_for",
     "GENERIC_DOMAIN",
     "device_class_from_id",
     "get_domain",

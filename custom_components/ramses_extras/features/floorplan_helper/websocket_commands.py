@@ -15,6 +15,7 @@
 :feature: Floorplan Helper WebSocket Commands
 """
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -34,9 +35,11 @@ from .const import (
     OPTION_SVG_MODE,
     OPTION_TOOLBAR_ENABLED,
 )
-from .importer import load_latest_project
+from .domains import caption_suffix_for, get_domain
+from .importer import load_latest_project, studio_marker_positions
 from .mapping import get_floorplan_options
-from .markers import editor_url
+from .markers import editor_url, marker_meta_for_device
+from .rules import caption_pairs_for_device
 from .topology import build_floorplan_model
 
 if TYPE_CHECKING:
@@ -129,6 +132,36 @@ async def ws_get_config(
         )
         return
     options = get_floorplan_options(entry)
+
+    # resolved per-device captions + the entity choices the actions
+    # card's caption editor offers — the same precedence the export
+    # uses, so the checkboxes show what the card will actually render
+    captions: dict[str, list[list[str]]] = {}
+    choices: dict[str, list[list[str]]] = {}
+    try:
+        model = await build_floorplan_model(hass)
+        raw = await hass.async_add_executor_job(load_latest_project, hass)
+        project = json.loads(raw) if raw else None
+        meta = studio_marker_positions(project) if isinstance(project, dict) else None
+        for dev in model.get("devices") or []:
+            did = str(dev.get("device_id") or "")
+            if not did:
+                continue
+            domain = get_domain(dev)
+            captions[did] = [
+                [eid, sfx]
+                for eid, sfx in caption_pairs_for_device(
+                    dev, options, marker_meta_for_device(dev, meta)
+                )
+            ]
+            choices[did] = [
+                [str(e["entity_id"]), caption_suffix_for(str(e["entity_id"]), domain)]
+                for e in dev.get("entities") or []
+                if e.get("entity_id")
+            ]
+    except Exception as err:  # pragma: no cover - model needs registries
+        _LOGGER.debug("device captions unavailable: %s", err)
+
     connection.send_result(
         msg["id"],
         {
@@ -138,6 +171,8 @@ async def ws_get_config(
             "toolbar_enabled": options.get(OPTION_TOOLBAR_ENABLED),
             "device_zones": options.get(OPTION_DEVICE_ZONES, {}),
             "device_view_url": options.get(OPTION_DEVICE_VIEW_URL, ""),
+            "device_captions": captions,
+            "caption_choices": choices,
         },
     )
 

@@ -609,8 +609,8 @@ def studio_marker_positions(
     :param floor_name: when given, only markers on that floor are read
     :return: ``{entity_id: {"x", "y", "size", "icon", "color", "label",
         "show_state", "actions", "state_rules", "visibility",
-        "ramses_zone", "ramses_caption", "glyph", "ring", "opacity",
-        "element_id", "floor"}}``
+        "ramses_zone", "ramses_caption", "entities", "glyph", "ring",
+        "opacity", "element_id", "floor"}}``
 
     The project is the single source of truth: ``actions`` /
     ``ramsesZone`` / ``state_rules`` / style extras come straight from
@@ -642,6 +642,7 @@ def studio_marker_positions(
                         "visibility": marker.get("visibility"),
                         "ramses_zone": marker.get("ramsesZone"),
                         "ramses_caption": marker.get("ramsesCaption"),
+                        "entities": list(marker.get("entities") or []),
                         "glyph": style.get("glyph"),
                         "ring": style.get("ring"),
                         "opacity": style.get("opacity"),

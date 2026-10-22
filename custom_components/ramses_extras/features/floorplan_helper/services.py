@@ -50,6 +50,7 @@ from .const import (
     FLOORPLAN_ICON_MDI,
     FLOORPLAN_ICONS,
     FLOORPLAN_UPLOAD_DIR_NAME,
+    OPTION_CAPTION_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
     OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
@@ -64,6 +65,7 @@ from .const import (
     ZONE_TOGGLE_SERVICE,
     is_generated_rule,
 )
+from .domains import caption_suffix_for, get_domain
 from .importer import (
     backup_project,
     build_studio_project,
@@ -88,6 +90,7 @@ from .mapping import (
     get_floorplan_options,
     persist_floorplan_options,
     set_area_override,
+    set_caption_override,
     set_device_zone,
     set_element_binding,
     set_icon_override,
@@ -119,6 +122,7 @@ SVC_SET_ELEMENT = "floorplan_set_element"
 SVC_SET_ICON = "floorplan_set_icon"
 SVC_ASSIGN_AREA = "floorplan_assign_area"
 SVC_SET_DEVICE_ZONE = "floorplan_set_device_zone"
+SVC_SET_DEVICE_CAPTION = "floorplan_set_device_caption"
 SVC_SET_SVG = "floorplan_set_svg"
 SVC_IMPORT = "floorplan_import"
 SVC_UPLOAD_SVG = "floorplan_upload_svg"
@@ -454,6 +458,46 @@ async def _write_zone_to_project(
         )
 
 
+async def _write_caption_to_project(
+    hass: HomeAssistant, device_id: str, items: list[str] | None
+) -> None:
+    """Write/clear ``marker.ramsesCaption`` in the stored studio project.
+
+    Same SSOT pattern as :func:`_write_zone_to_project` — the option
+    override is only the fallback for markers without the field.
+    ``items=None`` removes the field (marker returns to defaults).
+    """
+    raw = await hass.async_add_executor_job(load_latest_project, hass)
+    if not raw:
+        return
+    try:
+        project = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    model = await build_floorplan_model(hass)
+    dev = next(
+        (d for d in model.get("devices") or [] if d.get("device_id") == device_id),
+        None,
+    )
+    targets = {dev.get("primary_entity")} if dev else {device_id}
+    targets.update(e.get("entity_id") for e in (dev or {}).get("entities") or [])
+    targets.discard(None)
+    changed = False
+    for floor in project.get("floors") or []:
+        for marker in floor.get("markers") or []:
+            if not set(marker.get("entities") or []) & targets:
+                continue
+            if items is None:
+                marker.pop("ramsesCaption", None)
+            else:
+                marker["ramsesCaption"] = items
+            changed = True
+    if changed:
+        await hass.async_add_executor_job(
+            store_latest_project, hass, json.dumps(project)
+        )
+
+
 async def _write_icon_to_project(
     hass: HomeAssistant, target: str, icon_key: str | None
 ) -> None:
@@ -732,6 +776,45 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "device_id": device_id,
             "zone": section.get(OPTION_DEVICE_ZONES, {}).get(device_id),
             "removed": remove,
+        }
+
+    async def _async_set_device_caption(call: ServiceCall) -> dict[str, Any]:
+        """Set or clear which entity states a marker's caption shows.
+
+        The actions card's caption editor calls this with the checked
+        entity ids; each gets a display suffix resolved from the
+        device domain's caption groups (then name heuristics). The
+        resolved ``eid|suffix`` items are stored as the option-level
+        override AND stamped onto the marker as ``ramsesCaption`` —
+        the project stays the single source of truth. ``remove``
+        clears both, returning the device to class defaults.
+        """
+        device_id: str = call.data["device_id"]
+        remove = call.data.get("remove", False)
+        items: list[str] | None = None
+        if not remove:
+            model = await build_floorplan_model(hass)
+            dev = next(
+                (
+                    d
+                    for d in model.get("devices") or []
+                    if d.get("device_id") == device_id
+                ),
+                None,
+            )
+            domain = get_domain(dev or {})
+            items = [
+                f"{e}|{caption_suffix_for(str(e), domain)}"
+                for e in (call.data.get("entities") or [])
+            ]
+        entry = _config_entry(hass)
+        section = set_caption_override(hass, entry, device_id, items)
+        await _write_caption_to_project(hass, device_id, items)
+        return {
+            "device_id": device_id,
+            "caption": items,
+            "removed": remove,
+            "caption_overrides": section.get(OPTION_CAPTION_OVERRIDES, {}),
         }
 
     async def _async_set_svg(call: ServiceCall) -> dict[str, Any]:
@@ -1490,6 +1573,22 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Optional("areas"): vol.All(cv.ensure_list, [cv.string]),
                     vol.Optional("devices"): vol.All(cv.ensure_list, [cv.string]),
                     vol.Optional("color"): cv.string,
+                    vol.Optional("remove", default=False): cv.boolean,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_SET_DEVICE_CAPTION):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_SET_DEVICE_CAPTION,
+            _async_set_device_caption,
+            schema=vol.Schema(
+                {
+                    vol.Required("device_id"): cv.string,
+                    vol.Optional("entities"): vol.All(cv.ensure_list, [cv.string]),
                     vol.Optional("remove", default=False): cv.boolean,
                 },
                 extra=vol.PREVENT_EXTRA,

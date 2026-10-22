@@ -819,6 +819,74 @@ class TestCaption:
             "sensor.32_153289_outdoor_temp",
         }
 
+    def test_marker_entities_drive_caption(self):
+        # a studio marker with more than one entity attached shows
+        # those states — "what's on the marker is what it shows";
+        # suffixes come from the domain groups, then name heuristics
+        from custom_components.ramses_extras.features.floorplan_helper.rules import (
+            caption_pairs_for_device,
+        )
+
+        dev = self._dev()
+        meta = {
+            "sensor.32_153289_fan_rate": {
+                "entities": [
+                    "sensor.32_153289_indoor_temp",
+                    "sensor.32_153289_indoor_humidity",
+                ]
+            }
+        }
+        pairs = caption_pairs_for_device(
+            dev,
+            _options(),
+            meta["sensor.32_153289_fan_rate"],
+        )
+        assert pairs == [
+            ("sensor.32_153289_indoor_temp", "°"),
+            ("sensor.32_153289_indoor_humidity", "%"),
+        ]
+
+        # a single-entity marker keeps the group-derived caption
+        meta["sensor.32_153289_fan_rate"]["entities"] = ["sensor.32_153289_fan_rate"]
+        pairs = caption_pairs_for_device(
+            dev,
+            _options(),
+            meta["sensor.32_153289_fan_rate"],
+        )
+        assert [e for e, _ in pairs] == [
+            "sensor.32_153289_indoor_temp",
+            "sensor.32_153289_outdoor_temp",
+        ]
+
+        # an explicit ramsesCaption still wins over attached entities
+        meta["sensor.32_153289_fan_rate"]["entities"] = [
+            "sensor.32_153289_indoor_temp",
+            "sensor.32_153289_indoor_humidity",
+        ]
+        meta["sensor.32_153289_fan_rate"]["ramses_caption"] = [
+            "sensor.32_153289_co2_level| ppm"
+        ]
+        pairs = caption_pairs_for_device(
+            dev,
+            _options(),
+            meta["sensor.32_153289_fan_rate"],
+        )
+        assert pairs == [("sensor.32_153289_co2_level", "ppm")]
+
+    def test_caption_suffix_heuristics(self):
+        from custom_components.ramses_extras.features.floorplan_helper.domains import (
+            caption_suffix_for,
+            get_domain,
+        )
+
+        fan = get_domain("FAN")
+        # domain group patterns win over the generic heuristics
+        assert caption_suffix_for("sensor.x_indoor_temp", fan) == "°"
+        # heuristic fallbacks for entities no group mentions
+        assert caption_suffix_for("sensor.x_indoor_humidity", fan) == "%"
+        assert caption_suffix_for("sensor.x_co2_level", fan) == " ppm"
+        assert caption_suffix_for("number.x_fan_speed", fan) == ""
+
 
 class TestMarkerStyle:
     def test_parse_and_defaults(self):

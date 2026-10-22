@@ -33,7 +33,7 @@ from .const import (
     ZONE_TOGGLE_SERVICE,
     is_generated_rule,
 )
-from .domains import caption_group_key, get_domain
+from .domains import caption_group_key, caption_suffix_for, get_domain
 from .expressions import (
     CLASS_ROLES,
     element_caption_expr,
@@ -229,6 +229,65 @@ def caption_override_for_device(
     return None
 
 
+def _parse_caption_items(raw: Any) -> list[tuple[str, str]]:
+    """``"eid|suffix"`` items → ``(entity_id, suffix)`` pairs."""
+    if isinstance(raw, str):
+        raw = [raw]
+    return [
+        (eid.strip(), sfx.strip())
+        for item in raw or []
+        for eid, _, sfx in [str(item).partition("|")]
+        if eid.strip()
+    ]
+
+
+def caption_pairs_for_device(
+    dev: dict[str, Any],
+    options: dict[str, Any],
+    meta: dict[str, Any] | None = None,
+) -> list[tuple[str, str]]:
+    """Resolved ``(entity_id, suffix)`` caption pairs for a device.
+
+    Precedence — the studio project wins over stored options:
+
+    1. ``style.showState`` off → no caption (studio's per-marker toggle)
+    2. ``marker.ramsesCaption`` — explicit ``eid|suffix`` items written
+       by the actions card's caption editor
+    3. ``marker.entities`` with more than one entity — entities the
+       user attached to the marker in studio are what it shows
+    4. ``caption_overrides`` option (device → class → primary entity)
+    5. ``caption_fields`` option (stored per-class group selection —
+       legacy; the UI moved to the actions card)
+    6. the domain's ``caption_groups`` default
+    """
+    domain = get_domain(dev)
+    if meta and meta.get("show_state") is False:
+        # studio's "Show state" toggle persists with the project —
+        # unticking it is the per-marker way to hide the caption
+        return []
+    raw = (meta or {}).get("ramses_caption")
+    if raw is not None:
+        return _parse_caption_items(raw)
+    marker_ents = (meta or {}).get("entities") or []
+    if len(marker_ents) > 1:
+        return [(str(e), caption_suffix_for(str(e), domain)) for e in marker_ents]
+    raw = caption_override_for_device(dev, options)
+    if raw is not None:
+        return _parse_caption_items(raw)
+    # per-class stored selection — caption_fields maps device class →
+    # group keys (first pattern); absent key = domain default,
+    # empty list = no caption for the class
+    selected = (options.get(OPTION_CAPTION_FIELDS) or {}).get(
+        str(dev.get("device_class") or "")
+    )
+    if selected is not None:
+        groups = tuple(
+            g for g in domain.caption_groups if caption_group_key(g) in selected
+        )
+        return domain.caption_entities(dev.get("entities") or [], groups)
+    return domain.caption_entities(dev.get("entities") or [])
+
+
 def _device_view_actions(
     dev: dict[str, Any],
     primary: str,
@@ -276,7 +335,6 @@ def _device_rules(
     primary = dev.get("primary_entity")
     element_id = element_id_for_device(dev, options)
     combined_class = element_class_expr(dev)
-    domain = get_domain(dev)
 
     rules: list[dict[str, Any]] = []
     for ent in dev.get("entities", []):
@@ -305,40 +363,8 @@ def _device_rules(
 
     # caption: one combined ${} emitted on every contributing entity's
     # rule — whichever state updates, the caption rewrites in full.
-    # Precedence: marker.ramsesCaption (studio project) > caption_overrides
-    # (device id → class → primary entity) > caption_fields (per-class
-    # config-flow selection) > domain default; "eid|suffix" entries
-    # carry their own suffix.
-    caption_pairs = domain.caption_entities(dev.get("entities") or [])
     meta = marker_meta_for_device(dev, marker_meta)
-    if meta and meta.get("show_state") is False:
-        # studio's "Show state" toggle persists with the project —
-        # unticking it is the per-marker way to hide the caption
-        caption_pairs = []
-    raw = (meta or {}).get("ramses_caption")
-    if raw is None:
-        raw = caption_override_for_device(dev, options)
-    elif isinstance(raw, str):
-        raw = [raw]
-    if raw is not None:
-        caption_pairs = [
-            (eid.strip(), sfx.strip())
-            for item in raw
-            for eid, _, sfx in [str(item).partition("|")]
-            if eid.strip()
-        ]
-    else:
-        # per-class config-flow selection — caption_fields maps device
-        # class → group keys (first pattern); absent key = domain
-        # default, empty list = no caption for the class
-        selected = (options.get(OPTION_CAPTION_FIELDS) or {}).get(
-            str(dev.get("device_class") or "")
-        )
-        if selected is not None:
-            groups = tuple(
-                g for g in domain.caption_groups if caption_group_key(g) in selected
-            )
-            caption_pairs = domain.caption_entities(dev.get("entities") or [], groups)
+    caption_pairs = caption_pairs_for_device(dev, options, meta)
     caption_expr = element_caption_expr(caption_pairs)
     if caption_expr:
         for eid, _ in caption_pairs:
@@ -507,6 +533,7 @@ __all__ = [
     "stale_managed_rule",
     "build_rules",
     "caption_override_for_device",
+    "caption_pairs_for_device",
     "class_set_rule",
     "fire_dom_event",
     "link_action",

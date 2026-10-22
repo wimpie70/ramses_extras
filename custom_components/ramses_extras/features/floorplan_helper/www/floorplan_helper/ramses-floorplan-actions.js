@@ -996,6 +996,33 @@ class RamsesFloorplanActions extends HTMLElement {
       if (seen.has(id)) continue;
       memSel.appendChild(this._zitem(id, `${id} (entity)`, true));
     }
+    // caption: the server resolves the current selection with the
+    // same precedence the export uses — checked = what the card
+    // shows. Entries outside the device entities stay listed (like
+    // bound entities) so they can be unchecked
+    const capSel = this.shadowRoot.getElementById('zone-caption');
+    if (capSel) {
+      capSel.innerHTML = '';
+      const cfg = this._fpConfig || {};
+      const picked = (cfg.device_captions || {})[devId] || [];
+      const pickedIds = new Set(picked.map((p) => p[0]));
+      const listed = new Set();
+      const row = (pair, on, extra) =>
+        capSel.appendChild(
+          this._zitem(
+            pair[0],
+            `${pair[0]}${pair[1] ? ` ${pair[1]}` : ''}${extra}`,
+            on
+          )
+        );
+      for (const pair of (cfg.caption_choices || {})[devId] || []) {
+        listed.add(pair[0]);
+        row(pair, pickedIds.has(pair[0]), '');
+      }
+      for (const pair of picked) {
+        if (!listed.has(pair[0])) row(pair, true, ' (entity)');
+      }
+    }
     inp.disabled = !devId;
     // zone.color is the highlight outline colour — an explicit pick
     // wins; a room fill is only the suggested default for new zones
@@ -1053,6 +1080,17 @@ class RamsesFloorplanActions extends HTMLElement {
       devices,
       ...(color ? { color } : {}),
     });
+    // caption rides the same pick + debounce — an unpopulated list
+    // (no config yet) preserves the stored caption, like the lists
+    const capSel = this.shadowRoot.getElementById('zone-caption');
+    if (capSel && capSel.children.length) {
+      await this._call('floorplan_set_device_caption', {
+        device_id: devId,
+        entities: [...capSel.querySelectorAll('input:checked')].map(
+          (cb) => cb.value
+        ),
+      });
+    }
     await this._fetchConfig();
     this._status(
       `Zone ${devId}: ${areas.length ? areas.join(', ') : 'no rooms'} ` +
@@ -1323,7 +1361,7 @@ class RamsesFloorplanActions extends HTMLElement {
             <select id="zone-dev" style="max-width:220px"
               title="Device whose zone you are editing — also follows the marker selected in studio"></select>
             <input id="zone-color" type="color" style="width:36px;padding:0;height:24px"
-              title="Zone colour — paints the zone's rooms in the studio project (the highlight follows the rooms' fill, which the studio inspector can also edit). Autosaves">
+              title="Zone colour — the outline/highlight colour shown when this zone is selected; room fills stay whatever studio's inspector set. Autosaves">
           </div>
           <div class="row zcols">
             <div class="zcol">
@@ -1335,6 +1373,11 @@ class RamsesFloorplanActions extends HTMLElement {
               <span class="lbl">Bound markers</span>
               <div id="zone-members" class="zlist"
                 title="Extra markers bound to the zone — they highlight along with the rooms (e.g. DIY valve covers under a FAN zone). '· auto' entries come from the ramses schema's parent link — already bound. Synced with studio's marker selection — click to toggle, changes autosave"></div>
+            </div>
+            <div class="zcol">
+              <span class="lbl">Caption</span>
+              <div id="zone-caption" class="zlist"
+                title="Entity states shown under this device's marker — untick all to hide the caption. Alternative: attach extra entities to the marker in studio and they show too. Autosaves"></div>
             </div>
           </div>
         </div>
@@ -1389,6 +1432,8 @@ class RamsesFloorplanActions extends HTMLElement {
     };
     $('zone-rooms').onchange = () => this._pushZoneSelToStudio();
     $('zone-members').onchange = () => this._pushZoneSelToStudio();
+    // caption edits don't touch studio selection — autosave only
+    $('zone-caption').onchange = () => this._queueZoneSave();
     // the swatch is the highlight outline colour — stored on the
     // zone, it never repaints the rooms' base fills
     $('zone-color').onchange = () => this._queueZoneSave();
