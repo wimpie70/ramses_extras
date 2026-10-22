@@ -123,6 +123,10 @@ const CARD_MODULES = [
     tag: 'ramses-floorplan-actions',
     modulePath: '../features/floorplan_helper/ramses-floorplan-actions.js',
   },
+  {
+    tag: 'ramses-editor-embed',
+    modulePath: '../features/floorplan_helper/ramses-editor-embed.js',
+  },
 ];
 
 const loaded = new Set();

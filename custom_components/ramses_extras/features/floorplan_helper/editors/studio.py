@@ -43,8 +43,15 @@ class StudioAdapter(EditorAdapter):
         multi_entity=True,
         stamp_extras=True,
         browser_side=True,
-        editor_url="/floorplan-studio",
+        # studio's editor is a card on a dashboard, not a fixed URL —
+        # the editor_url option (default /floorplan-studio) points where
+        # the user put it
+        editor_url="",
         card_element="floorplan-studio-card",
+        # the editor already is a dashboard card — embed mounts that
+        # element (its module is a lovelace resource, already loaded)
+        panel_element="floorplan-studio-card",
+        panel_module="",
     )
 
     async def async_detect(self, hass: HomeAssistant) -> bool:

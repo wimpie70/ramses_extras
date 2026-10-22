@@ -188,6 +188,8 @@ async def ws_get_config(
                     "stamp_extras",
                     "browser_side",
                     "card_element",
+                    "panel_element",
+                    "panel_module",
                 )
             },
             "editor_url": adapter.capabilities.editor_url or editor_url(options),

@@ -67,6 +67,8 @@ class EditorCapabilities:
     browser_side: bool = True  # plan lives in the browser → pull/push
     editor_url: str = ""  # where "Open editor" points
     card_element: str = ""  # custom element to find on the dashboard
+    panel_element: str = ""  # element the embed card mounts (editor UI)
+    panel_module: str = ""  # JS module to import for it ("" = already loaded)
 
 
 class EditorAdapter(ABC):

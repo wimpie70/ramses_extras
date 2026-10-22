@@ -179,6 +179,7 @@ async def _build_merged_svg(
     options: dict[str, Any],
     ref: str,
     project: dict[str, Any] | None = None,
+    tag: str = "",
 ) -> tuple[str | None, list[str], str | None]:
     """Splice device markers + toolbar into the user's custom SVG.
 
@@ -237,7 +238,7 @@ async def _build_merged_svg(
         model, options, svg_text, project, floor
     )
     warnings.extend(tail_warnings)
-    return f"{src.stem}.merged.svg", warnings, merged
+    return f"{src.stem}{tag}.merged.svg", warnings, merged
 
 
 def _merge_overlay_tail(
@@ -279,6 +280,7 @@ def _build_project_merged_svg(
     options: dict[str, Any],
     project: dict[str, Any] | None,
     floor: dict[str, Any],
+    tag: str = "",
 ) -> tuple[str | None, list[str], str | None]:
     """Merge the marker overlay into a drawing rendered from the
     project itself — studio is the SSOT, so no authored SVG file is
@@ -302,7 +304,7 @@ def _build_project_merged_svg(
             count=1,
         )
     warnings, merged = _merge_overlay_tail(model, options, svg_text, project, floor)
-    return f"{slugify(name)}.merged.svg", warnings, merged
+    return f"{slugify(name)}{tag}.merged.svg", warnings, merged
 
 
 def build_card_config(
@@ -456,6 +458,10 @@ async def async_generate_bundle(
     files: dict[str, str] = {}
     warnings: list[str] = []
     merged_names: list[str] = []
+    # studio keeps the historical <stem>.merged.svg names; every other
+    # editor namespaces its output (two editors may hold separate plans,
+    # and a later export must not overwrite the other's images)
+    tag = "" if adapter.key == "studio" else f".{adapter.key}"
     project_floors = [
         f for f in (project or {}).get("floors") or [] if project_drawing_svg(f)
     ]
@@ -464,7 +470,7 @@ async def async_generate_bundle(
         # <floor>.merged.svg; authored drawing files aren't consulted.
         for floor in project_floors:
             merged_name, merged_warnings, merged_text = _build_project_merged_svg(
-                model, options, project, floor
+                model, options, project, floor, tag
             )
             warnings.extend(merged_warnings)
             if merged_text is not None and merged_name:
@@ -475,7 +481,7 @@ async def async_generate_bundle(
         # overlay onto the authored drawing files in custom_svg_path
         for ref in custom_svg_refs(options):
             merged_name, merged_warnings, merged_text = await _build_merged_svg(
-                hass, model, options, ref, project
+                hass, model, options, ref, project, tag
             )
             warnings.extend(merged_warnings)
             if merged_text is not None and merged_name:

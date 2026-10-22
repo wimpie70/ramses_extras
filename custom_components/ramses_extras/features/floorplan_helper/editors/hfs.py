@@ -145,6 +145,9 @@ class HfsAdapter(EditorAdapter):
         stamp_extras=False,  # editor-side validate may strip unknowns
         browser_side=False,  # plan lives in .storage — no pull/push
         editor_url="/floorplan-studio",
+        # the editor is a sidebar panel — the embed card mounts it inline
+        panel_element="floorplan-studio-panel",
+        panel_module="/floorplan_studio_static/floorplan-studio-panel.js",
     )
 
     # ---- storage helpers ----------------------------------------------
