@@ -109,6 +109,7 @@ from .topology import build_floorplan_model
 from .zones import (
     model_entity_ids,
     resolve_bound,
+    seed_heat_zones,
     standalone_members,
     zone_toggle_specs,
 )
@@ -1149,7 +1150,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         model = await build_floorplan_model(hass)
         marker_size: int = int(call.data.get("marker_size") or 20)
         options = get_floorplan_options(_config_entry(hass))
-        zones = options.get(OPTION_DEVICE_ZONES) or {}
+        zones = dict(options.get(OPTION_DEVICE_ZONES) or {})
+
+        # Evohome zones → device_zones: the zone sensor (room stat) is
+        # the parent, its actuators join as members, and a room whose
+        # name matches the zone name pre-fills `areas`. Existing entries
+        # are never overwritten.
+        room_slugs: set[str] = set()
+        for svg_text in floor_svgs.values():
+            room_slugs.update(r["slug"] for r in rooms_from_svg(svg_text))
+        seeded_zones = seed_heat_zones(model.get("heat_zones") or [], room_slugs, zones)
+        if seeded_zones:
+            persist_floorplan_options(
+                hass, _config_entry(hass), {**options, OPTION_DEVICE_ZONES: zones}
+            )
         # resolve each zone to concrete toggle specs — written into the
         # marker's serviceData so studio shows (and exports) the real
         # action; the generated rules regenerate it anyway, so the
@@ -1337,14 +1351,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             _backup_project, hass, project_out
         )
         _LOGGER.info(
-            "Floorplan seed_studio: %d markers across %d floors, %d unplaced",
+            "Floorplan seed_studio: %d markers across %d floors, %d unplaced, "
+            "%d heat zones seeded",
             len(placed),
             len(floors_json),
             len(unplaced),
+            len(seeded_zones),
         )
         return {
             "project_json": project_out,
             "backup_path": backup_path,
+            "zones_seeded": seeded_zones,
+            "heat_zones": model.get("heat_zones"),
             "placed": placed,
             "unplaced": [
                 {

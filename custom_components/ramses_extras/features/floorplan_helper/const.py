@@ -96,6 +96,20 @@ OPTION_TOOLBAR_ENABLED = "toolbar_enabled"
 OPTION_EDITOR_URL = "editor_url"
 OPTION_PLANNER_URL = "planner_url"
 
+# Auto-seeded zones (e.g. evohome heat zones discovered from the TCS
+# schema) get a deterministic colour from this palette — picked in seed
+# order, so zones stay visually distinct without user config.
+ZONE_SEED_PALETTE = (
+    "#f59e0b",  # amber — warm, heat-adjacent
+    "#0ea5e9",  # sky
+    "#a855f7",  # purple
+    "#14b8a6",  # teal
+    "#ef4444",  # red
+    "#84cc16",  # lime
+    "#ec4899",  # pink
+    "#6366f1",  # indigo
+)
+
 SVG_MODE_GENERATED = "generated"
 SVG_MODE_CUSTOM = "custom"
 
@@ -382,6 +396,7 @@ __all__ = [
     "EVENT_DEVICE_VIEW",
     "EVENT_ZONE_TOGGLE",
     "FLOORPLAN_UPLOAD_DIR_NAME",
+    "ZONE_SEED_PALETTE",
     "ZONE_TOGGLE_SERVICE",
     "FLOORPLAN_WEBSOCKET_COMMANDS",
     "CARD_YAML_STEM",

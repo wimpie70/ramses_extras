@@ -27,6 +27,7 @@ from custom_components.ramses_extras.features.floorplan_helper.const import (
     TOOLBAR_ELEMENT_IMPORT,
     TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
+    ZONE_SEED_PALETTE,
 )
 from custom_components.ramses_extras.features.floorplan_helper.platforms import (
     binary_sensor as fp_binary_sensor,
@@ -701,6 +702,61 @@ class TestZones:
         }
         # model entity ids + device ids are excluded; plain entities kept
         assert zones.standalone_members(model, zones_cfg) == ["cover.klep_1"]
+
+    def test_seed_heat_zones(self):
+        from custom_components.ramses_extras.features.floorplan_helper import zones
+
+        heat = [
+            {
+                "ctl_id": "01:150000",
+                "zone_id": "03",
+                "name": "Woonkamer",
+                "sensor": "01:150003",
+                "actuators": ["04:150003", "04:150099"],
+                "class": "radiator_valve",
+            },
+            {
+                # no sensor → first actuator parents the zone
+                "ctl_id": "01:150000",
+                "zone_id": "04",
+                "name": "Badkamer",
+                "sensor": None,
+                "actuators": ["13:150004"],
+                "class": "zone_valve",
+            },
+            {
+                # empty zone (no sensor/actuators) is skipped
+                "ctl_id": "01:150000",
+                "zone_id": "00",
+                "name": "CLounge",
+                "sensor": None,
+                "actuators": [],
+                "class": "",
+            },
+            {
+                # unmatched room name → zone still seeded, no areas
+                "ctl_id": "01:150000",
+                "zone_id": "05",
+                "name": "Conservatory",
+                "sensor": "01:150005",
+                "actuators": ["04:150005"],
+                "class": "radiator_valve",
+            },
+        ]
+        rooms = {"woonkamer", "badkamer"}
+        cfg = {"32:153289": {"areas": ["keuken"], "devices": []}}
+        seeded = zones.seed_heat_zones(heat, rooms, cfg)
+        assert seeded == ["01:150003", "13:150004", "01:150005"]
+        lounge = cfg["01:150003"]
+        assert lounge["areas"] == ["woonkamer"]
+        assert lounge["devices"] == ["04:150003", "04:150099"]
+        assert lounge["color"] in ZONE_SEED_PALETTE
+        assert cfg["13:150004"]["areas"] == ["badkamer"]
+        assert cfg["13:150004"]["devices"] == []
+        assert cfg["01:150005"]["areas"] == []
+        # re-seed never overwrites an existing (possibly user-edited) zone
+        seeded2 = zones.seed_heat_zones(heat, rooms, cfg)
+        assert seeded2 == []
 
 
 class TestCaption:

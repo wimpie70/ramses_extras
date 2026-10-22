@@ -21,9 +21,46 @@ from __future__ import annotations
 
 from typing import Any
 
-from .const import ZONE_TOGGLE_SERVICE
+from .const import ZONE_SEED_PALETTE, ZONE_TOGGLE_SERVICE
 from .domains import zone_eligible
 from .svg_utils import slugify
+
+
+def seed_heat_zones(
+    heat_zones: list[dict[str, Any]],
+    room_slugs: set[str],
+    zones: dict[str, Any],
+) -> list[str]:
+    """Auto-seed ``device_zones`` entries from evohome TCS zones.
+
+    Each zone's *sensor* (the room stat — the device users identify the
+    zone with) becomes the zone parent; its ``actuators`` (TRVs, zone
+    valves) become members. The zone's ``_name`` is matched against
+    studio room names (slugified) to pre-fill ``areas``; unmatched zones
+    still get member rings and are editable in the ⚙ panel. Colours
+    cycle through ``ZONE_SEED_PALETTE``. Zones whose parent already has
+    an entry are left untouched — user edits always win.
+
+    :param heat_zones: ``model["heat_zones"]`` rows
+    :param room_slugs: room slugs known to the project (all floors)
+    :param zones: the ``device_zones`` dict — mutated in place
+    :return: list of seeded parent device ids
+    """
+    seeded: list[str] = []
+    for z in heat_zones:
+        actuators = [str(a) for a in z.get("actuators") or []]
+        parent = z.get("sensor") or (actuators[0] if actuators else None)
+        if not parent or str(parent) in zones:
+            continue
+        members = [m for m in actuators if m != parent]
+        slug = slugify(str(z.get("name") or ""))
+        zones[str(parent)] = {
+            "devices": members,
+            "areas": [slug] if slug and slug in room_slugs else [],
+            "color": ZONE_SEED_PALETTE[len(zones) % len(ZONE_SEED_PALETTE)],
+        }
+        seeded.append(str(parent))
+    return seeded
 
 
 def zone_class(device_id: str) -> str:
@@ -228,6 +265,7 @@ __all__ = [
     "device_of_entity",
     "model_entity_ids",
     "resolve_bound",
+    "seed_heat_zones",
     "standalone_members",
     "zone_class",
     "zone_clear_action",
