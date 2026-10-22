@@ -12,17 +12,18 @@
  *
  *   1. "Open studio" — navigate to the studio view (editor_url option)
  *   2. project picker — studio's own projects in this browser
- *   3. "⟵ Store ← studio" — store the selected project server-side
+ *   3. "⟵ Studio → HA" — store the selected project server-side
  *      (latest.json + backup) and sync HA areas
  *   4. "Export ⇒" — snapshot the live project, run floorplan_export,
- *      copy the card yaml
+ *      update matching dashboard cards, copy the card yaml
  *
  * Tools row:
  *   - "＋ Add devices" — seed/merge new device markers into the
  *     selected project (or the stored one), written back into studio
  *   - "⇒ Push → studio" — write the stored latest.json back into
  *     studio's project list (restores a project this browser lost)
- *   - "Sync areas" — re-run marker-in-room → entity area_id sync
+ *   - "Sync areas" — link rooms to HA areas and set each entity's
+ *     HA area from which room its marker sits inside
  *   - Drop zone: fallback for JSON files from another machine/backup
  *
  * Config (all optional):
@@ -1098,17 +1099,17 @@ class RamsesFloorplanActions extends HTMLElement {
           <select id="project"
             title="Projects stored in floorplan-studio (this browser). The one studio is currently editing is marked (current)."></select>
           <button id="b-pull" class="secondary"
-            title="Read the selected project straight from studio (it autosaves ~0.6s after each change), store it as latest.json + backup, and sync marker positions into HA areas">⟵ Store ← studio</button>
+            title="Save the selected studio project into Home Assistant (stored as latest.json + a timestamped backup) and sync HA areas — reads studio's live copy (it autosaves ~0.6s after each change)">⟵ Studio → HA</button>
           <button id="b-export" class="secondary"
-            title="Snapshot the selected studio project, regenerate the ha-floorplan bundle (SVG + rules + CSS) and copy the dashboard card YAML to your clipboard">Export ⇒</button>
+            title="Snapshot the selected studio project and regenerate the card (merged SVG + state rules + captions). Every floorplan card on your dashboards that shows a generated map is updated in place — and the card YAML is also copied to your clipboard">Export ⇒</button>
         </div>
         <div class="row">
           <button id="b-seed" class="secondary"
-            title="Add markers for devices not yet in the selected project — merged into it (existing placement kept; new devices at their room's centre or parked below the canvas), written back into studio">＋ Add devices</button>
+            title="Add a studio marker for every ramses device or _extras entity (valves, zone sensors) missing from the selected project — existing markers keep position/style, new ones land at their room's centre or in the top-right dock. Nothing is removed">＋ Add devices</button>
           <button id="b-push" class="secondary"
             title="Write the stored latest.json back into this browser's studio project list — restores the project after a browser/profile switch">⇒ Push → studio</button>
           <button id="b-sync" class="secondary"
-            title="Re-run area sync on the stored project: marker-in-room → entity area_id, missing areas created">Sync areas</button>
+            title="Walk every studio room: link it to an HA area (creating the area if missing), then set the HA area of every entity whose marker sits inside that room's polygon. This makes the drawing drive real HA areas, so dashboards and automations can group by area">Sync areas</button>
           <button id="b-tweaks" class="secondary"
             title="Card tweaks — saved in this browser">⚙ Tweaks</button>
         </div>
