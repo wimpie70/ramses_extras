@@ -672,11 +672,20 @@ class RamsesFloorplanActions extends HTMLElement {
     const seen = new Set([devId]);
     for (const d of (this._topology && this._topology.devices) || []) {
       if (seen.has(d.device_id)) continue;
+      // transport-layer devices (HGI/RFG/RFS) can never be zone
+      // members — matches the export's zone_eligible check
+      if (['HGI', 'RFG', 'RFS'].includes(d.device_class)) continue;
       seen.add(d.device_id);
+      // schema children bind automatically via their parent link —
+      // shown checked but not selectable, so Save never writes them
+      // into zone.devices
+      const auto = d.parent === devId;
       const o = document.createElement('option');
       o.value = d.device_id;
-      o.textContent = `${d.device_id} (${d.device_class})`;
-      o.selected = zoneDevs.has(d.device_id);
+      o.textContent =
+        `${d.device_id} (${d.device_class})` + (auto ? ' · auto' : '');
+      o.selected = auto || zoneDevs.has(d.device_id);
+      o.disabled = auto;
       memSel.appendChild(o);
     }
     // bound ids that are not topology devices (DIY/zigbee entity ids) —
@@ -737,7 +746,11 @@ class RamsesFloorplanActions extends HTMLElement {
           .map((r) => r.areaId)
       ),
     ];
-    const devices = [...memSel.selectedOptions].map((o) => o.value);
+    // disabled options are schema children — auto-bound via their
+    // parent link, never written into zone.devices
+    const devices = [...memSel.selectedOptions]
+      .filter((o) => !o.disabled)
+      .map((o) => o.value);
     const color = (inp && inp.value) || undefined;
     let painted = 0;
     if (color && areas.length) {
@@ -1020,7 +1033,7 @@ class RamsesFloorplanActions extends HTMLElement {
             <div class="zcol">
               <span class="lbl">Bound markers</span>
               <select id="zone-members" multiple
-                title="Extra markers bound to the zone — they highlight along with the rooms (e.g. DIY valve covers under a FAN zone). Ramses child devices are already linked via their parent in the schema"></select>
+                title="Extra markers bound to the zone — they highlight along with the rooms (e.g. DIY valve covers under a FAN zone). Children marked '· auto' come from the ramses schema's parent link — already bound, no need to select"></select>
             </div>
             <button id="b-zone-save" class="secondary"
               title="Save the zone: checked rooms become its areas, checked markers its bound devices, and the swatch paints the rooms in the studio project">Save zone</button>
