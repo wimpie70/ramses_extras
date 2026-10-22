@@ -27,7 +27,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 from pathlib import Path
 from typing import Any
 
@@ -97,7 +96,6 @@ from .mapping import (
     set_svg_mode,
 )
 from .markers import (
-    build_toolbar_svg,
     dock_anchor,
     effective_zones,
     element_id_for_device,
@@ -139,26 +137,6 @@ SVC_DEVICE_VIEW = "floorplan_device_view"
 PROJECT_LATEST_NAME = "latest.json"
 
 NOTIFICATION_ID = "ramses_extras_floorplan_export"
-
-_TOOLBAR_W = 5 * 34  # five 26px buttons spaced 34px
-
-
-def _inject_toolbar(svg_text: str, options: dict[str, Any] | None = None) -> str:
-    """Append the toolbar ``<g>`` before ``</svg>``, placed bottom-right.
-
-    Position derives from the viewBox when present; falls back to a fixed
-    offset matching the generated SVG's 800-wide canvas.
-    """
-    x, y = 770.0, 605.0
-    m = re.search(r'viewBox="[^"]*?\s([\d.]+)\s([\d.]+)"', svg_text)
-    if m:
-        vb_w, vb_h = float(m.group(1)), float(m.group(2))
-        x = max(0, vb_w - _TOOLBAR_W - 8)
-        y = max(0, vb_h - 32)
-    snippet = f'<g transform="translate({x:g},{y:g})">{build_toolbar_svg(options)}</g>'
-    if "</svg>" in svg_text:
-        return svg_text.replace("</svg>", snippet + "\n</svg>", 1)
-    return svg_text + "\n" + snippet
 
 
 def _backup_project(hass: HomeAssistant, project_json: str) -> str:
@@ -902,14 +880,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if "<svg" not in svg_text:
             raise vol.Invalid("svg_text does not look like an SVG document")
 
-        # External tools (e.g. floorplan-studio) rebuild the SVG from their
-        # own model, so our toolbar elements are lost — re-inject them
-        # bottom-right so the export/import/upload round-trip survives.
-        # An existing toolbar is stripped first so the current button
-        # set + tooltips replace any stale copy.
-        section = get_floorplan_options(_config_entry(hass))
-        if section.get(OPTION_TOOLBAR_ENABLED, True):
-            svg_text = _inject_toolbar(strip_toolbar(svg_text), section)
+        # Strip any stale toolbar group — the card-side toolbar was
+        # removed (export/upload/studio live on the actions card), so
+        # leftover glyphs from older exports would be dead buttons.
+        svg_text = strip_toolbar(svg_text)
 
         out_dir = (
             Path(hass.config.config_dir)

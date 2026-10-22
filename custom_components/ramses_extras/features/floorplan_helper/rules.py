@@ -26,10 +26,6 @@ from .const import (
     OPTION_DEVICE_VIEW_URL,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
-    OPTION_TOOLBAR_ENABLED,
-    TOOLBAR_ELEMENT_EDITOR,
-    TOOLBAR_ELEMENT_EXPORT,
-    TOOLBAR_ELEMENT_UPLOAD,
     ZONE_TOGGLE_SERVICE,
     is_generated_rule,
 )
@@ -42,7 +38,6 @@ from .expressions import (
 )
 from .markers import (
     binding_maps,
-    editor_url,
     effective_zones,
     element_id_for_device,
     marker_meta_for_device,
@@ -440,35 +435,6 @@ def _device_rules(
     return rules, extras
 
 
-def _toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
-    """Rules for the in-SVG toolbar glyphs (see ``build_toolbar_svg``).
-
-    Emitted inside the managed block so bindings stay managed; harmless
-    for SVGs that don't contain the toolbar elements.
-    """
-    if not options.get(OPTION_TOOLBAR_ENABLED, True):
-        return []
-    rules: list[dict[str, Any]] = [
-        # export/upload need service data or a response — they go
-        # through ll-custom so the module-level listener can show real
-        # dialogs (file picker, results, copy buttons) instead of just
-        # dumping the user on the developer-tools page
-        {
-            "element": TOOLBAR_ELEMENT_EXPORT,
-            "tap_action": fire_dom_event(ramses_fp_action="export"),
-        },
-        {
-            "element": TOOLBAR_ELEMENT_UPLOAD,
-            "tap_action": fire_dom_event(ramses_fp_action="upload"),
-        },
-        {
-            "element": TOOLBAR_ELEMENT_EDITOR,
-            "tap_action": link_action(editor_url(options)),
-        },
-    ]
-    return rules
-
-
 def build_rules(
     model: dict[str, Any],
     options: dict[str, Any],
@@ -515,7 +481,6 @@ def build_rules(
         ) or {"action": "more-info"}
         rules.append(rule)
 
-    rules.extend(_toolbar_rules(options))
     # Tag generated rules so floorplan_import can tell them apart from
     # user-authored extras — importing a generated card yaml then stays
     # idempotent instead of accumulating stale copies in extra_rules.

@@ -215,14 +215,10 @@ class TestRulesAndCard:
         )
         rules = generator._build_rules(_model(), opts)
         assert any(r.get("entity") == "light.kitchen" for r in rules)
-        # extra rules are emitted last (after the generated toolbar
-        # rules) so user-authored actions win on conflicting elements
+        # extra rules are emitted last so user-authored actions win on
+        # conflicting elements
         idx = next(i for i, r in enumerate(rules) if r.get("entity") == "light.kitchen")
-        assert idx > next(
-            i
-            for i, r in enumerate(rules)
-            if str(r.get("element", "")).startswith("floorplan.")
-        )
+        assert idx == len(rules) - 1
 
     def test_class_exprs_have_no_return_keyword(self):
         # ha-floorplan wraps ${…} bodies in `return …` only when the body
@@ -270,11 +266,11 @@ class TestRulesAndCard:
         assert "sensor.x" not in entities
         assert "binary_sensor.y_status" not in entities
         assert "light.kitchen" in entities
-        # the stale untagged toolbar rule is dropped — only the fresh
-        # generated (tagged) one remains
+        # the stale untagged toolbar rule is dropped — element rules are
+        # generated, not user-authored, and the toolbar was removed
         assert (
             sum(1 for r in rules if str(r.get("element", "")) == "floorplan.export")
-            == 1
+            == 0
         )
 
     def test_card_yaml_markers_and_parse(self):
@@ -296,40 +292,22 @@ class TestRulesAndCard:
 
 
 class TestToolbar:
-    def test_toolbar_rules_emitted(self):
+    def test_no_toolbar_rules_emitted(self):
+        # The in-SVG toolbar was removed — export/upload/studio live on
+        # the actions card, so no floorplan.* element rules are emitted.
         rules = generator._build_rules(_model(), _options())
-        by_element = {r.get("element"): r for r in rules if "element" in r}
-        # export/upload go through ll-custom so the module-level
-        # listener can run dialogs (file picker, results, copy buttons);
-        # legacy import/planner glyphs get no rules — studio is the
-        # editor and project JSON the import format
-        for element_id, action in (
-            (TOOLBAR_ELEMENT_EXPORT, "export"),
-            (TOOLBAR_ELEMENT_UPLOAD, "upload"),
-        ):
-            tap = by_element[element_id]["tap_action"]
-            assert tap["action"] == "fire-dom-event"
-            assert tap["ramses_fp_action"] == action
-        assert TOOLBAR_ELEMENT_IMPORT not in by_element
-        assert TOOLBAR_ELEMENT_PLANNER not in by_element
-        # editor → studio view path (internal navigate, not url)
-        editor = by_element[TOOLBAR_ELEMENT_EDITOR]["tap_action"]
-        assert editor["action"] == "navigate"
-        assert editor["navigation_path"] == "/floorplan-studio"
-
-    def test_toolbar_disabled(self):
-        rules = generator._build_rules(_model(), _options(toolbar_enabled=False))
         assert not any(
-            str(r.get("element", "")).startswith("floorplan.") for r in rules
+            str(r.get("element", "")).startswith("floorplan.toolbar")
+            or str(r.get("element", ""))
+            in {
+                TOOLBAR_ELEMENT_EXPORT,
+                TOOLBAR_ELEMENT_UPLOAD,
+                TOOLBAR_ELEMENT_EDITOR,
+                TOOLBAR_ELEMENT_IMPORT,
+                TOOLBAR_ELEMENT_PLANNER,
+            }
+            for r in rules
         )
-
-    def test_internal_tool_url_uses_navigate(self):
-        rules = generator._build_rules(
-            _model(), _options(editor_url="/floorplan-editor/")
-        )
-        editor = next(r for r in rules if r.get("element") == TOOLBAR_ELEMENT_EDITOR)
-        assert editor["tap_action"]["action"] == "navigate"
-        assert editor["tap_action"]["navigation_path"] == "/floorplan-editor/"
 
     def test_toolbar_svg_snippet(self):
         snippet = generator.build_toolbar_svg()
@@ -343,13 +321,9 @@ class TestToolbar:
         assert f'id="{TOOLBAR_ELEMENT_IMPORT}"' not in snippet
         assert f'id="{TOOLBAR_ELEMENT_PLANNER}"' not in snippet
 
-    def test_generated_svg_includes_toolbar(self):
+    def test_generated_svg_has_no_toolbar(self):
         svg = generator.build_elements_svg(_model(devices=[_device()]), _options())
-        assert 'id="floorplan.toolbar"' in svg
-        svg_no = generator.build_elements_svg(
-            _model(devices=[_device()]), _options(toolbar_enabled=False)
-        )
-        assert 'id="floorplan.toolbar"' not in svg_no
+        assert 'id="floorplan.toolbar"' not in svg
 
 
 class TestImporter:

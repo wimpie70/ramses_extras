@@ -27,7 +27,6 @@ from .const import (
     OPTION_ELEMENT_BINDINGS,
     OPTION_ICON_OVERRIDES,
     OPTION_MARKER_STYLE_OVERRIDES,
-    OPTION_TOOLBAR_ENABLED,
     TOOLBAR_ELEMENT_EDITOR,
     TOOLBAR_ELEMENT_EXPORT,
     TOOLBAR_ELEMENT_UPLOAD,
@@ -464,16 +463,6 @@ def build_overlay_fragment(
         *body,
         "</g>",
     ]
-    if (
-        options.get(OPTION_TOOLBAR_ENABLED, True)
-        and "floorplan.toolbar" not in svg_text
-    ):
-        tx = max(0.0, vb_w - 5 * 34 - 8)
-        ty = max(0.0, vb_h - 32)
-        parts.append(
-            f'<g transform="translate({tx:.0f},{ty:.0f})">'
-            f"{build_toolbar_svg(options)}</g>"
-        )
     return "\n".join(p for p in parts if p), warnings
 
 
@@ -624,11 +613,6 @@ def build_elements_svg(model: dict[str, Any], options: dict[str, Any]) -> str:
         rows = (len(devs) + _COLS - 1) // _COLS
         y = row_y + rows * _CELL_H + _GROUP_GAP
         parts.append("</g>")
-
-    if options.get(OPTION_TOOLBAR_ENABLED, True):
-        parts.append(
-            f'<g transform="translate(770,605)">{build_toolbar_svg(options)}</g>'
-        )
 
     parts.extend(["</g>", "</svg>"])
     return "\n".join(parts)
