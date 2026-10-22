@@ -12,24 +12,25 @@
  *
  *   1. "Open studio" — navigate to the studio view (editor_url option)
  *   2. project picker — studio's own projects in this browser
- *   3. "⟵ Studio → HA" — store the selected project server-side
- *      (latest.json + backup) and sync HA areas
- *   4. "Export ⇒" — snapshot the live project, run floorplan_export,
- *      update matching dashboard cards, copy the card yaml
+ *   3. "Studio → HA" — store the selected project server-side
+ *      (latest.json + backup)
+ *   4. "HA → Studio" — restore the stored project into this
+ *      browser's studio
  *
  * Tools row:
  *   - "＋ Add devices" — seed/merge new device markers into the
  *     selected project (or the stored one), written back into studio
- *   - "⇒ Push → studio" — write the stored latest.json back into
- *     studio's project list (restores a project this browser lost)
  *   - "Sync areas" — link rooms to HA areas and set each entity's
  *     HA area from which room its marker sits inside
+ *   - "Export ⇒" — snapshot the live project, run floorplan_export,
+ *     copy the card yaml (dashboard cards untouched)
+ *   - "⇒ Update cards" — same export, plus every floorplan card
+ *     showing a generated map is updated in place
  *   - Drop zone: fallback for JSON files from another machine/backup
  *
  * Config (all optional):
  *   floors: {begane grond: plattegrond-bg.svg, ...}  floor name → SVG ref
  *   marker_size: 20
- *   sync_on_pull: true   (also sync HA areas after pull/store)
  *   studio_url: /floorplan-studio   (fallback: floorplan options)
  *   device_view_url: /lovelace/hvac  (optional — adds a '⤢ dashboard'
  *   button to the device popup opened by double-clicking a marker)
@@ -849,7 +850,7 @@ class RamsesFloorplanActions extends HTMLElement {
       );
       dbw.close();
     }
-    await this._storeAndSync(
+    await this._store(
       JSON.stringify(project),
       `pulled '${project.name || project.id}'` +
         (resized ? `, ${resized} markers resized` : '')
@@ -957,7 +958,7 @@ class RamsesFloorplanActions extends HTMLElement {
       type: 'ramses_extras/floorplan_helper/get_project',
     }).catch((err) => ({ __err: (err && err.message) || String(err) }));
     if (r.__err) {
-      this._status(`Push → studio: ${r.__err}`);
+      this._status(`HA → Studio: ${r.__err}`);
       return;
     }
     const p = await this._pushToStudio(r.project_json);
@@ -971,7 +972,7 @@ class RamsesFloorplanActions extends HTMLElement {
     this._refreshProjects();
   }
 
-  async _export() {
+  async _export(apply) {
     // Snapshot live studio state first — the merged-SVG export reads
     // latest.json, so unsaved drags/recolours must be stored or they
     // silently don't make it into the output.
@@ -984,15 +985,10 @@ class RamsesFloorplanActions extends HTMLElement {
       });
       stored = ` (project snapshot: ${s.latest_path}` +
         (resized ? `, ${resized} markers resized` : '') + ')';
-      if (this._tweak('sync_on_pull') !== false) {
-        await this._call('floorplan_sync_areas', {});
-      }
     }
-    // the service applies the generated card to matching storage
-    // dashboards itself (apply:false / apply_dashboard / apply_match
-    // are passed through from this card's config)
-    const data = {};
-    if (this._config.apply === false) data.apply = false;
+    // apply:true lets the service update every matching storage
+    // dashboard itself; apply:false is generate + clipboard only
+    const data = { apply: apply !== false };
     if (this._config.apply_dashboard) data.apply_dashboard = this._config.apply_dashboard;
     if (this._config.apply_match) data.apply_match = this._config.apply_match;
     const r = await this._call('floorplan_export', data);
@@ -1002,9 +998,9 @@ class RamsesFloorplanActions extends HTMLElement {
     const applied =
       r.applied && r.applied.cards
         ? ` — applied to ${r.applied.cards} card(s) on ${r.applied.dashboards} dashboard(s)`
-        : data.apply !== false
+        : data.apply
           ? ' — no matching floorplan card found (nothing applied)'
-          : '';
+          : ' — dashboards untouched (⇒ Update cards applies)';
     if (floors.length) {
       this._copy(yamls[floors[0]], `card yaml (${floors[0]})`);
       this._status(
@@ -1065,20 +1061,15 @@ class RamsesFloorplanActions extends HTMLElement {
       (r.backup_path ? `\nbackup: ${r.backup_path}` : '');
   }
 
-  async _storeAndSync(text, via) {
+  async _store(text, via) {
     const r = await this._call('floorplan_store_project', { project_json: text });
-    let msg = `Project ${via || 'stored'}: ${r.latest_path}`;
-    if (this._tweak('sync_on_pull') !== false) {
-      const s = await this._call('floorplan_sync_areas', {});
-      msg += `\n${this._syncSummary(s)}`;
-    }
-    this._status(msg);
+    this._status(`Project ${via || 'stored'}: ${r.latest_path}`);
   }
 
   _readFile(file) {
     const reader = new window.FileReader();
     reader.onload = () =>
-      this._run(() => this._storeAndSync(String(reader.result || ''), `file '${file.name}'`));
+      this._run(() => this._store(String(reader.result || ''), `file '${file.name}'`));
     reader.readAsText(file);
   }
 
@@ -1099,25 +1090,23 @@ class RamsesFloorplanActions extends HTMLElement {
           <select id="project"
             title="Projects stored in floorplan-studio (this browser). The one studio is currently editing is marked (current)."></select>
           <button id="b-pull" class="secondary"
-            title="Save the selected studio project into Home Assistant (stored as latest.json + a timestamped backup) and sync HA areas — reads studio's live copy (it autosaves ~0.6s after each change)">⟵ Studio → HA</button>
-          <button id="b-export" class="secondary"
-            title="Snapshot the selected studio project and regenerate the card (merged SVG + state rules + captions). Every floorplan card on your dashboards that shows a generated map is updated in place — and the card YAML is also copied to your clipboard">Export ⇒</button>
+            title="Save the selected studio project into Home Assistant (latest.json + a timestamped backup). Reads studio's live copy — it autosaves ~0.6s after each change">Studio → HA</button>
+          <button id="b-push" class="secondary"
+            title="Restore the stored HA project (latest.json) into this browser's studio — use after a browser/profile switch, or to roll studio back to the last saved version">HA → Studio</button>
         </div>
         <div class="row">
           <button id="b-seed" class="secondary"
             title="Add a studio marker for every ramses device or _extras entity (valves, zone sensors) missing from the selected project — existing markers keep position/style, new ones land at their room's centre or in the top-right dock. Nothing is removed">＋ Add devices</button>
-          <button id="b-push" class="secondary"
-            title="Write the stored latest.json back into this browser's studio project list — restores the project after a browser/profile switch">⇒ Push → studio</button>
           <button id="b-sync" class="secondary"
             title="Walk every studio room: link it to an HA area (creating the area if missing), then set the HA area of every entity whose marker sits inside that room's polygon. This makes the drawing drive real HA areas, so dashboards and automations can group by area">Sync areas</button>
+          <button id="b-export" class="secondary"
+            title="Snapshot the selected studio project and regenerate the card files (merged SVG + state rules + captions). The card YAML is copied to your clipboard — dashboard cards are NOT updated (use ⇒ Update cards for that)">Export ⇒</button>
+          <button id="b-apply" class="secondary"
+            title="Same as Export ⇒, plus every floorplan card on your dashboards that shows a generated map is updated in place — no edit mode, no paste">⇒ Update cards</button>
           <button id="b-tweaks" class="secondary"
             title="Card tweaks — saved in this browser">⚙ Tweaks</button>
         </div>
         <div class="tweaks" id="tweaks" style="display:none">
-          <div class="row">
-            <label for="tw-sync" title="After Pull (or a dropped file), also run area sync automatically">Sync areas on pull</label>
-            <input id="tw-sync" type="checkbox">
-          </div>
           <div class="row">
             <label for="tw-norm" title="On Pull, set every marker's icon size in the project to marker_size (yaml config, default 20) — also writes it back to studio so manually placed markers (studio default 40) get fixed">Normalize icon sizes on pull</label>
             <input id="tw-norm" type="checkbox">
@@ -1143,7 +1132,7 @@ class RamsesFloorplanActions extends HTMLElement {
           </div>
         </div>
         <div class="drop" id="drop"
-          title="For project files from another machine or a backup — this browser's studio is already reachable via Pull">
+          title="For project files from another machine or a backup — this browser's studio is already reachable via Studio → HA">
           Drop a studio project JSON here (or click to browse) — fallback
           for files from another machine or backup
           <input id="file" type="file" accept=".json,application/json">
@@ -1172,7 +1161,8 @@ class RamsesFloorplanActions extends HTMLElement {
     $('b-pull').onclick = () => this._run(() => this._pull());
     $('b-seed').onclick = () => this._run(() => this._seed());
     $('b-push').onclick = () => this._run(() => this._pushStored());
-    $('b-export').onclick = () => this._run(() => this._export());
+    $('b-export').onclick = () => this._run(() => this._export(false));
+    $('b-apply').onclick = () => this._run(() => this._export(true));
     $('b-sync').onclick = () => this._run(() => this._sync());
     $('b-tweaks').onclick = () => {
       const t = $('tweaks');
@@ -1180,11 +1170,8 @@ class RamsesFloorplanActions extends HTMLElement {
     };
 
     // tweaks panel — values persist in localStorage, override YAML config
-    const twSync = $('tw-sync');
     const twNorm = $('tw-norm');
-    twSync.checked = this._tweak('sync_on_pull') !== false;
     twNorm.checked = this._tweak('normalize_sizes') !== false;
-    twSync.onchange = () => this._saveTweak('sync_on_pull', twSync.checked);
     twNorm.onchange = () => this._saveTweak('normalize_sizes', twNorm.checked);
 
     // zone row: the colour swatch shows the zone's resolved colour
