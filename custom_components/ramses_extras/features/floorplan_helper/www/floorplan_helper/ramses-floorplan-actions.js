@@ -34,11 +34,15 @@
  * Config (all optional):
  *   floors: {begane grond: plattegrond-bg.svg, ...}  floor name → SVG
  *   ref — seeds floor geometry for a new project only; the export
- *   renders the drawing straight from the studio project itself
+ *   renders the drawing straight from the stored plan itself
  *   marker_size: 20  (size for newly seeded markers — studio owns size
  *   after that; the inspector edits it per marker)
  *   device_view_url: /lovelace/hvac  (optional — adds a '⤢ dashboard'
  *   button to the device popup opened by double-clicking a marker)
+ *   editor: studio | hfs  — which plan editor this card drives; absent,
+ *   the backend resolves the configured default (see the floorplan
+ *   helper options). Server-side editors (hfs) hide the pull/push row
+ *   and show "Open editor" instead — their plan already lives in HA.
  */
 
 const DOMAIN = 'ramses_extras';
@@ -199,6 +203,10 @@ class RamsesFloorplanActions extends HTMLElement {
 
   setConfig(config) {
     this._config = config || {};
+    // yaml `editor:` pins this card to one plan editor (studio|hfs);
+    // absent, the backend resolves the configured/default one
+    this._editor = this._config.editor || '';
+    this._editorCaps = null;
     this._render();
   }
 
@@ -241,9 +249,14 @@ class RamsesFloorplanActions extends HTMLElement {
     try {
       this._fpConfig = await this._hass.callWS({
         type: 'ramses_extras/floorplan_helper/get_config',
+        ...(this._editor ? { editor: this._editor } : {}),
       });
+      this._resolvedEditor = this._fpConfig.editor || 'studio';
+      this._editorCaps = this._fpConfig.editor_caps || {};
+      this._applyEditorCaps();
     } catch {
       this._fpConfig = {};
+      this._editorCaps = {};
     }
     try {
       this._topology = await this._hass.callWS({
@@ -260,6 +273,29 @@ class RamsesFloorplanActions extends HTMLElement {
       this._entityDevice = {};
     }
     this._fillZoneDevices();
+  }
+
+  // Per-editor menu rows — driven by the resolved adapter's
+  // capabilities (get_config reply), not by hardcoding. Server-side
+  // editors (hfs) have no browser store: the studio pull/push row is
+  // replaced by an "Open editor" link.
+  _applyEditorCaps() {
+    if (!this.shadowRoot || !this._editorCaps) return;
+    const caps = this._editorCaps;
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const rowStudio = $('row-studio');
+    if (rowStudio) rowStudio.style.display = caps.browser_side === false ? 'none' : '';
+    const rowEditor = $('row-editor');
+    if (rowEditor) rowEditor.style.display = caps.browser_side === false ? '' : 'none';
+    const drop = $('drop');
+    if (drop && caps.browser_side === false) {
+      drop.title = 'Import a layout/plan file — replaces the stored plan for the resolved editor';
+      drop.childNodes[0].textContent =
+        'Drop a floorplan-studio layout JSON here (or click to browse) — ' +
+        'restores a downloaded plan into HA storage';
+    }
+    const lbl = this.shadowRoot.querySelector('#row-studio .lbl');
+    if (lbl && this._resolvedEditor) lbl.textContent = `${this._resolvedEditor} project:`;
   }
 
   async _refreshProjects() {
@@ -305,7 +341,13 @@ class RamsesFloorplanActions extends HTMLElement {
       type: 'call_service',
       domain: DOMAIN,
       service,
-      service_data: data || {},
+      service_data: {
+        ...(data || {}),
+        // the card's yaml `editor:` pins which plan editor every
+        // service call resolves — absent, the backend picks the
+        // configured/default one
+        ...(this._editor ? { editor: this._editor } : {}),
+      },
       return_response: true,
     }).then((r) => (r && r.response) || {});
   }
@@ -362,9 +404,17 @@ class RamsesFloorplanActions extends HTMLElement {
 
   // --- reach into the studio card: selection + in-memory marker state ----
 
+  _editorCardEl() {
+    // the card_element capability names the editable DOM element —
+    // '' means the editor isn't a dashboard card (hfs edits in its own
+    // panel; its card is only a live renderer)
+    const tag = this._editorCaps && this._editorCaps.card_element;
+    return tag ? deepFind(tag) : null;
+  }
+
   _studioRoot() {
-    const el = deepFind('floorplan-studio-card');
-    dlog('studio card element:', el, 'shadowRoot:', el && el.shadowRoot);
+    const el = this._editorCardEl();
+    dlog('editor card element:', el, 'shadowRoot:', el && el.shadowRoot);
     return el && el.shadowRoot ? el.shadowRoot : null;
   }
 
@@ -1143,7 +1193,8 @@ class RamsesFloorplanActions extends HTMLElement {
   // in-memory copy — and its autosave would clobber our write on the
   // next edit. Remount the card so it reloads the pushed project.
   _reloadStudioCard() {
-    const el = _deepQuery('floorplan-studio-card');
+    const tag = this._editorCaps && this._editorCaps.card_element;
+    const el = tag ? _deepQuery(tag) : null;
     if (el && el.mounted) {
       // the remount briefly shows an empty selection — tell the
       // studio→menu sync that is not a user deselect
@@ -1164,13 +1215,25 @@ class RamsesFloorplanActions extends HTMLElement {
     if (seedName) data.name = seedName;
     // Merge into the selected studio project when one is open — keeps
     // walls, background and existing placement, only *new* devices get
-    // centroid markers. Without a selection the service falls back to
-    // the stored latest.json; with neither it emits a fresh project.
-    const selected = await this._readStudioProject(true);
-    if (selected) data.project_json = JSON.stringify(selected);
+    // centroid markers. Server-side editors (hfs) keep their plan in
+    // HA storage already, so nothing is passed or pushed — the service
+    // merges into the stored layout itself.
+    const browserSide = !this._editorCaps || this._editorCaps.browser_side !== false;
+    if (browserSide) {
+      const selected = await this._readStudioProject(true);
+      if (selected) data.project_json = JSON.stringify(selected);
+    }
     const r = await this._call('floorplan_seed_studio', data);
     const placed = Object.keys(r.placed || {}).length;
     const unplaced = (r.unplaced || []).length;
+    if (!browserSide) {
+      this._status(
+        `Seeded: ${placed} placed, ${unplaced} parked — written into ` +
+          `${r.stored_at || 'editor storage'} (editor: ${r.editor || '?'}).`,
+      );
+      this._fillZoneRow();
+      return;
+    }
     if (r.project_json) {
       try {
         const p = await this._pushToStudio(r.project_json);
@@ -1197,6 +1260,7 @@ class RamsesFloorplanActions extends HTMLElement {
   async _pushStored() {
     const r = await this._hass.callWS({
       type: 'ramses_extras/floorplan_helper/get_project',
+      ...(this._editor ? { editor: this._editor } : {}),
     }).catch((err) => ({ __err: (err && err.message) || String(err) }));
     if (r.__err) {
       this._status(`HA → Studio: ${r.__err}`);
@@ -1217,14 +1281,18 @@ class RamsesFloorplanActions extends HTMLElement {
   async _export(apply) {
     // Snapshot live studio state first — the merged-SVG export reads
     // latest.json, so unsaved drags/recolours must be stored or they
-    // silently don't make it into the output.
-    const project = await this._readStudioProject();
+    // silently don't make it into the output. Server-side editors
+    // (hfs) already keep their plan in HA — nothing to snapshot.
+    const browserSide = !this._editorCaps || this._editorCaps.browser_side !== false;
     let stored = '';
-    if (project) {
-      const s = await this._call('floorplan_store_project', {
-        project_json: JSON.stringify(project),
-      });
-      stored = ` (project snapshot: ${s.latest_path})`;
+    if (browserSide) {
+      const project = await this._readStudioProject();
+      if (project) {
+        const s = await this._call('floorplan_store_project', {
+          project_json: JSON.stringify(project),
+        });
+        stored = ` (project snapshot: ${s.latest_path})`;
+      }
     }
     // apply:true lets the service update every matching storage
     // dashboard itself; apply:false is generate + clipboard only
@@ -1323,7 +1391,7 @@ class RamsesFloorplanActions extends HTMLElement {
           project is the source of truth; export compiles it into the
           floorplan bundle (rules + CSS + card YAML).
         </div>
-        <div class="row">
+        <div class="row" id="row-studio">
           <span class="lbl">studio project:</span>
           <select id="project"
             title="Projects stored in floorplan-studio (this browser). The one studio is currently editing is marked (current)."></select>
@@ -1331,6 +1399,10 @@ class RamsesFloorplanActions extends HTMLElement {
             title="Save the selected studio project into Home Assistant (latest.json + a timestamped backup). Reads studio's live copy — it autosaves ~0.6s after each change">Studio → HA</button>
           <button id="b-push" class="secondary"
             title="Restore the stored HA project (latest.json) into this browser's studio — use after a browser/profile switch, or to roll studio back to the last saved version">HA → Studio</button>
+        </div>
+        <div class="row" id="row-editor" style="display:none">
+          <button id="b-open-editor" class="secondary"
+            title="Open the plan editor — its layout already lives in Home Assistant storage, so no pull/push is needed">Open editor</button>
         </div>
         <div class="row">
           <button id="b-seed" class="secondary"
@@ -1400,6 +1472,8 @@ class RamsesFloorplanActions extends HTMLElement {
     $('b-pull').onclick = () => this._run(() => this._pull());
     $('b-seed').onclick = () => this._run(() => this._seed());
     $('b-push').onclick = () => this._run(() => this._pushStored());
+    $('b-open-editor').onclick = () =>
+      this._navigate((this._fpConfig && this._fpConfig.editor_url) || '');
     $('b-export').onclick = () => this._run(() => this._export(false));
     $('b-apply').onclick = () => this._run(() => this._export(true));
     $('b-sync').onclick = () => this._run(() => this._sync());
@@ -1462,6 +1536,11 @@ class RamsesFloorplanActions extends HTMLElement {
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) this._readFile(f);
     };
+
+    // editor capability rows (studio pull/push vs hfs open-editor)
+    // survive a re-render this way — _fetchConfig may resolve after
+    // the DOM was already built
+    this._applyEditorCaps();
   }
 }
 

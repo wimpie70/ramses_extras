@@ -96,6 +96,13 @@ OPTION_TOOLBAR_ENABLED = "toolbar_enabled"
 OPTION_EDITOR_URL = "editor_url"
 OPTION_PLANNER_URL = "planner_url"
 
+# Which plan editor owns the SSOT — ``auto`` resolves at call time
+# (an editor already holding a plan beats a merely-installed one; the
+# actions card's yaml ``editor:`` overrides per card). Keys live in
+# ``editors/`` — ``studio`` is the floorplan-studio card, ``hfs`` the
+# ha-floorplan-studio integration.
+OPTION_EDITOR = "editor"
+
 # Auto-seeded zones (e.g. evohome heat zones discovered from the TCS
 # schema) get a deterministic colour from this palette — picked in seed
 # order, so zones stay visually distinct without user config.
@@ -219,6 +226,7 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_BACKGROUND: "#ffffff",
     OPTION_TOOLBAR_ENABLED: True,
     OPTION_EDITOR_URL: DEFAULT_EDITOR_URL,
+    OPTION_EDITOR: "auto",
 }
 
 # ---------------------------------------------------------------------------
@@ -413,6 +421,7 @@ __all__ = [
     "OPTION_DEVICE_VIEW_URL",
     "OPTION_DEVICE_ZONES",
     "OPTION_EDITOR_URL",
+    "OPTION_EDITOR",
     "OPTION_ELEMENT_BINDINGS",
     "OPTION_EXTRA_RULES",
     "OPTION_ICON_OVERRIDES",

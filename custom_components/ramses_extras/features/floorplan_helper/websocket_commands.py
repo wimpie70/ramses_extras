@@ -32,11 +32,13 @@ from .const import (
     OPTION_CUSTOM_SVG_PATH,
     OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
+    OPTION_EDITOR,
     OPTION_SVG_MODE,
     OPTION_TOOLBAR_ENABLED,
 )
 from .domains import caption_suffix_for, get_domain
-from .importer import load_latest_project, studio_marker_positions
+from .editors import adapter_for, detect_editors, resolve_editor
+from .importer import studio_marker_positions
 from .mapping import get_floorplan_options
 from .markers import editor_url, marker_meta_for_device
 from .rules import caption_pairs_for_device
@@ -118,13 +120,20 @@ async def ws_list_icons(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/floorplan_helper/get_config",
+        vol.Optional("editor"): str,
     }
 )
 @websocket_api.async_response
 async def ws_get_config(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Return the floorplan options the actions card needs (tool URLs)."""
+    """Return the floorplan options the actions card needs (tool URLs).
+
+    ``editor`` — the card's own yaml override — resolves the adapter
+    the card is bound to; the reply carries its capabilities so the
+    menu can hide rows the editor can't support (no pull/push for
+    server-side plans).
+    """
     entry = _config_entry(hass)
     if entry is None:
         connection.send_error(
@@ -132,6 +141,8 @@ async def ws_get_config(
         )
         return
     options = get_floorplan_options(entry)
+    adapter = await resolve_editor(hass, options, msg.get("editor"))
+    available = await detect_editors(hass)
 
     # resolved per-device captions + the entity choices the actions
     # card's caption editor offers — the same precedence the export
@@ -140,9 +151,8 @@ async def ws_get_config(
     choices: dict[str, list[list[str]]] = {}
     try:
         model = await build_floorplan_model(hass)
-        raw = await hass.async_add_executor_job(load_latest_project, hass)
-        project = json.loads(raw) if raw else None
-        meta = studio_marker_positions(project) if isinstance(project, dict) else None
+        plan = await adapter.async_load(hass)
+        meta = studio_marker_positions(plan) if isinstance(plan, dict) else None
         for dev in model.get("devices") or []:
             did = str(dev.get("device_id") or "")
             if not did:
@@ -167,7 +177,22 @@ async def ws_get_config(
         {
             "svg_mode": options.get(OPTION_SVG_MODE),
             "custom_svg_path": options.get(OPTION_CUSTOM_SVG_PATH),
-            "editor_url": editor_url(options),
+            "editor": adapter.key,
+            "editor_caps": {
+                field: getattr(adapter.capabilities, field)
+                for field in (
+                    "marker_icons",
+                    "marker_colors",
+                    "marker_actions",
+                    "multi_entity",
+                    "stamp_extras",
+                    "browser_side",
+                    "card_element",
+                )
+            },
+            "editor_url": adapter.capabilities.editor_url or editor_url(options),
+            "editor_option": options.get(OPTION_EDITOR),
+            "editors_available": available,
             "toolbar_enabled": options.get(OPTION_TOOLBAR_ENABLED),
             "device_zones": options.get(OPTION_DEVICE_ZONES, {}),
             "device_view_url": options.get(OPTION_DEVICE_VIEW_URL, ""),
@@ -180,20 +205,29 @@ async def ws_get_config(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "ramses_extras/floorplan_helper/get_project",
+        vol.Optional("editor"): str,
     }
 )
 @websocket_api.async_response
 async def ws_get_project(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Return the stored studio project (latest.json), if any."""
-    text = await hass.async_add_executor_job(load_latest_project, hass)
-    if text is None:
+    """Return the resolved editor's stored plan (canonical JSON)."""
+    entry = _config_entry(hass)
+    options = get_floorplan_options(entry) if entry is not None else None
+    adapter = await resolve_editor(hass, options, msg.get("editor"))
+    plan = await adapter.async_load(hass)
+    if plan is None:
         connection.send_error(
-            msg["id"], "no_project", "No stored studio project (latest.json)"
+            msg["id"],
+            "no_project",
+            f"No stored {adapter.name} plan",
         )
         return
-    connection.send_result(msg["id"], {"project_json": text})
+    connection.send_result(
+        msg["id"],
+        {"project_json": json.dumps(plan), "editor": adapter.key},
+    )
 
 
 __all__ = [

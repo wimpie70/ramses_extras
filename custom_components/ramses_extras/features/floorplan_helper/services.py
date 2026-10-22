@@ -65,19 +65,18 @@ from .const import (
     is_generated_rule,
 )
 from .domains import caption_suffix_for, get_domain
+from .editors import resolve_editor
+from .editors.base import EditorAdapter
+from .editors.hfs import hfs_type_for_device
 from .importer import (
-    backup_project,
     build_studio_project,
     combine_svgs,
     dedupe_rooms,
-    load_latest_project,
     merge_project_floors,
     parse_floorplan_yaml,
     parse_studio_project,
-    project_backups,
     room_for_point,
     rooms_from_svg,
-    store_latest_project,
     studio_actions_for_device,
     studio_floor,
     studio_marker,
@@ -140,25 +139,36 @@ PROJECT_LATEST_NAME = "latest.json"
 NOTIFICATION_ID = "ramses_extras_floorplan_export"
 
 
-def _backup_project(hass: HomeAssistant, project_json: str) -> str:
-    """Write a timestamped copy of a studio project for backup/history."""
-    return backup_project(hass, project_json)
+async def _adapter(hass: HomeAssistant, editor: str | None = None) -> EditorAdapter:
+    """Resolve the editor adapter for this call.
+
+    ``editor`` comes from a service field the actions card sets from
+    its yaml ``editor:`` option; absent it falls back to the stored
+    ``editor`` option / auto-detection (see ``editors.resolve_editor``).
+    """
+    try:
+        options = get_floorplan_options(_config_entry(hass))
+    except RuntimeError:
+        options = None
+    return await resolve_editor(hass, options, editor)
 
 
-def _store_latest_project(hass: HomeAssistant, project_json: str) -> str:
-    """Write/overwrite the canonical latest studio project."""
-    return store_latest_project(hass, project_json)
-
-
-def _load_latest_project(hass: HomeAssistant) -> str:
-    """Return the stored studio project, or raise if none was stored."""
-    text = load_latest_project(hass)
-    if text is None:
+async def _load_plan(hass: HomeAssistant, editor: str | None = None) -> dict[str, Any]:
+    """Load the resolved editor's plan, or raise when none is stored."""
+    adapter = await _adapter(hass, editor)
+    if not await adapter.async_detect(hass):
         raise vol.Invalid(
-            "No stored studio project — pass project_json or store one "
-            "first (floorplan_store_project / the actions card drop zone)"
+            f"The '{adapter.key}' plan editor is not installed — pick "
+            "another editor in the actions card yaml or the floorplan "
+            "helper options"
         )
-    return text
+    plan = await adapter.async_load(hass)
+    if plan is None:
+        raise vol.Invalid(
+            f"No stored {adapter.name} plan — pass project_json or store "
+            "one first (floorplan_store_project / the actions card)"
+        )
+    return plan
 
 
 def _room_key(room: dict[str, Any]) -> str:
@@ -401,21 +411,24 @@ def _stamp_marker_actions(
 
 
 async def _write_zone_to_project(
-    hass: HomeAssistant, device_id: str, zone: dict[str, Any] | None
+    hass: HomeAssistant,
+    device_id: str,
+    zone: dict[str, Any] | None,
+    editor: str | None = None,
 ) -> None:
-    """Write/clear ``marker.ramsesZone`` in the stored studio project.
+    """Write/clear ``marker.ramsesZone`` in the editor's stored plan.
 
-    The project is the single source of truth for zone config —
+    The plan is the single source of truth for zone config —
     option-level zones only fill in devices without a marker zone
-    (see ``markers.effective_zones``). Unknown fields round-trip
-    untouched through studio's import/edit/export.
+    (see ``markers.effective_zones``). Editors that round-trip unknown
+    fields (``capabilities.stamp_extras``) keep the marker stamp; for
+    the rest the option level *is* the store.
     """
-    raw = await hass.async_add_executor_job(load_latest_project, hass)
-    if not raw:
+    adapter = await _adapter(hass, editor)
+    if not adapter.capabilities.stamp_extras:
         return
-    try:
-        project = json.loads(raw)
-    except json.JSONDecodeError:
+    project = await adapter.async_load(hass)
+    if not isinstance(project, dict):
         return
     model = await build_floorplan_model(hass)
     dev = next(
@@ -432,26 +445,26 @@ async def _write_zone_to_project(
                 studio_marker_zone(marker, zone)
                 changed = True
     if changed:
-        await hass.async_add_executor_job(
-            store_latest_project, hass, json.dumps(project)
-        )
+        await adapter.async_store(hass, project)
 
 
 async def _write_caption_to_project(
-    hass: HomeAssistant, device_id: str, items: list[str] | None
+    hass: HomeAssistant,
+    device_id: str,
+    items: list[str] | None,
+    editor: str | None = None,
 ) -> None:
-    """Write/clear ``marker.ramsesCaption`` in the stored studio project.
+    """Write/clear ``marker.ramsesCaption`` in the editor's stored plan.
 
     Same SSOT pattern as :func:`_write_zone_to_project` — the option
     override is only the fallback for markers without the field.
     ``items=None`` removes the field (marker returns to defaults).
     """
-    raw = await hass.async_add_executor_job(load_latest_project, hass)
-    if not raw:
+    adapter = await _adapter(hass, editor)
+    if not adapter.capabilities.stamp_extras:
         return
-    try:
-        project = json.loads(raw)
-    except json.JSONDecodeError:
+    project = await adapter.async_load(hass)
+    if not isinstance(project, dict):
         return
     model = await build_floorplan_model(hass)
     dev = next(
@@ -472,32 +485,33 @@ async def _write_caption_to_project(
                 marker["ramsesCaption"] = items
             changed = True
     if changed:
-        await hass.async_add_executor_job(
-            store_latest_project, hass, json.dumps(project)
-        )
+        await adapter.async_store(hass, project)
 
 
 async def _write_icon_to_project(
-    hass: HomeAssistant, target: str, icon_key: str | None
+    hass: HomeAssistant,
+    target: str,
+    icon_key: str | None,
+    editor: str | None = None,
 ) -> None:
-    """Write/clear ``marker.style.icon`` in the stored studio project.
+    """Write/clear ``marker.style.icon`` in the editor's stored plan.
 
     ``floorplan_set_icon`` still stores the option-level override (the
     fallback for elements without a marker), but the marker is the
     single source of truth — stamping the mdi name here keeps studio
     showing the same icon we render. On clear, the marker falls back
     to the device's domain default so studio never sees a missing
-    icon.
+    icon. Editors without per-marker icons (hfs's fixed type enum)
+    skip the stamp — the option override stays the fallback.
 
     :param target: device id, device class, or entity id — the same
         keys the option-level override resolves against
     """
-    raw = await hass.async_add_executor_job(load_latest_project, hass)
-    if not raw:
+    adapter = await _adapter(hass, editor)
+    if not adapter.capabilities.stamp_extras:
         return
-    try:
-        project = json.loads(raw)
-    except json.JSONDecodeError:
+    project = await adapter.async_load(hass)
+    if not isinstance(project, dict):
         return
     model = await build_floorplan_model(hass)
     options = get_floorplan_options(_config_entry(hass))
@@ -525,9 +539,7 @@ async def _write_icon_to_project(
                 marker.setdefault("style", {})["icon"] = targets[hit]
                 changed = True
     if changed:
-        await hass.async_add_executor_job(
-            store_latest_project, hass, json.dumps(project)
-        )
+        await adapter.async_store(hass, project)
 
 
 def _config_entry(hass: HomeAssistant) -> ConfigEntry:
@@ -651,7 +663,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def _async_export(call: ServiceCall) -> dict[str, Any]:
         """Regenerate the floorplan bundle and return it."""
-        bundle = await async_generate_bundle(hass, _config_entry(hass))
+        bundle = await async_generate_bundle(
+            hass, _config_entry(hass), editor=call.data.get("editor")
+        )
         notify_export(hass, bundle)
         if call.data.get("apply", True) and bundle.get("cards"):
             bundle["applied"] = await _apply_cards_to_dashboards(
@@ -695,10 +709,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 f"Unknown icon '{icon}'. Available: {', '.join(FLOORPLAN_ICONS)}"
             )
         section = set_icon_override(hass, _config_entry(hass), target, icon)
-        # the studio project is the source of truth — stamp the icon
-        # onto matching markers too (round-trips untouched through
-        # studio, like marker.ramsesZone)
-        await _write_icon_to_project(hass, target, icon)
+        # the plan is the source of truth — stamp the icon onto
+        # matching markers too (round-trips untouched through studio,
+        # like marker.ramsesZone)
+        await _write_icon_to_project(hass, target, icon, call.data.get("editor"))
         return {
             "target": target,
             "icon": icon,
@@ -748,9 +762,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "color": call.data.get("color") or prev.get("color"),
             }
         section = set_device_zone(hass, _config_entry(hass), device_id, zone)
-        # the studio project is the source of truth — write the zone
-        # onto the marker too (round-trips untouched through studio)
-        await _write_zone_to_project(hass, device_id, None if remove else zone)
+        # the plan is the source of truth — write the zone onto the
+        # marker too (round-trips untouched through studio)
+        await _write_zone_to_project(
+            hass, device_id, None if remove else zone, call.data.get("editor")
+        )
         return {
             "device_id": device_id,
             "zone": section.get(OPTION_DEVICE_ZONES, {}).get(device_id),
@@ -788,7 +804,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             ]
         entry = _config_entry(hass)
         section = set_caption_override(hass, entry, device_id, items)
-        await _write_caption_to_project(hass, device_id, items)
+        await _write_caption_to_project(hass, device_id, items, call.data.get("editor"))
         return {
             "device_id": device_id,
             "caption": items,
@@ -924,15 +940,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         from homeassistant.helpers import entity_registry as er
         from homeassistant.util import slugify
 
-        project_json = call.data.get("project_json") or (
-            await hass.async_add_executor_job(_load_latest_project, hass)
-        )
-        parsed = parse_studio_project(project_json)
+        adapter = await _adapter(hass, call.data.get("editor"))
+        raw = call.data.get("project_json")
+        if raw:
+            plan = adapter.parse(raw)
+        else:
+            plan = await _load_plan(hass, call.data.get("editor"))
+            raw = json.dumps(plan)
+        parsed = parse_studio_project(plan)
         if "error" in parsed:
             raise vol.Invalid(str(parsed["error"]))
-        backup_path = await hass.async_add_executor_job(
-            _backup_project, hass, project_json
-        )
+        backup_path = await adapter.async_backup(hass, raw)
 
         create_areas = call.data.get("create_areas", True)
         dry_run = call.data.get("dry_run", False)
@@ -1054,27 +1072,21 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         ``seed_studio``/``sync_areas`` fall back to when no project_json
         is passed. Powers the actions card's drop zone.
         """
-        project_json = call.data["project_json"]
-        parsed = parse_studio_project(project_json)
+        adapter = await _adapter(hass, call.data.get("editor"))
+        raw_text = call.data["project_json"]
+        plan = adapter.parse(raw_text)
+        parsed = parse_studio_project(plan)
         if "error" in parsed:
             raise vol.Invalid(str(parsed["error"]))
         # Stamp the effective gestures into marker.actions so studio's
         # inspector shows what the card will actually do (defaults ->
         # generated zone-toggle / device-view; user edits win).
-        try:
-            raw = json.loads(project_json)
-        except json.JSONDecodeError:
-            raw = None
-        if isinstance(raw, dict):
-            model = await build_floorplan_model(hass)
-            options = get_floorplan_options(_config_entry(hass))
-            zones = effective_zones(model, options, studio_marker_positions(raw))
-            _stamp_marker_actions(raw, model, zones, options)
-            project_json = json.dumps(raw)
-        latest = await hass.async_add_executor_job(
-            _store_latest_project, hass, project_json
-        )
-        backup = await hass.async_add_executor_job(_backup_project, hass, project_json)
+        model = await build_floorplan_model(hass)
+        options = get_floorplan_options(_config_entry(hass))
+        zones = effective_zones(model, options, studio_marker_positions(plan))
+        _stamp_marker_actions(plan, model, zones, options)
+        latest = await adapter.async_store(hass, plan)
+        backup = await adapter.async_backup(hass, json.dumps(plan))
         stats: dict[str, dict[str, int]] = {}
         for room in parsed["rooms"]:
             stats.setdefault(room["floor"], {"rooms": 0, "markers": 0})["rooms"] += 1
@@ -1117,22 +1129,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         return payload
 
     async def _async_seed_studio(call: ServiceCall) -> dict[str, Any]:
-        """Emit a studio project JSON with markers pre-placed.
+        """Emit/merge a plan with markers pre-placed.
 
-        For each floor's SVG the ``area.*`` elements become studio rooms;
-        every topology device whose HA area matches a room slug gets a
-        marker at that room's centroid (grid-stacked when a room holds
-        several devices). Paste the returned JSON into studio's
-        Projects → Import JSON.
+        For each floor's SVG the ``area.*`` elements become rooms; every
+        topology device whose HA area matches a room slug gets a marker
+        at that room's centroid (grid-stacked when a room holds several
+        devices). With no ``floors`` the resolved editor's existing
+        plan supplies the rooms instead — hfs layouts draw their own.
+
+        The plan is stored through the editor adapter; browser-side
+        editors (studio) also get ``project_json`` back so the card can
+        push it into the editor's live storage.
         """
+        adapter = await _adapter(hass, call.data.get("editor"))
         floor_specs: dict[str, str] = dict(call.data.get("floors") or {})
         if not floor_specs:
             options = get_floorplan_options(_config_entry(hass))
             active = options.get(OPTION_CUSTOM_SVG_PATH)
-            if not active:
-                raise vol.Invalid("No 'floors' given and no custom SVG is active")
             paths = active if isinstance(active, list) else [active]
-            floor_specs = {Path(p).stem: p for p in paths}
+            floor_specs = {Path(p).stem: p for p in paths if p}
 
         floor_svgs: dict[str, str] = {}
         missing: list[str] = []
@@ -1152,18 +1167,76 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         options = get_floorplan_options(_config_entry(hass))
         zones = dict(options.get(OPTION_DEVICE_ZONES) or {})
 
+        def _mdi(dev: dict[str, Any]) -> str:
+            if dev.get("standalone"):
+                key = standalone_icon(str(dev.get("primary_entity") or ""))
+            else:
+                key = FLOORPLAN_DEVICE_ICON_MAP.get(
+                    dev.get("device_class") or "", DEFAULT_ICON
+                )
+            return FLOORPLAN_ICON_MDI.get(key, "help-circle")
+
+        # Merging into an existing plan preserves the background image,
+        # walls and any editor edits — without it we emit a fresh plan.
+        existing: dict[str, Any] | None = None
+        raw_project = call.data.get("project_json")
+        if raw_project:
+            try:
+                existing = adapter.parse(raw_project)
+            except (ValueError, vol.Invalid) as err:
+                raise vol.Invalid(
+                    f"project_json is not a valid {adapter.name} plan: {err}"
+                ) from err
+        else:
+            # Fall back to the editor's stored plan — keeps
+            # backgrounds/edits when re-seeding.
+            existing = await adapter.async_load(hass)
+
+        # Rooms to seed into — from the floor SVGs, or from the
+        # editor's own plan floors (hfs draws rooms natively; there is
+        # no authored SVG to parse). Plan rooms convert to the
+        # ``rooms_from_svg`` shape so centroid placement works either
+        # way.
+        floor_rooms: dict[str, dict[str, Any]] = {}
+        for fname, svg_text in floor_svgs.items():
+            width, height = svg_viewbox(svg_text)
+            floor_rooms[fname] = {
+                "rooms": rooms_from_svg(svg_text),
+                "width": width,
+                "height": height,
+            }
+        if not floor_rooms and existing:
+            for fl in existing.get("floors") or []:
+                canvas = fl.get("canvas") or {}
+                floor_rooms[str(fl.get("name") or fl.get("id") or "floor")] = {
+                    "rooms": [
+                        {
+                            "slug": slugify(
+                                str(r.get("areaId") or r.get("name") or "")
+                            ),
+                            "name": str(r.get("name") or ""),
+                            "polygon": r.get("polygon") or [],
+                            "centroid": _room_centroid(r),
+                        }
+                        for r in fl.get("rooms") or []
+                    ],
+                    "width": float(canvas.get("width") or 800),
+                    "height": float(canvas.get("height") or 600),
+                }
+
         # Evohome zones → device_zones: the zone sensor (room stat) is
         # the parent, its actuators join as members, and a room whose
         # name matches the zone name pre-fills `areas`. Existing entries
         # are never overwritten.
-        room_slugs: set[str] = set()
-        for svg_text in floor_svgs.values():
-            room_slugs.update(r["slug"] for r in rooms_from_svg(svg_text))
+        room_slugs: set[str] = {
+            r["slug"] for spec in floor_rooms.values() for r in spec["rooms"]
+        }
         seeded_zones = seed_heat_zones(model.get("heat_zones") or [], room_slugs, zones)
         if seeded_zones:
             persist_floorplan_options(
                 hass, _config_entry(hass), {**options, OPTION_DEVICE_ZONES: zones}
             )
+
         # resolve each zone to concrete toggle specs — written into the
         # marker's serviceData so studio shows (and exports) the real
         # action; the generated rules regenerate it anyway, so the
@@ -1180,48 +1253,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 )
                 zone_toggles[zid] = zone_toggle_specs(zid, areas, bound)
 
-        def _mdi(dev: dict[str, Any]) -> str:
-            if dev.get("standalone"):
-                key = standalone_icon(str(dev.get("primary_entity") or ""))
-            else:
-                key = FLOORPLAN_DEVICE_ICON_MAP.get(
-                    dev.get("device_class") or "", DEFAULT_ICON
-                )
-            return FLOORPLAN_ICON_MDI.get(key, "help-circle")
-
-        # Merging into an existing project preserves the background image,
-        # walls and any studio edits — without it we emit a fresh project.
-        existing: dict[str, Any] | None = None
-        raw_project = call.data.get("project_json")
-        if not raw_project:
-            # Fall back to the stored project — keeps backgrounds/edits
-            # when re-seeding; silently ignored if none was ever stored.
-            latest_path = (
-                Path(hass.config.path("ramses_extras/floorplan/projects"))
-                / PROJECT_LATEST_NAME
-            )
-            try:
-                raw_project = await hass.async_add_executor_job(
-                    latest_path.read_text, "utf-8"
-                )
-            except OSError:
-                raw_project = None
-        if raw_project:
-            try:
-                existing = json.loads(raw_project)
-            except json.JSONDecodeError:
-                raise vol.Invalid("project_json is not valid JSON") from None
-            if not isinstance(existing.get("floors"), list):
-                raise vol.Invalid("project_json is not a studio project")
-
         placed: dict[str, str] = {}
         placed_entities: set[str] = set()
         floors_json: list[dict[str, Any]] = []
         floor_stats: list[dict[str, Any]] = []
         dock: dict[str, tuple[float, float]] = {}
-        for fname, svg_text in floor_svgs.items():
-            rooms = rooms_from_svg(svg_text)
-            width, height = svg_viewbox(svg_text)
+        for fname, spec in floor_rooms.items():
+            rooms = spec["rooms"]
+            width, height = spec["width"], spec["height"]
             # same anchor the merged-SVG export parks unplaced markers
             # at — studio staging lands where the card docks them
             dock[fname.lower()] = dock_anchor({r["slug"]: r for r in rooms}, width)
@@ -1346,21 +1385,46 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             effective_zones(model, options, studio_marker_positions(project)),
             options,
         )
+        # ``hfsType`` precomputes the hfs DeviceType so a store into a
+        # ha-floorplan-studio layout lands on the right icon — harmless
+        # extra key for editors that don't read it.
+        dev_by_id = {str(d.get("device_id")): d for d in model.get("devices") or []}
+        for fl in project.get("floors") or []:
+            for marker in fl.get("markers") or []:
+                mdid: str | None = next(
+                    (
+                        entity_device[e]
+                        for e in (marker.get("entities") or [])
+                        if e in entity_device
+                    ),
+                    None,
+                )
+                dev = dev_by_id.get(mdid) if mdid else None
+                if dev is None:
+                    dev = {"primary_entity": (marker.get("entities") or [""])[0]}
+                marker.setdefault("hfsType", hfs_type_for_device(dev))
+
         project_out = json.dumps(project)
-        backup_path = await hass.async_add_executor_job(
-            _backup_project, hass, project_out
-        )
+        backup_path = await adapter.async_backup(hass, project_out)
+        stored_at = ""
+        if not adapter.capabilities.browser_side:
+            # server-side editors (hfs) have no browser store to push
+            # into — write the plan straight into theirs.
+            stored_at = await adapter.async_store(hass, project)
         _LOGGER.info(
             "Floorplan seed_studio: %d markers across %d floors, %d unplaced, "
-            "%d heat zones seeded",
+            "%d heat zones seeded (editor=%s)",
             len(placed),
             len(floors_json),
             len(unplaced),
             len(seeded_zones),
+            adapter.key,
         )
         return {
             "project_json": project_out,
             "backup_path": backup_path,
+            "stored_at": stored_at,
+            "editor": adapter.key,
             "zones_seeded": seeded_zones,
             "heat_zones": model.get("heat_zones"),
             "placed": placed,
@@ -1441,45 +1505,37 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         width = offsets[-1] + boxes[-1][0]
         height = max(h for _, h in boxes)
 
-        # fold the stored studio project into the same single floor —
-        # an already-combined project re-merges from the newest
+        # fold the stored plan into the same single floor —
+        # an already-combined plan re-merges from the newest
         # multi-floor backup so a re-run with a different gap stays
-        # correct (studio edits to the combined floor are lost then,
+        # correct (editor edits to the combined floor are lost then,
         # so it's reported in warnings)
+        adapter = await _adapter(hass, call.data.get("editor"))
         project_merged = False
-        stored = await hass.async_add_executor_job(load_latest_project, hass)
+        stored_plan = await adapter.async_load(hass)
+        backups = await adapter.async_plan_backups(hass)
 
-        def _multi_floor_project() -> dict[str, Any] | None:
-            for text in (stored, *project_backups(hass)):
-                if not text:
-                    continue
-                try:
-                    cand = json.loads(text)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(cand, dict) and len(cand.get("floors") or []) > 1:
-                    return dict(cand)
-            return None
-
-        project = await hass.async_add_executor_job(_multi_floor_project)
+        project = next(
+            (
+                dict(cand)
+                for cand in (stored_plan, *backups)
+                if isinstance(cand, dict) and len(cand.get("floors") or []) > 1
+            ),
+            None,
+        )
         if project is not None:
-            try:
-                already = (
-                    bool(stored)
-                    and len(json.loads(stored or "{}").get("floors") or []) <= 1
-                )
-            except json.JSONDecodeError:
-                already = False
+            already = (
+                stored_plan is not None and len(stored_plan.get("floors") or []) <= 1
+            )
             if already:
                 warnings.append(
-                    "Stored project was already combined — re-merged from "
-                    "the newest multi-floor backup; any studio edits made "
+                    "Stored plan was already combined — re-merged from "
+                    "the newest multi-floor backup; any editor edits made "
                     "to the combined floor since are lost"
                 )
             merge_project_floors(project, offsets, width, height)
-            stamped = json.dumps(project)
-            await hass.async_add_executor_job(_store_latest_project, hass, stamped)
-            await hass.async_add_executor_job(_backup_project, hass, stamped)
+            await adapter.async_store(hass, project)
+            await adapter.async_backup(hass, json.dumps(project))
             project_merged = True
 
         section = dict(options)
@@ -1512,6 +1568,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Optional("apply", default=True): cv.boolean,
                     vol.Optional("apply_dashboard"): cv.string,
                     vol.Optional("apply_match"): cv.string,
+                    vol.Optional("editor"): cv.string,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),
@@ -1545,6 +1602,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 {
                     vol.Required("target"): cv.string,
                     vol.Optional("icon"): cv.string,
+                    vol.Optional("editor"): cv.string,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),
@@ -1577,6 +1635,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Optional("areas"): vol.All(cv.ensure_list, [cv.string]),
                     vol.Optional("devices"): vol.All(cv.ensure_list, [cv.string]),
                     vol.Optional("color"): cv.string,
+                    vol.Optional("editor"): cv.string,
                     vol.Optional("remove", default=False): cv.boolean,
                 },
                 extra=vol.PREVENT_EXTRA,
@@ -1593,6 +1652,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 {
                     vol.Required("device_id"): cv.string,
                     vol.Optional("entities"): vol.All(cv.ensure_list, [cv.string]),
+                    vol.Optional("editor"): cv.string,
                     vol.Optional("remove", default=False): cv.boolean,
                 },
                 extra=vol.PREVENT_EXTRA,
@@ -1658,6 +1718,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Optional("project_json"): cv.string,
                     vol.Optional("create_areas", default=True): cv.boolean,
                     vol.Optional("dry_run", default=False): cv.boolean,
+                    vol.Optional("editor"): cv.string,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),
@@ -1670,7 +1731,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             SVC_STORE_PROJECT,
             _async_store_project,
             schema=vol.Schema(
-                {vol.Required("project_json"): cv.string},
+                {
+                    vol.Required("project_json"): cv.string,
+                    vol.Optional("editor"): cv.string,
+                },
                 extra=vol.PREVENT_EXTRA,
             ),
             supports_response=SupportsResponse.OPTIONAL,
@@ -1688,6 +1752,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Optional("staging", default=True): cv.boolean,
                     vol.Optional("marker_size", default=20): cv.positive_int,
                     vol.Optional("name"): cv.string,
+                    vol.Optional("editor"): cv.string,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),
@@ -1703,6 +1768,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 {
                     vol.Optional("gap", default=120): vol.Coerce(float),
                     vol.Optional("sources"): [cv.string],
+                    vol.Optional("editor"): cv.string,
                 },
                 extra=vol.PREVENT_EXTRA,
             ),

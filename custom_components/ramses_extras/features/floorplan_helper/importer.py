@@ -170,18 +170,22 @@ def _polygon_area(polygon: list[dict[str, float]]) -> float:
     return abs(area) / 2
 
 
-def parse_studio_project(text: str) -> dict[str, Any]:
-    """Parse a floorplan-studio project export (JSON) for area syncing.
+def parse_studio_project(text: str | dict[str, Any]) -> dict[str, Any]:
+    """Flatten a canonical plan (or studio project JSON) for area syncing.
 
-    :param text: project JSON as produced by studio's Projects → Export
+    :param text: project JSON text as produced by studio's
+        Projects → Export, or an already-parsed canonical plan dict
     :return: ``{rooms: [{id, name, polygon, floor}],
         markers: [{x, y, entities, floor}], warnings: [str]}`` — on
         failure ``{"error": str}``
     """
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as err:
-        return {"error": f"Invalid JSON: {err}"}
+    if isinstance(text, dict):
+        data = text
+    else:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as err:
+            return {"error": f"Invalid JSON: {err}"}
     if not isinstance(data, dict) or not isinstance(data.get("floors"), list):
         return {"error": "Not a floorplan-studio project (missing 'floors')"}
 
@@ -971,19 +975,28 @@ def project_drawing_svg(floor: dict[str, Any]) -> str | None:
     try:
         width = float(canvas.get("width") or 0)
         height = float(canvas.get("height") or 0)
+        ox = float(canvas.get("x") or 0)
+        oy = float(canvas.get("y") or 0)
     except TypeError, ValueError:
         return None
     if width <= 0 or height <= 0:
         return None
 
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:g} {height:g}">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="{ox:g} {oy:g} {width:g} {height:g}">'
     ]
     bg = floor.get("background") or {}
     if bg.get("dataUri"):
+        # an explicit rect (hfs trace: x/y/w in plan units) wins over
+        # the studio default — stretch the image over the canvas
+        bx = float(bg.get("x") or ox)
+        by = float(bg.get("y") or oy)
+        bw = float(bg.get("width") or (width - bx + ox))
+        bh = float(bg.get("height") or (height - by + oy))
         parts.append(
-            f'<image href="{xml_text(bg["dataUri"])}" x="0" y="0" '
-            f'width="{width:g}" height="{height:g}" '
+            f'<image href="{xml_text(bg["dataUri"])}" x="{bx:g}" y="{by:g}" '
+            f'width="{bw:g}" height="{bh:g}" '
             f'opacity="{float(bg.get("opacity") or 1):g}"/>'
         )
 
@@ -1000,13 +1013,31 @@ def project_drawing_svg(floor: dict[str, Any]) -> str | None:
                 f'stroke-linecap="round" stroke-linejoin="round"/>'
             )
     for opening in floor.get("openings") or []:
+        # two anchor shapes: studio's wallId + t along a wall, and the
+        # editor-agnostic a..b span (hfs doors/openings)
+        a, b = opening.get("a"), opening.get("b")
+        if isinstance(a, dict) and isinstance(b, dict):
+            ax, ay = float(a.get("x") or 0), float(a.get("y") or 0)
+            bx, by = float(b.get("x") or 0), float(b.get("y") or 0)
+            mx, my = (ax + bx) / 2, (ay + by) / 2
+            ow = max(math.dist((ax, ay), (bx, by)), 1.0)
+            angle = math.degrees(math.atan2(by - ay, bx - ax))
+            oh = float(opening.get("thickness") or 8)
+            fill = _opening_fill(opening)
+            parts.append(
+                f'<rect x="{-ow / 2:g}" y="{-oh / 2:g}" width="{ow:g}" '
+                f'height="{oh:g}" fill="{fill}" stroke="#0f172a" '
+                f'stroke-width="1" transform="translate({mx:g} {my:g}) '
+                f'rotate({angle:g})"/>'
+            )
+            continue
         wall = walls.get(str(opening.get("wallId") or ""))
         if not wall:
             continue
         p = _point_along_wall(wall, float(opening.get("t") or 0))
         ow = float(opening.get("width") or 40)
         oh = float(wall.get("thickness") or 4) + 4
-        fill = "#fbbf24" if opening.get("kind") == "door" else "#93c5fd"
+        fill = _opening_fill(opening)
         parts.append(
             f'<rect x="{p[0] - ow / 2:g}" y="{p[1] - oh / 2:g}" '
             f'width="{ow:g}" height="{oh:g}" fill="{fill}" '
@@ -1076,6 +1107,19 @@ def _point_along_wall(wall: dict[str, Any], t: float) -> tuple[float, float]:
             )
         target -= seg
     return pts[-1]
+
+
+def _opening_fill(opening: dict[str, Any]) -> str:
+    """Marker fill per opening kind — doors amber, windows sky."""
+    return {
+        "door": "#fbbf24",
+        "glass": "#7dd3fc",
+        "window": "#93c5fd",
+        "fullwindow": "#93c5fd",
+        "slit": "#bae6fd",
+        "sealed": "#cbd5e1",
+        "open": "#e2e8f0",
+    }.get(str(opening.get("kind") or ""), "#93c5fd")
 
 
 def _room_fill(room: dict[str, Any]) -> str:

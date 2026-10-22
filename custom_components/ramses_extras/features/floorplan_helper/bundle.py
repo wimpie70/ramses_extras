@@ -46,9 +46,7 @@ from .const import (
 from .importer import (
     best_floor_for_svg,
     dedupe_rooms,
-    load_latest_project,
     project_drawing_svg,
-    store_latest_project,
     studio_marker_positions,
     studio_marker_zone,
     studio_room_fills,
@@ -180,11 +178,12 @@ async def _build_merged_svg(
     model: dict[str, Any],
     options: dict[str, Any],
     ref: str,
+    project: dict[str, Any] | None = None,
 ) -> tuple[str | None, list[str], str | None]:
     """Splice device markers + toolbar into the user's custom SVG.
 
-    Marker positions come from the stored studio project (latest.json),
-    read from the floor whose room names match the SVG's ``area.*`` ids.
+    Marker positions come from the editor's stored plan, read from the
+    floor whose room names match the SVG's ``area.*`` ids.
 
     :return: ``(merged filename, warnings, merged SVG text or None)``
     """
@@ -228,18 +227,11 @@ async def _build_merged_svg(
         )
 
     warnings: list[str] = []
-    project_json = await hass.async_add_executor_job(load_latest_project, hass)
-    project: dict[str, Any] | None = None
     floor: dict[str, Any] | None = None
-    if project_json:
-        try:
-            project = json.loads(project_json)
-        except json.JSONDecodeError:
-            project = None
     if project:
         floor = best_floor_for_svg(project, svg_text)
     else:
-        warnings.append("No stored studio project — markers placed at area centroids")
+        warnings.append("No stored plan — markers placed at area centroids")
 
     tail_warnings, merged = _merge_overlay_tail(
         model, options, svg_text, project, floor
@@ -418,7 +410,7 @@ async def _floorplan_resource_present(hass: HomeAssistant) -> bool:
 
 
 async def async_generate_bundle(
-    hass: HomeAssistant, config_entry: Any
+    hass: HomeAssistant, config_entry: Any, editor: str | None = None
 ) -> dict[str, Any]:
     """Generate the complete floorplan bundle.
 
@@ -433,34 +425,30 @@ async def async_generate_bundle(
     options = get_floorplan_options(config_entry)
     apply_area_overrides(model, options)
 
-    # studio is the per-marker editor: actions/showState/label edits
-    # persist in the project and are honoured by the rule builder
+    from .editors import resolve_editor  # noqa: PLC0415 — import cycle
+
+    adapter = await resolve_editor(hass, options, editor)
+
+    # the editor's plan is the per-marker SSOT: actions/showState/label
+    # edits persist there and are honoured by the rule builder
     marker_meta: dict[str, dict[str, Any]] | None = None
     rules_options = options
-    project: dict[str, Any] | None = None
-    raw_project = await hass.async_add_executor_job(load_latest_project, hass)
-    if raw_project:
-        try:
-            project = json.loads(raw_project)
-        except json.JSONDecodeError:
-            project = None
-        else:
-            # option-level overrides migrate into the project once —
-            # afterwards the marker fields own them (SSOT)
-            if migrate_overrides_to_project(project, model, options):
-                await hass.async_add_executor_job(
-                    store_latest_project, hass, json.dumps(project)
-                )
-            marker_meta = studio_marker_positions(project)
-            url = project.get("ramsesDeviceViewUrl")
-            if url:
-                # project-level field wins; the stored option is the
-                # fallback for projects without one — keep storage
-                # clean by applying it to a throwaway copy
-                rules_options = {
-                    **options,
-                    OPTION_DEVICE_VIEW_URL: str(url),
-                }
+    project: dict[str, Any] | None = await adapter.async_load(hass)
+    if project:
+        # option-level overrides migrate into the plan once —
+        # afterwards the marker fields own them (SSOT). Only written
+        # back for editors that round-trip our extra marker keys.
+        if adapter.capabilities.stamp_extras and migrate_overrides_to_project(
+            project, model, options
+        ):
+            await adapter.async_store(hass, project)
+        marker_meta = studio_marker_positions(project)
+        url = project.get("ramsesDeviceViewUrl")
+        if url:
+            # project-level field wins; the stored option is the
+            # fallback for plans without one — keep storage
+            # clean by applying it to a throwaway copy
+            rules_options = {**options, OPTION_DEVICE_VIEW_URL: str(url)}
 
     rules = build_rules(model, rules_options, marker_meta)
     svg_text = build_elements_svg(model, options)
@@ -487,7 +475,7 @@ async def async_generate_bundle(
         # overlay onto the authored drawing files in custom_svg_path
         for ref in custom_svg_refs(options):
             merged_name, merged_warnings, merged_text = await _build_merged_svg(
-                hass, model, options, ref
+                hass, model, options, ref, project
             )
             warnings.extend(merged_warnings)
             if merged_text is not None and merged_name:
@@ -530,6 +518,7 @@ async def async_generate_bundle(
         )
 
     return {
+        "editor": adapter.key,
         "card_yaml": card_yaml,
         "card_yamls": card_yamls,
         "cards": cards,
