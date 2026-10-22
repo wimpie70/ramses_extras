@@ -127,6 +127,14 @@ const CARD_MODULES = [
 
 const loaded = new Set();
 
+// The `?v=` key only changes when the backend recomputes its asset hash
+// at startup, so between deploys a cached feature module can keep
+// serving — and Firefox's hard refresh does not bypass the cache for
+// dynamic import() calls the way it does for parser subresources. Stamp
+// every import with the page-load time so a reload always revalidates;
+// the module map still dedupes within the session.
+const loadStamp = Date.now().toString(36);
+
 async function loadCardModule(cardDef) {
   if (loaded.has(cardDef.tag)) {
     return;
@@ -136,9 +144,11 @@ async function loadCardModule(cardDef) {
   logger.debug('ramses_extras: loading card module for', cardDef.tag, cardDef.modulePath);
 
   const version = window.ramsesExtras?.version || getBootstrapVersion();
-  const modulePath = version
-    ? `${cardDef.modulePath}?v=${encodeURIComponent(version)}`
-    : cardDef.modulePath;
+  const qs = [
+    version && `v=${encodeURIComponent(version)}`,
+    `_=${loadStamp}`,
+  ].filter(Boolean).join('&');
+  const modulePath = `${cardDef.modulePath}?${qs}`;
 
   try {
     await import(modulePath);
@@ -187,8 +197,8 @@ function scanAndLoad() {
     window.ramsesExtras._featuresLoaded = new Promise((resolve) => {
       const featuresScript = document.createElement('script');
       const versionSuffix = bootstrapVersion
-        ? `?v=${encodeURIComponent(bootstrapVersion)}`
-        : '';
+        ? `?v=${encodeURIComponent(bootstrapVersion)}&_=${loadStamp}`
+        : `?_=${loadStamp}`;
       featuresScript.src = `${window.ramsesExtras.assetBase}/helpers/ramses-extras-features.js${versionSuffix}`;
       featuresScript.onload = () => {
         logger.debug('ramses_extras: features loaded');

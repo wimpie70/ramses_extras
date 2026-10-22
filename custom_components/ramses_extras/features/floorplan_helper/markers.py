@@ -312,11 +312,11 @@ def effective_zones(
     of truth — the ``device_zones`` option only fills in devices that
     have no marker zone yet (back-compat for pre-project zones).
 
-    Colour is project-first too: the highlight uses the *fill* of the
-    zone's first studio room (``room_fills`` from
-    :func:`importer.studio_room_fills`) — the studio inspector edits
-    room fills natively, so no parallel colour store. The stored
-    ``zone.color`` remains the fallback for zones without a room yet.
+    ``zone.color`` is the highlight/outline colour only — room base
+    fills stay whatever studio's inspector set. When a zone has no
+    explicit colour, the fill of its first studio room
+    (``room_fills`` from :func:`importer.studio_room_fills`) is the
+    adaptive fallback.
     """
     zones = dict(options.get(OPTION_DEVICE_ZONES) or {})
     for dev in model.get("devices") or []:
@@ -326,7 +326,7 @@ def effective_zones(
             zones[str(dev["device_id"])] = rz
     if room_fills:
         for dev_id, z in list(zones.items()):
-            if not isinstance(z, dict):
+            if not isinstance(z, dict) or z.get("color"):
                 continue
             for area in z.get("areas") or []:
                 fill = room_fills.get(slugify(str(area)))

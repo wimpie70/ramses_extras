@@ -20,15 +20,15 @@
  * Tools row:
  *   - "＋ Add devices" — seed/merge new device markers into the
  *     selected project (or the stored one), written back into studio
- *   - "Sync areas" — link rooms to HA areas and set each entity's
+ *   - "Sync areas → HA" — link rooms to HA areas and set each entity's
  *     HA area from which room its marker sits inside
  *   - "Export ⇒" — snapshot the live project, run floorplan_export,
  *     copy the card yaml (dashboard cards untouched)
  *   - "⇒ Update cards" — same export, plus every floorplan card
  *     showing a generated map is updated in place
  *   - "⚙ Zones" — zone editor: pick a device, check the rooms it
- *     serves and the extra markers bound to it, pick a colour
- *     (paints the rooms' studio fill), Save
+ *     serves and the extra markers bound to it; the swatch sets the
+ *     selected-zone highlight colour only — room fills stay studio's
  *   - Drop zone: fallback for JSON files from another machine/backup
  *
  * Config (all optional):
@@ -191,8 +191,9 @@ class RamsesFloorplanActions extends HTMLElement {
     this._studioMemberSel = new Set(); // last-seen member selection (ids)
     this._lastSoleDev = null;          // marker last seen as sole selection
     this._zoneSaveT = null;            // autosave debounce timer
-    this._zonePaint = false;           // swatch changed → paint on next save
     this._zoneRowFor = null;           // device the zone lists are built for
+    this._sawStudioSel = false;        // studio selection seen non-empty
+    this._suppressMenuClear = false;   // ignore the post-remount deselect
   }
 
   setConfig(config) {
@@ -588,8 +589,31 @@ class RamsesFloorplanActions extends HTMLElement {
       this._studioRoomSel = new Set();
       this._studioMemberSel = new Set();
       this._lastSoleDev = null;
+      this._sawStudioSel = false;
       return;
     }
+
+    // A genuinely empty canvas (user clicked a non-room/non-marker
+    // spot) clears the zone picker — the menu follows studio's
+    // deselect. The empty selection a studio remount briefly shows
+    // after our own project push is not a user deselect: the flag
+    // _reloadStudioCard sets swallows exactly that one observation.
+    const roomIds = this._studioSelectedRoomIds();
+    if (!mSel.length && !roomIds.size) {
+      if (this._suppressMenuClear) {
+        this._suppressMenuClear = false;
+      } else if (this._sawStudioSel && devSel.value) {
+        devSel.value = '';
+        this._zoneRowFor = null;
+        this._fillZoneRow();
+      }
+      this._sawStudioSel = false;
+      this._studioRoomSel = roomIds;
+      this._studioMemberSel = new Set();
+      this._lastSoleDev = null;
+      return;
+    }
+    this._sawStudioSel = true;
 
     let soleDev = null;
     const memberIds = new Set();
@@ -616,7 +640,7 @@ class RamsesFloorplanActions extends HTMLElement {
         this._fillZoneRow();
       }
       this._lastSoleDev = soleDev;
-      this._studioRoomSel = this._studioSelectedRoomIds();
+      this._studioRoomSel = roomIds;
       this._studioMemberSel = memberIds;
       return;
     }
@@ -634,13 +658,12 @@ class RamsesFloorplanActions extends HTMLElement {
       this._fillZoneRow();
       memberIds.delete(soleDev);
       this._studioMemberSel = memberIds;
-      this._studioRoomSel = this._studioSelectedRoomIds();
+      this._studioRoomSel = roomIds;
       this._lastSoleDev = soleDev;
       return;
     }
     this._lastSoleDev = soleDev;
 
-    const roomIds = this._studioSelectedRoomIds();
     let dirty = this._applySelDelta(roomsSel, this._studioRoomSel, roomIds, false);
     this._studioRoomSel = roomIds;
     dirty =
@@ -762,12 +785,16 @@ class RamsesFloorplanActions extends HTMLElement {
     const areas = new Set(zone.areas || []);
     if (!areas.size) return;
     const rooms = await this._projectRooms();
-    // same resolution as the export: the zone's first studio room
-    // fill, then the stored zone colour, then the default
-    let color = zone.color || '#f59e0b';
-    for (const room of rooms.values()) {
-      if (room.fill && areas.has(room.areaId)) { color = room.fill; break; }
+    // same resolution as the export: the stored zone colour is the
+    // highlight outline; a zone room's own fill is only the fallback
+    // for zones that never picked one
+    let color = zone.color;
+    if (!color) {
+      for (const room of rooms.values()) {
+        if (room.fill && areas.has(room.areaId)) { color = room.fill; break; }
+      }
     }
+    if (!color) color = '#f59e0b';
     const root = this._studioRoot();
     if (!root) return;
 
@@ -968,36 +995,15 @@ class RamsesFloorplanActions extends HTMLElement {
       memSel.appendChild(this._zitem(id, `${id} (entity)`, true));
     }
     inp.disabled = !devId;
-    if (fill && /^#[0-9a-f]{6}$/i.test(fill)) inp.value = fill;
-    else if (zone.color && /^#[0-9a-f]{6}$/i.test(zone.color)) inp.value = zone.color;
+    // zone.color is the highlight outline colour — an explicit pick
+    // wins; a room fill is only the suggested default for new zones
+    if (zone.color && /^#[0-9a-f]{6}$/i.test(zone.color)) inp.value = zone.color;
+    else if (fill && /^#[0-9a-f]{6}$/i.test(fill)) inp.value = fill;
     else inp.value = '#22c55e';
     // marks the lists as populated *for this device* — _saveZone
     // refuses to snapshot while a rebuild for another device is
     // still in flight (an empty-looking list would wipe areas)
     this._zoneRowFor = devId;
-  }
-
-  async _paintZoneRooms(areas, color) {
-    // Set `fill` on the zone's rooms in the studio project — the
-    // colour lives where studio owns it. Returns rooms painted.
-    const project = await this._readStudioProject(true);
-    if (!project) return 0;
-    const want = new Set((areas || []).map((a) => this._slug(a)));
-    let painted = 0;
-    for (const f of project.floors || []) {
-      for (const r of f.rooms || []) {
-        if (want.has(this._slug(r.areaId || r.name)) && r.fill !== color) {
-          r.fill = color;
-          painted++;
-        }
-      }
-    }
-    if (painted) {
-      await this._pushToStudio(JSON.stringify(project));
-      this._reloadStudioCard();
-      this._roomsCache = null;
-    }
-    return painted;
   }
 
   async _saveZone() {
@@ -1039,17 +1045,6 @@ class RamsesFloorplanActions extends HTMLElement {
         )
       : zone.devices || [];
     const color = (inp && inp.value) || undefined;
-    // Painting remounts studio (wiping its selection), so it only
-    // happens on an explicit swatch change — membership saves leave
-    // the project untouched.
-    const paint = this._zonePaint;
-    this._zonePaint = false;
-    let painted = 0;
-    if (paint && color && areas.length) {
-      // the swatch colour paints the rooms in the project — the
-      // studio inspector stays the colour editor
-      try { painted = await this._paintZoneRooms(areas, color); } catch { /* optional */ }
-    }
     await this._call('floorplan_set_device_zone', {
       device_id: devId,
       areas,
@@ -1060,9 +1055,7 @@ class RamsesFloorplanActions extends HTMLElement {
     this._status(
       `Zone ${devId}: ${areas.length ? areas.join(', ') : 'no rooms'} ` +
         `+ ${devices.length} marker(s)` +
-        (color
-          ? ` (${color}${painted ? `, painted ${painted} room(s)` : ''})`
-          : '') +
+        (color ? ` — outline ${color}` : '') +
         ' — select its marker in studio to highlight'
     );
   }
@@ -1113,6 +1106,9 @@ class RamsesFloorplanActions extends HTMLElement {
   _reloadStudioCard() {
     const el = _deepQuery('floorplan-studio-card');
     if (el && el.mounted) {
+      // the remount briefly shows an empty selection — tell the
+      // studio→menu sync that is not a user deselect
+      this._suppressMenuClear = true;
       el.disconnectedCallback();
       el.connectedCallback();
       return true;
@@ -1385,10 +1381,9 @@ class RamsesFloorplanActions extends HTMLElement {
     };
     $('zone-rooms').onchange = () => this._pushZoneSelToStudio();
     $('zone-members').onchange = () => this._pushZoneSelToStudio();
-    $('zone-color').onchange = () => {
-      this._zonePaint = true; // paints the zone's rooms on the autosave
-      this._queueZoneSave();
-    };
+    // the swatch is the highlight outline colour — stored on the
+    // zone, it never repaints the rooms' base fills
+    $('zone-color').onchange = () => this._queueZoneSave();
     this._fillZoneDevices();
     const closePanel = () => {
       $('devpanel').style.display = 'none';

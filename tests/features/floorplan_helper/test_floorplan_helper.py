@@ -1061,6 +1061,28 @@ class TestStudioMarkerMeta:
         elements = act["service_data"]["toggles"][0]["elements"]
         assert elements == ["area.vide_wing"]
 
+    def test_zone_colour_is_highlight_only(self):
+        # zone.color is the selected-zone outline colour: an explicit
+        # pick wins, and a zone without one inherits its first room's
+        # fill — room fills themselves are never rewritten
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            markers,
+        )
+
+        zones = markers.effective_zones(
+            _model(devices=[_device()]),
+            _options(
+                device_zones={
+                    "32:153289": {"areas": ["woonkamer"], "color": "#123456"},
+                    "37:168270": {"areas": ["woonkamer"]},
+                }
+            ),
+            None,
+            {"woonkamer": "#aabbcc"},
+        )
+        assert zones["32:153289"]["color"] == "#123456"
+        assert zones["37:168270"]["color"] == "#aabbcc"
+
     def test_marker_ramses_caption_is_ssot(self):
         # marker.ramsesCaption in the project wins over caption_overrides
         # — same SSOT rule as ramsesZone
