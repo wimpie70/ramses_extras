@@ -33,9 +33,8 @@
  *
  * Config (all optional):
  *   floors: {begane grond: plattegrond-bg.svg, ...}  floor name → SVG
- *   ref — seeds floor geometry AND points the export at your drawing
- *   (one merged SVG + card yaml per ref). Different maps → different
- *   actions cards with their own floors
+ *   ref — seeds floor geometry for a new project only; the export
+ *   renders the drawing straight from the studio project itself
  *   marker_size: 20  (size for newly seeded markers — studio owns size
  *   after that; the inspector edits it per marker)
  *   device_view_url: /lovelace/hvac  (optional — adds a '⤢ dashboard'
@@ -1069,10 +1068,10 @@ class RamsesFloorplanActions extends HTMLElement {
     // disabled boxes are schema children — auto-bound via their
     // parent link, never written into zone.devices
     const devices = memSel.children.length
-      ? [...memSel.querySelectorAll('input:checked:not(:disabled)')].map(
-          (cb) => cb.value
-        )
-      : zone.devices || [];
+      ? [...memSel.querySelectorAll('input:checked:not(:disabled)')]
+          .map((cb) => cb.value)
+          .filter(Boolean)
+      : (zone.devices || []).filter(Boolean);
     const color = (inp && inp.value) || undefined;
     await this._call('floorplan_set_device_zone', {
       device_id: devId,
@@ -1226,15 +1225,6 @@ class RamsesFloorplanActions extends HTMLElement {
         project_json: JSON.stringify(project),
       });
       stored = ` (project snapshot: ${s.latest_path})`;
-    }
-    // The card's `floors:` yaml owns the drawing paths — push them
-    // into the floorplan options before exporting so different maps
-    // (different actions cards) export their own merged SVGs.
-    const floorRefs = Object.values(this._config.floors || {}).filter(Boolean);
-    if (floorRefs.length) {
-      await this._call('floorplan_set_svg', {
-        custom_svg_path: floorRefs,
-      }).catch(() => {});
     }
     // apply:true lets the service update every matching storage
     // dashboard itself; apply:false is generate + clipboard only

@@ -20,6 +20,18 @@ these files before working on ramses_extras:**
 - **Production HA**: runs on a separate server. Do not point dev tools or
   tests at it.
 
+### Deploying frontend assets to `hass` (recurring gotcha)
+
+Card JS lives in **two** places inside the container: the deploy _source_
+(`custom_components/ramses_extras/**/www/`) and the served copy under
+`/config/www/ramses_extras/` (`features/<feat>/…` and `helpers/`).
+**Startup re-copies source → served and stamps `?v=` into imports**, so
+`docker cp` into `www/` alone is silently reverted by the next restart —
+copy to the `custom_components` tree (or both). `/config` is host-mounted
+at `/home/willem/docker_files/hass/config`, so `cp` on the host works.
+Deployed files differ from repo files by the `?v=` import stamps — diff
+with `?v=` stripped to detect real staleness.
+
 ### MQTT connectivity (recurring gotcha)
 
 `ha-sim` and `ha-sim-mqtt` both run on Docker's **host network**. This means

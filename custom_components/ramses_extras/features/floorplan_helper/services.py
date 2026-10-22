@@ -1383,6 +1383,49 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "floors": floor_stats,
         }
 
+    async def _combine_svg_files(
+        refs: list[str], gap: float
+    ) -> tuple[str, list[tuple[str, str]], list[float], list[str]]:
+        """Merge floor SVGs into one ``<prefix>-all.svg`` in the upload dir.
+
+        The SVG half of ``floorplan_combine_floors`` — the project fold
+        is a one-time structural op and deliberately not done here, so
+        this is safe to re-run on every export. Returns the ``/local/…``
+        path plus the resolved ``(stem, text)`` pairs, per-floor x
+        offsets and warnings for callers that fold the project.
+        """
+        svg_texts: list[tuple[str, str]] = []
+        missing: list[str] = []
+        for ref in refs:
+            path = _resolve_svg_path(ref)
+            try:
+                svg_texts.append(
+                    (
+                        path.stem,
+                        await hass.async_add_executor_job(path.read_text, "utf-8"),
+                    )
+                )
+            except OSError:
+                missing.append(str(ref))
+        if missing:
+            raise vol.Invalid(f"SVG file(s) not found: {', '.join(missing)}")
+
+        merged_svg, offsets, warnings = combine_svgs(svg_texts, gap)
+        prefix = os.path.commonprefix([Path(r).stem for r in refs]).strip("-_ ")
+        out_name = f"{prefix or 'floors'}-all.svg"
+        out_dir = (
+            Path(hass.config.config_dir)
+            / "www"
+            / "ramses_extras"
+            / FLOORPLAN_UPLOAD_DIR_NAME
+        )
+        out_dir.mkdir(parents=True, exist_ok=True)
+        await hass.async_add_executor_job(
+            (out_dir / out_name).write_text, merged_svg, "utf-8"
+        )
+        web_path = f"/local/ramses_extras/{FLOORPLAN_UPLOAD_DIR_NAME}/{out_name}"
+        return web_path, svg_texts, offsets, warnings
+
     async def _async_combine_floors(call: ServiceCall) -> dict[str, Any]:
         """Merge the configured floor SVGs into one side-by-side drawing.
 
@@ -1401,41 +1444,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "Need at least two custom SVGs configured to combine floors"
             )
         gap = float(call.data.get("gap") or 120)
-
-        svg_texts: list[tuple[str, str]] = []
-        missing: list[str] = []
-        for ref in refs:
-            path = _resolve_svg_path(ref)
-            try:
-                svg_texts.append(
-                    (
-                        path.stem,
-                        await hass.async_add_executor_job(path.read_text, "utf-8"),
-                    )
-                )
-            except OSError:
-                missing.append(str(ref))
-        if missing:
-            raise vol.Invalid(f"SVG file(s) not found: {', '.join(missing)}")
-
-        merged_svg, offsets, warnings = combine_svgs(svg_texts, gap)
+        web_path, svg_texts, offsets, warnings = await _combine_svg_files(refs, gap)
         boxes = [svg_viewbox(t) for _, t in svg_texts]
         width = offsets[-1] + boxes[-1][0]
         height = max(h for _, h in boxes)
-
-        prefix = os.path.commonprefix([Path(r).stem for r in refs]).strip("-_ ")
-        out_name = f"{prefix or 'floors'}-all.svg"
-        out_dir = (
-            Path(hass.config.config_dir)
-            / "www"
-            / "ramses_extras"
-            / FLOORPLAN_UPLOAD_DIR_NAME
-        )
-        out_dir.mkdir(parents=True, exist_ok=True)
-        await hass.async_add_executor_job(
-            (out_dir / out_name).write_text, merged_svg, "utf-8"
-        )
-        web_path = f"/local/ramses_extras/{FLOORPLAN_UPLOAD_DIR_NAME}/{out_name}"
 
         # fold the stored studio project into the same single floor —
         # an already-combined project re-merges from the newest

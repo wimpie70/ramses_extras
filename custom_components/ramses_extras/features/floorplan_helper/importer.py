@@ -24,7 +24,7 @@ from typing import Any
 import yaml
 
 from .const import DEVICE_VIEW_SERVICE, ZONE_TOGGLE_SERVICE, is_generated_rule
-from .svg_utils import slugify
+from .svg_utils import slugify, xml_id, xml_text
 
 _MISSING = object()
 
@@ -952,6 +952,82 @@ def _compose_backgrounds(
     }
 
 
+def project_drawing_svg(floor: dict[str, Any]) -> str | None:
+    """Render a studio floor as the drawing SVG our merge consumes.
+
+    The project is the single source of truth — the drawing is rebuilt
+    from it on every export instead of merged from an authored file,
+    matching floorplan-studio's own export: the floor's background
+    image stretched over the canvas, one ``area.<slug(name)>`` path per
+    room (the element ids ``resolve_bound``/zone toggles target) with
+    the studio fill/opacity, and a centroid room label. Marker/badge
+    groups arrive later via ``build_overlay_fragment``; authored walls
+    and fixtures live in the background image already.
+
+    :return: SVG text, or ``None`` when the floor has no usable canvas
+    """
+    canvas = floor.get("canvas") or {}
+    try:
+        width = float(canvas.get("width") or 0)
+        height = float(canvas.get("height") or 0)
+    except TypeError, ValueError:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:g} {height:g}">'
+    ]
+    bg = floor.get("background") or {}
+    if bg.get("dataUri"):
+        parts.append(
+            f'<image href="{xml_text(bg["dataUri"])}" x="0" y="0" '
+            f'width="{width:g}" height="{height:g}" '
+            f'opacity="{float(bg.get("opacity") or 1):g}"/>'
+        )
+
+    for room in floor.get("rooms") or []:
+        pts = [
+            (float(p["x"]), float(p["y"]))
+            for p in (room.get("polygon") or [])
+            if isinstance(p, dict) and "x" in p and "y" in p
+        ]
+        if len(pts) < 3:
+            continue
+        area_id = f"area.{slugify(room.get('name'))}"
+        d = "M" + " L".join(f"{x:g} {y:g}" for x, y in pts) + " Z"
+        parts.append(
+            f'<path id="{xml_id(area_id)}" class="room" d="{d}" '
+            f'fill="{_room_fill(room)}" stroke="rgba(255,255,255,0.3)" '
+            f'stroke-width="1"/>'
+        )
+        name = str(room.get("name") or "")
+        if name:
+            cx = sum(x for x, _ in pts) / len(pts)
+            cy = sum(y for _, y in pts) / len(pts)
+            parts.append(
+                f'<text id="{xml_id(area_id)}__label" class="room-label" '
+                f'x="{cx:g}" y="{cy:g}" font-family="sans-serif" '
+                f'font-size="16" font-weight="600" fill="#fff" '
+                f'text-anchor="middle" pointer-events="none" '
+                f'paint-order="stroke" stroke="rgba(0,0,0,.55)" '
+                f'stroke-width="3">{xml_text(name)}</text>'
+            )
+    parts.append("</svg>")
+    return "\n".join(parts) + "\n"
+
+
+def _room_fill(room: dict[str, Any]) -> str:
+    """``fill`` value for a project room — rgba() for 6-digit hexes."""
+    fill = str(room.get("fill") or "").strip()
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", fill)
+    if not m:
+        return "none"
+    n = int(m.group(1), 16)
+    opacity = float(room.get("opacity") or 0.25)
+    return f"rgba({(n >> 16) & 255},{(n >> 8) & 255},{n & 255},{opacity:g})"
+
+
 __all__ = [
     "PROJECT_LATEST_NAME",
     "backup_project",
@@ -964,6 +1040,7 @@ __all__ = [
     "parse_floorplan_yaml",
     "parse_studio_project",
     "project_backups",
+    "project_drawing_svg",
     "room_for_point",
     "rooms_from_svg",
     "store_latest_project",

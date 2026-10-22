@@ -47,6 +47,7 @@ from .importer import (
     best_floor_for_svg,
     dedupe_rooms,
     load_latest_project,
+    project_drawing_svg,
     store_latest_project,
     studio_marker_positions,
     studio_marker_zone,
@@ -69,7 +70,7 @@ from .markers import (
     strip_toolbar,
 )
 from .rules import build_rules, caption_override_for_device
-from .svg_utils import merge_svg_overlay
+from .svg_utils import merge_svg_overlay, slugify
 from .topology import build_floorplan_model
 
 
@@ -226,11 +227,10 @@ async def _build_merged_svg(
             count=1,
         )
 
-    positions: dict[str, dict[str, Any]] = {}
-    rooms: list[dict[str, Any]] | None = None
     warnings: list[str] = []
     project_json = await hass.async_add_executor_job(load_latest_project, hass)
     project: dict[str, Any] | None = None
+    floor: dict[str, Any] | None = None
     if project_json:
         try:
             project = json.loads(project_json)
@@ -238,23 +238,40 @@ async def _build_merged_svg(
             project = None
     if project:
         floor = best_floor_for_svg(project, svg_text)
-        if floor:
-            # dedupe name-/area-bound double copies — the stored
-            # project still holds them until the next merge cleans up
-            rooms = dedupe_rooms(floor.get("rooms"))
-        positions = studio_marker_positions(
-            project, str(floor.get("name")) if floor else None
-        )
     else:
         warnings.append("No stored studio project — markers placed at area centroids")
 
+    tail_warnings, merged = _merge_overlay_tail(
+        model, options, svg_text, project, floor
+    )
+    warnings.extend(tail_warnings)
+    return f"{src.stem}.merged.svg", warnings, merged
+
+
+def _merge_overlay_tail(
+    model: dict[str, Any],
+    options: dict[str, Any],
+    svg_text: str,
+    project: dict[str, Any] | None,
+    floor: dict[str, Any] | None,
+) -> tuple[list[str], str]:
+    """Shared merge tail — positions, overlay fragment, room styles.
+
+    ``floor`` supplies the studio room set; without one (no stored
+    project) markers fall back to ``area.*`` centroids in the drawing.
+    """
+    rooms = dedupe_rooms(floor.get("rooms")) if floor else None
+    positions = (
+        studio_marker_positions(project, str(floor.get("name")) if floor else None)
+        if project
+        else {}
+    )
     # drop any stale toolbar (old button set, no tooltips) — a fresh
     # one is re-injected inside build_overlay_fragment below
     svg_text = strip_toolbar(svg_text)
-    fragment, frag_warnings = build_overlay_fragment(
+    fragment, warnings = build_overlay_fragment(
         model, options, positions, svg_text, studio_room_fills(rooms)
     )
-    warnings.extend(frag_warnings)
     # Studio room fill/opacity win over the SVG's embedded .room classes —
     # patch the elements' inline style directly (survives every consumer,
     # unlike a <style> block with escaped-id selectors).
@@ -262,7 +279,38 @@ async def _build_merged_svg(
     # room names come from the project too — the drawing's baked
     # <text> keeps its position but carries the studio name
     svg_text = apply_room_labels(svg_text, rooms)
-    return f"{src.stem}.merged.svg", warnings, merge_svg_overlay(svg_text, fragment)
+    return warnings, merge_svg_overlay(svg_text, fragment)
+
+
+def _build_project_merged_svg(
+    model: dict[str, Any],
+    options: dict[str, Any],
+    project: dict[str, Any] | None,
+    floor: dict[str, Any],
+) -> tuple[str | None, list[str], str | None]:
+    """Merge the marker overlay into a drawing rendered from the
+    project itself — studio is the SSOT, so no authored SVG file is
+    needed (mirrors floorplan-studio's own export: background image +
+    room polygons + labels).
+
+    :return: ``(merged filename, warnings, merged SVG text or None)``
+    """
+    name = str(floor.get("name") or "floor")
+    svg_text = project_drawing_svg(floor)
+    if svg_text is None:
+        return None, [f"Studio floor '{name}' has no canvas — skipped"], None
+    background = str(options.get(OPTION_BACKGROUND) or "")
+    if background:
+        # fills any alpha pixels the PNG background leaves behind
+        svg_text = re.sub(
+            r"<svg\b[^>]*>",
+            rf'\g<0><rect id="rx.background" width="100%" height="100%" '
+            f'fill="{background}"/>',
+            svg_text,
+            count=1,
+        )
+    warnings, merged = _merge_overlay_tail(model, options, svg_text, project, floor)
+    return f"{slugify(name)}.merged.svg", warnings, merged
 
 
 def build_card_config(
@@ -389,6 +437,7 @@ async def async_generate_bundle(
     # persist in the project and are honoured by the rule builder
     marker_meta: dict[str, dict[str, Any]] | None = None
     rules_options = options
+    project: dict[str, Any] | None = None
     raw_project = await hass.async_add_executor_job(load_latest_project, hass)
     if raw_project:
         try:
@@ -419,9 +468,23 @@ async def async_generate_bundle(
     files: dict[str, str] = {}
     warnings: list[str] = []
     merged_names: list[str] = []
-    if options.get(OPTION_SVG_MODE) == SVG_MODE_CUSTOM:
-        # custom_svg_path may list one SVG per floor — each is merged
-        # against the matching project floor and gets its own card yaml
+    project_floors = [
+        f for f in (project or {}).get("floors") or [] if project_drawing_svg(f)
+    ]
+    if project_floors:
+        # Studio is the SSOT — each project floor renders to its own
+        # <floor>.merged.svg; authored drawing files aren't consulted.
+        for floor in project_floors:
+            merged_name, merged_warnings, merged_text = _build_project_merged_svg(
+                model, options, project, floor
+            )
+            warnings.extend(merged_warnings)
+            if merged_text is not None and merged_name:
+                files[merged_name] = merged_text
+                merged_names.append(merged_name)
+    elif options.get(OPTION_SVG_MODE) == SVG_MODE_CUSTOM:
+        # legacy fallback for setups with no stored project: merge the
+        # overlay onto the authored drawing files in custom_svg_path
         for ref in custom_svg_refs(options):
             merged_name, merged_warnings, merged_text = await _build_merged_svg(
                 hass, model, options, ref
