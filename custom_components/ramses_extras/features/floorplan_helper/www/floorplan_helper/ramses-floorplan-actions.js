@@ -10,11 +10,11 @@
  * project and push seeded/stored projects with no export/download
  * round-trip. The workflow row reads left→right:
  *
- *   1. "Open studio" — navigate to the studio view (editor_url option)
- *   2. project picker — studio's own projects in this browser
- *   3. "Studio → HA" — store the selected project server-side
+ *   1. project picker — studio's own projects in this browser (this
+ *      card belongs on the same view as the floorplan-studio card)
+ *   2. "Studio → HA" — store the selected project server-side
  *      (latest.json + backup)
- *   4. "HA → Studio" — restore the stored project into this
+ *   3. "HA → Studio" — restore the stored project into this
  *      browser's studio
  *
  * Tools row:
@@ -32,10 +32,12 @@
  *   - Drop zone: fallback for JSON files from another machine/backup
  *
  * Config (all optional):
- *   floors: {begane grond: plattegrond-bg.svg, ...}  floor name → SVG ref
+ *   floors: {begane grond: plattegrond-bg.svg, ...}  floor name → SVG
+ *   ref — seeds floor geometry AND points the export at your drawing
+ *   (one merged SVG + card yaml per ref). Different maps → different
+ *   actions cards with their own floors
  *   marker_size: 20  (size for newly seeded markers — studio owns size
  *   after that; the inspector edits it per marker)
- *   studio_url: /floorplan-studio   (fallback: floorplan options)
  *   device_view_url: /lovelace/hvac  (optional — adds a '⤢ dashboard'
  *   button to the device popup opened by double-clicking a marker)
  */
@@ -1187,6 +1189,15 @@ class RamsesFloorplanActions extends HTMLElement {
       });
       stored = ` (project snapshot: ${s.latest_path})`;
     }
+    // The card's `floors:` yaml owns the drawing paths — push them
+    // into the floorplan options before exporting so different maps
+    // (different actions cards) export their own merged SVGs.
+    const floorRefs = Object.values(this._config.floors || {}).filter(Boolean);
+    if (floorRefs.length) {
+      await this._call('floorplan_set_svg', {
+        custom_svg_path: floorRefs,
+      }).catch(() => {});
+    }
     // apply:true lets the service update every matching storage
     // dashboard itself; apply:false is generate + clipboard only
     const data = { apply: apply !== false };
@@ -1285,8 +1296,6 @@ class RamsesFloorplanActions extends HTMLElement {
           floorplan bundle (rules + CSS + card YAML).
         </div>
         <div class="row">
-          <button id="b-studio"
-            title="Open the floorplan-studio editor (editor_url from your floorplan settings)">Open studio</button>
           <span class="lbl">studio project:</span>
           <select id="project"
             title="Projects stored in floorplan-studio (this browser). The one studio is currently editing is marked (current)."></select>
@@ -1354,8 +1363,7 @@ class RamsesFloorplanActions extends HTMLElement {
       </ha-card>`;
 
     const $ = (id) => this.shadowRoot.getElementById(id);
-    $('b-studio').onclick = () =>
-      this._navigate(this._config.studio_url || (this._fpConfig || {}).editor_url || '/floorplan-studio');
+
     $('b-pull').onclick = () => this._run(() => this._pull());
     $('b-seed').onclick = () => this._run(() => this._seed());
     $('b-push').onclick = () => this._run(() => this._pushStored());

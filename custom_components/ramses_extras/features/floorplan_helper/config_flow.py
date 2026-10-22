@@ -1,12 +1,11 @@
 """Floorplan Helper feature options flow.
 
-Lets users pick the floorplan SVG mode and toolbar tool URLs inside
-ramses_extras — then regenerate via ``ramses_extras.floorplan_export``.
-
-Per-marker settings (icon, colours, label, state text, tap/hold/double
-actions, zone) are **not** configured here — they live on the marker in
-the floorplan-studio project, which is the single source of truth.
-Stored ``icon_overrides``/``caption_overrides``/``marker_style_overrides``
+Only feature-wide knobs live here (exported toolbar, studio URL,
+per-class caption selection). Everything spatial — drawing SVG paths,
+marker positions, per-marker icon/colours/label/actions/zone — belongs
+to the floorplan-studio project or the actions card's own YAML
+(``floors:``), which is the single source of truth. Stored
+``icon_overrides``/``caption_overrides``/``marker_style_overrides``
 options still apply as a fallback for elements without a marker, and
 are migrated into the project on the next export.
 
@@ -28,14 +27,9 @@ from homeassistant.helpers import selector
 
 from .const import (
     DEFAULT_EDITOR_URL,
-    FEATURE_ID,
     OPTION_CAPTION_FIELDS,
-    OPTION_CUSTOM_SVG_PATH,
     OPTION_EDITOR_URL,
-    OPTION_SVG_MODE,
     OPTION_TOOLBAR_ENABLED,
-    SVG_MODE_CUSTOM,
-    SVG_MODE_GENERATED,
 )
 from .domains import caption_group_key, caption_group_label, get_domain
 from .mapping import get_floorplan_options, persist_floorplan_options
@@ -46,12 +40,20 @@ _CAPTION_FIELD_PREFIX = "caption_fields__"
 
 
 def _caption_classes(devices: list[dict[str, Any]]) -> dict[str, Any]:
-    """Device classes present in the model → their domain (ordered)."""
+    """Device classes in the model → ``(domain, entities)``.
+
+    ``entities`` pools every entity dict across that class's devices —
+    the caption multi-select only offers groups matching a real
+    entity, so a remote without a CO2 sensor is never offered
+    ``co2_level ppm``.
+    """
     classes: dict[str, Any] = {}
     for dev in devices or []:
         cls = str(dev.get("device_class") or "")
-        if cls:
-            classes.setdefault(cls, get_domain(cls))
+        if not cls:
+            continue
+        domain, entities = classes.setdefault(cls, (get_domain(cls), []))
+        entities.extend(dev.get("entities") or [])
     return classes
 
 
@@ -76,18 +78,27 @@ async def async_step_floorplan_helper_config(
     except Exception as err:  # pragma: no cover - model needs registries
         _LOGGER.debug("Caption fields skipped — topology unavailable: %s", err)
 
+    # Per class, only the caption groups that match a real entity on
+    # one of its devices — ``(group, example_entity_id)`` pairs for the
+    # option labels.
+    class_groups: dict[str, list[tuple[Any, str]]] = {}
+    for cls, (domain, entities) in classes.items():
+        groups = [
+            (g, domain.caption_entities(entities, (g,))[0][0])
+            for g in domain.caption_groups
+            if domain.caption_entities(entities, (g,))
+        ]
+        if groups:
+            class_groups[cls] = groups
+
     if user_input is not None:
         section = dict(options)
-        section[OPTION_SVG_MODE] = user_input.get("svg_mode", SVG_MODE_GENERATED)
-        section[OPTION_CUSTOM_SVG_PATH] = (
-            user_input.get("custom_svg_path") or ""
-        ).strip()
         section[OPTION_TOOLBAR_ENABLED] = bool(user_input.get("toolbar_enabled", True))
         section[OPTION_EDITOR_URL] = (
             user_input.get("editor_url") or DEFAULT_EDITOR_URL
         ).strip()
         fields = dict(options.get(OPTION_CAPTION_FIELDS) or {})
-        for cls in classes:
+        for cls in class_groups:
             key = f"{_CAPTION_FIELD_PREFIX}{cls}"
             if key in user_input:
                 fields[cls] = list(user_input.get(key) or [])
@@ -98,58 +109,23 @@ async def async_step_floorplan_helper_config(
 
     info_text = (
         "🗺️ **Floorplan Helper**\n\n"
-        "Generates the ha-floorplan bundle (icons, CSS, rules YAML) from "
-        "your RAMSES system. After changing settings, run the service "
-        "`ramses_extras.floorplan_export` to regenerate.\n\n"
-        f"- SVG mode: `{options.get(OPTION_SVG_MODE)}`\n"
-        f"- Element bindings stored: "
-        f"{len(options.get('element_bindings', {}))}\n\n"
-        "Per-marker settings (icon, colours, label, state text, "
-        "tap/hold/double-tap actions, zone) are edited **in studio** on "
-        "the marker itself — the project is the single source of truth. "
-        "Our extras ride in the project too (`ramsesZone`, "
-        "`ramsesCaption`, `style.glyph/ring/opacity`); any older "
-        "stored overrides migrate into the project on the next export "
-        "and stay as fallback only for elements without a marker.\n\n"
-        "`editor_url` is the dashboard view holding the "
-        "floorplan-studio card (default `/floorplan-studio`) — the "
-        "in-SVG `⛓` toolbar button and the actions card's 'Open studio' "
-        "navigate there. Point it at another view path or a vendored "
-        "copy under `/local/...` if yours lives elsewhere.\n\n"
-        "Below: per device *class*, pick which values the marker caption "
-        "shows (untick all to hide it). Per-marker caption control stays "
-        "in studio — `ramsesCaption` and the 'Show state' toggle win "
-        "over this class default."
+        "Compiles the floorplan-studio project into the floorplan card "
+        "bundle (merged SVG, CSS, rules YAML). The project is the "
+        "single source of truth — marker icon, colours, label, actions "
+        "and zone are edited on the marker in studio.\n\n"
+        "Place a `ramses-floorplan-actions` card next to the studio "
+        "card on the same dashboard view — its buttons drive the "
+        "workflow (store, seed, export, update cards) and its "
+        "`floors:` config names the drawing SVG per floor, so "
+        "different maps can live on different views.\n\n"
+        "Below: which values each device class's marker caption shows "
+        "(untick all to hide it) — only groups matching a real entity "
+        "are listed. Per-marker control stays in studio "
+        "(`ramsesCaption`)."
     )
 
     schema = vol.Schema(
         {
-            vol.Required(
-                "svg_mode",
-                default=options.get(OPTION_SVG_MODE, SVG_MODE_GENERATED),
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[
-                        selector.SelectOptionDict(
-                            value=SVG_MODE_GENERATED,
-                            label="Generated elements SVG (default plan)",
-                        ),
-                        selector.SelectOptionDict(
-                            value=SVG_MODE_CUSTOM,
-                            label="Custom SVG (my own drawing)",
-                        ),
-                    ],
-                    mode=selector.SelectSelectorMode.LIST,
-                )
-            ),
-            vol.Optional(
-                "custom_svg_path",
-                default=options.get(OPTION_CUSTOM_SVG_PATH, ""),
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(
-                    multiline=False,
-                )
-            ),
             vol.Optional(
                 "toolbar_enabled",
                 default=options.get(OPTION_TOOLBAR_ENABLED, True),
@@ -162,28 +138,27 @@ async def async_step_floorplan_helper_config(
     )
 
     # Per-device-class caption selection — which entity values a class
-    # shows under its marker. Options are the domain's caption groups;
-    # the stored selection maps class → group keys ([] = no caption).
+    # shows under its marker. Options are the domain's caption groups
+    # filtered to entities that actually exist on that class; the
+    # stored selection maps class → group keys ([] = no caption).
     stored_fields = options.get(OPTION_CAPTION_FIELDS) or {}
-    for cls, domain in classes.items():
-        if not domain.caption_groups:
-            continue
-        field = f"{_CAPTION_FIELD_PREFIX}{cls}"
+    for cls, groups in class_groups.items():
+        avail_keys = [caption_group_key(g) for g, _eid in groups]
         schema = schema.extend(
             {
                 vol.Optional(
-                    field,
-                    default=stored_fields.get(
-                        cls, [caption_group_key(g) for g in domain.caption_groups]
-                    ),
+                    f"{_CAPTION_FIELD_PREFIX}{cls}",
+                    default=[
+                        k for k in stored_fields.get(cls, avail_keys) if k in avail_keys
+                    ],
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
                             selector.SelectOptionDict(
                                 value=caption_group_key(g),
-                                label=f"{cls}: {caption_group_label(g)}",
+                                label=f"{cls}: {caption_group_label(g)} — {eid}",
                             )
-                            for g in domain.caption_groups
+                            for g, eid in groups
                         ],
                         multiple=True,
                         mode=selector.SelectSelectorMode.LIST,
