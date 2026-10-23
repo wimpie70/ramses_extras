@@ -205,10 +205,42 @@ function _hfsAttach(card) {
   );
 
   // their card re-renders the svg on state changes; re-paint the zone
-  // overlay whenever the plan subtree is swapped out from under it
-  const mo = new MutationObserver(() => _hfsPaint(card));
+  // overlay whenever the plan subtree is swapped out from under it.
+  // Mutations *inside* our own overlay layer are ignored — painting
+  // would otherwise retrigger the observer in an endless loop.
+  const mo = new MutationObserver((records) => {
+    for (const r of records) {
+      const own = (n) =>
+        n &&
+        n.nodeType === 1 &&
+        (n.id === OVERLAY_ID ||
+          (n.closest && n.closest(`#${OVERLAY_ID}`)));
+      if (r.target && r.target.nodeType === 1 && own(r.target)) continue;
+      let allOwn = true;
+      for (const n of [...r.addedNodes, ...r.removedNodes]) {
+        if (!own(n)) {
+          allOwn = false;
+          break;
+        }
+      }
+      if (!allOwn) {
+        _hfsQueuePaint(card);
+        return;
+      }
+    }
+  });
   mo.observe(root, { childList: true, subtree: true });
   _hfsPaint(card);
+}
+
+function _hfsQueuePaint(card) {
+  // coalesce a render burst into one paint per microtask
+  if (card.__rxPaintQueued) return;
+  card.__rxPaintQueued = true;
+  Promise.resolve().then(() => {
+    card.__rxPaintQueued = false;
+    _hfsPaint(card);
+  });
 }
 
 // --- zone overlay ----------------------------------------------------------
@@ -246,8 +278,15 @@ function _hfsPaint(card) {
   if (!card.shadowRoot || !card.__rxZones) return;
   const svg = card.shadowRoot.querySelector('svg');
   const state = card.__rxZones;
+  const stale = svg && svg.querySelector(`#${OVERLAY_ID}`);
 
-  let layer = svg && svg.querySelector(`#${OVERLAY_ID}`);
+  // nothing to paint: don't create the layer — an appended node in the
+  // observed subtree costs an observer round-trip on every re-render
+  if (![...state.values()].some((ids) => ids.size)) {
+    if (stale) stale.remove();
+    return;
+  }
+  let layer = stale;
   if (svg && !layer) {
     layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     layer.id = OVERLAY_ID;
@@ -351,12 +390,13 @@ function _hfsStart() {
       'floorplan_studio_updated'
     );
   }
+  // late-added cards: rescan on navigation plus a slow fallback — a
+  // deep shadow-DOM walk is not cheap on a busy dashboard
+  window.addEventListener('location-changed', _hfsScan);
   const timer = setInterval(() => {
     _hfsScan();
-    // stop polling once hass is gone (unlikely) — cards keep their
-    // own listeners, discovery is only needed for late-added cards
     if (!_hfsHass()) clearInterval(timer);
-  }, 2000);
+  }, 10000);
 }
 
 _hfsStart();
