@@ -1437,16 +1437,49 @@ class RamsesFloorplanActions extends HTMLElement {
     if (browserSide) {
       const selected = await this._readStudioProject(true);
       if (selected) data.project_json = JSON.stringify(selected);
+    } else {
+      // hfs: the seed merges into the *stored* layout — flush the open
+      // editor's unsaved work first so it merges over the newest state
+      // (their store rev-checks saves; a stale editor would conflict)
+      const ed =
+        window.__ramsesHfsInfo && window.__ramsesHfsInfo().editor;
+      if (
+        ed &&
+        ed.st &&
+        ed.st.dirty &&
+        !(ed.placeRoom || ed.asideMode === 'place')
+      ) {
+        try {
+          ed.save();
+        } catch {
+          /* the editor surfaces validation itself */
+        }
+        for (let i = 0; i < 30 && ed.st.dirty; i += 1)
+          await new Promise((r2) => setTimeout(r2, 150));
+      }
     }
     const r = await this._call('floorplan_seed_studio', data);
     const placed = Object.keys(r.placed || {}).length;
     const unplaced = (r.unplaced || []).length;
     if (!browserSide) {
+      // Reload the open editor onto the new stored rev so the seeded
+      // markers appear and its next save can't hit a stale-rev conflict
+      const ed =
+        window.__ramsesHfsInfo && window.__ramsesHfsInfo().editor;
+      const panel = ed && ed.getRootNode && ed.getRootNode().host;
+      if (panel && typeof panel.load === 'function' && !(ed.st && ed.st.dirty)) {
+        try {
+          await panel.load();
+        } catch {
+          /* panel reports its own load errors */
+        }
+      }
       this._status(
         `Seeded: ${placed} placed, ${unplaced} parked — written into ` +
           `${r.stored_at || 'editor storage'} (editor: ${r.editor || '?'}).`,
       );
       this._fillZoneRow();
+      await this._export(true);
       return;
     }
     if (r.project_json) {
@@ -1515,6 +1548,8 @@ class RamsesFloorplanActions extends HTMLElement {
     if (this._config.apply_dashboard) data.apply_dashboard = this._config.apply_dashboard;
     if (this._config.apply_match) data.apply_match = this._config.apply_match;
     const r = await this._call('floorplan_export', data);
+    // stamp so the hfs overlay's save→export bridge dedupes this run
+    window.__ramsesHfsLastExport = Date.now();
     const yamls = r.card_yamls || (r.card_yaml ? { default: r.card_yaml } : {});
     const floors = Object.keys(yamls);
     this._renderYamlButtons(yamls);

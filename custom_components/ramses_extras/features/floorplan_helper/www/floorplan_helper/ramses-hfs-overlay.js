@@ -713,6 +713,73 @@ window.__ramsesHfsInfo = () => ({
   editor: _hfsEditorEl(),
 });
 
+// --- save → export bridge --------------------------------------------------
+// hfs's editor emits `layout-changed` after every edit and its store
+// fires `floorplan_studio_updated` on every landed write (user Save,
+// our seed, syncs — see editors/hfs.py async_store). Debounced:
+// edits autosave via ed.save(), landed writes regenerate the
+// floorplan cards — the editor stays SSOT without a button press.
+
+let _autoSaveTimer = 0;
+let _exportTimer = 0;
+
+function _hfsAutoSave() {
+  const info = window.__ramsesHfsInfo();
+  const ed = info && info.editor;
+  if (!ed || !ed.st || !ed.st.dirty) return;
+  // mid-placement (asideMode 'place') or a room being placed — let
+  // the user finish the gesture before the save snapshot runs
+  if (ed.asideMode === 'place' || ed.placeRoom) return;
+  try {
+    ed.save();
+  } catch (e) {
+    // the editor surfaces validation errors itself
+    console.debug('ramses-hfs: autosave skipped', e);
+  }
+}
+
+async function _hfsAutoExport() {
+  const hass = _hfsHass();
+  if (!hass || !hass.callService) return;
+  // collapse bursts and skip when an explicit export just ran (the
+  // actions card stamps window.__ramsesHfsLastExport)
+  if (Date.now() - (window.__ramsesHfsLastExport || 0) < 5000) return;
+  window.__ramsesHfsLastExport = Date.now();
+  try {
+    await hass.callService('ramses_extras', 'floorplan_export', {
+      apply: true,
+    });
+    console.info('ramses-hfs: plan saved — floorplan cards regenerated');
+  } catch (e) {
+    console.warn('ramses-hfs: auto-export failed', e);
+  }
+}
+
+let _bridged = false;
+function _hfsBridge() {
+  if (_bridged) return;
+  _bridged = true;
+  // composed+bubbling events from the hfs editor element; gate on
+  // composedPath so a studio (tinkersoder) editor can't reach us
+  document.addEventListener('layout-changed', (ev) => {
+    const ed = window.__ramsesHfsInfo().editor;
+    if (!ed || !ev.composedPath().includes(ed)) return;
+    clearTimeout(_autoSaveTimer);
+    _autoSaveTimer = setTimeout(_hfsAutoSave, 2500);
+  });
+  // "focus lost" — leaving the tab flushes pending edits
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      clearTimeout(_autoSaveTimer);
+      _hfsAutoSave();
+    }
+  });
+  window.addEventListener('blur', () => {
+    clearTimeout(_autoSaveTimer);
+    _hfsAutoSave();
+  });
+}
+
 // --- boot: discovery + state -----------------------------------------------
 
 function _hfsScan() {
@@ -733,11 +800,13 @@ function _hfsStart() {
   _started = true;
   _hfsLoadState().then(_hfsScan);
   if (hass.connection && hass.connection.subscribeEvents) {
-    // their store fires this on every save — maps follow the edit
-    hass.connection.subscribeEvents(
-      () => _hfsLoadLayout(),
-      'floorplan_studio_updated'
-    );
+    // their store fires this on every landed save — maps follow the
+    // edit and generated cards regenerate, debounced past bursts
+    hass.connection.subscribeEvents(() => {
+      _hfsLoadLayout();
+      clearTimeout(_exportTimer);
+      _exportTimer = setTimeout(_hfsAutoExport, 1200);
+    }, 'floorplan_studio_updated');
     // spin duration follows the fan-speed entities live — their card
     // only patches attributes on those updates, which would otherwise
     // leave a stale animation (and the observer re-decorates anyway)
@@ -755,6 +824,7 @@ function _hfsStart() {
   }, 10000);
 }
 
+_hfsBridge();
 _hfsStart();
 if (!_started) {
   const timer = setInterval(() => {
