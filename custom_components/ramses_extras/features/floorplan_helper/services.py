@@ -1142,7 +1142,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 )
             try:
                 options = get_floorplan_options(_config_entry(hass))
-            except RuntimeError, KeyError:
+            except (RuntimeError, KeyError):
                 options = {}
             zone = (options.get(OPTION_DEVICE_ZONES) or {}).get(
                 str((dev or {}).get("device_id"))
