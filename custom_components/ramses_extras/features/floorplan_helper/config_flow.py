@@ -69,7 +69,7 @@ async def async_step_floorplan_helper_config(
         "devices** to seed the ramses and _extras markers. Drag them "
         "into rooms; **Sync areas → HA** links rooms to HA areas.\n\n"
         "Two ways to show the map: the editor's own "
-        "**hfs-floorplan-card** (2D/2.5D/3D — our overlay adds icons, "
+        "**floorplan-studio-card** (2D/2.5D/3D — our overlay adds icons, "
         "colours, captions, zone highlights and taps), or a generated "
         "**floorplan-card** (ha-floorplan) — edits autosave and "
         "matching cards regenerate automatically. **Export ⇒** / "

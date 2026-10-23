@@ -128,9 +128,12 @@ const CARD_MODULES = [
     modulePath: '../features/floorplan_helper/ramses-editor-embed.js',
   },
   {
-    // not a card we render — the tag of the host we overlay: loads
-    // whenever an hfs renderer card is on the page
+    // not a card we render — the tags of the hosts we overlay: loads
+    // whenever an hfs renderer card is on the page. `floorplan-studio-card`
+    // is upstream's own tag (fresh installs); `hfs-floorplan-card` is our
+    // renamed copy for hosts where the legacy studio card is installed too.
     tag: 'hfs-floorplan-card',
+    extraTags: ['floorplan-studio-card'],
     modulePath: '../features/floorplan_helper/ramses-hfs-overlay.js',
   },
 ];
@@ -146,11 +149,13 @@ const loaded = new Set();
 const loadStamp = Date.now().toString(36);
 
 async function loadCardModule(cardDef) {
-  if (loaded.has(cardDef.tag)) {
+  // dedupe on the module, not the tag — one module may serve several
+  // element names (the overlay attaches to both hfs card tags)
+  if (loaded.has(cardDef.modulePath)) {
     return;
   }
 
-  loaded.add(cardDef.tag);
+  loaded.add(cardDef.modulePath);
   logger.debug('ramses_extras: loading card module for', cardDef.tag, cardDef.modulePath);
 
   const version = window.ramsesExtras?.version || getBootstrapVersion();
@@ -170,11 +175,12 @@ async function loadCardModule(cardDef) {
 
 function scanAndLoad() {
   for (const cardDef of CARD_MODULES) {
-    if (loaded.has(cardDef.tag)) {
+    if (loaded.has(cardDef.modulePath)) {
       continue;
     }
 
-    if (document.querySelector(cardDef.tag)) {
+    const tags = [cardDef.tag, ...(cardDef.extraTags || [])];
+    if (tags.some((t) => document.querySelector(t))) {
       Promise.resolve(window.ramsesExtras?._featuresLoaded)
         .catch(() => {})
         .then(() => loadCardModule(cardDef));

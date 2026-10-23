@@ -28,7 +28,12 @@
 'use strict';
 
 const DOMAIN = 'ramses_extras';
-const HFS_TAG = 'HFS-FLOORPLAN-CARD';
+// hfs's own card registers as `floorplan-studio-card`; `hfs-floorplan-card`
+// is our renamed copy for hosts where the legacy floorplan-studio card is
+// also installed (both claim the same element name). Match either, then
+// feature-detect on `_floorKey` — an hfs-only method — so the legacy
+// studio's own `floorplan-studio-card` never gets decorated.
+const HFS_TAGS = new Set(['HFS-FLOORPLAN-CARD', 'FLOORPLAN-STUDIO-CARD']);
 const HFS_PANEL_TAG = 'FLOORPLAN-STUDIO-PANEL';
 const TAP_SLOP_PX = 6; // their own pan-vs-tap threshold (actions.ts)
 const OVERLAY_ID = 'ramses-hfs-overlay';
@@ -165,7 +170,8 @@ function _hfsCards() {
   const cards = [];
   const walk = (root) => {
     for (const el of root.querySelectorAll('*')) {
-      if (el.tagName === HFS_TAG) cards.push(el);
+      if (HFS_TAGS.has(el.tagName) && typeof el._floorKey === 'function')
+        cards.push(el);
       if (el.shadowRoot) walk(el.shadowRoot);
     }
   };

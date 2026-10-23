@@ -19,7 +19,7 @@
 hfs editor ──autosave (2.5s debounce / page-hide)──▶ .storage (rev-checked)
       │                                                    │
       ▼                                          floorplan_studio_updated
-hfs-floorplan-card renders live (+ overlay)                │
+floorplan-studio-card renders live (+ overlay)                │
                                                            ▼
                                     floorplan_export(apply) ──▶ generated
                                     merged SVG + rules + yaml    cards

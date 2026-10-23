@@ -53,6 +53,7 @@ from .const import (
     OPTION_CUSTOM_SVG_PATH,
     OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
+    OPTION_EDITOR,
     OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
@@ -588,8 +589,37 @@ def notify_export(hass: HomeAssistant, bundle: dict[str, Any]) -> None:
     )
 
 
+async def _async_ensure_hfs_entry(hass: HomeAssistant) -> None:
+    """Create the floorplan_studio config entry when hfs is installed but
+    never added — its user step is a one-click ``async_create_entry``, so
+    "install hfs + enable this feature" is all the setup the card needs.
+    Skipped when the user pinned ``editor: studio`` (legacy tinkersoder).
+    """
+    try:
+        from .editors.hfs import HfsAdapter  # noqa: PLC0415
+
+        options = get_floorplan_options(_config_entry(hass))
+        if options.get(OPTION_EDITOR) == "studio":
+            return
+        if not await HfsAdapter().async_detect(hass):
+            return
+        if hass.config_entries.async_entries("floorplan_studio"):
+            return
+        result = await hass.config_entries.flow.async_init(
+            "floorplan_studio", context={"source": "user"}, data={}
+        )
+        _LOGGER.info(
+            "floorplan_studio config entry auto-created (flow %s)",
+            result.get("type"),
+        )
+    except Exception:  # noqa: BLE001 — hfs setup must never break ours
+        _LOGGER.debug("Could not auto-create floorplan_studio entry")
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Register floorplan helper services."""
+
+    hass.async_create_task(_async_ensure_hfs_entry(hass))
 
     async def _apply_cards_to_dashboards(
         cards: dict[str, dict[str, Any]],
@@ -1142,7 +1172,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 )
             try:
                 options = get_floorplan_options(_config_entry(hass))
-            except (RuntimeError, KeyError):
+            except RuntimeError, KeyError:
                 options = {}
             zone = (options.get(OPTION_DEVICE_ZONES) or {}).get(
                 str((dev or {}).get("device_id"))
