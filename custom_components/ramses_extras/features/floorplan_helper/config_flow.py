@@ -58,10 +58,11 @@ async def async_step_floorplan_helper_config(
     current = get_floorplan_options(flow._config_entry).get(OPTION_EDITOR, "auto")
     info_text = (
         "🗺️ **Floorplan Helper**\n\n"
-        "The editor's plan is the single source of truth — marker "
-        "icon, colours, label, actions, zone membership and captions "
-        "are edited there or per device in the actions card's "
-        "⚙ Zones panel.\n\n"
+        "The editor's plan is the basis — walls, rooms, floors and "
+        "marker positions are edited there and autosave. On top we "
+        "add the RAMSES layer: device icons, colours, state captions, "
+        "zones and tap gestures live in our options (⚙ Zones panel) "
+        "and are applied to the cards — never written into the plan.\n\n"
         "Setup: put the **actions card** and a "
         "**ramses-editor-embed** card (editor: hfs) on one dashboard "
         "view, draw the map in the embedded editor, then **＋ Add "

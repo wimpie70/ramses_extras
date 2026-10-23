@@ -93,7 +93,27 @@ ramses_cc entities/devices          options (config entry)
 - `config_flow.py` — options step (`async_step_floorplan_helper_config`)
   dispatched from the main options flow via `async_step_feature_config`.
 
-## Studio as the single source of truth
+## The editor as source of truth
+
+### hfs (current)
+
+The hfs layout owns **geometry**: walls, rooms, doors, floors, trace
+images and device markers (`type`/`entity`/position/`name`). It is
+stored server-side in `.storage/floorplan_studio.layout` behind a
+rev-checked `LayoutStore`; edits autosave from the open editor.
+
+The RAMSES layer is deliberately **not** part of the layout — hfs
+capabilities say `marker_icons=False`, `marker_actions=False`,
+`stamp_extras=False` (its validator may strip unknown fields). Zone
+membership/colour, caption selections, icon overrides and extra rules
+live in our options and are applied by the overlay (hfs card/editor)
+and the generated rules — derived output, never merged back.
+
+Every landed store write fires `floorplan_studio_updated`; the
+overlay debounces that into `floorplan_export(apply)` so generated
+cards regenerate without a button press.
+
+### studio (legacy)
 
 The floorplan-studio **project is the SSOT for everything it can
 express**. Our export is a pure function of (project + topology +
