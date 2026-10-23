@@ -106,6 +106,7 @@ from .rules import stale_managed_rule
 from .svg_utils import slugify
 from .topology import build_floorplan_model
 from .zones import (
+    device_of_entity,
     model_entity_ids,
     resolve_bound,
     seed_heat_zones,
@@ -540,6 +541,16 @@ async def _write_icon_to_project(
                 changed = True
     if changed:
         await adapter.async_store(hass, project)
+
+
+async def _floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
+    """The topology model, or ``{}`` when registries aren't ready —
+    gesture bridges degrade to no toggles / no card rather than fail."""
+    try:
+        return await build_floorplan_model(hass)
+    except Exception as err:  # pragma: no cover - registry timing
+        _LOGGER.debug("floorplan model unavailable: %s", err)
+        return {}
 
 
 def _config_entry(hass: HomeAssistant) -> ConfigEntry:
@@ -1104,9 +1115,49 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         expressible in studio's marker actions (and in studio's own
         ha-floorplan export); the frontend module subscribes to the
         fired event and toggles the classes on every floorplan card.
+
+        Callers that cannot carry the resolved element list — the hfs
+        card overlay only knows the tapped entity — pass ``device_id``
+        or ``entity`` and the zone resolves here exactly as the export
+        computes it for marker actions.
         """
+        toggles = call.data.get("toggles") or []
+        target = str(
+            call.data.get("device_id")
+            or call.data.get("entity")
+            or call.data.get("entity_id")
+            or ""
+        )
+        if not toggles and target:
+            model = await _floorplan_model(hass)
+            dev = device_of_entity(model, target)
+            if dev is None:
+                dev = next(
+                    (
+                        d
+                        for d in model.get("devices") or []
+                        if str(d.get("device_id")) == target
+                    ),
+                    None,
+                )
+            try:
+                options = get_floorplan_options(_config_entry(hass))
+            except RuntimeError, KeyError:
+                options = {}
+            zone = (options.get(OPTION_DEVICE_ZONES) or {}).get(
+                str((dev or {}).get("device_id"))
+            )
+            if dev is not None and zone:
+                did = str(dev["device_id"])
+                areas, bound = resolve_bound(
+                    model,
+                    dev,
+                    zone,
+                    lambda d: element_id_for_device(d, options),
+                )
+                toggles = zone_toggle_specs(did, areas, bound)
         payload = {
-            "toggles": call.data.get("toggles") or [],
+            "toggles": toggles,
             "clear": bool(call.data.get("clear", False)),
         }
         hass.bus.async_fire(EVENT_ZONE_TOGGLE, payload)
@@ -1119,12 +1170,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         tap is eaten as a double tap by ha-floorplan's gesture
         handler, so the clear lives here rather than in the action)
         and opens the device view for the given entity/card.
+
+        With only ``entity`` the device and its popup card are resolved
+        from the model — the hfs card overlay sends nothing else.
         """
-        payload = {
-            "device_id": call.data.get("device_id") or "",
-            "entity": call.data.get("entity") or "",
-            "card": call.data.get("card") or "",
-        }
+        entity = str(call.data.get("entity") or call.data.get("entity_id") or "")
+        device_id = str(call.data.get("device_id") or "")
+        card = str(call.data.get("card") or "")
+        if entity and (not device_id or not card):
+            dev = device_of_entity(await _floorplan_model(hass), entity)
+            if dev is not None:
+                device_id = device_id or str(dev.get("device_id") or "")
+                card = card or get_domain(dev).popup_card
+        payload = {"device_id": device_id, "entity": entity, "card": card}
         hass.bus.async_fire(EVENT_DEVICE_VIEW, payload)
         return payload
 
@@ -1791,6 +1849,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                             vol.Required("elements"): [cv.string],
                         }
                     ],
+                    # hfs overlay path: the caller knows only what was
+                    # tapped; the zone resolves server-side
+                    vol.Optional("device_id"): cv.string,
+                    vol.Optional("entity"): cv.string,
+                    vol.Optional("entity_id"): cv.string,
                     vol.Optional("clear", default=False): cv.boolean,
                 },
                 extra=vol.ALLOW_EXTRA,

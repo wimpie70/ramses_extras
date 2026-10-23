@@ -127,6 +127,12 @@ const CARD_MODULES = [
     tag: 'ramses-editor-embed',
     modulePath: '../features/floorplan_helper/ramses-editor-embed.js',
   },
+  {
+    // not a card we render — the tag of the host we overlay: loads
+    // whenever an hfs renderer card is on the page
+    tag: 'hfs-floorplan-card',
+    modulePath: '../features/floorplan_helper/ramses-hfs-overlay.js',
+  },
 ];
 
 const loaded = new Set();

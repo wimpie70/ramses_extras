@@ -1877,7 +1877,11 @@ function _fpFloorplanCards() {
   const cards = [];
   const walk = (root) => {
     for (const el of root.querySelectorAll('*')) {
-      if (el.tagName === 'FLOORPLAN-CARD') cards.push(el);
+      if (
+        el.tagName === 'FLOORPLAN-CARD' ||
+        el.tagName === 'HFS-FLOORPLAN-CARD'
+      )
+        cards.push(el);
       if (el.shadowRoot) walk(el.shadowRoot);
     }
   };
@@ -1887,6 +1891,12 @@ function _fpFloorplanCards() {
 
 function _fpZoneApply(toggles, clear, skipCard) {
   for (const card of _fpFloorplanCards()) {
+    if (card.tagName === 'HFS-FLOORPLAN-CARD') {
+      // index-based DOM — the overlay module resolves the logical
+      // element ids; skipCard is honoured inside the overlay
+      window.__ramsesHfsZoneApply?.(card, toggles, clear, card === skipCard);
+      continue;
+    }
     if (skipCard && card === skipCard) continue;
     if (clear && !(toggles || []).length) {
       // blanket clear: strip every rx-zone-* class on this card —

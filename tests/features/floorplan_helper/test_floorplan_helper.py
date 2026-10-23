@@ -1,7 +1,7 @@
 """Unit tests for the floorplan_helper feature (pure-logic parts)."""
 
 from copy import deepcopy
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -1387,3 +1387,141 @@ class TestHeatDemandMirrorDeviceAttachment:
 
         assert entity.device_entry is source_device
         assert entity.device_info is None
+
+
+class TestGestureBridgeServices:
+    """The hfs card overlay cannot carry resolved element lists, so the
+    bridge services resolve ``device_id``/``entity`` server-side into
+    the same payloads the export writes into marker actions."""
+
+    @staticmethod
+    async def _registered():
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            services,
+        )
+
+        hass = MagicMock()
+        hass.services.has_service.return_value = False
+        await services.async_setup_services(hass)
+        return hass, {
+            c.args[1]: c.args[2] for c in hass.services.async_register.call_args_list
+        }
+
+    @staticmethod
+    def _call(data):
+        call = MagicMock()
+        call.data = data
+        return call
+
+    async def test_zone_toggle_resolves_device_id(self):
+        hass, handlers = await self._registered()
+        model = _model(
+            devices=[
+                _device(),
+                _device(
+                    device_id="37:168270",
+                    device_class="REM",
+                    parent="32:153289",
+                    primary_entity="remote.37_168270",
+                ),
+            ]
+        )
+        options = {
+            "device_zones": {
+                "32:153289": {"areas": ["woonkamer"], "devices": [], "color": "#f00"}
+            }
+        }
+        with (
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.build_floorplan_model",
+                new=AsyncMock(return_value=model),
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.get_floorplan_options",
+                return_value=options,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services._config_entry",
+                return_value=MagicMock(),
+            ),
+        ):
+            payload = await handlers["floorplan_zone_toggle"](
+                self._call({"device_id": "32:153289"})
+            )
+        assert payload["toggles"][0]["elements"] == ["area.woonkamer"]
+        assert payload["toggles"][0]["class"] == "rx-zone-32_153289"
+        assert "remote.37_168270" in payload["toggles"][1]["elements"]
+        hass.bus.async_fire.assert_called_once()
+
+    async def test_zone_toggle_by_entity_and_non_owner(self):
+        hass, handlers = await self._registered()
+        model = _model(
+            devices=[
+                _device(),
+                _device(
+                    device_id="37:168270",
+                    device_class="REM",
+                    parent="32:153289",
+                    primary_entity="remote.37_168270",
+                ),
+            ]
+        )
+        options = {
+            "device_zones": {
+                "32:153289": {"areas": ["woonkamer"], "devices": [], "color": "#f00"}
+            }
+        }
+        with (
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.build_floorplan_model",
+                new=AsyncMock(return_value=model),
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.get_floorplan_options",
+                return_value=options,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services._config_entry",
+                return_value=MagicMock(),
+            ),
+        ):
+            # entity of the zone owner resolves to the same toggles
+            payload = await handlers["floorplan_zone_toggle"](
+                self._call({"entity": "sensor.32_153289_fan_rate"})
+            )
+            assert payload["toggles"][0]["elements"] == ["area.woonkamer"]
+            # a non-owner resolves to an empty (no-op) event
+            payload = await handlers["floorplan_zone_toggle"](
+                self._call({"entity": "remote.37_168270"})
+            )
+            assert payload["toggles"] == []
+
+    async def test_device_view_resolves_entity_to_hvac_card(self):
+        hass, handlers = await self._registered()
+        model = _model(devices=[_device()])
+        with patch(
+            "custom_components.ramses_extras.features.floorplan_helper"
+            ".services.build_floorplan_model",
+            new=AsyncMock(return_value=model),
+        ):
+            payload = await handlers["floorplan_device_view"](
+                self._call({"entity": "sensor.32_153289_fan_rate"})
+            )
+        assert payload["device_id"] == "32:153289"
+        assert payload["card"] == "hvac-fan"
+        # unknown entity still fires — the popup falls back to more-info
+        with patch(
+            "custom_components.ramses_extras.features.floorplan_helper"
+            ".services.build_floorplan_model",
+            new=AsyncMock(return_value=model),
+        ):
+            payload = await handlers["floorplan_device_view"](
+                self._call({"entity": "cover.klep_1"})
+            )
+        assert payload == {"device_id": "", "entity": "cover.klep_1", "card": ""}
