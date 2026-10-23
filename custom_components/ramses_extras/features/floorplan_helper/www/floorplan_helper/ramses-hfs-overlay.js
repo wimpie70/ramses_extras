@@ -32,6 +32,7 @@ const HFS_TAG = 'HFS-FLOORPLAN-CARD';
 const HFS_PANEL_TAG = 'FLOORPLAN-STUDIO-PANEL';
 const TAP_SLOP_PX = 6; // their own pan-vs-tap threshold (actions.ts)
 const OVERLAY_ID = 'ramses-hfs-overlay';
+const ANIM_STYLE_ID = 'ramses-hfs-anim';
 const SYMBOL_SHEET =
   '/local/ramses_extras/features/floorplan_helper/symbol-sheet.svg';
 
@@ -40,6 +41,8 @@ let _entityDevice = {}; // entity_id -> topology device record
 let _deviceById = {}; // device_id -> topology device record
 let _zones = {}; // device_zones option {device_id: {areas, devices, color}}
 let _deviceIcons = {}; // device_id -> ramses icon key (icon_for_device)
+let _deviceSpin = {}; // device_id -> fan_rate entity ids, speed first
+let _speedEnts = new Set(); // every entity that can drive a spin
 let _iconPaths = null; // icon key -> mdi path d, from the symbol sheet
 let _started = false;
 
@@ -83,9 +86,14 @@ async function _hfsLoadState() {
     });
     _zones = cfg.device_zones || {};
     _deviceIcons = cfg.device_icons || {};
+    _deviceSpin = cfg.device_spin || {};
+    _speedEnts = new Set(
+      Object.values(_deviceSpin).reduce((a, b) => a.concat(b), [])
+    );
   } catch {
     _zones = {};
     _deviceIcons = {};
+    _deviceSpin = {};
   }
   await _hfsLoadIcons();
   await _hfsLoadLayout();
@@ -244,8 +252,15 @@ function _hfsAttach(card) {
         n &&
         n.nodeType === 1 &&
         (n.id === OVERLAY_ID ||
+          n.id === ANIM_STYLE_ID ||
           (n.closest && n.closest(`#${OVERLAY_ID}`)));
       if (r.target && r.target.nodeType === 1 && own(r.target)) continue;
+      if (r.type === 'attributes') {
+        // live patches write attributes — re-decorate unless the write
+        // was ours (a converged value produces no follow-up change)
+        _hfsQueuePaint(card);
+        return;
+      }
       let allOwn = true;
       for (const n of [...r.addedNodes, ...r.removedNodes]) {
         if (!own(n)) {
@@ -259,7 +274,12 @@ function _hfsAttach(card) {
       }
     }
   });
-  mo.observe(root, { childList: true, subtree: true });
+  mo.observe(root, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['d', 'style'],
+  });
   _hfsPaint(card);
 }
 
@@ -304,32 +324,74 @@ function _hfsZoneColor(cls) {
   return '#22c55e';
 }
 
-// Swap each device icon's path for the ramses icon the generated
-// floorplan-card shows — their `other` glyph is a '?', and our own
-// set (co2 molecule, remote, valve…) reads better. Attribute writes
-// don't reach the childList observer, so this is loop-free.
-function _hfsIcons(svg, floor) {
-  if (!_iconPaths || !floor) return;
+// Same speed->duration mapping the generated card's rx-spin* rules
+// compute: >75% fast, >40% medium, >0% slow; mode names for
+// text-valued sensors. Entities are pre-sorted speed-first.
+function _hfsSpinDuration(did) {
+  const ents = _deviceSpin[did];
+  if (!ents || !ents.length) return null;
+  const hass = _hfsHass();
+  if (!hass) return null;
+  for (const eid of ents) {
+    const st = hass.states[eid];
+    if (!st) continue;
+    const s = String(st.state).toLowerCase();
+    const n = parseFloat(s);
+    if (n > 75) return '0.7s';
+    if (n > 40) return '1.4s';
+    if (n > 0) return '3.2s';
+    if (`|high|boost|`.includes(`|${s}|`)) return '0.7s';
+    if (`|medium|normal|`.includes(`|${s}|`)) return '1.4s';
+    if (`|low|auto|away|`.includes(`|${s}|`)) return '3.2s';
+  }
+  return null;
+}
+
+// Inject the spin keyframes once per shadow root (a childList write
+// our observer skips via its id).
+function _hfsAnimStyle(root) {
+  if (root.getElementById(ANIM_STYLE_ID)) return;
+  const st = document.createElement('style');
+  st.id = ANIM_STYLE_ID;
+  st.textContent = '@keyframes rx-hfs-spin{to{transform:rotate(360deg)}}';
+  root.prepend(st);
+}
+
+// Per-device decoration: swap the icon path's `d` for our ramses icon
+// (their `other` glyph is a '?') and give fan markers the
+// speed-proportional spin the generated card applies via rx-spin*.
+// Attribute/style writes don't reach the childList observer, so this
+// is loop-free.
+function _hfsDecorate(svg, floor) {
+  if (!floor) return;
   const devices = floor.devices || [];
   for (const g of svg.querySelectorAll('g.dev[data-x]')) {
     const dev = devices[Number(g.getAttribute('data-x'))];
     if (!dev || !dev.entity) continue;
     const topo = _entityDevice[dev.entity];
-    const key =
-      topo && _deviceIcons[String(topo.device_id || '')];
-    const d = key && _iconPaths[key];
-    if (!d) continue;
+    const did = topo && String(topo.device_id || '');
     const icon =
       g.querySelector('circle.halo + path') ||
       g.querySelector('path:not(.cone)');
-    if (icon && icon.getAttribute('d') !== d) icon.setAttribute('d', d);
+    if (!icon) continue;
+    const key = did && _deviceIcons[did];
+    const d = key && _iconPaths && _iconPaths[key];
+    if (d && icon.getAttribute('d') !== d) icon.setAttribute('d', d);
+    const dur = did && _hfsSpinDuration(did);
+    const want = dur ? `rx-hfs-spin ${dur} linear infinite` : '';
+    if (icon.style.animation !== want) {
+      icon.style.animation = want;
+      icon.style.transformBox = dur ? 'fill-box' : '';
+      icon.style.transformOrigin = dur ? 'center' : '';
+    }
   }
 }
 
 function _hfsPaint(card) {
   if (!card.shadowRoot || !card.__rxZones) return;
+  _hfsAnimStyle(card.shadowRoot);
   const svg = card.shadowRoot.querySelector('svg');
-  if (svg) _hfsIcons(svg, _hfsFloor(card));
+  if (svg) _hfsDecorate(svg, _hfsFloor(card));
   const state = card.__rxZones;
   const stale = svg && svg.querySelector(`#${OVERLAY_ID}`);
 
@@ -396,8 +458,11 @@ function _hfsPaint(card) {
   }
 }
 
+const _hfsPanels = new Set();
+
 function _hfsRepaintAll() {
   for (const card of _hfsCards()) _hfsPaint(card);
+  for (const panel of _hfsPanels) _hfsDecoratePanel(panel);
 }
 
 // Entry point used by the floorplan-actions module's zone apply —
@@ -437,19 +502,21 @@ function _hfsDecoratePanel(panel) {
   const ed = _hfsPanelEditor(panel);
   const root = ed && ed.shadowRoot;
   if (!root) return;
+  _hfsAnimStyle(root);
   const floorKey = ed.floor;
   const floor =
     floorKey && _hfsLayout && _hfsLayout.floors
       ? _hfsLayout.floors[floorKey]
       : null;
   for (const svg of root.querySelectorAll('svg')) {
-    _hfsIcons(svg, floor);
+    _hfsDecorate(svg, floor);
   }
 }
 
 function _hfsAttachPanel(panel) {
   if (panel.__rxHfsPanel) return;
   panel.__rxHfsPanel = true;
+  _hfsPanels.add(panel);
   const tryAttach = () => {
     const ed = _hfsPanelEditor(panel);
     if (!ed || !ed.shadowRoot) return false;
@@ -503,6 +570,13 @@ function _hfsStart() {
       () => _hfsLoadLayout(),
       'floorplan_studio_updated'
     );
+    // spin duration follows the fan-speed entities live — their card
+    // only patches attributes on those updates, which would otherwise
+    // leave a stale animation (and the observer re-decorates anyway)
+    hass.connection.subscribeEvents((e) => {
+      const eid = e && e.data && e.data.entity_id;
+      if (eid && _speedEnts.has(eid)) _hfsRepaintAll();
+    }, 'state_changed');
   }
   // late-added cards: rescan on navigation plus a slow fallback — a
   // deep shadow-DOM walk is not cheap on a busy dashboard
