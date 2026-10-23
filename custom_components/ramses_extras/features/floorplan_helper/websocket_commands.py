@@ -152,6 +152,7 @@ async def ws_get_config(
     choices: dict[str, list[list[str]]] = {}
     icons: dict[str, str] = {}
     roles: dict[str, dict[str, list[str]]] = {}
+    domains: dict[str, str] = {}
     try:
         model = await build_floorplan_model(hass)
         plan = await adapter.async_load(hass)
@@ -162,6 +163,8 @@ async def ws_get_config(
                 continue
             icons[did] = icon_for_device(dev, options)
             domain = get_domain(dev)
+            if domain.key:
+                domains[did] = domain.key
             by_role: dict[str, list[str]] = {}
             for ent in dev.get("entities") or []:
                 role = str(ent.get("role") or "")
@@ -226,6 +229,7 @@ async def ws_get_config(
             "caption_choices": choices,
             "device_icons": icons,
             "device_roles": roles,
+            "device_domains": domains,
         },
     )
 

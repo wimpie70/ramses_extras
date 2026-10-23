@@ -44,7 +44,11 @@ let _zones = {}; // device_zones option {device_id: {areas, devices, color}}
 let _deviceIcons = {}; // device_id -> ramses icon key (icon_for_device)
 let _deviceRoles = {}; // device_id -> {role: [entity_ids]} (CLASS_ROLES)
 let _deviceCaptions = {}; // device_id -> [[entity_id, suffix], ...]
+let _deviceDomains = {}; // device_id -> 'hvac' | 'heat'
 let _stateEnts = new Set(); // every entity that can drive color/spin
+
+// Domain tints — the base marker colour, below the rx-* state signals.
+const DOMAIN_TINTS = { hvac: '#1b5e20', heat: '#0d47a1' };
 let _iconPaths = null; // icon key -> mdi path d, from the symbol sheet
 let _started = false;
 
@@ -90,6 +94,7 @@ async function _hfsLoadState() {
     _deviceIcons = cfg.device_icons || {};
     _deviceRoles = cfg.device_roles || {};
     _deviceCaptions = cfg.device_captions || {};
+    _deviceDomains = cfg.device_domains || {};
     _stateEnts = new Set();
     for (const roles of Object.values(_deviceRoles)) {
       for (const ents of Object.values(roles)) {
@@ -104,6 +109,7 @@ async function _hfsLoadState() {
     _deviceIcons = {};
     _deviceRoles = {};
     _deviceCaptions = {};
+    _deviceDomains = {};
   }
   await _hfsLoadIcons();
   await _hfsLoadLayout();
@@ -359,28 +365,49 @@ function _hfsSpinDuration(did) {
   return null;
 }
 
+// Extras markers that aren't topology devices (DIY valves, zigbee
+// sensors) tint by the zone owner they belong to.
+function _hfsZoneOwner(entity) {
+  for (const [did, z] of Object.entries(_zones)) {
+    if ((z.devices || []).includes(entity)) return did;
+  }
+  return null;
+}
+
 // State colours mirroring the generated card's rx-* classes — the
 // same stylesheet-order precedence (later rule wins): window_open >
-// heat_demand > offline > online. Devices with no class roles keep
-// the hfs-native idle look. Returns {fill, opacity} or null.
-function _hfsStateColor(did) {
-  const roles = _deviceRoles[did];
-  const hass = roles && _hfsHass();
-  if (!hass) return null;
-  const any = (role, pred) =>
-    (roles[role] || []).some((e) => {
-      const st = hass.states[e];
-      return st && pred(String(st.state).toLowerCase());
-    });
+// heat_demand > offline > domain tint > online. Devices with no
+// class roles and no domain keep the hfs-native idle look.
+// Returns {fill, opacity} or null.
+function _hfsStateColor(did, entity) {
+  const hass = _hfsHass();
+  const roles = (did && _deviceRoles[did]) || null;
+  const any =
+    hass && roles
+      ? (role, pred) =>
+          (roles[role] || []).some((e) => {
+            const st = hass.states[e];
+            return st && pred(String(st.state).toLowerCase());
+          })
+      : () => false;
   if (any('window_open', (s) => s === 'on'))
     return { fill: '#039be5', opacity: '1' };
   if (any('heat_demand', (s) => Number(s) > 0))
     return { fill: '#ef6c00', opacity: '1' };
-  if (roles.status && roles.status.length) {
-    return any('status', (s) => s === 'on')
-      ? { fill: '#2e7d32', opacity: '1' }
-      : { fill: '#9e9e9e', opacity: '0.65' };
-  }
+  if (
+    roles &&
+    roles.status &&
+    roles.status.length &&
+    !any('status', (s) => s === 'on')
+  )
+    return { fill: '#9e9e9e', opacity: '0.65' };
+  const dom =
+    (did && _deviceDomains[did]) ||
+    _deviceDomains[_hfsZoneOwner(entity)] ||
+    '';
+  if (DOMAIN_TINTS[dom]) return { fill: DOMAIN_TINTS[dom], opacity: '1' };
+  if (any('status', (s) => s === 'on'))
+    return { fill: '#2e7d32', opacity: '1' };
   return null;
 }
 
@@ -421,7 +448,7 @@ function _hfsDecorate(svg, floor) {
       icon.style.transformBox = dur ? 'fill-box' : '';
       icon.style.transformOrigin = dur ? 'center' : '';
     }
-    const color = did && _hfsStateColor(did);
+    const color = _hfsStateColor(did, dev.entity);
     const fill = color ? color.fill : '';
     const opacity = color ? color.opacity : '';
     if (icon.style.fill !== fill) icon.style.fill = fill;

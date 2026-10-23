@@ -95,6 +95,7 @@ class DeviceDomain:
     """
 
     device_classes: tuple[str, ...] = ()
+    key: str = ""
     can_spin: bool = False
     zone_eligible: bool = True
     popup_card: str = ""

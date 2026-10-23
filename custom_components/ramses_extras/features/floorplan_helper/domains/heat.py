@@ -22,12 +22,14 @@ from .base import DeviceDomain
 # Zone parents — the evohome controller (01:*/23:*) and programmer.
 # more-info popup until a heat card exists.
 CTL_DOMAIN = DeviceDomain(
+    key="heat",
     device_classes=("CTL", "PRG"),
     default_icon="thermostat",
 )
 
 # Room thermostats — display units without a valve.
 STAT_DOMAIN = DeviceDomain(
+    key="heat",
     device_classes=("DTS", "DT2"),
     default_icon="thermostat",
 )
@@ -35,6 +37,7 @@ STAT_DOMAIN = DeviceDomain(
 # Radiator valves — the demand percentage is the interesting number
 # (how far the valve is open), room temperature second: "35% / 20.1°".
 TRV_DOMAIN = DeviceDomain(
+    key="heat",
     device_classes=("TRV", "TR0"),
     default_icon="radiator",
     caption_groups=(
@@ -46,6 +49,7 @@ TRV_DOMAIN = DeviceDomain(
 # OpenTherm bridge — the boiler: water temperature first, then
 # modulation level: "62.4° / 38%".
 BOILER_DOMAIN = DeviceDomain(
+    key="heat",
     device_classes=("OTB",),
     default_icon="water-boiler",
     caption_groups=(
@@ -56,6 +60,7 @@ BOILER_DOMAIN = DeviceDomain(
 
 # Hot water cylinder — stored temperature: "55.2°".
 DHW_DOMAIN = DeviceDomain(
+    key="heat",
     device_classes=("DHW", "HCW"),
     default_icon="water-boiler",
     caption_groups=((("temperature", "_temp"), "°"),),
@@ -64,6 +69,7 @@ DHW_DOMAIN = DeviceDomain(
 # UFH controller + appliance relays — demand when the device reports
 # it, otherwise no caption.
 AUX_DOMAIN = DeviceDomain(
+    key="heat",
     device_classes=("UFC", "BDR"),
     default_icon="pipe-valve",
     caption_groups=((("heat_demand",), "%"),),
@@ -71,11 +77,13 @@ AUX_DOMAIN = DeviceDomain(
 
 # Appliance modules + outdoor sensor.
 APP_DOMAIN = DeviceDomain(
+    key="heat",
     device_classes=("APP",),
     default_icon="gauge",
 )
 
 OUT_DOMAIN = DeviceDomain(
+    key="heat",
     device_classes=("OUT",),
     default_icon="thermometer",
 )
