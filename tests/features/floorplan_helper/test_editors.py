@@ -241,6 +241,31 @@ class TestHfsLoad:
         assert door["a"] == {"x": 400.0, "y": 100.0}
         assert door["b"] == {"x": 480.0, "y": 100.0}
 
+    def test_wk_owk_edges_derive_walls(self):
+        walls = self.plan["floors"][0]["walls"]
+        derived = [w for w in walls if str(w["id"]).startswith("wk-")]
+        segs = {
+            frozenset(
+                (
+                    (w["points"][0]["x"], w["points"][0]["y"]),
+                    (w["points"][1]["x"], w["points"][1]["y"]),
+                )
+            )
+            for w in derived
+        }
+        # 3 outline edges (external) — the fourth coincides with the
+        # explicit wall w1 and dedupes — plus all 4 room edges (their
+        # top/left are subsets of outline spans, not identical, so no
+        # dedupe against them)
+        assert len(derived) == 7
+        # outline-derived edges keep the external weight
+        assert sum(1 for w in derived if w["thickness"] == 10.0) == 3
+        # room-derived edge present (undirected match)
+        assert frozenset(((0.0, 300.0), (400.0, 300.0))) in segs
+        # derived walls sort thin→thick so externals paint last
+        thicks = [w["thickness"] for w in derived]
+        assert thicks == sorted(thicks)
+
     def test_devices_fold_multi_entities(self):
         markers = self.plan["floors"][0]["markers"]
         trv = next(m for m in markers if "climate.trv_1" in m["entities"])

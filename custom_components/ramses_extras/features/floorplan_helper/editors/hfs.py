@@ -132,6 +132,27 @@ _DOOR_FILL: dict[str, str] = {
 }
 
 
+def _segment_key(
+    a: Any, b: Any
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Undirected segment identity — endpoints rounded so shared
+    room/outline edges dedupe. Points may be ``[x, y]`` pairs or
+    canonical ``{"x", "y"}`` dicts."""
+
+    def _xy(p: Any) -> tuple[float, float] | None:
+        try:
+            if isinstance(p, dict):
+                return (round(float(p["x"]), 1), round(float(p["y"]), 1))
+            return (round(float(p[0]), 1), round(float(p[1]), 1))
+        except TypeError, IndexError, KeyError:
+            return None
+
+    pa, pb = _xy(a), _xy(b)
+    if pa is None or pb is None:
+        return None
+    return (pa, pb) if pa <= pb else (pb, pa)
+
+
 class HfsAdapter(EditorAdapter):
     """Adapter for the ``floorplan_studio`` integration (v2 layouts)."""
 
@@ -266,7 +287,7 @@ class HfsAdapter(EditorAdapter):
             for r in (floor.get("rooms") or [])
             if isinstance(r, dict)
         ]
-        walls = []
+        walls: list[dict[str, Any]] = []
         for w in floor.get("walls") or []:
             a, b = w.get("a"), w.get("b")
             if not (isinstance(a, list) and isinstance(b, list)):
@@ -285,6 +306,49 @@ class HfsAdapter(EditorAdapter):
                     "thickness": thick,
                 }
             )
+        # hfs also carries per-edge wall kinds on the floor outline
+        # (`owk`) and every room polygon (`wk`) — plans drawn by tracing
+        # often have no explicit `walls[]` at all. Derive canonical
+        # walls from those edges too; dedupe shared edges (outline
+        # first, so `external` wins over a coinciding room edge).
+        seen = {_segment_key(w["points"][0], w["points"][1]) for w in walls}
+        edges: list[tuple[list[Any], list[Any]]] = [
+            (floor.get("outline") or [], floor.get("owk") or [])
+        ]
+        edges += [
+            (r.get("pts") or [], r.get("wk") or [])
+            for r in (floor.get("rooms") or [])
+            if isinstance(r, dict)
+        ]
+        derived: list[tuple[float, dict[str, Any]]] = []
+        for pts, wk_kinds in edges:
+            ring = list(zip(pts, pts[1:] + pts[:1], strict=False))
+            for i, (a, b) in enumerate(ring):
+                kind = str(wk_kinds[i]) if i < len(wk_kinds) else "wall"
+                if kind == "none":
+                    continue
+                seg = _segment_key(a, b)
+                if seg is None or seg in seen:
+                    continue
+                seen.add(seg)
+                color, thick = _WALL_STYLE.get(kind, _WALL_STYLE["wall"])
+                derived.append(
+                    (
+                        thick,
+                        {
+                            "id": f"wk-{len(derived)}",
+                            "points": [
+                                {"x": float(a[0]), "y": float(a[1])},
+                                {"x": float(b[0]), "y": float(b[1])},
+                            ],
+                            "color": color,
+                            "thickness": thick,
+                        },
+                    )
+                )
+        # thinner kinds first so external strokes paint last — a room
+        # edge that partially overlaps an external span must not hide it
+        walls.extend(d for _, d in sorted(derived, key=lambda t: t[0]))
         openings = []
         for coll, kinds in (
             (floor.get("doors") or [], _DOOR_FILL),
