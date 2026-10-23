@@ -1,5 +1,15 @@
 # Floorplan Helper — step-by-step setup guide
 
+> **Editor:** [ha-floorplan-studio](https://github.com/vespassassina/ha-floorplan-studio)
+> (hfs) is the plan editor — embed it with `custom:ramses-editor-embed`
+> (`editor: hfs`) next to the actions card. Draw the map there,
+> `＋ Add devices` to seed markers, `⚙ Zones` for zone membership;
+> edits autosave and generated cards regenerate on every save. The
+> generated `custom:floorplan-card` output this guide covers works
+> unchanged — it just reads the hfs layout now. See
+> `docs/FLOORPLAN_WORKFLOWS.md` for the current pipeline; the
+> tinkersoder studio path below is kept as the legacy alternative.
+
 The Floorplan Helper generates a ready-to-use bundle for the community
 [ha-floorplan](https://github.com/ExperienceLovelace/ha-floorplan)
 card: an SVG of your RAMSES devices, a shared stylesheet, and the

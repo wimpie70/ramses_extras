@@ -59,19 +59,21 @@ async def async_step_floorplan_helper_config(
     info_text = (
         "🗺️ **Floorplan Helper**\n\n"
         "The editor's plan is the single source of truth — marker "
-        "icon, colours, label, actions, zone and caption are edited "
-        "there or per device in the actions card's ⚙ Zones panel.\n\n"
-        "With **ha-floorplan-studio** the plan also renders directly "
-        "on its own card (2D/2.5D/3D) — edits autosave and matching "
-        "floorplan cards on your dashboards regenerate automatically. "
-        "With **Floorplan Studio**, save the project (Studio → HA) and "
-        "export afterwards.\n\n"
-        "**Export ⇒** regenerates the card bundle (SVG, CSS, rules) "
-        "and copies the YAML; **⇒ Update cards** applies it to every "
-        "matching floorplan card in place — needed once to put a card "
-        "on a dashboard, or after changing options outside the plan. "
-        "Place the actions card next to the editor card on the same "
-        "view.\n\n"
+        "icon, colours, label, actions, zone membership and captions "
+        "are edited there or per device in the actions card's "
+        "⚙ Zones panel.\n\n"
+        "Setup: put the **actions card** and a "
+        "**ramses-editor-embed** card (editor: hfs) on one dashboard "
+        "view, draw the map in the embedded editor, then **＋ Add "
+        "devices** to seed the ramses and _extras markers. Drag them "
+        "into rooms; **Sync areas → HA** links rooms to HA areas.\n\n"
+        "Two ways to show the map: the editor's own "
+        "**hfs-floorplan-card** (2D/2.5D/3D — our overlay adds icons, "
+        "colours, captions, zone highlights and taps), or a generated "
+        "**floorplan-card** (ha-floorplan) — edits autosave and "
+        "matching cards regenerate automatically. **Export ⇒** / "
+        "**⇒ Update cards** remain for a first card or after changing "
+        "options outside the plan.\n\n"
         "For everything else, see the wiki on GitHub: "
         "https://github.com/wimpie70/ramses_extras/wiki"
     )
@@ -85,10 +87,13 @@ async def async_step_floorplan_helper_config(
                             "value": "auto",
                             "label": "Auto — whichever installed editor holds the plan",
                         },
-                        {
-                            "value": "studio",
-                            "label": "Floorplan Studio (card, browser-side projects)",
-                        },
+                        # NOTE: the tinkersoder "studio" adapter stays in the
+                        # code as the reference implementation for future
+                        # editors, but is hidden here — upstream development
+                        # has stalled and ha-floorplan-studio covers it.
+                        # Candidates for removal if upstream stays quiet.
+                        # A yaml `editor: studio` still resolves for anyone
+                        # with an existing studio plan.
                         {
                             "value": "hfs",
                             "label": "ha-floorplan-studio (integration)",

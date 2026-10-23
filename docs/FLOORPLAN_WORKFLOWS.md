@@ -1,6 +1,38 @@
 # Floorplan Helper — Workflows Cheat-Sheet
 
-## The pieces
+> **Current editor: ha-floorplan-studio (hfs).** The sections below the
+> *Legacy* heading describe the older tinkersoder floorplan-studio
+> (browser-side projects) path — still functional via `editor: studio`
+> but hidden from the config flow and a removal candidate.
+
+## The hfs pipeline
+
+| Piece | Role |
+|---|---|
+| **ha-floorplan-studio** | The editor (server-side layout in `.storage/floorplan_studio.layout`, rev-checked) + native card (2D/2.5D/3D). |
+| **ramses-editor-embed** | Mounts the hfs panel inline on a dashboard view. |
+| **ramses-floorplan-actions** | Control surface: ＋ Add devices, ⚙ Zones, Sync areas → HA, Export ⇒ / ⇒ Update cards. |
+| **ramses-hfs-overlay** | Module-level: RAMSES icons/colours/spin/captions, zone highlights, tap gestures, autosave → auto-export bridge — on the hfs card and the editor. |
+| **ha-floorplan card** (`custom:floorplan-card`) | Generated output — merged SVG + rx-* rules + captions + zones. |
+
+```
+hfs editor ──autosave (2.5s debounce / page-hide)──▶ .storage (rev-checked)
+      │                                                    │
+      ▼                                          floorplan_studio_updated
+hfs-floorplan-card renders live (+ overlay)                │
+                                                           ▼
+                                    floorplan_export(apply) ──▶ generated
+                                    merged SVG + rules + yaml    cards
+```
+
+- Layout edits autosave; every landed write regenerates the generated cards. `Export ⇒`/`⇒ Update cards` are only needed for a first card or after options-level changes (zones, captions, icons).
+- `＋ Add devices` flushes the open editor's pending save, merges new markers into the stored layout, reloads the editor onto the new revision, then regenerates cards.
+- Zones (owner → rooms + devices + colour) live in **our options**, not the layout — configured in ⚙ Zones, synced both ways with the editor's selection.
+- `Sync areas → HA` remains the explicit one-way room→HA-area push.
+
+---
+
+## Legacy — tinkersoder floorplan-studio workflows
 
 | Tool | Role |
 |---|---|
