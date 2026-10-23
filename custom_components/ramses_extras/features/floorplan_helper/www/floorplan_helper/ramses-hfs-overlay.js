@@ -32,6 +32,7 @@ const HFS_TAG = 'HFS-FLOORPLAN-CARD';
 const HFS_PANEL_TAG = 'FLOORPLAN-STUDIO-PANEL';
 const TAP_SLOP_PX = 6; // their own pan-vs-tap threshold (actions.ts)
 const OVERLAY_ID = 'ramses-hfs-overlay';
+const CAPTIONS_ID = 'ramses-hfs-captions';
 const ANIM_STYLE_ID = 'ramses-hfs-anim';
 const SYMBOL_SHEET =
   '/local/ramses_extras/features/floorplan_helper/symbol-sheet.svg';
@@ -42,6 +43,7 @@ let _deviceById = {}; // device_id -> topology device record
 let _zones = {}; // device_zones option {device_id: {areas, devices, color}}
 let _deviceIcons = {}; // device_id -> ramses icon key (icon_for_device)
 let _deviceRoles = {}; // device_id -> {role: [entity_ids]} (CLASS_ROLES)
+let _deviceCaptions = {}; // device_id -> [[entity_id, suffix], ...]
 let _stateEnts = new Set(); // every entity that can drive color/spin
 let _iconPaths = null; // icon key -> mdi path d, from the symbol sheet
 let _started = false;
@@ -87,16 +89,21 @@ async function _hfsLoadState() {
     _zones = cfg.device_zones || {};
     _deviceIcons = cfg.device_icons || {};
     _deviceRoles = cfg.device_roles || {};
+    _deviceCaptions = cfg.device_captions || {};
     _stateEnts = new Set();
     for (const roles of Object.values(_deviceRoles)) {
       for (const ents of Object.values(roles)) {
         for (const eid of ents) _stateEnts.add(eid);
       }
     }
+    for (const pairs of Object.values(_deviceCaptions)) {
+      for (const p of pairs) _stateEnts.add(p[0]);
+    }
   } catch {
     _zones = {};
     _deviceIcons = {};
     _deviceRoles = {};
+    _deviceCaptions = {};
   }
   await _hfsLoadIcons();
   await _hfsLoadLayout();
@@ -256,7 +263,8 @@ function _hfsAttach(card) {
         n.nodeType === 1 &&
         (n.id === OVERLAY_ID ||
           n.id === ANIM_STYLE_ID ||
-          (n.closest && n.closest(`#${OVERLAY_ID}`)));
+          n.id === CAPTIONS_ID ||
+          (n.closest && n.closest(`#${OVERLAY_ID},#${CAPTIONS_ID}`)));
       if (r.target && r.target.nodeType === 1 && own(r.target)) continue;
       if (r.type === 'attributes') {
         // live patches write attributes — re-decorate unless the write
@@ -421,11 +429,81 @@ function _hfsDecorate(svg, floor) {
   }
 }
 
+// State captions under each marker — the same pairs the generated
+// card's text_set emits (entity state + suffix, ' / '-joined). The
+// marker's own transform carries its centre and scale: icon box is
+// 24 local units, so centre = translate + 12k and the halo ends at
+// 16k. Lives in its own layer so a rebuild never fights hfs's DOM.
+function _hfsCaptions(svg, floor) {
+  const ns = 'http://www.w3.org/2000/svg';
+  let layer = svg.querySelector(`#${CAPTIONS_ID}`);
+  const hass = _hfsHass();
+  const caps = [];
+  if (floor && hass) {
+    for (const g of svg.querySelectorAll('g.dev[data-x]')) {
+      const dev = (floor.devices || [])[Number(g.getAttribute('data-x'))];
+      if (!dev || !dev.entity) continue;
+      const topo = _entityDevice[dev.entity];
+      const did = topo && String(topo.device_id || '');
+      const pairs = did && _deviceCaptions[did];
+      if (!pairs || !pairs.length) continue;
+      const parts = [];
+      for (const p of pairs) {
+        const st = hass.states[p[0]];
+        if (st) parts.push(String(st.state) + (p[1] || ''));
+      }
+      if (!parts.length) continue;
+      let cx = dev.x;
+      let cy = dev.y;
+      let k = 1;
+      const m =
+        /translate\(\s*([-\d.e]+)[ ,]+([-\d.e]+)\s*\)\s*scale\(\s*([-\d.e]+)\s*\)/.exec(
+          g.getAttribute('transform') || ''
+        );
+      if (m) {
+        k = parseFloat(m[3]);
+        cx = parseFloat(m[1]) + 12 * k;
+        cy = parseFloat(m[2]) + 12 * k;
+      }
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+      caps.push({ x: cx, y: cy + 22 * k, k, s: parts.join(' / ') });
+    }
+  }
+  if (!caps.length) {
+    if (layer) layer.remove();
+    return;
+  }
+  if (!layer) {
+    layer = document.createElementNS(ns, 'g');
+    layer.id = CAPTIONS_ID;
+    layer.setAttribute('pointer-events', 'none');
+    svg.appendChild(layer);
+  }
+  layer.textContent = '';
+  for (const c of caps) {
+    const t = document.createElementNS(ns, 'text');
+    t.setAttribute('x', String(c.x));
+    t.setAttribute('y', String(c.y));
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('font-size', String(11 * c.k));
+    t.setAttribute('fill', 'var(--fp-text)');
+    t.setAttribute('paint-order', 'stroke');
+    t.setAttribute('stroke', 'var(--fp-bg)');
+    t.setAttribute('stroke-width', String(2.5 * c.k));
+    t.textContent = c.s;
+    layer.appendChild(t);
+  }
+}
+
 function _hfsPaint(card) {
   if (!card.shadowRoot || !card.__rxZones) return;
   _hfsAnimStyle(card.shadowRoot);
   const svg = card.shadowRoot.querySelector('svg');
-  if (svg) _hfsDecorate(svg, _hfsFloor(card));
+  const floor = _hfsFloor(card);
+  if (svg) {
+    _hfsDecorate(svg, floor);
+    _hfsCaptions(svg, floor);
+  }
   const state = card.__rxZones;
   const stale = svg && svg.querySelector(`#${OVERLAY_ID}`);
 
@@ -445,7 +523,6 @@ function _hfsPaint(card) {
   if (!layer) return;
   layer.textContent = '';
 
-  const floor = _hfsFloor(card);
   if (!floor) return;
 
   for (const [cls, ids] of state) {
