@@ -40,7 +40,7 @@ from .domains import caption_suffix_for, get_domain
 from .editors import adapter_for, detect_editors, resolve_editor
 from .importer import studio_marker_positions
 from .mapping import get_floorplan_options
-from .markers import editor_url, marker_meta_for_device
+from .markers import editor_url, icon_for_device, marker_meta_for_device
 from .rules import caption_pairs_for_device
 from .topology import build_floorplan_model
 
@@ -149,6 +149,7 @@ async def ws_get_config(
     # uses, so the checkboxes show what the card will actually render
     captions: dict[str, list[list[str]]] = {}
     choices: dict[str, list[list[str]]] = {}
+    icons: dict[str, str] = {}
     try:
         model = await build_floorplan_model(hass)
         plan = await adapter.async_load(hass)
@@ -157,6 +158,7 @@ async def ws_get_config(
             did = str(dev.get("device_id") or "")
             if not did:
                 continue
+            icons[did] = icon_for_device(dev, options)
             domain = get_domain(dev)
             captions[did] = [
                 [eid, sfx]
@@ -200,6 +202,7 @@ async def ws_get_config(
             "device_view_url": options.get(OPTION_DEVICE_VIEW_URL, ""),
             "device_captions": captions,
             "caption_choices": choices,
+            "device_icons": icons,
         },
     )
 

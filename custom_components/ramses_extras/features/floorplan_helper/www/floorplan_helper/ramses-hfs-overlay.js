@@ -23,19 +23,24 @@
  * them to the card's index-based DOM (`data-r`, `data-x`) using the
  * stored layout — nothing is written back into their JSON.
  */
-/* global MutationObserver */
+/* global MutationObserver, DOMParser */
 
 'use strict';
 
 const DOMAIN = 'ramses_extras';
 const HFS_TAG = 'HFS-FLOORPLAN-CARD';
+const HFS_PANEL_TAG = 'FLOORPLAN-STUDIO-PANEL';
 const TAP_SLOP_PX = 6; // their own pan-vs-tap threshold (actions.ts)
 const OVERLAY_ID = 'ramses-hfs-overlay';
+const SYMBOL_SHEET =
+  '/local/ramses_extras/features/floorplan_helper/symbol-sheet.svg';
 
 let _hfsLayout = null; // floorplan_studio/load payload
 let _entityDevice = {}; // entity_id -> topology device record
 let _deviceById = {}; // device_id -> topology device record
 let _zones = {}; // device_zones option {device_id: {areas, devices, color}}
+let _deviceIcons = {}; // device_id -> ramses icon key (icon_for_device)
+let _iconPaths = null; // icon key -> mdi path d, from the symbol sheet
 let _started = false;
 
 function _hfsHass() {
@@ -77,10 +82,35 @@ async function _hfsLoadState() {
       type: 'ramses_extras/floorplan_helper/get_config',
     });
     _zones = cfg.device_zones || {};
+    _deviceIcons = cfg.device_icons || {};
   } catch {
     _zones = {};
+    _deviceIcons = {};
   }
+  await _hfsLoadIcons();
   await _hfsLoadLayout();
+}
+
+// The mdi paths behind our icon keys already ship in the
+// floorplan-helper symbol sheet — parse them once so hfs's `other`
+// glyph can be swapped for the same icon the generated card shows.
+async function _hfsLoadIcons() {
+  if (_iconPaths) return;
+  _iconPaths = {};
+  try {
+    const res = await fetch(SYMBOL_SHEET);
+    const doc = new DOMParser().parseFromString(
+      await res.text(),
+      'image/svg+xml'
+    );
+    for (const sym of doc.querySelectorAll('symbol[id^="icon."]')) {
+      const paths = sym.querySelectorAll('path[d]');
+      const last = paths[paths.length - 1];
+      if (last) _iconPaths[sym.id.slice(5)] = last.getAttribute('d');
+    }
+  } catch {
+    _iconPaths = {};
+  }
 }
 
 async function _hfsLoadLayout() {
@@ -274,9 +304,32 @@ function _hfsZoneColor(cls) {
   return '#22c55e';
 }
 
+// Swap each device icon's path for the ramses icon the generated
+// floorplan-card shows — their `other` glyph is a '?', and our own
+// set (co2 molecule, remote, valve…) reads better. Attribute writes
+// don't reach the childList observer, so this is loop-free.
+function _hfsIcons(svg, floor) {
+  if (!_iconPaths || !floor) return;
+  const devices = floor.devices || [];
+  for (const g of svg.querySelectorAll('g.dev[data-x]')) {
+    const dev = devices[Number(g.getAttribute('data-x'))];
+    if (!dev || !dev.entity) continue;
+    const topo = _entityDevice[dev.entity];
+    const key =
+      topo && _deviceIcons[String(topo.device_id || '')];
+    const d = key && _iconPaths[key];
+    if (!d) continue;
+    const icon =
+      g.querySelector('circle.halo + path') ||
+      g.querySelector('path:not(.cone)');
+    if (icon && icon.getAttribute('d') !== d) icon.setAttribute('d', d);
+  }
+}
+
 function _hfsPaint(card) {
   if (!card.shadowRoot || !card.__rxZones) return;
   const svg = card.shadowRoot.querySelector('svg');
+  if (svg) _hfsIcons(svg, _hfsFloor(card));
   const state = card.__rxZones;
   const stale = svg && svg.querySelector(`#${OVERLAY_ID}`);
 
@@ -371,10 +424,71 @@ function _hfsZoneApply(card, toggles, clear, skip) {
 }
 window.__ramsesHfsZoneApply = _hfsZoneApply;
 
+// --- editor panel: icons only (the editor owns its own gestures) ----------
+
+function _hfsPanelEditor(panel) {
+  return (
+    panel.shadowRoot &&
+    panel.shadowRoot.querySelector('floorplan-studio-editor')
+  );
+}
+
+function _hfsDecoratePanel(panel) {
+  const ed = _hfsPanelEditor(panel);
+  const root = ed && ed.shadowRoot;
+  if (!root) return;
+  const floorKey = ed.floor;
+  const floor =
+    floorKey && _hfsLayout && _hfsLayout.floors
+      ? _hfsLayout.floors[floorKey]
+      : null;
+  for (const svg of root.querySelectorAll('svg')) {
+    _hfsIcons(svg, floor);
+  }
+}
+
+function _hfsAttachPanel(panel) {
+  if (panel.__rxHfsPanel) return;
+  panel.__rxHfsPanel = true;
+  const tryAttach = () => {
+    const ed = _hfsPanelEditor(panel);
+    if (!ed || !ed.shadowRoot) return false;
+    // icon swaps are attribute writes — no childList feedback loop
+    const mo = new MutationObserver(() => {
+      if (panel.__rxIconsQueued) return;
+      panel.__rxIconsQueued = true;
+      Promise.resolve().then(() => {
+        panel.__rxIconsQueued = false;
+        _hfsDecoratePanel(panel);
+      });
+    });
+    mo.observe(ed.shadowRoot, { childList: true, subtree: true });
+    _hfsDecoratePanel(panel);
+    return true;
+  };
+  if (!tryAttach()) {
+    // the editor element appears after the panel's first load
+    const wait = new MutationObserver(() => {
+      if (tryAttach()) wait.disconnect();
+    });
+    wait.observe(panel.shadowRoot || panel, {
+      childList: true,
+      subtree: true,
+    });
+  }
+}
+
 // --- boot: discovery + state -----------------------------------------------
 
 function _hfsScan() {
   for (const card of _hfsCards()) _hfsAttach(card);
+  const walk = (root) => {
+    for (const el of root.querySelectorAll('*')) {
+      if (el.tagName === HFS_PANEL_TAG) _hfsAttachPanel(el);
+      if (el.shadowRoot) walk(el.shadowRoot);
+    }
+  };
+  walk(document);
 }
 
 function _hfsStart() {
