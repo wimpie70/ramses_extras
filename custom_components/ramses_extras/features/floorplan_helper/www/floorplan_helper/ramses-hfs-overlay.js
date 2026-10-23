@@ -579,6 +579,36 @@ function _hfsAttachPanel(panel) {
   }
 }
 
+// --- zones-tool bridge -------------------------------------------------
+// The actions card's zone editor mirrors the plan editor's selection;
+// for hfs that state lives on the editor element (`st.sel`, `floor`) —
+// private but stable to poll. The card resolves indices itself (it has
+// its own entity→device map); we only hand it the live handles.
+function _hfsEditorEl() {
+  for (const panel of _hfsPanels) {
+    const ed = _hfsPanelEditor(panel);
+    if (ed) return ed;
+  }
+  let found = null;
+  const walk = (root) => {
+    for (const el of root.querySelectorAll('*')) {
+      if (found) return;
+      if (el.tagName === 'FLOORPLAN-STUDIO-EDITOR') {
+        found = el;
+        return;
+      }
+      if (el.shadowRoot) walk(el.shadowRoot);
+    }
+  };
+  walk(document);
+  return found;
+}
+
+window.__ramsesHfsInfo = () => ({
+  layout: _hfsLayout,
+  editor: _hfsEditorEl(),
+});
+
 // --- boot: discovery + state -----------------------------------------------
 
 function _hfsScan() {

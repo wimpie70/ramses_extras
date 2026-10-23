@@ -556,6 +556,28 @@ class RamsesFloorplanActions extends HTMLElement {
       return this._roomsCache.m;
     }
     const m = new Map();
+    if (this._resolvedEditor === 'hfs') {
+      // hfs rooms come from the stored layout (the overlay shares its
+      // live copy). The room key is the area/name slug — the same
+      // value zone.areas stores, so _saveZone's areaId mapping and the
+      // renderer card's data-r resolution are identity.
+      const info =
+        window.__ramsesHfsInfo && window.__ramsesHfsInfo();
+      const floors = (info && info.layout && info.layout.floors) || {};
+      for (const [fk, f] of Object.entries(floors)) {
+        (f.rooms || []).forEach((r, i) => {
+          const slug = this._slug(r.area || r.name) || `${fk}-${i}`;
+          m.set(slug, {
+            name: r.name || slug,
+            areaId: slug,
+            fill: r.color,
+            floor: f.title || fk,
+          });
+        });
+      }
+      this._roomsCache = { t: now, m };
+      return m;
+    }
     try {
       const db = await openFpDb();
       const id = this._selectedProjectId();
@@ -590,6 +612,10 @@ class RamsesFloorplanActions extends HTMLElement {
 
   _pollSelection() {
     if (this._busy || document.hidden) return;
+    if (this._resolvedEditor === 'hfs') {
+      this._pollHfsSelection();
+      return;
+    }
     const root = this._studioRoot();
     if (!root) return;
 
@@ -624,12 +650,101 @@ class RamsesFloorplanActions extends HTMLElement {
     this._syncStudioSelection(sel);
   }
 
-  // Studio → menu: while the zone editor is open, selection changes
+  // Studio → menu: resolve the fiber markers into the shared shape —
+  // selected member ids (device_id, else entity), room ids, and the
+  // sole-selected device — then run the common delta pass.
+  _syncStudioSelection(mSel) {
+    const roomIds = this._studioSelectedRoomIds();
+    let soleDev = null;
+    const memberIds = new Set();
+    for (const m of mSel) {
+      const marker = this._fiberMarker(m.el);
+      const ents =
+        marker && (marker.entities || (marker.entity ? [marker.entity] : []));
+      for (const e of ents || []) {
+        const d = this._entityDevice[e];
+        memberIds.add(d ? d.device_id : e);
+      }
+      if (mSel.length === 1) {
+        const d = this._deviceOfMarkerEl(m.el);
+        if (d) soleDev = d.device_id;
+      }
+    }
+    this._syncZoneSelection(memberIds, roomIds, soleDev);
+  }
+
+  // hfs → menu: the editor keeps its selection on the element's `st.sel`
+  // — {t:'dev'|'devs'|'room', i|is} indexing the shown floor's lists.
+  // Same shared shape; indices resolve through the overlay's layout.
+  _pollHfsSelection() {
+    const info =
+      window.__ramsesHfsInfo && window.__ramsesHfsInfo();
+    const ed = info && info.editor;
+    const floors = (info && info.layout && info.layout.floors) || {};
+    const floor = ed && floors[ed.floor];
+    const sel = (ed && ed.st && ed.st.sel) || null;
+    const memberIds = new Set();
+    const roomIds = new Set();
+    let soleDev = null;
+    const devKey = (list, i) => {
+      const d = (list || [])[i];
+      const t = d && d.entity && this._entityDevice[d.entity];
+      return t ? String(t.device_id) : (d && d.entity) || null;
+    };
+    let firstDev = null;
+    if (floor && sel) {
+      if (sel.t === 'dev' || sel.t === 'devs') {
+        const idx = sel.t === 'dev' ? [sel.i] : sel.is || [];
+        for (const i of idx) {
+          const d = (floor.devices || [])[i];
+          const t = d && this._entityDevice[d.entity];
+          const id = t ? String(t.device_id) : (d && d.entity) || null;
+          if (id) memberIds.add(id);
+          if (t && !firstDev) firstDev = String(t.device_id);
+        }
+        // ownership adoption only counts topology devices — an
+        // unmapped entity marker can't be a zone owner
+        if (sel.t === 'dev') soleDev = firstDev;
+      } else if (sel.t === 'unl') {
+        const id = devKey(floor.unlinked, sel.i);
+        if (id) memberIds.add(id);
+      } else if (sel.t === 'room') {
+        const r = (floor.rooms || [])[sel.i];
+        if (r) roomIds.add(this._slug(r.area || r.name) || `${sel.i}`);
+      }
+    }
+
+    // zone preview highlight follows the first selected topology
+    // device — same hook the studio poll drives
+    const hiDev =
+      firstDev &&
+      ((this._topology.devices || []).find(
+        (d) => d.device_id === firstDev
+      ) ||
+        null);
+    const hiId = hiDev ? firstDev : null;
+    if (hiId !== this._hiDevice) {
+      this._hiDevice = hiId;
+      this._hiDev = hiDev;
+      this._applyZoneHighlight(hiId, hiDev);
+    } else if (
+      this._hiDevice &&
+      this._hiPatched.length &&
+      !this._hiPatched[0][0].isConnected
+    ) {
+      this._hiPatched = [];
+      this._applyZoneHighlight(this._hiDevice, this._hiDev);
+    }
+
+    this._syncZoneSelection(memberIds, roomIds, soleDev);
+  }
+
+  // Editor → menu: while the zone editor is open, selection changes
   // on the canvas toggle the matching listbox entries (delta-only —
   // a cleared canvas selection means "no selection", not "clear the
   // zone"), and a sole-selected marker that maps to a device adopts
-  // it as the zone owner.
-  _syncStudioSelection(mSel) {
+  // it as the zone owner. Shared by the studio and hfs paths.
+  _syncZoneSelection(memberIds, roomIds, soleDev) {
     const tweaks = this.shadowRoot.getElementById('tweaks');
     const devSel = this.shadowRoot.getElementById('zone-dev');
     const roomsSel = this.shadowRoot.getElementById('zone-rooms');
@@ -645,12 +760,11 @@ class RamsesFloorplanActions extends HTMLElement {
     }
 
     // A genuinely empty canvas (user clicked a non-room/non-marker
-    // spot) clears the zone picker — the menu follows studio's
+    // spot) clears the zone picker — the menu follows the editor's
     // deselect. The empty selection a studio remount briefly shows
     // after our own project push is not a user deselect: the flag
     // _reloadStudioCard sets swallows exactly that one observation.
-    const roomIds = this._studioSelectedRoomIds();
-    if (!mSel.length && !roomIds.size) {
+    if (!memberIds.size && !roomIds.size) {
       if (this._suppressMenuClear) {
         this._suppressMenuClear = false;
       } else if (this._sawStudioSel && devSel.value) {
@@ -666,22 +780,8 @@ class RamsesFloorplanActions extends HTMLElement {
     }
     this._sawStudioSel = true;
 
-    let soleDev = null;
-    const memberIds = new Set();
-    for (const m of mSel) {
-      const marker = this._fiberMarker(m.el);
-      const ents =
-        marker && (marker.entities || (marker.entity ? [marker.entity] : []));
-      for (const e of ents || []) {
-        const d = this._entityDevice[e];
-        const id = d ? d.device_id : e;
-        if (id !== devSel.value) memberIds.add(id);
-      }
-      if (mSel.length === 1) {
-        const d = this._deviceOfMarkerEl(m.el);
-        if (d) soleDev = d.device_id;
-      }
-    }
+    // the owner itself is never its own member
+    memberIds.delete(devSel.value);
 
     // no zone picked yet: a sole-selected marker adopts ownership;
     // membership deltas need an owner, so they wait
@@ -698,8 +798,9 @@ class RamsesFloorplanActions extends HTMLElement {
 
     // a newly sole-selected marker becomes the zone owner — only on
     // a *change* of sole selection so a lingering selection can't
-    // fight a menu pick that studio ignored. On a switch the listboxes
-    // are rebuilt, so the delta pass is skipped until next poll.
+    // fight a menu pick that the editor ignored. On a switch the
+    // listboxes are rebuilt, so the delta pass is skipped until next
+    // poll.
     if (
       soleDev &&
       soleDev !== devSel.value &&
@@ -764,7 +865,6 @@ class RamsesFloorplanActions extends HTMLElement {
   // marker's own pointerdown can only *add*, never toggle off, so
   // deselects can't be expressed per-element.
   _pushZoneSelToStudio() {
-    const root = this._studioRoot();
     const roomsSel = this.shadowRoot.getElementById('zone-rooms');
     const memSel = this.shadowRoot.getElementById('zone-members');
     const devSel = this.shadowRoot.getElementById('zone-dev');
@@ -772,6 +872,40 @@ class RamsesFloorplanActions extends HTMLElement {
       [...el.querySelectorAll('input:checked:not(:disabled)')].map(
         (cb) => cb.value
       );
+    if (this._resolvedEditor === 'hfs') {
+      // hfs can't multi-select rooms — members + owner land as a
+      // devs selection; checked rooms show through the painted
+      // zone highlight instead.
+      const info = window.__ramsesHfsInfo && window.__ramsesHfsInfo();
+      const ed = info && info.editor;
+      const floor =
+        ed && ((info.layout && info.layout.floors) || {})[ed.floor];
+      if (ed && ed.st && floor && roomsSel && memSel) {
+        const wanted = new Set(
+          [...checked(memSel), devSel && devSel.value].filter(Boolean)
+        );
+        const idx = [];
+        (floor.devices || []).forEach((d, i) => {
+          const t = d.entity && this._entityDevice[d.entity];
+          const key = t ? String(t.device_id) : d.entity;
+          if (wanted.has(key) || (d.entity && wanted.has(d.entity))) {
+            idx.push(i);
+          }
+        });
+        ed.st.sel =
+          idx.length > 1
+            ? { t: 'devs', is: idx }
+            : idx.length
+              ? { t: 'dev', i: idx[0] }
+              : null;
+        if (ed.requestUpdate) ed.requestUpdate();
+        this._studioRoomSel = new Set(checked(roomsSel));
+        this._studioMemberSel = new Set(checked(memSel));
+      }
+      this._queueZoneSave();
+      return;
+    }
+    const root = this._studioRoot();
     if (root && roomsSel && memSel) {
       this._ensureStudioEdit();
       this._studioClick(root.querySelector('svg'), false); // clear
@@ -846,6 +980,12 @@ class RamsesFloorplanActions extends HTMLElement {
       }
     }
     if (!color) color = '#f59e0b';
+
+    if (this._resolvedEditor === 'hfs') {
+      this._applyZoneHighlightHfs(devId, dev, zone, areas, color);
+      return;
+    }
+
     const root = this._studioRoot();
     if (!root) return;
 
@@ -900,6 +1040,81 @@ class RamsesFloorplanActions extends HTMLElement {
         `${dev.display_name || devId} zone → ${names.join(', ')}`
       );
     }
+  }
+
+  // hfs editor canvas: stroke the zone's room polygons (data-r index)
+  // and drop-shadow bound device markers (data-x index) — the same
+  // patch/restore scheme as the studio path (_hiPatched).
+  _applyZoneHighlightHfs(devId, dev, zone, areas, color) {
+    const info = window.__ramsesHfsInfo && window.__ramsesHfsInfo();
+    const ed = info && info.editor;
+    const floors = (info && info.layout && info.layout.floors) || {};
+    const floor = ed && floors[ed.floor];
+    const root = ed && ed.shadowRoot;
+    if (!root || !floor) return;
+
+    const roomAreas = (floor.rooms || []).map((r) =>
+      this._slug(r.area || r.name)
+    );
+    const want = new Set([...areas].map((a) => this._slug(a)));
+    const names = [];
+    for (const poly of root.querySelectorAll('polygon[data-r]')) {
+      const i = Number(poly.getAttribute('data-r'));
+      if (!want.has(roomAreas[i])) continue;
+      this._hiPatched.push([
+        poly,
+        {
+          stroke: poly.getAttribute('stroke'),
+          'stroke-width': poly.getAttribute('stroke-width'),
+          'stroke-dasharray': poly.getAttribute('stroke-dasharray'),
+        },
+      ]);
+      poly.setAttribute('stroke', color);
+      poly.setAttribute('stroke-width', '3');
+      poly.setAttribute('stroke-dasharray', '6 3');
+      names.push((floor.rooms[i] || {}).name || roomAreas[i]);
+    }
+
+    const bound = new Set([devId]);
+    for (const d of (this._topology || {}).devices || []) {
+      if (d.parent === devId && d.device_class !== 'HGI') {
+        bound.add(d.device_id);
+      }
+    }
+    for (const b of zone.devices || []) bound.add(String(b));
+    let nDev = 0;
+    for (const g of root.querySelectorAll('g.dev[data-x]')) {
+      const d = (floor.devices || [])[Number(g.getAttribute('data-x'))];
+      if (!d) continue;
+      const t = d.entity && this._entityDevice[d.entity];
+      const key = t ? String(t.device_id) : d.entity;
+      if (!bound.has(key) && !bound.has(d.entity)) continue;
+      this._hiPatched.push([g, { style: g.getAttribute('style') }]);
+      g.style.filter = `drop-shadow(0 0 5px ${color})`;
+      nDev++;
+    }
+    if (nDev) names.push(`${nDev} bound device(s)`);
+    if (names.length) {
+      this._status(
+        `${(dev && dev.display_name) || devId} zone → ${names.join(', ')}`
+      );
+    }
+  }
+
+  // Menu → hfs editor: select the zone owner's marker on the shown
+  // floor (no-op when it lives on another floor).
+  _hfsSelectDevice(devId) {
+    const info = window.__ramsesHfsInfo && window.__ramsesHfsInfo();
+    const ed = info && info.editor;
+    const floor =
+      ed && ((info.layout && info.layout.floors) || {})[ed.floor];
+    if (!ed || !ed.st || !floor) return;
+    const i = (floor.devices || []).findIndex((d) => {
+      const t = d.entity && this._entityDevice[d.entity];
+      return t ? String(t.device_id) === devId : d.entity === devId;
+    });
+    ed.st.sel = i >= 0 ? { t: 'dev', i } : null;
+    if (ed.requestUpdate) ed.requestUpdate();
   }
 
   _markerDblClick(ev, layer) {
@@ -1490,8 +1705,12 @@ class RamsesFloorplanActions extends HTMLElement {
       this._fillZoneRow();
       const devSel = $('zone-dev');
       if (devSel.value) {
-        this._ensureStudioEdit();
-        this._studioClick(this._studioElForMember(devSel.value), false);
+        if (this._resolvedEditor === 'hfs') {
+          this._hfsSelectDevice(devSel.value);
+        } else {
+          this._ensureStudioEdit();
+          this._studioClick(this._studioElForMember(devSel.value), false);
+        }
       }
     };
     $('zone-rooms').onchange = () => this._pushZoneSelToStudio();
