@@ -41,8 +41,8 @@ let _entityDevice = {}; // entity_id -> topology device record
 let _deviceById = {}; // device_id -> topology device record
 let _zones = {}; // device_zones option {device_id: {areas, devices, color}}
 let _deviceIcons = {}; // device_id -> ramses icon key (icon_for_device)
-let _deviceSpin = {}; // device_id -> fan_rate entity ids, speed first
-let _speedEnts = new Set(); // every entity that can drive a spin
+let _deviceRoles = {}; // device_id -> {role: [entity_ids]} (CLASS_ROLES)
+let _stateEnts = new Set(); // every entity that can drive color/spin
 let _iconPaths = null; // icon key -> mdi path d, from the symbol sheet
 let _started = false;
 
@@ -86,14 +86,17 @@ async function _hfsLoadState() {
     });
     _zones = cfg.device_zones || {};
     _deviceIcons = cfg.device_icons || {};
-    _deviceSpin = cfg.device_spin || {};
-    _speedEnts = new Set(
-      Object.values(_deviceSpin).reduce((a, b) => a.concat(b), [])
-    );
+    _deviceRoles = cfg.device_roles || {};
+    _stateEnts = new Set();
+    for (const roles of Object.values(_deviceRoles)) {
+      for (const ents of Object.values(roles)) {
+        for (const eid of ents) _stateEnts.add(eid);
+      }
+    }
   } catch {
     _zones = {};
     _deviceIcons = {};
-    _deviceSpin = {};
+    _deviceRoles = {};
   }
   await _hfsLoadIcons();
   await _hfsLoadLayout();
@@ -328,7 +331,8 @@ function _hfsZoneColor(cls) {
 // compute: >75% fast, >40% medium, >0% slow; mode names for
 // text-valued sensors. Entities are pre-sorted speed-first.
 function _hfsSpinDuration(did) {
-  const ents = _deviceSpin[did];
+  const roles = _deviceRoles[did];
+  const ents = roles && roles.fan_rate;
   if (!ents || !ents.length) return null;
   const hass = _hfsHass();
   if (!hass) return null;
@@ -343,6 +347,31 @@ function _hfsSpinDuration(did) {
     if (`|high|boost|`.includes(`|${s}|`)) return '0.7s';
     if (`|medium|normal|`.includes(`|${s}|`)) return '1.4s';
     if (`|low|auto|away|`.includes(`|${s}|`)) return '3.2s';
+  }
+  return null;
+}
+
+// State colours mirroring the generated card's rx-* classes — the
+// same stylesheet-order precedence (later rule wins): window_open >
+// heat_demand > offline > online. Devices with no class roles keep
+// the hfs-native idle look. Returns {fill, opacity} or null.
+function _hfsStateColor(did) {
+  const roles = _deviceRoles[did];
+  const hass = roles && _hfsHass();
+  if (!hass) return null;
+  const any = (role, pred) =>
+    (roles[role] || []).some((e) => {
+      const st = hass.states[e];
+      return st && pred(String(st.state).toLowerCase());
+    });
+  if (any('window_open', (s) => s === 'on'))
+    return { fill: '#039be5', opacity: '1' };
+  if (any('heat_demand', (s) => Number(s) > 0))
+    return { fill: '#ef6c00', opacity: '1' };
+  if (roles.status && roles.status.length) {
+    return any('status', (s) => s === 'on')
+      ? { fill: '#2e7d32', opacity: '1' }
+      : { fill: '#9e9e9e', opacity: '0.65' };
   }
   return null;
 }
@@ -384,6 +413,11 @@ function _hfsDecorate(svg, floor) {
       icon.style.transformBox = dur ? 'fill-box' : '';
       icon.style.transformOrigin = dur ? 'center' : '';
     }
+    const color = did && _hfsStateColor(did);
+    const fill = color ? color.fill : '';
+    const opacity = color ? color.opacity : '';
+    if (icon.style.fill !== fill) icon.style.fill = fill;
+    if (icon.style.fillOpacity !== opacity) icon.style.fillOpacity = opacity;
   }
 }
 
@@ -575,7 +609,7 @@ function _hfsStart() {
     // leave a stale animation (and the observer re-decorates anyway)
     hass.connection.subscribeEvents((e) => {
       const eid = e && e.data && e.data.entity_id;
-      if (eid && _speedEnts.has(eid)) _hfsRepaintAll();
+      if (eid && _stateEnts.has(eid)) _hfsRepaintAll();
     }, 'state_changed');
   }
   // late-added cards: rescan on navigation plus a slow fallback — a

@@ -38,6 +38,7 @@ from .const import (
 )
 from .domains import caption_suffix_for, get_domain
 from .editors import adapter_for, detect_editors, resolve_editor
+from .expressions import CLASS_ROLES
 from .importer import studio_marker_positions
 from .mapping import get_floorplan_options
 from .markers import editor_url, icon_for_device, marker_meta_for_device
@@ -150,7 +151,7 @@ async def ws_get_config(
     captions: dict[str, list[list[str]]] = {}
     choices: dict[str, list[list[str]]] = {}
     icons: dict[str, str] = {}
-    spin: dict[str, list[str]] = {}
+    roles: dict[str, dict[str, list[str]]] = {}
     try:
         model = await build_floorplan_model(hass)
         plan = await adapter.async_load(hass)
@@ -161,19 +162,26 @@ async def ws_get_config(
                 continue
             icons[did] = icon_for_device(dev, options)
             domain = get_domain(dev)
-            if domain.can_spin:
-                speed_ents = sorted(
-                    (
-                        str(e["entity_id"])
-                        for e in dev.get("entities") or []
-                        if e.get("role") == "fan_rate" and e.get("entity_id")
-                    ),
+            by_role: dict[str, list[str]] = {}
+            for ent in dev.get("entities") or []:
+                role = str(ent.get("role") or "")
+                eid = ent.get("entity_id")
+                if not eid or role not in CLASS_ROLES:
+                    continue
+                if role == "fan_rate" and not domain.can_spin:
+                    continue
+                by_role.setdefault(role, []).append(str(eid))
+            if "fan_rate" in by_role:
+                # speed% first, then rate, then mode — the same order
+                # expressions.element_class_expr emits for rules
+                by_role["fan_rate"] = sorted(
+                    by_role["fan_rate"],
                     key=lambda e: (
                         0 if "fan_speed" in e else 1 if "fan_rate" in e else 2
                     ),
                 )
-                if speed_ents:
-                    spin[did] = speed_ents
+            if by_role:
+                roles[did] = by_role
             captions[did] = [
                 [eid, sfx]
                 for eid, sfx in caption_pairs_for_device(
@@ -217,7 +225,7 @@ async def ws_get_config(
             "device_captions": captions,
             "caption_choices": choices,
             "device_icons": icons,
-            "device_spin": spin,
+            "device_roles": roles,
         },
     )
 
