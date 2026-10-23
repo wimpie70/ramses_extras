@@ -250,9 +250,13 @@ function _hfsAttach(card) {
       if (dx * dx + dy * dy > TAP_SLOP_PX * TAP_SLOP_PX) return; // a pan
       const g =
         e.target && e.target.closest
-          ? e.target.closest('g[data-x]')
+          ? e.target.closest('g[data-x], svg.fp3-ic')
           : null;
-      if (g) _hfsTapDevice(card, Number(g.getAttribute('data-x')));
+      if (g)
+        _hfsTapDevice(
+          card,
+          Number(g.getAttribute('data-x') ?? g.getAttribute('data-i'))
+        );
     },
     true
   );
@@ -261,9 +265,13 @@ function _hfsAttach(card) {
     (e) => {
       const g =
         e.target && e.target.closest
-          ? e.target.closest('g[data-x]')
+          ? e.target.closest('g[data-x], svg.fp3-ic')
           : null;
-      if (g) _hfsOpenDevice(card, Number(g.getAttribute('data-x')));
+      if (g)
+        _hfsOpenDevice(
+          card,
+          Number(g.getAttribute('data-x') ?? g.getAttribute('data-i'))
+        );
     },
     true
   );
@@ -435,18 +443,24 @@ function _hfsAnimStyle(root) {
 // (their `other` glyph is a '?') and give fan markers the
 // speed-proportional spin the generated card applies via rx-spin*.
 // Attribute/style writes don't reach the childList observer, so this
-// is loop-free.
-function _hfsDecorate(svg, floor) {
+// is loop-free. Handles both renderers: 2D markers are `g.dev[data-x]`
+// inside the plan svg, the 3D overlay layer draws `svg.fp3-ic[data-i]`
+// holding the same rings/halo/glyph markup — both index floor.devices.
+function _hfsDecorate(root, floor) {
   if (!floor) return;
   const devices = floor.devices || [];
-  for (const g of svg.querySelectorAll('g.dev[data-x]')) {
-    const dev = devices[Number(g.getAttribute('data-x'))];
+  const marks = [];
+  for (const g of root.querySelectorAll('g.dev[data-x]'))
+    marks.push([devices[Number(g.getAttribute('data-x'))], g]);
+  for (const ic of root.querySelectorAll('svg.fp3-ic[data-i]'))
+    marks.push([devices[Number(ic.getAttribute('data-i'))], ic]);
+  for (const [dev, holder] of marks) {
     if (!dev || !dev.entity) continue;
     const topo = _entityDevice[dev.entity];
     const did = topo && String(topo.device_id || '');
     const icon =
-      g.querySelector('circle.halo + path') ||
-      g.querySelector('path:not(.cone)');
+      holder.querySelector('circle.halo + path') ||
+      holder.querySelector('path:not(.cone)');
     if (!icon) continue;
     const key =
       (did && _deviceIcons[did]) ||
@@ -537,10 +551,21 @@ function _hfsCaptions(svg, floor) {
 function _hfsPaint(card) {
   if (!card.shadowRoot || !card.__rxZones) return;
   _hfsAnimStyle(card.shadowRoot);
-  const svg = card.shadowRoot.querySelector('svg');
   const floor = _hfsFloor(card);
+  // icons decorate everywhere — the 2D plan svg AND the 3D overlay's
+  // svg.fp3-ic layer; captions/zones stay on the plan svg only (3D has
+  // its own projected labels, and a layer inside an icon svg would be
+  // noise)
+  _hfsDecorate(card.shadowRoot, floor);
+  let svg = null;
+  for (const s of card.shadowRoot.querySelectorAll('svg:not(.fp3-ic)')) {
+    if (s.querySelector('[data-r],[data-x]')) {
+      svg = s;
+      break;
+    }
+    if (!svg) svg = s;
+  }
   if (svg) {
-    _hfsDecorate(svg, floor);
     _hfsCaptions(svg, floor);
   }
   const state = card.__rxZones;
