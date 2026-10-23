@@ -84,22 +84,46 @@ def marker_svg(
     label: str = "",
     color: str,
     text_color: str,
+    style: dict[str, str] | None = None,
 ) -> str:
-    """Emit one positioned device marker group.
+    """Emit one positioned device marker group — badge style.
 
-    The outer ``<g>`` carries the translate + the fill the rx-* state
-    classes override (``color`` feeds currentColor for captions); the
-    inner ``rx-rotor`` wrapper is what the spin animation targets — a
-    CSS rotate on the outer group would clobber the translate.
+    Studio renders markers as a coloured disc + light glyph; matching
+    that keeps markers readable on any room fill. Structure:
+
+      ``rx-disc``   filled circle in the marker colour
+      ``rx-rotor``  wrapper around the icon — spin animation target
+                    (a CSS rotate on the outer group would clobber the
+                    translate)
+      ``rx-ring``   unfilled circle — the status/zone indicator. A
+                    crisp stroke beats recolouring the glyph fill
+                    (which just read as blur on path icons)
+
+    The outer ``<g>`` carries the translate + ``color`` for captions
+    (currentColor). ``rx-*`` classes restyle disc/ring via descendant
+    selectors — never the outer fill.
 
     Caption font sizes scale with the marker ``size`` (studio-resized
     markers keep proportional text); the rx-name/rx-state CSS classes
     remain the fallback for elements that don't set font-size.
+
+    ``style`` overrides badge parts — ``disc`` (fill colour, default
+    ``color``), ``glyph`` (icon colour, default ``#f8fafc``), ``ring``
+    (always-on border stroke, default transparent so only rx-* status
+    classes colour it), ``opacity`` (whole marker). Any CSS colour
+    including alpha forms (``rgba()``/8-digit hex) or ``none``.
     """
+    st = style or {}
+    disc_fill = st.get("disc") or color
+    glyph_fill = st.get("glyph") or "#f8fafc"
+    ring_stroke = st.get("ring") or "transparent"
+    opacity = st.get("opacity")
+    disc_r = size * 0.62
+    icon = size * 0.8
     name_fs = max(6.0, size * 0.45)
     state_fs = max(7.0, size * 0.55)
     name = (
-        f'<text class="rx-name" x="0" y="{-size / 2 - 3:.0f}" '
+        f'<text class="rx-name" x="0" y="{-disc_r - 3:.0f}" '
         f'font-size="{name_fs:.0f}" '
         f'text-anchor="middle">{xml_text(label)}</text>'
         if label
@@ -108,13 +132,19 @@ def marker_svg(
     return (
         f'<g id="{xml_id(element_id)}" '
         f'transform="translate({x:.1f},{y:.1f})" '
-        f'fill="{color}" color="{text_color}">'
-        f'<g class="rx-rotor">'
-        f'<use href="#icon.{icon_key}" '
-        f'x="{-size / 2:.1f}" y="{-size / 2:.1f}" '
-        f'width="{size:.0f}" height="{size:.0f}"/></g>'
+        f'fill="{color}" color="{text_color}"'
+        + (f' opacity="{xml_text(opacity)}"' if opacity else "")
+        + ">"
+        + f'<circle class="rx-disc" r="{disc_r:.1f}" fill="{xml_text(disc_fill)}"/>'
+        + f'<circle class="rx-ring" r="{disc_r:.1f}" fill="none" '
+        + f'stroke="{xml_text(ring_stroke)}" '
+        + f'stroke-width="{max(1.5, size * 0.07):.1f}"/>'
+        + '<g class="rx-rotor">'
+        + f'<use href="#icon.{icon_key}" fill="{xml_text(glyph_fill)}" '
+        + f'x="{-icon / 2:.1f}" y="{-icon / 2:.1f}" '
+        + f'width="{icon:.0f}" height="{icon:.0f}"/></g>'
         f"{name}"
-        f'<text class="rx-state" x="0" y="{size / 2 + state_fs - 2:.0f}" '
+        f'<text class="rx-state" x="0" y="{disc_r + state_fs - 2:.0f}" '
         f'font-size="{state_fs:.0f}" '
         f'text-anchor="middle"></text>'
         "</g>"
@@ -170,8 +200,11 @@ def set_element_style(
 
 
 def merge_svg_overlay(svg_text: str, fragment: str) -> str:
-    """Splice an overlay fragment into an SVG document before ``</svg>``."""
-    idx = svg_text.rfind("</svg>")
+    """Splice an overlay fragment into an SVG document before ``</svg>``
+    — tolerates a namespaced root (``</svg:svg>`` etc.)."""
+    idx = -1
+    for m in re.finditer(r"</svg(?::[\w.-]+)?\s*>", svg_text):
+        idx = m.start()
     if idx == -1:
         return svg_text + "\n" + fragment
     return svg_text[:idx] + fragment + "\n" + svg_text[idx:]

@@ -123,22 +123,47 @@ const CARD_MODULES = [
     tag: 'ramses-floorplan-actions',
     modulePath: '../features/floorplan_helper/ramses-floorplan-actions.js',
   },
+  {
+    tag: 'ramses-editor-embed',
+    modulePath: '../features/floorplan_helper/ramses-editor-embed.js',
+  },
+  {
+    // not a card we render — the tags of the hosts we overlay: loads
+    // whenever an hfs renderer card is on the page. `floorplan-studio-card`
+    // is upstream's own tag (fresh installs); `hfs-floorplan-card` is our
+    // renamed copy for hosts where the legacy studio card is installed too.
+    tag: 'hfs-floorplan-card',
+    extraTags: ['floorplan-studio-card'],
+    modulePath: '../features/floorplan_helper/ramses-hfs-overlay.js',
+  },
 ];
 
 const loaded = new Set();
 
+// The `?v=` key only changes when the backend recomputes its asset hash
+// at startup, so between deploys a cached feature module can keep
+// serving — and Firefox's hard refresh does not bypass the cache for
+// dynamic import() calls the way it does for parser subresources. Stamp
+// every import with the page-load time so a reload always revalidates;
+// the module map still dedupes within the session.
+const loadStamp = Date.now().toString(36);
+
 async function loadCardModule(cardDef) {
-  if (loaded.has(cardDef.tag)) {
+  // dedupe on the module, not the tag — one module may serve several
+  // element names (the overlay attaches to both hfs card tags)
+  if (loaded.has(cardDef.modulePath)) {
     return;
   }
 
-  loaded.add(cardDef.tag);
+  loaded.add(cardDef.modulePath);
   logger.debug('ramses_extras: loading card module for', cardDef.tag, cardDef.modulePath);
 
   const version = window.ramsesExtras?.version || getBootstrapVersion();
-  const modulePath = version
-    ? `${cardDef.modulePath}?v=${encodeURIComponent(version)}`
-    : cardDef.modulePath;
+  const qs = [
+    version && `v=${encodeURIComponent(version)}`,
+    `_=${loadStamp}`,
+  ].filter(Boolean).join('&');
+  const modulePath = `${cardDef.modulePath}?${qs}`;
 
   try {
     await import(modulePath);
@@ -150,11 +175,12 @@ async function loadCardModule(cardDef) {
 
 function scanAndLoad() {
   for (const cardDef of CARD_MODULES) {
-    if (loaded.has(cardDef.tag)) {
+    if (loaded.has(cardDef.modulePath)) {
       continue;
     }
 
-    if (document.querySelector(cardDef.tag)) {
+    const tags = [cardDef.tag, ...(cardDef.extraTags || [])];
+    if (tags.some((t) => document.querySelector(t))) {
       Promise.resolve(window.ramsesExtras?._featuresLoaded)
         .catch(() => {})
         .then(() => loadCardModule(cardDef));
@@ -187,8 +213,8 @@ function scanAndLoad() {
     window.ramsesExtras._featuresLoaded = new Promise((resolve) => {
       const featuresScript = document.createElement('script');
       const versionSuffix = bootstrapVersion
-        ? `?v=${encodeURIComponent(bootstrapVersion)}`
-        : '';
+        ? `?v=${encodeURIComponent(bootstrapVersion)}&_=${loadStamp}`
+        : `?_=${loadStamp}`;
       featuresScript.src = `${window.ramsesExtras.assetBase}/helpers/ramses-extras-features.js${versionSuffix}`;
       featuresScript.onload = () => {
         logger.debug('ramses_extras: features loaded');

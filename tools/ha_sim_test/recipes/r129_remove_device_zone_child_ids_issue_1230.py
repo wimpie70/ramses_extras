@@ -179,12 +179,28 @@ class R129RemoveDeviceZoneChildIds(Recipe):
 
         # 3. Negative checks: a well-formed but unknown child id must
         # fail "not found", and a malformed id must fail validation.
+        #
+        # The unknown id must be absent from BOTH the schema and the
+        # device registry: registry-only orphans left behind by earlier
+        # profiles (e.g. UFH zones) are legitimately removed via the
+        # registry path (issue 1246), so a recycled zone index could make
+        # the call succeed.  Fall back to a nonexistent parent — such a
+        # child id can never resolve.
+        unknown_child_id = "99:999999_00"
+        for idx in ("1F", "1E", "1D", "0F", "0E", "0D", "0C", "0A"):
+            candidate = f"{CTL}_{idx}"
+            if idx in zones:
+                continue
+            if await self._child_in_device_registry(ctx, candidate):
+                continue
+            unknown_child_id = candidate
+            break
         try:
             call_service(
                 ctx.token,
                 "ramses_cc",
                 "remove_device",
-                {"device_id": f"{CTL}_0A"},
+                {"device_id": unknown_child_id},
             )
             ctx.check("unknown child id rejected", False, "call unexpectedly succeeded")
         except RuntimeError as e:

@@ -96,7 +96,8 @@
           "enabled_devices": "Devices to Enable",
           "svg_mode": "SVG mode",
           "custom_svg_path": "Custom SVG path (e.g. /local/.../my-plan.svg)",
-          "icon_overrides": "Icon overrides (TARGET=icon per line)"
+          "icon_overrides": "Icon overrides (TARGET=icon per line)",
+          "editor": "Plan editor (the source of truth for the map)"
         }
       },
       "device_selection": {

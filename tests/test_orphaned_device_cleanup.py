@@ -257,3 +257,85 @@ class TestOrphanedDeviceCleanup:
 
         # Verify no devices were removed
         mock_device_registry.async_remove_device.assert_not_called()
+
+
+class TestForeignIdentifierStubCleanup:
+    """Extras-owned devices carrying only foreign (ramses_cc) identifiers
+    are stubs created when a derived entity copied another integration's
+    identifiers into its DeviceInfo — HA scopes identifier lookup per
+    config entry, so a nameless duplicate is created under ramses_extras
+    that shadows the real device.  They must be removed on sight, even
+    while entities still reference them.
+    """
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create mock Home Assistant instance."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_config_entry(self):
+        """Create mock config entry."""
+        entry = MagicMock()
+        entry.entry_id = "test_entry_id"
+        return entry
+
+    @pytest.fixture
+    def mock_device_registry(self):
+        """Create mock device registry."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_entity_registry(self):
+        """Create mock entity registry."""
+        return MagicMock()
+
+    @pytest.mark.asyncio
+    async def test_foreign_identifier_stub_removed_even_with_entities(
+        self, mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
+    ):
+        stub = MagicMock()
+        stub.id = "stub_device_id"
+        stub.config_entry_id = "test_entry_id"
+        stub.config_entries = {"test_entry_id"}
+        stub.identifiers = {("ramses_cc", "01:150000_03")}
+
+        real = MagicMock()
+        real.id = "real_device_id"
+        real.config_entry_id = "ramses_cc_entry_id"
+        real.config_entries = {"ramses_cc_entry_id"}
+        real.identifiers = {("ramses_cc", "01:150000_03")}
+        real.name = "Lounge"
+
+        mock_device_registry.devices = [stub, real]
+        # the stub still has entities attached — must be removed anyway
+        mock_entity_registry.entities.get.return_value = ["entity_1"]
+        mock_device_registry.async_remove_device = AsyncMock()
+
+        await cleanup_orphaned_devices(
+            mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
+        )
+
+        mock_device_registry.async_remove_device.assert_called_once_with(
+            "stub_device_id"
+        )
+
+    @pytest.mark.asyncio
+    async def test_other_entry_foreign_device_not_removed(
+        self, mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
+    ):
+        real = MagicMock()
+        real.id = "real_device_id"
+        real.config_entry_id = "ramses_cc_entry_id"
+        real.config_entries = {"ramses_cc_entry_id"}
+        real.identifiers = {("ramses_cc", "01:150000_03")}
+
+        mock_device_registry.devices = [real]
+        mock_entity_registry.entities.get.return_value = []
+        mock_device_registry.async_remove_device = AsyncMock()
+
+        await cleanup_orphaned_devices(
+            mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
+        )
+
+        mock_device_registry.async_remove_device.assert_not_called()

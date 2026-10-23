@@ -16,6 +16,7 @@ Kept hass-free so it is unit-testable.
 from __future__ import annotations
 
 import json
+import math
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -23,7 +24,8 @@ from typing import Any
 
 import yaml
 
-from .const import is_generated_rule
+from .const import DEVICE_VIEW_SERVICE, ZONE_TOGGLE_SERVICE, is_generated_rule
+from .svg_utils import slugify, xml_id, xml_text
 
 _MISSING = object()
 
@@ -168,18 +170,22 @@ def _polygon_area(polygon: list[dict[str, float]]) -> float:
     return abs(area) / 2
 
 
-def parse_studio_project(text: str) -> dict[str, Any]:
-    """Parse a floorplan-studio project export (JSON) for area syncing.
+def parse_studio_project(text: str | dict[str, Any]) -> dict[str, Any]:
+    """Flatten a canonical plan (or studio project JSON) for area syncing.
 
-    :param text: project JSON as produced by studio's Projects → Export
+    :param text: project JSON text as produced by studio's
+        Projects → Export, or an already-parsed canonical plan dict
     :return: ``{rooms: [{id, name, polygon, floor}],
         markers: [{x, y, entities, floor}], warnings: [str]}`` — on
         failure ``{"error": str}``
     """
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as err:
-        return {"error": f"Invalid JSON: {err}"}
+    if isinstance(text, dict):
+        data = text
+    else:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as err:
+            return {"error": f"Invalid JSON: {err}"}
     if not isinstance(data, dict) or not isinstance(data.get("floors"), list):
         return {"error": "Not a floorplan-studio project (missing 'floors')"}
 
@@ -452,6 +458,7 @@ def studio_marker(
     icon: str,
     label: str | None = None,
     size: int = 20,
+    actions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one studio ``Marker`` (icon type, more-info tap action)."""
     import uuid
@@ -461,6 +468,10 @@ def studio_marker(
         "x": round(x, 1),
         "y": round(y, 1),
         "entities": [entity_id],
+        # keeps studio's own rule export bound to the same element ids
+        # our generated rules target (elementId wins over the
+        # marker_<id> fallback for multi-entity markers)
+        "elementId": entity_id,
         "style": {
             "type": "icon",
             "icon": icon,
@@ -470,13 +481,74 @@ def studio_marker(
             **({"label": label} if label else {}),
         },
         "stateRules": [],
-        "actions": {
+        "actions": actions
+        or {
             "tap": {"kind": "more-info"},
             "hold": {"kind": "none"},
             "double": {"kind": "none"},
         },
         "visibility": None,
     }
+
+
+def studio_actions_for_device(
+    dev: dict[str, Any],
+    zones: dict[str, Any],
+    toggles: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Marker ``actions`` to write when seeding.
+
+    Everything here is expressed with studio-native action kinds, so
+    the marker's right panel shows the real semantics and studio's own
+    ha-floorplan export emits working actions — the project stays the
+    single source of truth. The service calls are the bridges our
+    frontend module handles (see ``const.ZONE_TOGGLE_SERVICE`` /
+    ``DEVICE_VIEW_SERVICE``); the rule generator regenerates them from
+    live config at export, so a stale ``serviceData`` here can never
+    drift the behaviour.
+    """
+    device_id = str(dev.get("device_id") or "")
+    if device_id and device_id in (zones or {}):
+        return {
+            "tap": {
+                "kind": "call-service",
+                "service": ZONE_TOGGLE_SERVICE,
+                **(
+                    {"serviceData": yaml.safe_dump({"toggles": toggles})}
+                    if toggles
+                    else {}
+                ),
+            },
+            "hold": {"kind": "more-info"},
+            "double": {
+                "kind": "call-service",
+                "service": DEVICE_VIEW_SERVICE,
+                "serviceData": yaml.safe_dump(
+                    {
+                        "device_id": device_id,
+                        "entity": dev.get("primary_entity") or "",
+                    }
+                ),
+            },
+        }
+    return {
+        "tap": {"kind": "more-info"},
+        "hold": {"kind": "none"},
+        "double": {"kind": "none"},
+    }
+
+
+def studio_marker_zone(marker: dict[str, Any], zone: dict[str, Any] | None) -> None:
+    """Write (or clear) the zone config on a studio marker.
+
+    ``marker.ramsesZone`` is unknown to studio, which is the point —
+    it round-trips untouched through import/edit/export, so the zone
+    definition lives *in the project* instead of in our options.
+    """
+    if zone:
+        marker["ramsesZone"] = zone
+    else:
+        marker.pop("ramsesZone", None)
 
 
 # ---------------------------------------------------------------------------
@@ -522,6 +594,17 @@ def load_latest_project(hass: Any) -> str | None:
         return None
 
 
+def project_backups(hass: Any) -> list[str]:
+    """Timestamped project backups, newest first (text, unread skipped)."""
+    out: list[str] = []
+    for path in sorted(_projects_dir(hass).glob("project-*.json"), reverse=True):
+        try:
+            out.append(path.read_text("utf-8"))
+        except OSError:
+            continue
+    return out
+
+
 def studio_marker_positions(
     project: dict[str, Any], floor_name: str | None = None
 ) -> dict[str, dict[str, Any]]:
@@ -529,7 +612,17 @@ def studio_marker_positions(
 
     :param project: parsed project dict (``{"floors": [...]}``)
     :param floor_name: when given, only markers on that floor are read
-    :return: ``{entity_id: {"x", "y", "size", "icon", "label", "floor"}}``
+    :return: ``{entity_id: {"x", "y", "size", "icon", "color", "label",
+        "show_state", "actions", "state_rules", "visibility",
+        "ramses_zone", "ramses_caption", "entities", "glyph", "ring",
+        "opacity", "element_id", "floor"}}``
+
+    The project is the single source of truth: ``actions`` /
+    ``ramsesZone`` / ``state_rules`` / style extras come straight from
+    the marker so studio edits are honoured by the rule generator —
+    our tweaks only cover what studio can't express. ``ramsesZone``,
+    ``ramsesCaption`` and ``style.glyph/ring/opacity`` are our own
+    keys; studio round-trips unknown fields untouched.
     """
     positions: dict[str, dict[str, Any]] = {}
     for floor in project.get("floors") or []:
@@ -548,6 +641,17 @@ def studio_marker_positions(
                         "icon": style.get("icon"),
                         "color": style.get("color"),
                         "label": style.get("label"),
+                        "show_state": style.get("showState", True),
+                        "actions": marker.get("actions") or {},
+                        "state_rules": marker.get("stateRules") or [],
+                        "visibility": marker.get("visibility"),
+                        "ramses_zone": marker.get("ramsesZone"),
+                        "ramses_caption": marker.get("ramsesCaption"),
+                        "entities": list(marker.get("entities") or []),
+                        "glyph": style.get("glyph"),
+                        "ring": style.get("ring"),
+                        "opacity": style.get("opacity"),
+                        "element_id": marker.get("elementId"),
                         "floor": fname,
                     },
                 )
@@ -583,19 +687,473 @@ def best_floor_for_svg(project: dict[str, Any], svg_text: str) -> dict[str, Any]
     return best
 
 
+def dedupe_rooms(rooms: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Collapse same-room duplicates into one entry.
+
+    Earlier merges appended an area-bound clone of a room that already
+    existed name-bound (``areaId`` and ``name`` keyed differently), so
+    a floor may carry two entries per name — studio shows overlapping
+    polygons and export consumers disagree about which copy wins.
+    The first entry is the base (its authored fill/opacity/etc. win);
+    later copies only fill missing fields (a seeded clone's
+    ``areaId`` grafts onto the original).
+    """
+    out: list[dict[str, Any]] = []
+    by_key: dict[str, dict[str, Any]] = {}
+    for room in rooms or []:
+        key = slugify(str(room.get("areaId") or room.get("name") or ""))
+        if not key:
+            out.append(room)
+            continue
+        base = by_key.get(key)
+        if base is None:
+            by_key[key] = room
+            out.append(room)
+            continue
+        for field, value in room.items():
+            base.setdefault(field, value)
+    return out
+
+
+def studio_room_fills(rooms: list[dict[str, Any]] | None) -> dict[str, str]:
+    """Map slugified room key → ``fill`` for a floor's studio rooms.
+
+    Room fill is the colour studio owns (the inspector edits it), so
+    zone highlights derive their colour from it instead of keeping a
+    separate zone colour. Keyed by slugified ``name`` — the same key
+    ``area.<slug>`` elements and zone ``areas`` entries resolve to —
+    plus the room's ``areaId`` when set.
+    """
+    fills: dict[str, str] = {}
+    for room in rooms or []:
+        fill = room.get("fill")
+        if not fill:
+            continue
+        if room.get("name"):
+            fills.setdefault(slugify(str(room["name"])), str(fill))
+        if room.get("areaId"):
+            fills.setdefault(str(room["areaId"]), str(fill))
+    return fills
+
+
+# ---------------------------------------------------------------------------
+# Side-by-side floor combining — one drawing, one studio floor
+# ---------------------------------------------------------------------------
+
+
+_SVG_NS = "http://www.w3.org/2000/svg"
+
+
+def _svg_parse(svg_text: str) -> ET.Element:
+    """Parse an SVG, registering its namespaces so serialisation keeps
+    the original prefixes (inkscape's ``sodipodi:`` etc.).
+
+    The SVG namespace itself stays the *default* prefix — a source that
+    declares ``xmlns:svg=`` would otherwise serialise as ``<svg:svg>``,
+    which downstream ``</svg>`` splices (and some renderers) choke on.
+    """
+    import io
+
+    for _, ns in ET.iterparse(io.BytesIO(svg_text.encode()), events=["start-ns"]):
+        prefix, uri = str(ns[0] or ""), str(ns[1])
+        if uri != _SVG_NS:
+            ET.register_namespace(prefix, uri)
+    ET.register_namespace("", _SVG_NS)
+    return ET.fromstring(svg_text)
+
+
+def _strip_generated(svg_root: ET.Element) -> None:
+    """Remove elements we regenerate at export (``floorplan.*`` ids —
+    stale toolbars/markers baked into earlier merged SVGs)."""
+    for parent in svg_root.iter():
+        for el in list(parent):
+            if str(el.get("id") or "").startswith("floorplan."):
+                parent.remove(el)
+
+
+def _rename_ids(root: ET.Element, taken: set[str], prefix: str) -> list[str]:
+    """Rename ``id`` collisions in ``root``'s subtree (and fix the
+    ``url(#id)``/``href``/``xlink:href`` references inside it)."""
+    renamed: list[str] = []
+    mapping: dict[str, str] = {}
+    for el in root.iter():
+        el_id = el.get("id")
+        if el_id and el_id in taken:
+            new = f"{prefix}.{el_id}"
+            mapping[el_id] = new
+            el.set("id", new)
+            renamed.append(el_id)
+        elif el_id:
+            taken.add(el_id)
+    if not mapping:
+        return renamed
+    for el in root.iter():
+        for attr, value in el.attrib.items():
+            new_value = value
+            for old, new in mapping.items():
+                new_value = new_value.replace(f"url(#{old})", f"url(#{new})")
+                if new_value == f"#{old}":
+                    new_value = f"#{new}"
+            if new_value != value:
+                el.set(attr, new_value)
+    return renamed
+
+
+def combine_svgs(
+    svg_texts: list[tuple[str, str]], gap: float = 120.0
+) -> tuple[str, list[float], list[str]]:
+    """Merge per-floor SVGs into one drawing laid out left→right.
+
+    Floor N's content is wrapped in ``<g id="floor.<name>"
+    transform="translate(off,0)">`` — ``rooms_from_svg`` composes
+    ancestor transforms, so room centroids land in the combined
+    viewBox (= studio canvas) space. All floors should share the same
+    scale (equal viewBox sizes strongly suggested). Colliding element
+    ids are renamed ``<floor>.<id>`` (references rewritten); generated
+    ``floorplan.*`` elements are stripped — export re-injects them.
+
+    :param svg_texts: ``[(floor_name, svg_text), …]`` in left→right order
+    :param gap: px of breathing room between floors
+    :return: ``(merged_svg, offsets, warnings)`` — ``offsets[i]`` is the
+        x-shift applied to floor *i*, for translating project contents
+    """
+    warnings: list[str] = []
+    boxes = [svg_viewbox(t) for _, t in svg_texts]
+    if len({round(h) for _, h in boxes}) > 1:
+        warnings.append(
+            "Floor heights differ — floors are top-aligned, "
+            "shorter ones leave empty space below"
+        )
+    offsets: list[float] = []
+    off = 0.0
+    for w, _ in boxes:
+        offsets.append(off)
+        off += w + gap
+    width, height = off - gap, max(h for _, h in boxes)
+
+    merged = _svg_parse(svg_texts[0][1])
+    _strip_generated(merged)
+    seen: set[str] = {str(el.get("id")) for el in merged.iter() if el.get("id")}
+    for (name, text), off_i in zip(svg_texts[1:], offsets[1:], strict=True):
+        root = _svg_parse(text)
+        _strip_generated(root)
+        renamed = _rename_ids(root, seen, name)
+        if renamed:
+            warnings.append(
+                f"Floor '{name}': {len(renamed)} colliding ids renamed → {name}.<id>"
+            )
+        group = ET.Element(
+            f"{{{_SVG_NS}}}g",
+            {"id": f"floor.{name}", "transform": f"translate({off_i:g},0)"},
+        )
+        group.extend(list(root))
+        merged.append(group)
+    merged.set("viewBox", f"0 0 {width:g} {height:g}")
+    return ET.tostring(merged, encoding="unicode"), offsets, warnings
+
+
+def merge_project_floors(
+    project: dict[str, Any], offsets: list[float], width: float, height: float
+) -> dict[str, Any]:
+    """Fold a multi-floor project into a single side-by-side floor.
+
+    Floor *i*'s rooms/markers/walls are shifted right by ``offsets[i]``
+    — matching :func:`combine_svgs` — so studio positions stay aligned
+    with the merged SVG. Backgrounds compose horizontally when they
+    carry PNG ``dataUri``s at scale 1 / rotation 0 (see
+    :func:`compose_backgrounds`); otherwise floor 1's background wins.
+
+    :return: the same project dict, mutated to a single floor
+    """
+    floors = list(project.get("floors") or [])
+    if len(floors) < 2:
+        return project
+    merged = dict(floors[0])
+    merged["name"] = str(project.get("name") or floors[0].get("name") or "All floors")
+    merged["canvas"] = {"width": width, "height": height}
+
+    for i, floor in enumerate(floors[1:], start=1):
+        off = offsets[i] if i < len(offsets) else offsets[-1]
+        for room in floor.get("rooms") or []:
+            for pt in room.get("polygon") or []:
+                pt["x"] = round(float(pt.get("x") or 0) + off, 2)
+        for wall in floor.get("walls") or []:
+            for pt in wall.get("points") or []:
+                pt["x"] = round(float(pt.get("x") or 0) + off, 2)
+        for marker in floor.get("markers") or []:
+            marker["x"] = round(float(marker.get("x") or 0) + off, 2)
+        merged.setdefault("rooms", []).extend(floor.get("rooms") or [])
+        merged.setdefault("walls", []).extend(floor.get("walls") or [])
+        merged.setdefault("openings", []).extend(floor.get("openings") or [])
+        merged.setdefault("markers", []).extend(floor.get("markers") or [])
+
+    merged["background"] = _compose_backgrounds(floors, offsets, width, height)
+    project["floors"] = [merged]
+    project["activeFloorId"] = merged["id"]
+    return project
+
+
+def _compose_backgrounds(
+    floors: list[dict[str, Any]], offsets: list[float], width: float, height: float
+) -> dict[str, Any]:
+    """Horizontally compose per-floor PNG backgrounds (Pillow).
+
+    Falls back to floor 1's background (with the combined canvas as
+    natural size) when Pillow is unavailable or a floor uses a
+    rotation/non-image background.
+    """
+    import base64
+    import io
+
+    fallback = dict(floors[0].get("background") or {})
+    fallback["naturalW"], fallback["naturalH"] = width, height
+    try:
+        from PIL import Image  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - Pillow ships with HA
+        return fallback
+
+    canvas = Image.new("RGBA", (max(1, int(width)), max(1, int(height))), (0, 0, 0, 0))
+    composed = False
+    for i, floor in enumerate(floors):
+        bg = floor.get("background") or {}
+        uri = str(bg.get("dataUri") or "")
+        if "base64," not in uri or bg.get("rotation"):
+            continue
+        try:
+            img = Image.open(
+                io.BytesIO(base64.b64decode(uri.split("base64,", 1)[1]))
+            ).convert("RGBA")
+        except Exception:  # noqa: BLE001 - un-decodable image
+            continue
+        # the dataUri may be higher-res than the displayed size —
+        # studio renders it at naturalW/H × scale, so composite at
+        # that size or the bottom/right gets clipped
+        scale = float(bg.get("scale") or 1)
+        target = (
+            max(1, int(float(bg.get("naturalW") or img.width) * scale)),
+            max(1, int(float(bg.get("naturalH") or img.height) * scale)),
+        )
+        if img.size != target:
+            img = img.resize(target)
+        opacity = float(bg.get("opacity") or 1)
+        if opacity < 1:
+            alpha = img.getchannel("A").point(lambda a, o=opacity: int(a * o))
+            img.putalpha(alpha)
+        canvas.alpha_composite(
+            img,
+            (
+                int(offsets[i] + float(bg.get("x") or 0)),
+                int(float(bg.get("y") or 0)),
+            ),
+        )
+        composed = True
+    if not composed:
+        return fallback
+    buf = io.BytesIO()
+    canvas.save(buf, "PNG")
+    return {
+        **fallback,
+        "dataUri": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode(),
+    }
+
+
+def project_drawing_svg(floor: dict[str, Any]) -> str | None:
+    """Render a studio floor as the drawing SVG our merge consumes.
+
+    The project is the single source of truth — the drawing is rebuilt
+    from it on every export instead of merged from an authored file,
+    matching floorplan-studio's own export: the floor's background
+    image stretched over the canvas, one ``area.<slug(name)>`` path per
+    room (the element ids ``resolve_bound``/zone toggles target) with
+    the studio fill/opacity, and a centroid room label. Marker/badge
+    groups arrive later via ``build_overlay_fragment``; authored walls
+    and fixtures live in the background image already.
+
+    :return: SVG text, or ``None`` when the floor has no usable canvas
+    """
+    canvas = floor.get("canvas") or {}
+    try:
+        width = float(canvas.get("width") or 0)
+        height = float(canvas.get("height") or 0)
+        ox = float(canvas.get("x") or 0)
+        oy = float(canvas.get("y") or 0)
+    except TypeError, ValueError:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="{ox:g} {oy:g} {width:g} {height:g}">'
+    ]
+    bg = floor.get("background") or {}
+    if bg.get("dataUri"):
+        # an explicit rect (hfs trace: x/y/w in plan units) wins over
+        # the studio default — stretch the image over the canvas
+        bx = float(bg.get("x") or ox)
+        by = float(bg.get("y") or oy)
+        bw = float(bg.get("width") or (width - bx + ox))
+        bh = float(bg.get("height") or (height - by + oy))
+        parts.append(
+            f'<image href="{xml_text(bg["dataUri"])}" x="{bx:g}" y="{by:g}" '
+            f'width="{bw:g}" height="{bh:g}" '
+            f'opacity="{float(bg.get("opacity") or 1):g}"/>'
+        )
+
+    # walls + openings render like studio's canvas — needed when the
+    # floor is drawn natively in studio instead of a background image
+    walls = {str(w.get("id")): w for w in floor.get("walls") or []}
+    for wall in walls.values():
+        d = _polyline_path(wall.get("points") or [])
+        if d:
+            parts.append(
+                f'<path d="{d}" fill="none" '
+                f'stroke="{xml_id(wall.get("color") or "#94a3b8")}" '
+                f'stroke-width="{float(wall.get("thickness") or 4):g}" '
+                f'stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+    for opening in floor.get("openings") or []:
+        # two anchor shapes: studio's wallId + t along a wall, and the
+        # editor-agnostic a..b span (hfs doors/openings)
+        a, b = opening.get("a"), opening.get("b")
+        if isinstance(a, dict) and isinstance(b, dict):
+            ax, ay = float(a.get("x") or 0), float(a.get("y") or 0)
+            bx, by = float(b.get("x") or 0), float(b.get("y") or 0)
+            mx, my = (ax + bx) / 2, (ay + by) / 2
+            ow = max(math.dist((ax, ay), (bx, by)), 1.0)
+            angle = math.degrees(math.atan2(by - ay, bx - ax))
+            oh = float(opening.get("thickness") or 8)
+            fill = _opening_fill(opening)
+            parts.append(
+                f'<rect x="{-ow / 2:g}" y="{-oh / 2:g}" width="{ow:g}" '
+                f'height="{oh:g}" fill="{fill}" stroke="#0f172a" '
+                f'stroke-width="1" transform="translate({mx:g} {my:g}) '
+                f'rotate({angle:g})"/>'
+            )
+            continue
+        wall = walls.get(str(opening.get("wallId") or ""))
+        if not wall:
+            continue
+        p = _point_along_wall(wall, float(opening.get("t") or 0))
+        ow = float(opening.get("width") or 40)
+        oh = float(wall.get("thickness") or 4) + 4
+        fill = _opening_fill(opening)
+        parts.append(
+            f'<rect x="{p[0] - ow / 2:g}" y="{p[1] - oh / 2:g}" '
+            f'width="{ow:g}" height="{oh:g}" fill="{fill}" '
+            f'stroke="#0f172a" stroke-width="1"/>'
+        )
+
+    for room in floor.get("rooms") or []:
+        pts = [
+            (float(p["x"]), float(p["y"]))
+            for p in (room.get("polygon") or [])
+            if isinstance(p, dict) and "x" in p and "y" in p
+        ]
+        if len(pts) < 3:
+            continue
+        area_id = f"area.{slugify(room.get('name'))}"
+        d = "M" + " L".join(f"{x:g} {y:g}" for x, y in pts) + " Z"
+        parts.append(
+            f'<path id="{xml_id(area_id)}" class="room" d="{d}" '
+            f'fill="{_room_fill(room)}" stroke="rgba(255,255,255,0.3)" '
+            f'stroke-width="1"/>'
+        )
+        name = str(room.get("name") or "")
+        if name:
+            cx = sum(x for x, _ in pts) / len(pts)
+            cy = sum(y for _, y in pts) / len(pts)
+            parts.append(
+                f'<text id="{xml_id(area_id)}__label" class="room-label" '
+                f'x="{cx:g}" y="{cy:g}" font-family="sans-serif" '
+                f'font-size="16" font-weight="600" fill="#fff" '
+                f'text-anchor="middle" pointer-events="none" '
+                f'paint-order="stroke" stroke="rgba(0,0,0,.55)" '
+                f'stroke-width="3">{xml_text(name)}</text>'
+            )
+    parts.append("</svg>")
+    return "\n".join(parts) + "\n"
+
+
+def _polyline_path(points: list[dict[str, Any]]) -> str:
+    """``M x y L x y…`` for a wall polyline (no close)."""
+    pts = [
+        (float(p["x"]), float(p["y"]))
+        for p in points
+        if isinstance(p, dict) and "x" in p and "y" in p
+    ]
+    if len(pts) < 2:
+        return ""
+    return "M" + " L".join(f"{x:g} {y:g}" for x, y in pts)
+
+
+def _point_along_wall(wall: dict[str, Any], t: float) -> tuple[float, float]:
+    """Arc-length position ``t`` (0..1) along a wall's polyline."""
+    pts = [
+        (float(p["x"]), float(p["y"]))
+        for p in (wall.get("points") or [])
+        if isinstance(p, dict) and "x" in p and "y" in p
+    ]
+    if len(pts) < 2:
+        return pts[0] if pts else (0.0, 0.0)
+    seg_lens = [math.dist(pts[i - 1], pts[i]) for i in range(1, len(pts))]
+    target = t * sum(seg_lens)
+    for i, seg in enumerate(seg_lens):
+        if target <= seg or i == len(seg_lens) - 1:
+            f = target / seg if seg else 0.0
+            return (
+                pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f,
+                pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f,
+            )
+        target -= seg
+    return pts[-1]
+
+
+def _opening_fill(opening: dict[str, Any]) -> str:
+    """Marker fill per opening kind — doors amber, windows sky."""
+    return {
+        "door": "#fbbf24",
+        "glass": "#7dd3fc",
+        "window": "#93c5fd",
+        "fullwindow": "#93c5fd",
+        "slit": "#bae6fd",
+        "sealed": "#cbd5e1",
+        "open": "#e2e8f0",
+    }.get(str(opening.get("kind") or ""), "#93c5fd")
+
+
+def _room_fill(room: dict[str, Any]) -> str:
+    """``fill`` value for a project room — rgba() for 6-digit hexes."""
+    fill = str(room.get("fill") or "").strip()
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", fill)
+    if not m:
+        return "none"
+    n = int(m.group(1), 16)
+    opacity = float(room.get("opacity") or 0.25)
+    return f"rgba({(n >> 16) & 255},{(n >> 8) & 255},{n & 255},{opacity:g})"
+
+
 __all__ = [
     "PROJECT_LATEST_NAME",
     "backup_project",
     "best_floor_for_svg",
     "build_studio_project",
+    "combine_svgs",
+    "dedupe_rooms",
+    "merge_project_floors",
     "load_latest_project",
     "parse_floorplan_yaml",
     "parse_studio_project",
+    "project_backups",
+    "project_drawing_svg",
     "room_for_point",
     "rooms_from_svg",
     "store_latest_project",
+    "studio_actions_for_device",
     "studio_floor",
     "studio_marker",
     "studio_marker_positions",
+    "studio_room_fills",
+    "studio_marker_zone",
     "svg_viewbox",
 ]

@@ -45,6 +45,7 @@ from .const import (
     DEFAULT_FLOORPLAN_OPTIONS,
     FEATURE_ID,
     OPTION_AREA_OVERRIDES,
+    OPTION_CAPTION_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
     OPTION_DEVICE_ZONES,
     OPTION_ELEMENT_BINDINGS,
@@ -156,6 +157,30 @@ def set_area_override(
         overrides.pop(source, None)
     else:
         overrides[source] = area_id
+    persist_floorplan_options(hass, config_entry, section)
+    return section
+
+
+def set_caption_override(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    device_id: str,
+    items: list[str] | None,
+) -> dict[str, Any]:
+    """Set or clear a device's marker caption.
+
+    :param device_id: ramses device id (e.g. ``32:153289``)
+    :param items: ``["entity_id|suffix", ...]`` — ``[]`` hides the
+        caption, None removes the override (falls back to class
+        defaults)
+    :return: The updated options section
+    """
+    section = get_floorplan_options(config_entry)
+    overrides = section.setdefault(OPTION_CAPTION_OVERRIDES, {})
+    if items is None:
+        overrides.pop(device_id, None)
+    else:
+        overrides[device_id] = list(items)
     persist_floorplan_options(hass, config_entry, section)
     return section
 

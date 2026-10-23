@@ -480,10 +480,46 @@ async def cleanup_orphaned_devices(
         _LOGGER.warning("Entity registry unavailable, skipping cleanup")
         return
 
+    entry_id = getattr(entry, "entry_id", None)
+    if not isinstance(entry_id, str):
+        entry_id = getattr(entry, "id", None)
+    if not isinstance(entry_id, str):
+        entry_id = None
+
+    def _belongs_to_entry(device_entry: Any) -> bool:
+        # HA 2026.9: config_entries (list) is deprecated, replaced by
+        # config_entry_id (single string).  Check the new field first,
+        # fall back to the old list for older HA versions.
+        dev_ce_id = getattr(device_entry, "config_entry_id", None)
+        if dev_ce_id is not None:
+            return bool(entry_id) and dev_ce_id == entry_id
+        return bool(entry_id) and entry_id in device_entry.config_entries
+
     ramses_devices = []
+    stub_devices = []
     for device_entry in iter_registry_device_entries(device_registry):
         if any(identifier[0] == DOMAIN for identifier in device_entry.identifiers):
             ramses_devices.append(device_entry)
+        elif device_entry.identifiers and _belongs_to_entry(device_entry):
+            # An extras-owned device whose identifiers all belong to a
+            # foreign integration is a stub: a derived entity copied the
+            # ramses_cc identifiers into its DeviceInfo, but HA scopes
+            # identifier lookup per config entry, so a nameless duplicate
+            # was created under ramses_extras that shadows the real
+            # device (floorplan_helper heat-demand mirrors).
+            stub_devices.append(device_entry)
+
+    for device_entry in stub_devices:
+        try:
+            result = device_registry.async_remove_device(device_entry.id)
+            if inspect.isawaitable(result):
+                await result
+            _LOGGER.info(
+                "Removed foreign-identifier stub device: %s",
+                list(device_entry.identifiers)[0][1],
+            )
+        except Exception as e:
+            _LOGGER.warning("Failed to remove stub device %s: %s", device_entry.id, e)
 
     orphaned_devices = []
     for device_entry in ramses_devices:
@@ -525,22 +561,8 @@ async def cleanup_orphaned_devices(
 
     _LOGGER.info("Removing %d orphaned devices", len(orphaned_devices))
 
-    entry_id = getattr(entry, "entry_id", None)
-    if not isinstance(entry_id, str):
-        entry_id = getattr(entry, "id", None)
-    if not isinstance(entry_id, str):
-        entry_id = None
-
     for device_id, device_entry in orphaned_devices:
-        # HA 2026.9: config_entries (list) is deprecated, replaced by
-        # config_entry_id (single string).  Check the new field first,
-        # fall back to the old list for older HA versions.
-        dev_ce_id = getattr(device_entry, "config_entry_id", None)
-        if dev_ce_id is not None:
-            belongs = bool(entry_id) and dev_ce_id == entry_id
-        else:
-            belongs = bool(entry_id) and entry_id in device_entry.config_entries
-        if entry_id and not belongs:
+        if entry_id and not _belongs_to_entry(device_entry):
             continue
 
         try:

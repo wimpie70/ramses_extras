@@ -1,7 +1,7 @@
 """Unit tests for the floorplan_helper feature (pure-logic parts)."""
 
 from copy import deepcopy
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -12,10 +12,6 @@ from custom_components.ramses_extras.features.floorplan_helper import (
     importer,
     mapping,
     topology,
-)
-from custom_components.ramses_extras.features.floorplan_helper.config_flow import (
-    _format_icon_overrides,
-    _parse_icon_overrides,
 )
 from custom_components.ramses_extras.features.floorplan_helper.const import (
     DEFAULT_FLOORPLAN_OPTIONS,
@@ -31,6 +27,10 @@ from custom_components.ramses_extras.features.floorplan_helper.const import (
     TOOLBAR_ELEMENT_IMPORT,
     TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
+    ZONE_SEED_PALETTE,
+)
+from custom_components.ramses_extras.features.floorplan_helper.platforms import (
+    binary_sensor as fp_binary_sensor,
 )
 from custom_components.ramses_extras.framework.helpers.ramses_topology import (
     build_owner_map,
@@ -216,14 +216,10 @@ class TestRulesAndCard:
         )
         rules = generator._build_rules(_model(), opts)
         assert any(r.get("entity") == "light.kitchen" for r in rules)
-        # extra rules are emitted last (after the generated toolbar
-        # rules) so user-authored actions win on conflicting elements
+        # extra rules are emitted last so user-authored actions win on
+        # conflicting elements
         idx = next(i for i, r in enumerate(rules) if r.get("entity") == "light.kitchen")
-        assert idx > next(
-            i
-            for i, r in enumerate(rules)
-            if str(r.get("element", "")).startswith("floorplan.")
-        )
+        assert idx == len(rules) - 1
 
     def test_class_exprs_have_no_return_keyword(self):
         # ha-floorplan wraps ${…} bodies in `return …` only when the body
@@ -271,11 +267,11 @@ class TestRulesAndCard:
         assert "sensor.x" not in entities
         assert "binary_sensor.y_status" not in entities
         assert "light.kitchen" in entities
-        # the stale untagged toolbar rule is dropped — only the fresh
-        # generated (tagged) one remains
+        # the stale untagged toolbar rule is dropped — element rules are
+        # generated, not user-authored, and the toolbar was removed
         assert (
             sum(1 for r in rules if str(r.get("element", "")) == "floorplan.export")
-            == 1
+            == 0
         )
 
     def test_card_yaml_markers_and_parse(self):
@@ -297,68 +293,38 @@ class TestRulesAndCard:
 
 
 class TestToolbar:
-    def test_toolbar_rules_emitted(self):
+    def test_no_toolbar_rules_emitted(self):
+        # The in-SVG toolbar was removed — export/upload/studio live on
+        # the actions card, so no floorplan.* element rules are emitted.
         rules = generator._build_rules(_model(), _options())
-        by_element = {r.get("element"): r for r in rules if "element" in r}
-        # export/import/upload go through ll-custom so the module-level
-        # listener can run dialogs (file picker, results, copy buttons)
-        for element_id, action in (
-            (TOOLBAR_ELEMENT_EXPORT, "export"),
-            (TOOLBAR_ELEMENT_IMPORT, "import"),
-            (TOOLBAR_ELEMENT_UPLOAD, "upload"),
-        ):
-            tap = by_element[element_id]["tap_action"]
-            assert tap["action"] == "fire-dom-event"
-            assert tap["ramses_fp_action"] == action
-        assert by_element[TOOLBAR_ELEMENT_EDITOR]["tap_action"]["action"] == "url"
-        assert by_element[TOOLBAR_ELEMENT_PLANNER]["tap_action"]["action"] == "url"
-
-    def test_toolbar_planner_deduped_when_same_url(self):
-        # planner button is skipped when it resolves to the editor URL
-        rules = generator._build_rules(
-            _model(), _options(planner_url=None, editor_url=None)
-        )
-        by_element = {r.get("element"): r for r in rules if "element" in r}
-        same = generator._build_rules(
-            _model(),
-            _options(editor_url="/studio", planner_url="/studio"),
-        )
-        same_elements = {r.get("element") for r in same}
-        assert TOOLBAR_ELEMENT_PLANNER not in same_elements
-        assert TOOLBAR_ELEMENT_PLANNER in by_element
-
-    def test_toolbar_disabled(self):
-        rules = generator._build_rules(_model(), _options(toolbar_enabled=False))
         assert not any(
-            str(r.get("element", "")).startswith("floorplan.") for r in rules
+            str(r.get("element", "")).startswith("floorplan.toolbar")
+            or str(r.get("element", ""))
+            in {
+                TOOLBAR_ELEMENT_EXPORT,
+                TOOLBAR_ELEMENT_UPLOAD,
+                TOOLBAR_ELEMENT_EDITOR,
+                TOOLBAR_ELEMENT_IMPORT,
+                TOOLBAR_ELEMENT_PLANNER,
+            }
+            for r in rules
         )
-
-    def test_internal_tool_url_uses_navigate(self):
-        rules = generator._build_rules(
-            _model(), _options(editor_url="/floorplan-editor/")
-        )
-        editor = next(r for r in rules if r.get("element") == TOOLBAR_ELEMENT_EDITOR)
-        assert editor["tap_action"]["action"] == "navigate"
-        assert editor["tap_action"]["navigation_path"] == "/floorplan-editor/"
 
     def test_toolbar_svg_snippet(self):
         snippet = generator.build_toolbar_svg()
         for element_id in (
             TOOLBAR_ELEMENT_EXPORT,
-            TOOLBAR_ELEMENT_IMPORT,
             TOOLBAR_ELEMENT_UPLOAD,
             TOOLBAR_ELEMENT_EDITOR,
-            TOOLBAR_ELEMENT_PLANNER,
         ):
             assert f'id="{element_id}"' in snippet
+        # legacy glyphs are not emitted anymore
+        assert f'id="{TOOLBAR_ELEMENT_IMPORT}"' not in snippet
+        assert f'id="{TOOLBAR_ELEMENT_PLANNER}"' not in snippet
 
-    def test_generated_svg_includes_toolbar(self):
+    def test_generated_svg_has_no_toolbar(self):
         svg = generator.build_elements_svg(_model(devices=[_device()]), _options())
-        assert 'id="floorplan.toolbar"' in svg
-        svg_no = generator.build_elements_svg(
-            _model(devices=[_device()]), _options(toolbar_enabled=False)
-        )
-        assert 'id="floorplan.toolbar"' not in svg_no
+        assert 'id="floorplan.toolbar"' not in svg
 
 
 class TestImporter:
@@ -570,12 +536,6 @@ class TestMapping:
         same = mapping.snapshot_diff(snap, snap)
         assert same["devices_added"] == [] and same["devices_changed"] == []
 
-    def test_parse_and_format_icon_overrides(self):
-        text = "FAN=gauge\n# comment\nbogusline\nTRV=notanicon\nCTL=thermostat"
-        parsed = _parse_icon_overrides(text)
-        assert parsed == {"FAN": "gauge", "CTL": "thermostat"}
-        assert _format_icon_overrides(parsed) == "CTL=thermostat\nFAN=gauge"
-
 
 class TestDomains:
     def test_device_class_from_id(self):
@@ -607,8 +567,38 @@ class TestDomains:
         assert not hgi.zone_eligible
         assert not zone_eligible(_device(device_id="18:1", device_class="HGI"))
         assert zone_eligible(_device())
-        # heat classes resolve to the registered heat domain
-        assert get_domain("TRV").device_classes
+        # heat classes resolve to their registered heat domains
+        assert get_domain("TRV").default_icon == "radiator"
+        assert get_domain("CTL").default_icon == "thermostat"
+        assert get_domain("OTB").default_icon == "water-boiler"
+        assert get_domain("DHW").default_icon == "water-boiler"
+        assert get_domain("OUT").default_icon == "thermometer"
+
+    def test_heat_captions(self):
+        from custom_components.ramses_extras.features.floorplan_helper.domains import (
+            get_domain,
+        )
+
+        trv = get_domain("TRV").caption_entities(
+            [
+                {"entity_id": "number.04_000001_heat_demand"},
+                {"entity_id": "sensor.04_000001_temperature"},
+            ]
+        )
+        assert trv == [
+            ("number.04_000001_heat_demand", "%"),
+            ("sensor.04_000001_temperature", "°"),
+        ]
+        otb = get_domain("OTB").caption_entities(
+            [
+                {"entity_id": "sensor.10_000001_rel_modulation_level"},
+                {"entity_id": "sensor.10_000001_boiler_water_temp"},
+            ]
+        )
+        assert otb == [
+            ("sensor.10_000001_boiler_water_temp", "°"),
+            ("sensor.10_000001_rel_modulation_level", "%"),
+        ]
 
 
 class TestSvgUtils:
@@ -630,6 +620,7 @@ class TestSvgUtils:
         assert 'id="climate.32_153289"' in m
         assert "translate(10.0,20.0)" in m
         assert "rx-rotor" in m and "FAN 32:153289" in m and "rx-name" in m
+        assert "rx-disc" in m and "rx-ring" in m
         b = svg_utils.svg_button("floorplan.export", "X", "tip", 34)
         assert 'id="floorplan.export"' in b and "<title>tip</title>" in b
 
@@ -686,9 +677,13 @@ class TestZones:
         toggles = zones.zone_toggle_specs("32:153289", areas, bound)
         assert toggles[0]["class"] == "rx-zone-32_153289"
         assert toggles[1]["class"] == "rx-zone-32_153289_dev"
-        # actions: N local toggles + one sync broadcast + clear event
-        acts = zones.zone_tap_actions(toggles)
-        assert acts[-1]["ramses_zone_sync"] == toggles
+        # tap = one call-service to the zone bridge — the shape studio
+        # can express, so the action survives studio's own export
+        act = zones.zone_tap_actions(toggles)
+        assert act["action"] == "call-service"
+        assert act["service"] == "ramses_extras.floorplan_zone_toggle"
+        assert act["service_data"]["toggles"] == toggles
+        # legacy ll-custom clear stays for previously exported yaml
         assert zones.zone_clear_action(toggles)["ramses_zone_clear"] == toggles
 
     def test_standalone_members_dedupes(self):
@@ -707,6 +702,61 @@ class TestZones:
         }
         # model entity ids + device ids are excluded; plain entities kept
         assert zones.standalone_members(model, zones_cfg) == ["cover.klep_1"]
+
+    def test_seed_heat_zones(self):
+        from custom_components.ramses_extras.features.floorplan_helper import zones
+
+        heat = [
+            {
+                "ctl_id": "01:150000",
+                "zone_id": "03",
+                "name": "Woonkamer",
+                "sensor": "01:150003",
+                "actuators": ["04:150003", "04:150099"],
+                "class": "radiator_valve",
+            },
+            {
+                # no sensor → first actuator parents the zone
+                "ctl_id": "01:150000",
+                "zone_id": "04",
+                "name": "Badkamer",
+                "sensor": None,
+                "actuators": ["13:150004"],
+                "class": "zone_valve",
+            },
+            {
+                # empty zone (no sensor/actuators) is skipped
+                "ctl_id": "01:150000",
+                "zone_id": "00",
+                "name": "CLounge",
+                "sensor": None,
+                "actuators": [],
+                "class": "",
+            },
+            {
+                # unmatched room name → zone still seeded, no areas
+                "ctl_id": "01:150000",
+                "zone_id": "05",
+                "name": "Conservatory",
+                "sensor": "01:150005",
+                "actuators": ["04:150005"],
+                "class": "radiator_valve",
+            },
+        ]
+        rooms = {"woonkamer", "badkamer"}
+        cfg = {"32:153289": {"areas": ["keuken"], "devices": []}}
+        seeded = zones.seed_heat_zones(heat, rooms, cfg)
+        assert seeded == ["01:150003", "13:150004", "01:150005"]
+        lounge = cfg["01:150003"]
+        assert lounge["areas"] == ["woonkamer"]
+        assert lounge["devices"] == ["04:150003", "04:150099"]
+        assert lounge["color"] in ZONE_SEED_PALETTE
+        assert cfg["13:150004"]["areas"] == ["badkamer"]
+        assert cfg["13:150004"]["devices"] == []
+        assert cfg["01:150005"]["areas"] == []
+        # re-seed never overwrites an existing (possibly user-edited) zone
+        seeded2 = zones.seed_heat_zones(heat, rooms, cfg)
+        assert seeded2 == []
 
 
 class TestCaption:
@@ -764,3 +814,714 @@ class TestCaption:
         ]
         assert len(texts) == 1
         assert " ppm" in texts[0]["state_action"]["service_data"]["text"]
+
+    def test_caption_fields_per_class_selection(self):
+        # caption_fields {class: [group keys]} filters the domain's
+        # caption_groups — FAN picking only outdoor_temp drops indoor
+        def _texts(rules):
+            return [
+                r
+                for r in rules
+                if r.get("state_action", {}).get("service") == "floorplan.text_set"
+            ]
+
+        rules = generator._build_rules(
+            _model(devices=[self._dev()]),
+            _options(caption_fields={"FAN": ["outdoor_temp"]}),
+        )
+        assert {r["entity"] for r in _texts(rules)} == {"sensor.32_153289_outdoor_temp"}
+        expr = _texts(rules)[0]["state_action"]["service_data"]["text"]
+        assert "outdoor_temp" in expr and "indoor_temp" not in expr
+
+        # empty list for the class = no caption
+        rules = generator._build_rules(
+            _model(devices=[self._dev()]),
+            _options(caption_fields={"FAN": []}),
+        )
+        assert not _texts(rules)
+
+        # absent class key keeps the domain default (indoor + outdoor)
+        rules = generator._build_rules(
+            _model(devices=[self._dev()]), _options(caption_fields={})
+        )
+        assert {r["entity"] for r in _texts(rules)} == {
+            "sensor.32_153289_indoor_temp",
+            "sensor.32_153289_outdoor_temp",
+        }
+
+    def test_marker_entities_drive_caption(self):
+        # a studio marker with more than one entity attached shows
+        # those states — "what's on the marker is what it shows";
+        # suffixes come from the domain groups, then name heuristics
+        from custom_components.ramses_extras.features.floorplan_helper.rules import (
+            caption_pairs_for_device,
+        )
+
+        dev = self._dev()
+        meta = {
+            "sensor.32_153289_fan_rate": {
+                "entities": [
+                    "sensor.32_153289_indoor_temp",
+                    "sensor.32_153289_indoor_humidity",
+                ]
+            }
+        }
+        pairs = caption_pairs_for_device(
+            dev,
+            _options(),
+            meta["sensor.32_153289_fan_rate"],
+        )
+        assert pairs == [
+            ("sensor.32_153289_indoor_temp", "°"),
+            ("sensor.32_153289_indoor_humidity", "%"),
+        ]
+
+        # a single-entity marker keeps the group-derived caption
+        meta["sensor.32_153289_fan_rate"]["entities"] = ["sensor.32_153289_fan_rate"]
+        pairs = caption_pairs_for_device(
+            dev,
+            _options(),
+            meta["sensor.32_153289_fan_rate"],
+        )
+        assert [e for e, _ in pairs] == [
+            "sensor.32_153289_indoor_temp",
+            "sensor.32_153289_outdoor_temp",
+        ]
+
+        # an explicit ramsesCaption still wins over attached entities
+        meta["sensor.32_153289_fan_rate"]["entities"] = [
+            "sensor.32_153289_indoor_temp",
+            "sensor.32_153289_indoor_humidity",
+        ]
+        meta["sensor.32_153289_fan_rate"]["ramses_caption"] = [
+            "sensor.32_153289_co2_level| ppm"
+        ]
+        pairs = caption_pairs_for_device(
+            dev,
+            _options(),
+            meta["sensor.32_153289_fan_rate"],
+        )
+        assert pairs == [("sensor.32_153289_co2_level", "ppm")]
+
+    def test_caption_suffix_heuristics(self):
+        from custom_components.ramses_extras.features.floorplan_helper.domains import (
+            caption_suffix_for,
+            get_domain,
+        )
+
+        fan = get_domain("FAN")
+        # domain group patterns win over the generic heuristics
+        assert caption_suffix_for("sensor.x_indoor_temp", fan) == "°"
+        # heuristic fallbacks for entities no group mentions
+        assert caption_suffix_for("sensor.x_indoor_humidity", fan) == "%"
+        assert caption_suffix_for("sensor.x_co2_level", fan) == " ppm"
+        assert caption_suffix_for("number.x_fan_speed", fan) == ""
+
+
+class TestMarkerStyle:
+    def test_parse_and_defaults(self):
+        from custom_components.ramses_extras.features.floorplan_helper.markers import (
+            marker_style_for_key,
+            parse_marker_style,
+        )
+
+        assert parse_marker_style("disc:#22c55e,glyph:#fff,ring:rgba(0,0,0,0.4)") == {
+            "disc": "#22c55e",
+            "glyph": "#fff",
+            "ring": "rgba(0,0,0,0.4)",
+        }
+        assert parse_marker_style("bogus:#000") == {}
+        assert parse_marker_style({"disc": "#000", "junk": "x"}) == {"disc": "#000"}
+        assert marker_style_for_key(_device(), _options()) == {}
+
+    def test_precedence_device_class_entity(self):
+        from custom_components.ramses_extras.features.floorplan_helper.markers import (
+            marker_style_for_key,
+        )
+
+        dev = _device()
+        opts = _options(
+            marker_style_overrides={
+                "FAN": {"disc": "#111"},
+                dev["primary_entity"]: {"glyph": "#222"},
+                dev["device_id"]: {"ring": "#333"},
+            }
+        )
+        assert marker_style_for_key(dev, opts) == {"ring": "#333"}
+        # no device-id hit → class wins over entity
+        assert marker_style_for_key(_device(device_id="99:000000"), opts) == {
+            "disc": "#111"
+        }
+        # entity is the fallback when neither id nor class matches
+        assert marker_style_for_key(
+            _device(device_id="99:000000", device_class="REM"), opts
+        ) == {"glyph": "#222"}
+
+    def test_badge_svg_parts(self):
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            svg_utils,
+        )
+
+        m = svg_utils.marker_svg(
+            "climate.01_000001",
+            5.0,
+            5.0,
+            20.0,
+            "thermostat",
+            color="#ffc107",
+            text_color="#334155",
+            style={
+                "disc": "#22c55e",
+                "glyph": "#000",
+                "ring": "#f00",
+                "opacity": "0.9",
+            },
+        )
+        assert 'class="rx-disc" r="12.4" fill="#22c55e"' in m
+        assert 'class="rx-ring" r="12.4" fill="none" stroke="#f00"' in m
+        assert 'fill="#000"' in m and 'opacity="0.9"' in m
+
+        plain = svg_utils.marker_svg(
+            "climate.01_000001", 0, 0, 20, "fan", color="#ffc107", text_color="#334155"
+        )
+        assert 'stroke="transparent"' in plain and 'fill="#f8fafc"' in plain
+
+
+class TestStudioMarkerMeta:
+    """Studio edits persist in the project — the rule builder honours
+    marker actions / showState instead of regenerating over them."""
+
+    def _meta(self, actions=None, show_state=True):
+        return {
+            "sensor.32_153289_fan_rate": {
+                "actions": actions or {},
+                "show_state": show_state,
+            }
+        }
+
+    def _tap_rule(self, rules, entity="sensor.32_153289_fan_rate"):
+        return next(r for r in rules if r.get("entity") == entity and "tap_action" in r)
+
+    def test_studio_tap_action_mapping(self):
+        from custom_components.ramses_extras.features.floorplan_helper.rules import (
+            studio_tap_action,
+        )
+
+        assert studio_tap_action({"kind": "more-info"}) == {"action": "more-info"}
+        assert studio_tap_action({"kind": "toggle"}) == {"action": "toggle"}
+        assert studio_tap_action({"kind": "navigate", "navPath": "/lovelace/x"}) == {
+            "action": "navigate",
+            "navigation_path": "/lovelace/x",
+        }
+        assert studio_tap_action({"kind": "url", "url": "https://x"}) == {
+            "action": "url",
+            "url_path": "https://x",
+        }
+        assert studio_tap_action(
+            {
+                "kind": "call-service",
+                "service": "fan.toggle",
+                "serviceData": "speed: high",
+            }
+        ) == {
+            "action": "call-service",
+            "service": "fan.toggle",
+            "service_data": {"speed": "high"},
+        }
+        assert studio_tap_action({"kind": "none"}) is None
+        # missing path → incomplete, inherit our default
+        assert studio_tap_action({"kind": "navigate"}) is None
+        assert studio_tap_action({"kind": "call-service"}) is None
+
+    def test_zoned_parent_keeps_zone_tap_on_studio_defaults(self):
+        dev = _device()
+        opts = _options(device_zones={"32:153289": {"areas": ["woonkamer"]}})
+        # studio's default kinds + our seeded class_toggle shorthand all
+        # mean "keep the zone behaviour"
+        for actions in (
+            {},
+            {"tap": {"kind": "none"}},
+            {"tap": {"kind": "more-info"}},
+            {
+                "tap": {
+                    "kind": "call-service",
+                    "service": "floorplan.class_toggle",
+                    "serviceData": 'class: "rx-zone-32_153289"',
+                }
+            },
+            {
+                "tap": {
+                    "kind": "call-service",
+                    "service": "ramses_extras.floorplan_zone_toggle",
+                    "serviceData": "toggles: []",
+                }
+            },
+        ):
+            rules = generator._build_rules(
+                _model(devices=[dev]), opts, self._meta(actions)
+            )
+            act = self._tap_rule(rules)["tap_action"]
+            assert act["action"] == "call-service"
+            assert act["service"] == "ramses_extras.floorplan_zone_toggle"
+            toggles = act["service_data"]["toggles"]
+            assert toggles[0]["class"] == "rx-zone-32_153289"
+
+    def test_zoned_parent_honours_explicit_studio_gestures(self):
+        dev = _device()
+        opts = _options(device_zones={"32:153289": {"areas": ["woonkamer"]}})
+        meta = self._meta(
+            {
+                "tap": {"kind": "navigate", "navPath": "/dash/fan"},
+                "hold": {"kind": "toggle"},
+                "double": {"kind": "url", "url": "https://example.com"},
+            }
+        )
+        rules = generator._build_rules(_model(devices=[dev]), opts, meta)
+        tap = self._tap_rule(rules)
+        assert tap["tap_action"] == {
+            "action": "navigate",
+            "navigation_path": "/dash/fan",
+        }
+        assert tap["hold_action"] == {"action": "toggle"}
+        assert tap["double_tap_action"] == {
+            "action": "url",
+            "url_path": "https://example.com",
+        }
+
+    def test_non_zoned_studio_actions_applied(self):
+        dev = _device()
+        meta = self._meta(
+            {
+                "tap": {"kind": "toggle"},
+                "double": {"kind": "navigate", "navPath": "/x"},
+            }
+        )
+        rules = generator._build_rules(_model(devices=[dev]), _options(), meta)
+        tap = self._tap_rule(rules)
+        assert tap["tap_action"] == {"action": "toggle"}
+        assert tap["double_tap_action"]["navigation_path"] == "/x"
+
+    def test_no_meta_falls_back_to_defaults(self):
+        dev = _device()
+        rules = generator._build_rules(_model(devices=[dev]), _options(), None)
+        assert self._tap_rule(rules)["tap_action"] == {"action": "more-info"}
+
+    def test_show_state_false_hides_caption(self):
+        dev = _device(
+            entities=[
+                {"entity_id": "sensor.32_153289_indoor_temp", "role": "temperature"},
+            ]
+        )
+
+        def texts(rs):
+            return [
+                r
+                for r in rs
+                if r.get("state_action", {}).get("service") == "floorplan.text_set"
+            ]
+
+        with_caption = generator._build_rules(
+            _model(devices=[dev]), _options(), self._meta()
+        )
+        assert texts(with_caption)
+        hidden = generator._build_rules(
+            _model(devices=[dev]), _options(), self._meta(show_state=False)
+        )
+        assert not texts(hidden)
+
+    def test_studio_actions_for_device(self):
+        from custom_components.ramses_extras.features.floorplan_helper.importer import (
+            studio_actions_for_device,
+        )
+
+        toggles = [{"class": "rx-zone-32_153289", "elements": ["area.a"]}]
+        zoned = studio_actions_for_device(_device(), {"32:153289": {}}, toggles)
+        assert zoned["tap"]["kind"] == "call-service"
+        assert zoned["tap"]["service"] == "ramses_extras.floorplan_zone_toggle"
+        assert "rx-zone-32_153289" in zoned["tap"]["serviceData"]
+        assert zoned["hold"]["kind"] == "more-info"
+        assert zoned["double"]["service"] == "ramses_extras.floorplan_device_view"
+        plain = studio_actions_for_device(_device(), {})
+        assert plain["tap"]["kind"] == "more-info"
+
+    def test_marker_ramses_zone_is_ssot(self):
+        # marker.ramsesZone in the project wins over the option map —
+        # studio stores the zone, not our config menu
+        dev = _device()
+        meta = self._meta()
+        meta["sensor.32_153289_fan_rate"]["ramses_zone"] = {"areas": ["vide_wing"]}
+        rules = generator._build_rules(
+            _model(devices=[dev]),
+            _options(device_zones={"32:153289": {"areas": ["woonkamer"]}}),
+            meta,
+        )
+        act = self._tap_rule(rules)["tap_action"]
+        elements = act["service_data"]["toggles"][0]["elements"]
+        assert elements == ["area.vide_wing"]
+
+    def test_zone_colour_is_highlight_only(self):
+        # zone.color is the selected-zone outline colour: an explicit
+        # pick wins, and a zone without one inherits its first room's
+        # fill — room fills themselves are never rewritten
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            markers,
+        )
+
+        zones = markers.effective_zones(
+            _model(devices=[_device()]),
+            _options(
+                device_zones={
+                    "32:153289": {"areas": ["woonkamer"], "color": "#123456"},
+                    "37:168270": {"areas": ["woonkamer"]},
+                }
+            ),
+            None,
+            {"woonkamer": "#aabbcc"},
+        )
+        assert zones["32:153289"]["color"] == "#123456"
+        assert zones["37:168270"]["color"] == "#aabbcc"
+
+    def test_marker_ramses_caption_is_ssot(self):
+        # marker.ramsesCaption in the project wins over caption_overrides
+        # — same SSOT rule as ramsesZone
+        dev = _device(
+            entities=[
+                {"entity_id": "sensor.32_153289_indoor_temp", "role": "temperature"},
+                {"entity_id": "sensor.32_153289_outdoor_temp", "role": "temperature"},
+            ]
+        )
+        meta = self._meta()
+        meta["sensor.32_153289_fan_rate"]["ramses_caption"] = [
+            "sensor.32_153289_outdoor_temp|!"
+        ]
+        rules = generator._build_rules(
+            _model(devices=[dev]),
+            _options(
+                caption_overrides={"32:153289": ["sensor.32_153289_indoor_temp|?"]}
+            ),
+            meta,
+        )
+        texts = [
+            r
+            for r in rules
+            if r.get("state_action", {}).get("service") == "floorplan.text_set"
+        ]
+        assert {r["entity"] for r in texts} == {"sensor.32_153289_outdoor_temp"}
+        expr = texts[0]["state_action"]["service_data"]["text"]
+        assert "outdoor_temp" in expr and "indoor_temp" not in expr
+        # empty list on the marker hides the caption outright
+        meta["sensor.32_153289_fan_rate"]["ramses_caption"] = []
+        rules = generator._build_rules(_model(devices=[dev]), _options(), meta)
+        assert not [
+            r
+            for r in rules
+            if r.get("state_action", {}).get("service") == "floorplan.text_set"
+        ]
+
+    def test_migrate_overrides_to_project(self):
+        # option-level overrides stamp into marker/project fields once;
+        # absent-only — afterwards the project owns them
+        from custom_components.ramses_extras.features.floorplan_helper.bundle import (
+            migrate_overrides_to_project,
+        )
+        from custom_components.ramses_extras.features.floorplan_helper.const import (
+            FLOORPLAN_ICON_MDI,
+        )
+
+        dev = _device()
+        marker = importer.studio_marker("sensor.32_153289_fan_rate", 10, 10, "mdi:fan")
+        project = importer.build_studio_project(
+            "P", [importer.studio_floor("bg", 640, 560, [], [marker])]
+        )
+        # seeded marker already carries an icon → only absent fields stamp
+        marker["style"].pop("icon", None)
+        opts = _options(
+            icon_overrides={"FAN": "gauge"},
+            marker_style_overrides={"32:153289": {"disc": "#111", "glyph": "#222"}},
+            caption_overrides={"32:153289": ["sensor.32_153289_fan_rate|%"]},
+            device_zones={"32:153289": {"areas": ["woonkamer"]}},
+            device_view_url="/dash/fan",
+        )
+        assert migrate_overrides_to_project(project, _model(devices=[dev]), opts)
+        assert marker["style"]["icon"] == FLOORPLAN_ICON_MDI["gauge"]
+        # disc→style.color doesn't stamp: studio's colour field already
+        # owns the disc (seeded #ffc107) — studio-owned keys only fill
+        # gaps, never clobber
+        assert marker["style"]["color"] == "#ffc107"
+        assert marker["style"]["glyph"] == "#222"
+        assert marker["ramsesCaption"] == ["sensor.32_153289_fan_rate|%"]
+        assert marker["ramsesZone"] == {"areas": ["woonkamer"]}
+        assert project["ramsesDeviceViewUrl"] == "/dash/fan"
+        # absent-only: second run is a no-op even if options change
+        opts2 = _options(
+            caption_overrides={"32:153289": ["sensor.other|x"]},
+            device_zones={"32:153289": {"areas": ["other"]}},
+        )
+        assert not migrate_overrides_to_project(project, _model(devices=[dev]), opts2)
+        assert marker["ramsesCaption"] == ["sensor.32_153289_fan_rate|%"]
+        assert marker["ramsesZone"] == {"areas": ["woonkamer"]}
+
+    def test_device_view_shorthand_regenerated(self):
+        # seeded double-tap bridge call is expanded from live config,
+        # so stale serviceData can't drift the popup target
+        dev = _device()
+        opts = _options(device_zones={"32:153289": {"areas": ["w"]}})
+        meta = self._meta(
+            {
+                "double": {
+                    "kind": "call-service",
+                    "service": "ramses_extras.floorplan_device_view",
+                    "serviceData": "device_id: stale",
+                }
+            }
+        )
+        rules = generator._build_rules(_model(devices=[dev]), opts, meta)
+        dbl = self._tap_rule(rules)["double_tap_action"]
+        assert dbl["service"] == "ramses_extras.floorplan_device_view"
+        assert dbl["service_data"]["device_id"] == "32:153289"
+        assert dbl["service_data"]["card"]  # domain popup_card filled in
+
+
+class TestCombineFloors:
+    """Side-by-side floor combining (SVG + studio project)."""
+
+    _SVG1 = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560">'
+        '<rect id="area.a" x="10" y="10" width="100" height="80"/></svg>'
+    )
+    _SVG2 = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560">'
+        '<rect id="area.b" x="20" y="30" width="50" height="40"/>'
+        '<circle id="other" cx="5" cy="5" r="2"/></svg>'
+    )
+
+    def test_combine_svgs_offsets_and_wraps(self):
+        merged, offsets, warnings = importer.combine_svgs(
+            [("bg", self._SVG1), ("e1", self._SVG2)], gap=120
+        )
+        assert offsets == [0.0, 760.0]
+        assert 'viewBox="0 0 1400 560"' in merged
+        assert '<g id="floor.e1" transform="translate(760,0)">' in merged
+        assert warnings == []
+        # room extraction follows the wrapping transform
+        rooms = {r["slug"]: r for r in importer.rooms_from_svg(merged)}
+        assert rooms["a"]["centroid"][0] == pytest.approx(60)
+        assert rooms["b"]["centroid"][0] == pytest.approx(760 + 45)
+
+    def test_combine_svgs_renames_colliding_ids(self):
+        svg2 = self._SVG2.replace('id="other"', 'id="area.a"')
+        merged, _, warnings = importer.combine_svgs(
+            [("bg", self._SVG1), ("e1", svg2)], gap=0
+        )
+        assert any("renamed" in w for w in warnings)
+        # nothing is dropped — the colliding rect survives renamed
+        assert 'id="e1.area.a"' in merged
+        assert merged.count('id="area.a"') == 1
+
+    def test_combine_svgs_strips_generated_floorplan_elements(self):
+        svg2 = self._SVG2.replace(
+            "</svg>", '<g id="floorplan.toolbar"><rect/></g></svg>'
+        )
+        merged, _, _ = importer.combine_svgs([("bg", self._SVG1), ("e1", svg2)])
+        assert "floorplan.toolbar" not in merged
+
+    def test_merge_project_floors_translates_contents(self):
+        project = {
+            "name": "Plattegrond",
+            "activeFloorId": "f1",
+            "floors": [
+                {
+                    "id": "f1",
+                    "name": "Begane grond",
+                    "canvas": {"width": 640, "height": 560},
+                    "rooms": [{"id": "r1", "polygon": [{"x": 10, "y": 20}]}],
+                    "walls": [],
+                    "markers": [{"id": "m1", "x": 100, "y": 50}],
+                },
+                {
+                    "id": "f2",
+                    "name": "1e verdieping",
+                    "canvas": {"width": 640, "height": 560},
+                    "rooms": [{"id": "r2", "polygon": [{"x": 30, "y": 40}]}],
+                    "walls": [],
+                    "markers": [{"id": "m2", "x": 200, "y": 60}],
+                },
+            ],
+        }
+        importer.merge_project_floors(project, [0.0, 760.0], 1400, 560)
+        assert len(project["floors"]) == 1
+        merged = project["floors"][0]
+        assert merged["canvas"] == {"width": 1400, "height": 560}
+        assert project["activeFloorId"] == "f1"
+        assert merged["name"] == "Plattegrond"
+        xs = {r["id"]: r["polygon"][0]["x"] for r in merged["rooms"]}
+        assert xs == {"r1": 10, "r2": 790}
+        xs = {m["id"]: m["x"] for m in merged["markers"]}
+        assert xs == {"m1": 100, "m2": 960}
+
+    def test_merge_single_floor_is_noop(self):
+        project = {"floors": [{"id": "f1", "rooms": [], "markers": []}]}
+        importer.merge_project_floors(project, [0.0], 640, 560)
+        assert len(project["floors"]) == 1
+
+
+class TestHeatDemandMirrorDeviceAttachment:
+    """The derived heat-demand binary sensor must attach to the source
+    ramses_cc device directly, not redeclare its identifiers.
+
+    Device-registry lookup by identifiers is scoped to the config entry,
+    so copying the ramses_cc identifiers into ``DeviceInfo`` created a
+    nameless duplicate device under ramses_extras that shadowed the real
+    zone device (device-name lookups and remove_device registry checks
+    then hit the stub).
+    """
+
+    def test_attaches_via_device_entry_not_device_info(self):
+        source_device = MagicMock()
+        source_device.id = "ha_device_1"
+        source_device.identifiers = {("ramses_cc", "01:150000_03")}
+
+        entity = fp_binary_sensor.FloorplanHeatDemandBinarySensor(
+            MagicMock(), "sensor.01_150000_03_heat_demand", source_device
+        )
+
+        assert entity.device_entry is source_device
+        assert entity.device_info is None
+
+
+class TestGestureBridgeServices:
+    """The hfs card overlay cannot carry resolved element lists, so the
+    bridge services resolve ``device_id``/``entity`` server-side into
+    the same payloads the export writes into marker actions."""
+
+    @staticmethod
+    async def _registered():
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            services,
+        )
+
+        hass = MagicMock()
+        hass.services.has_service.return_value = False
+        await services.async_setup_services(hass)
+        return hass, {
+            c.args[1]: c.args[2] for c in hass.services.async_register.call_args_list
+        }
+
+    @staticmethod
+    def _call(data):
+        call = MagicMock()
+        call.data = data
+        return call
+
+    async def test_zone_toggle_resolves_device_id(self):
+        hass, handlers = await self._registered()
+        model = _model(
+            devices=[
+                _device(),
+                _device(
+                    device_id="37:168270",
+                    device_class="REM",
+                    parent="32:153289",
+                    primary_entity="remote.37_168270",
+                ),
+            ]
+        )
+        options = {
+            "device_zones": {
+                "32:153289": {"areas": ["woonkamer"], "devices": [], "color": "#f00"}
+            }
+        }
+        with (
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.build_floorplan_model",
+                new=AsyncMock(return_value=model),
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.get_floorplan_options",
+                return_value=options,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services._config_entry",
+                return_value=MagicMock(),
+            ),
+        ):
+            payload = await handlers["floorplan_zone_toggle"](
+                self._call({"device_id": "32:153289"})
+            )
+        assert payload["toggles"][0]["elements"] == ["area.woonkamer"]
+        assert payload["toggles"][0]["class"] == "rx-zone-32_153289"
+        assert "remote.37_168270" in payload["toggles"][1]["elements"]
+        hass.bus.async_fire.assert_called_once()
+
+    async def test_zone_toggle_by_entity_and_non_owner(self):
+        hass, handlers = await self._registered()
+        model = _model(
+            devices=[
+                _device(),
+                _device(
+                    device_id="37:168270",
+                    device_class="REM",
+                    parent="32:153289",
+                    primary_entity="remote.37_168270",
+                ),
+            ]
+        )
+        options = {
+            "device_zones": {
+                "32:153289": {"areas": ["woonkamer"], "devices": [], "color": "#f00"}
+            }
+        }
+        with (
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.build_floorplan_model",
+                new=AsyncMock(return_value=model),
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.get_floorplan_options",
+                return_value=options,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services._config_entry",
+                return_value=MagicMock(),
+            ),
+        ):
+            # entity of the zone owner resolves to the same toggles
+            payload = await handlers["floorplan_zone_toggle"](
+                self._call({"entity": "sensor.32_153289_fan_rate"})
+            )
+            assert payload["toggles"][0]["elements"] == ["area.woonkamer"]
+            # a non-owner resolves to an empty (no-op) event
+            payload = await handlers["floorplan_zone_toggle"](
+                self._call({"entity": "remote.37_168270"})
+            )
+            assert payload["toggles"] == []
+
+    async def test_device_view_resolves_entity_to_hvac_card(self):
+        hass, handlers = await self._registered()
+        model = _model(devices=[_device()])
+        with patch(
+            "custom_components.ramses_extras.features.floorplan_helper"
+            ".services.build_floorplan_model",
+            new=AsyncMock(return_value=model),
+        ):
+            payload = await handlers["floorplan_device_view"](
+                self._call({"entity": "sensor.32_153289_fan_rate"})
+            )
+        assert payload["device_id"] == "32:153289"
+        assert payload["card"] == "hvac-fan"
+        # unknown entity still fires — the popup falls back to more-info
+        with patch(
+            "custom_components.ramses_extras.features.floorplan_helper"
+            ".services.build_floorplan_model",
+            new=AsyncMock(return_value=model),
+        ):
+            payload = await handlers["floorplan_device_view"](
+                self._call({"entity": "cover.klep_1"})
+            )
+        assert payload == {"device_id": "", "entity": "cover.klep_1", "card": ""}
