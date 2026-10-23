@@ -49,6 +49,16 @@ let _stateEnts = new Set(); // every entity that can drive color/spin
 
 // Domain tints — the base marker colour, below the rx-* state signals.
 const DOMAIN_TINTS = { hvac: '#1b5e20', heat: '#0d47a1' };
+
+// Non-ramses entities (DIY valves, sensors) have no topology device —
+// same entity-domain fallback the generated card applies
+// (markers.py _ENTITY_DOMAIN_ICONS).
+const ENTITY_ICONS = {
+  cover: 'pipe-valve',
+  valve: 'pipe-valve',
+  sensor: 'gauge',
+  binary_sensor: 'thermometer',
+};
 let _iconPaths = null; // icon key -> mdi path d, from the symbol sheet
 let _started = false;
 
@@ -438,7 +448,9 @@ function _hfsDecorate(svg, floor) {
       g.querySelector('circle.halo + path') ||
       g.querySelector('path:not(.cone)');
     if (!icon) continue;
-    const key = did && _deviceIcons[did];
+    const key =
+      (did && _deviceIcons[did]) ||
+      ENTITY_ICONS[String(dev.entity).split('.')[0]];
     const d = key && _iconPaths && _iconPaths[key];
     if (d && icon.getAttribute('d') !== d) icon.setAttribute('d', d);
     const dur = did && _hfsSpinDuration(did);
