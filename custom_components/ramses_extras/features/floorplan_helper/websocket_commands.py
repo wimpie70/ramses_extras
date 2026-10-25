@@ -199,26 +199,41 @@ async def ws_get_config(
     except Exception as err:  # pragma: no cover - model needs registries
         _LOGGER.debug("device captions unavailable: %s", err)
 
+    caps = {
+        field: getattr(adapter.capabilities, field)
+        for field in (
+            "marker_icons",
+            "marker_colors",
+            "marker_actions",
+            "multi_entity",
+            "stamp_extras",
+            "browser_side",
+            "card_element",
+            "panel_element",
+            "panel_module",
+        )
+    }
+    # Stamp the panel module with the backend's installed version, like the
+    # editor's own panel registration does — an unversioned URL leaves the
+    # embed serving a stale cached bundle after an update, and hfs then
+    # refuses every save as "out of date".
+    if adapter.backend_domain and caps.get("panel_module"):
+        try:
+            from homeassistant.loader import async_get_integration  # noqa: PLC0415
+
+            integration = await async_get_integration(hass, adapter.backend_domain)
+            if integration.version:
+                caps["panel_module"] = f"{caps['panel_module']}?v={integration.version}"
+        except Exception:  # noqa: BLE001 — stamping must never break config
+            _LOGGER.debug("Could not stamp %s version", adapter.backend_domain)
+
     connection.send_result(
         msg["id"],
         {
             "svg_mode": options.get(OPTION_SVG_MODE),
             "custom_svg_path": options.get(OPTION_CUSTOM_SVG_PATH),
             "editor": adapter.key,
-            "editor_caps": {
-                field: getattr(adapter.capabilities, field)
-                for field in (
-                    "marker_icons",
-                    "marker_colors",
-                    "marker_actions",
-                    "multi_entity",
-                    "stamp_extras",
-                    "browser_side",
-                    "card_element",
-                    "panel_element",
-                    "panel_module",
-                )
-            },
+            "editor_caps": caps,
             "editor_url": adapter.capabilities.editor_url or editor_url(options),
             "editor_option": options.get(OPTION_EDITOR),
             "editors_available": available,

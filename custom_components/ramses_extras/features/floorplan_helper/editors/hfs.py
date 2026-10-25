@@ -158,6 +158,7 @@ class HfsAdapter(EditorAdapter):
 
     key = "hfs"
     name = "ha-floorplan-studio"
+    backend_domain = "floorplan_studio"
     capabilities = EditorCapabilities(
         marker_icons=False,  # fixed icon per device type
         marker_colors=False,  # colour is per device *type*, not marker

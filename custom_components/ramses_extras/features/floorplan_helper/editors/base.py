@@ -77,6 +77,10 @@ class EditorAdapter(ABC):
     key: str = ""
     name: str = ""
     capabilities = EditorCapabilities()
+    # backend integration whose version stamps panel_module's `?v=` —
+    # without it a browser keeps a cached module across an editor update
+    # and hfs's stale check then refuses every save
+    backend_domain: str = ""
 
     # ---- detection ---------------------------------------------------
     @abstractmethod
