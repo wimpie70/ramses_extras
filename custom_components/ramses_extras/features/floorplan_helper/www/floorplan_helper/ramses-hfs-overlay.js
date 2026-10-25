@@ -202,6 +202,115 @@ function _hfsDevice(card, index) {
   return ((floor && floor.devices) || [])[index] || null;
 }
 
+// --- staged markers --------------------------------------------------------
+// Seeded devices land in the dock strip (top-right of the floor canvas).
+// A copy inside the dock region = "staged"; anywhere else = "placed".
+// Rules: any placed copy → drop the other floors' dock copies; only
+// dock copies → every floor keeps/keeps a copy; drag a placed marker
+// back to the dock → it re-stages everywhere. Deleting every copy is
+// respected — ＋Add devices re-seeds.
+
+function _ptInPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0] ?? poly[i].x;
+    const yi = poly[i][1] ?? poly[i].y;
+    const xj = poly[j][0] ?? poly[j].x;
+    const yj = poly[j][1] ?? poly[j].y;
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
+      inside = !inside;
+  }
+  return inside;
+}
+
+function _hfsFloorDock(f) {
+  // right-most outline x minus the 8-wide × 30px staging grid — mirrors
+  // python's dock_anchor (width - 8*30 - 20, y=44)
+  let mx = 0;
+  for (const p of f.outline || []) mx = Math.max(mx, p[0] ?? p.x ?? 0);
+  return { x0: mx - 260, y0: 44 };
+}
+
+function _hfsInDock(f, d, dock) {
+  if (!(d.x >= dock.x0 - 10 && d.y >= dock.y0 - 10)) return false;
+  for (const r of f.rooms || []) {
+    const poly = r.pts || r.polygon || [];
+    if (poly.length >= 3 && _ptInPoly(d.x, d.y, poly)) return false;
+  }
+  return true;
+}
+
+function _hfsSyncStaging(ed) {
+  const layout = ed && ed.st && ed.st.layout;
+  if (!layout || !layout.floors) return;
+  const fkeys = Object.keys(layout.floors);
+  if (fkeys.length < 2) return;
+  const byEnt = {};
+  for (const fk of fkeys) {
+    const f = layout.floors[fk];
+    const dock = _hfsFloorDock(f);
+    for (const d of f.devices || []) {
+      if (!d.entity) continue;
+      (byEnt[d.entity] = byEnt[d.entity] || []).push({
+        fk,
+        d,
+        staged: _hfsInDock(f, d, dock),
+      });
+    }
+  }
+  let changed = false;
+  for (const [entity, copies] of Object.entries(byEnt)) {
+    if (copies.some((c) => !c.staged)) {
+      // a placed copy exists → staged copies on the other floors go
+      for (const c of copies) {
+        if (!c.staged) continue;
+        const devs = layout.floors[c.fk].devices || [];
+        layout.floors[c.fk].devices = devs.filter((x) => x !== c.d);
+        changed = true;
+      }
+    } else {
+      // staged only → every floor gets a dock copy to drag from
+      const have = new Set(copies.map((c) => c.fk));
+      for (const fk of fkeys) {
+        if (have.has(fk)) continue;
+        const f = layout.floors[fk];
+        const dock = _hfsFloorDock(f);
+        const used = new Set();
+        for (const d of f.devices || []) {
+          if (_hfsInDock(f, d, dock))
+            used.add(
+              Math.round((d.x - dock.x0) / 30) +
+                8 * Math.round((d.y - dock.y0) / 30)
+            );
+        }
+        let slot = 0;
+        while (used.has(slot)) slot++;
+        const src = copies[0].d;
+        f.devices = f.devices || [];
+        f.devices.push({
+          id: Math.random().toString(16).slice(2, 10),
+          type: src.type || 'other',
+          entity,
+          x: dock.x0 + (slot % 8) * 30,
+          y: dock.y0 + Math.floor(slot / 8) * 30,
+          ...(src.name ? { name: src.name } : {}),
+        });
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    try {
+      ed.st && ed.st.persist && ed.st.persist();
+      ed.refresh && ed.refresh();
+      ed.requestUpdate && ed.requestUpdate();
+    } catch (e) {
+      console.debug('ramses-hfs: staging sync failed', e);
+    }
+  }
+}
+let _stagingTimer = null;
+
 // --- gestures --------------------------------------------------------------
 
 // All ramses_extras floorplan services declare supports_response, so a
@@ -823,6 +932,11 @@ function _hfsBridge() {
   document.addEventListener('layout-changed', (ev) => {
     const ed = window.__ramsesHfsInfo().editor;
     if (!ed || !ev.composedPath().includes(ed)) return;
+    // staged-copy lifecycle settles before the autosave flushes — a
+    // drag into a room drops the other floors' dock copies in the same
+    // save; a drag back to the dock re-stages the copies
+    clearTimeout(_stagingTimer);
+    _stagingTimer = setTimeout(() => _hfsSyncStaging(ed), 800);
     clearTimeout(_autoSaveTimer);
     _autoSaveTimer = setTimeout(_hfsAutoSave, 2500);
   });
