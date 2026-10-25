@@ -322,9 +322,11 @@ def _merge_studio_project(
             # merged export already renders them per floor anyway.
             # Model devices stage on the first floor only. The dock
             # sits inside the canvas so studio actually shows it.
-            # model devices park on the floor that actually holds their
-            # room (area slug ↔ room name); only when no floor matches
-            # do they fall back to the first floor's dock
+            # a device with a matching room on one floor parks on that
+            # floor's dock only; with no match it stages on EVERY floor
+            # (same as standalone) — the user keeps the copy on the
+            # right floor and deletes the rest; entity dedupe means a
+            # kept copy is never re-seeded
             home = [
                 f
                 for f in project["floors"]
@@ -338,7 +340,7 @@ def _merge_studio_project(
             floors_for = (
                 project["floors"]
                 if dev.get("standalone")
-                else (home or project["floors"][:1])
+                else (home or project["floors"])
             )
             for fl in floors_for:
                 anchor = dock.get(str(fl.get("name") or "").lower())
@@ -1328,8 +1330,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # editor's own plan floors (hfs draws rooms natively; there is
         # no authored SVG to parse). Plan rooms convert to the
         # ``rooms_from_svg`` shape so centroid placement works either
-        # way.
+        # way. A server-side editor's stored floors always win: mixing
+        # authored-SVG floors into an hfs plan appends a stray
+        # "plattegrond" floor nobody asked for.
         floor_rooms: dict[str, dict[str, Any]] = {}
+        if existing and not adapter.capabilities.browser_side:
+            floor_svgs = {}
         for fname, svg_text in floor_svgs.items():
             width, height = svg_viewbox(svg_text)
             floor_rooms[fname] = {
