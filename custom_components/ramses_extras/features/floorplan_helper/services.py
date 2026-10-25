@@ -130,6 +130,7 @@ SVC_SYNC_AREAS = "floorplan_sync_areas"
 SVC_SEED_STUDIO = "floorplan_seed_studio"
 SVC_COMBINE_FLOORS = "floorplan_combine_floors"
 SVC_STORE_PROJECT = "floorplan_store_project"
+SVC_RESET = "floorplan_reset"
 SVC_ZONE_TOGGLE = "floorplan_zone_toggle"
 SVC_DEVICE_VIEW = "floorplan_device_view"
 
@@ -1138,6 +1139,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _LOGGER.info("Floorplan project stored: %s (%s)", latest, stats)
         return {"latest_path": latest, "backup_path": backup, "floors": stats}
 
+    async def _async_reset(call: ServiceCall) -> dict[str, Any]:
+        """Reset the stored plan to the first-install (empty) state.
+
+        Writes a canonical backup first, then clears the editor's store.
+        For hfs that deletes ``.storage/floorplan_studio.layout`` — the
+        editor's own Reset only produces an in-memory blank plan its
+        validator refuses to save, so the real minimal state is an
+        empty store.
+        """
+        adapter = await _adapter(hass, call.data.get("editor"))
+        backup = ""
+        plan = await adapter.async_load(hass)
+        if isinstance(plan, dict):
+            backup = await adapter.async_backup(hass, json.dumps(plan))
+        if not await adapter.async_clear(hass):
+            raise vol.Invalid(f"editor '{adapter.key}' cannot clear its plan")
+        _LOGGER.info("Floorplan reset to empty (backup: %s)", backup or "none")
+        return {"cleared": True, "backup_path": backup}
+
     async def _async_zone_toggle(call: ServiceCall) -> dict[str, Any]:
         """Bridge service: zone marker tap → class toggles on all cards.
 
@@ -1909,6 +1929,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    if not hass.services.has_service(DOMAIN, SVC_RESET):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_RESET,
+            _async_reset,
+            schema=vol.Schema({vol.Optional("editor"): str}, extra=vol.PREVENT_EXTRA),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     _LOGGER.info("Registered floorplan_helper services")
 
 
@@ -1925,6 +1954,7 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SVC_SYNC_AREAS,
         SVC_SEED_STUDIO,
         SVC_COMBINE_FLOORS,
+        SVC_RESET,
         SVC_ZONE_TOGGLE,
         SVC_DEVICE_VIEW,
     ):

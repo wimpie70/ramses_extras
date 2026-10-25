@@ -1668,6 +1668,8 @@ class RamsesFloorplanActions extends HTMLElement {
             title="Same as Export ⇒, plus every floorplan card on your dashboards that shows a generated map is updated in place — no edit mode, no paste needed">⇒ Update cards</button>
           <button id="b-tweaks" class="secondary"
             title="Zone editor — which rooms and markers belong to each device's zone">⚙ Zones</button>
+          <button id="b-reset" class="secondary"
+            title="Reset the stored plan to the first-install (empty) state — a canonical backup is written first. hfs's own Reset only blanks the editor in memory and its validator will not save a fully blank plan; this actually clears the store">⌫ Reset</button>
         </div>
         <div class="tweaks" id="tweaks" style="display:none">
           <div class="row">
@@ -1737,6 +1739,19 @@ class RamsesFloorplanActions extends HTMLElement {
     $('b-tweaks').onclick = () => {
       const t = $('tweaks');
       t.style.display = t.style.display === 'none' ? 'block' : 'none';
+    };
+    $('b-reset').onclick = () => {
+      if (
+        !window.confirm(
+          'Reset the stored plan to empty? The editor will show "no plan" ' +
+            '— the first-install state. A canonical backup is written first.'
+        )
+      )
+        return;
+      this._run(async () => {
+        const r = await this._call('floorplan_reset', {});
+        this._status(`Plan reset to empty (backup: ${r.backup_path || 'none'})`);
+      });
     };
 
     // zone editor: picking a device pre-checks its rooms + markers,

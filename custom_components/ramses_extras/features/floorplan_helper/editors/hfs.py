@@ -239,6 +239,25 @@ class HfsAdapter(EditorAdapter):
         hass.bus.async_fire("floorplan_studio_updated")
         return ".storage/floorplan_studio.layout"
 
+    async def async_clear(self, hass: HomeAssistant) -> bool:
+        """Delete the stored layout — the editor falls back to 'no plan'.
+
+        Uses the shared ``LayoutStore`` so its in-memory cache is cleared
+        too; ``floorplan_studio_updated`` then reloads open panels/cards
+        into the first-install (empty) state.
+        """
+        store = hass.data.get("floorplan_studio") or self._layout_store(hass)
+        inner = getattr(store, "_store", None)
+        if inner is None:
+            return False
+        try:
+            await inner.async_remove()
+        except Exception:  # noqa: BLE001 — missing/broken store file
+            _LOGGER.debug("hfs layout clear failed", exc_info=True)
+            return False
+        hass.bus.async_fire("floorplan_studio_updated")
+        return True
+
     async def async_backup(self, hass: HomeAssistant, plan_text: str) -> str:
         """Timestamped copy of the *canonical* plan next to studio's."""
         from ..importer import backup_project
@@ -575,7 +594,15 @@ class HfsAdapter(EditorAdapter):
         layout["version"] = LAYOUT_VERSION
         layout.setdefault("unit", "cm")
         layout.setdefault("north", 0)
-        floors = dict(layout.get("floors") or {})
+        # the incoming plan is the full set of floors — orphans of a
+        # previous layout (a leftover stub floor, say) do not survive
+        plan_keys = {
+            str(pf.get("id") or slugify(str(pf.get("name") or "floor")))
+            for pf in plan.get("floors") or []
+        }
+        floors = {
+            k: v for k, v in (layout.get("floors") or {}).items() if k in plan_keys
+        }
         for pf in plan.get("floors") or []:
             key = str(pf.get("id") or slugify(str(pf.get("name") or "floor")))
             base = dict(floors.get(key) or {})

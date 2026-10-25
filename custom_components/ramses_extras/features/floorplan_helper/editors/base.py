@@ -99,6 +99,14 @@ class EditorAdapter(ABC):
         :return: a locator for status messages (file path, storage key)
         """
 
+    async def async_clear(self, hass: HomeAssistant) -> bool:
+        """Reset the editor's plan to the first-install state (empty).
+
+        hfs's own Reset produces an in-memory blank that its validator
+        refuses to save — the real minimal state is an empty store.
+        """
+        return False
+
     @abstractmethod
     async def async_backup(self, hass: HomeAssistant, plan_text: str) -> str:
         """Write a timestamped backup copy; returns the path."""
