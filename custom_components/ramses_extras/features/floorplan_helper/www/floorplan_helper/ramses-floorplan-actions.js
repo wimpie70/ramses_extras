@@ -78,6 +78,7 @@ const STYLE = `
   }
   .drop.over { border-color: var(--primary-color);
                color: var(--primary-color); }
+  .drop .droplinks a { color: var(--primary-color); }
   .status { margin-top: 8px; font-size: 12px;
             color: var(--secondary-text-color); white-space: pre-wrap; }
   textarea.log {
@@ -291,8 +292,10 @@ class RamsesFloorplanActions extends HTMLElement {
     if (drop && caps.browser_side === false) {
       drop.title = 'Import a layout/plan file — replaces the stored plan for the resolved editor';
       drop.childNodes[0].textContent =
-        'Drop a floorplan-studio layout JSON here (or click to browse, or ' +
-        'click here and Ctrl+V to paste) — restores a downloaded plan into HA storage';
+        'Drop a floorplan-studio layout JSON here ';
+      const tail = drop.childNodes[2];
+      if (tail && tail.nodeType === 3)
+        tail.textContent = ' — restores a downloaded plan into HA storage';
     }
     const lbl = this.shadowRoot.querySelector('#row-studio .lbl');
     if (lbl && this._resolvedEditor) lbl.textContent = `${this._resolvedEditor} project:`;
@@ -1695,9 +1698,12 @@ class RamsesFloorplanActions extends HTMLElement {
         </div>
         <div class="drop" id="drop" tabindex="0"
           title="For project files from another machine or a backup — this browser's studio is already reachable via Studio → HA">
-          Drop a studio project JSON here (or click to browse, or click
-          here and Ctrl+V to paste) — fallback for files from another
-          machine or backup
+          Drop a studio project JSON here
+          <span class="droplinks">
+            <a href="#" id="drop-browse">browse</a> ·
+            <a href="#" id="drop-paste">paste</a>
+          </span>
+          — fallback for files from another machine or backup
           <input id="file" type="file" accept=".json,application/json">
         </div>
         <textarea class="log" id="status" readonly
@@ -1778,6 +1784,25 @@ class RamsesFloorplanActions extends HTMLElement {
     const drop = $('drop');
     const file = $('file');
     drop.onclick = () => file.click();
+    $('drop-browse').onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      file.click();
+    };
+    $('drop-paste').onclick = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text.trim().startsWith('{')) {
+          this._status('Paste ignored — clipboard does not hold JSON text');
+          return;
+        }
+        this._run(() => this._store(text, 'pasted JSON'));
+      } catch (err) {
+        this._status(`Clipboard read failed (${err.message}) — click the dropzone and Ctrl+V instead`);
+      }
+    };
     file.onchange = () => {
       const f = file.files[0];
       if (f) this._readFile(f);

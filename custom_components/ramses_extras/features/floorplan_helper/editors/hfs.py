@@ -289,6 +289,7 @@ class HfsAdapter(EditorAdapter):
             if isinstance(r, dict)
         ]
         walls: list[dict[str, Any]] = []
+        used_wall_ids: set[str] = set()
         for w in floor.get("walls") or []:
             a, b = w.get("a"), w.get("b")
             if not (isinstance(a, list) and isinstance(b, list)):
@@ -296,9 +297,15 @@ class HfsAdapter(EditorAdapter):
             color, thick = _WALL_STYLE.get(
                 str(w.get("kind") or "wall"), _WALL_STYLE["wall"]
             )
+            wid = str(w.get("id") or "")
+            # a stored layout may already carry duplicates from an older
+            # merge — fresh ids keep the validator happy on round-trips
+            if not wid or wid in used_wall_ids:
+                wid = uuid.uuid4().hex[:8]
+            used_wall_ids.add(wid)
             walls.append(
                 {
-                    "id": str(w.get("id") or uuid.uuid4().hex[:8]),
+                    "id": wid,
                     "points": [
                         {"x": float(a[0]), "y": float(a[1])},
                         {"x": float(b[0]), "y": float(b[1])},
@@ -313,6 +320,15 @@ class HfsAdapter(EditorAdapter):
         # walls from those edges too; dedupe shared edges (outline
         # first, so `external` wins over a coinciding room edge).
         seen = {_segment_key(w["points"][0], w["points"][1]) for w in walls}
+        # Derived wall ids must not collide with wk-* ids that survived a
+        # previous round-trip (they come back as explicit `walls[]`)
+        import re  # noqa: PLC0415
+
+        _wk_next = 0
+        for w in walls:
+            m = re.fullmatch(r"wk-(\d+)", str(w.get("id") or ""))
+            if m:
+                _wk_next = max(_wk_next, int(m.group(1)) + 1)
         edges: list[tuple[list[Any], list[Any]]] = [
             (floor.get("outline") or [], floor.get("owk") or [])
         ]
@@ -337,7 +353,7 @@ class HfsAdapter(EditorAdapter):
                     (
                         thick,
                         {
-                            "id": f"wk-{len(derived)}",
+                            "id": f"wk-{_wk_next + len(derived)}",
                             "points": [
                                 {"x": float(a[0]), "y": float(a[1])},
                                 {"x": float(b[0]), "y": float(b[1])},
