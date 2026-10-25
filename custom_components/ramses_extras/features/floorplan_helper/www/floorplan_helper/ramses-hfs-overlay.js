@@ -863,6 +863,18 @@ function _hfsStart() {
     // edit and generated cards regenerate, debounced past bursts
     hass.connection.subscribeEvents(() => {
       _hfsLoadLayout();
+      // reset/replace writes change the store itself — the open panel
+      // only reloads itself on *saves* it issued, so pull it forward
+      // (load() re-reads rev + layout; a cleared store → "no plan")
+      for (const p of _hfsPanels) {
+        if (typeof p.load === 'function') {
+          try {
+            p.load();
+          } catch (e) {
+            console.debug('ramses-hfs: panel reload failed', e);
+          }
+        }
+      }
       clearTimeout(_exportTimer);
       _exportTimer = setTimeout(_hfsAutoExport, 1200);
     }, 'floorplan_studio_updated');

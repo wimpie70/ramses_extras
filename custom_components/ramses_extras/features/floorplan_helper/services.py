@@ -233,6 +233,7 @@ def _merge_studio_project(
     zone_toggles: dict[str, list[dict[str, Any]]] | None = None,
     entity_device: dict[str, str] | None = None,
     dock: dict[str, tuple[float, float]] | None = None,
+    fold_hosts: bool = True,
 ) -> dict[str, Any]:
     """Merge generated floors into an existing studio project.
 
@@ -273,7 +274,15 @@ def _merge_studio_project(
         floor = by_name.get(str(new_floor["name"]).lower())
         ox = oy = 0.0
         if floor is None:
-            floor, (ox, oy) = _host_floor(project["floors"], new_floor)
+            # host-floor folding only makes sense for browser-side
+            # studio's combined single-floor drawings — a server-side
+            # editor (hfs) has real multi-floor plans where folding
+            # dupes one floor's rooms into another
+            floor, (ox, oy) = (
+                _host_floor(project["floors"], new_floor)
+                if fold_hosts
+                else (None, (0.0, 0.0))
+            )
             if floor is None:
                 project["floors"].append(new_floor)
                 by_name[str(new_floor["name"]).lower()] = new_floor
@@ -313,8 +322,23 @@ def _merge_studio_project(
             # merged export already renders them per floor anyway.
             # Model devices stage on the first floor only. The dock
             # sits inside the canvas so studio actually shows it.
+            # model devices park on the floor that actually holds their
+            # room (area slug ↔ room name); only when no floor matches
+            # do they fall back to the first floor's dock
+            home = [
+                f
+                for f in project["floors"]
+                if dev.get("area_id")
+                and str(dev["area_id"])
+                in {
+                    slugify(str(r.get("areaId") or r.get("name") or ""))
+                    for r in f.get("rooms") or []
+                }
+            ]
             floors_for = (
-                project["floors"] if dev.get("standalone") else project["floors"][:1]
+                project["floors"]
+                if dev.get("standalone")
+                else (home or project["floors"][:1])
             )
             for fl in floors_for:
                 anchor = dock.get(str(fl.get("name") or "").lower())
@@ -1447,6 +1471,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 zone_toggles=zone_toggles,
                 entity_device=entity_device,
                 dock=dock,
+                # host-floor folding exists for browser-side studio's
+                # combined single-floor drawings; hfs has real floors
+                fold_hosts=bool(adapter.capabilities.browser_side),
             )
         else:
             # Park devices with no matching room at the in-canvas dock
