@@ -291,8 +291,8 @@ class RamsesFloorplanActions extends HTMLElement {
     if (drop && caps.browser_side === false) {
       drop.title = 'Import a layout/plan file — replaces the stored plan for the resolved editor';
       drop.childNodes[0].textContent =
-        'Drop a floorplan-studio layout JSON here (or click to browse) — ' +
-        'restores a downloaded plan into HA storage';
+        'Drop a floorplan-studio layout JSON here (or click to browse, or ' +
+        'click here and Ctrl+V to paste) — restores a downloaded plan into HA storage';
     }
     const lbl = this.shadowRoot.querySelector('#row-studio .lbl');
     if (lbl && this._resolvedEditor) lbl.textContent = `${this._resolvedEditor} project:`;
@@ -1693,10 +1693,11 @@ class RamsesFloorplanActions extends HTMLElement {
             </div>
           </div>
         </div>
-        <div class="drop" id="drop"
+        <div class="drop" id="drop" tabindex="0"
           title="For project files from another machine or a backup — this browser's studio is already reachable via Studio → HA">
-          Drop a studio project JSON here (or click to browse) — fallback
-          for files from another machine or backup
+          Drop a studio project JSON here (or click to browse, or click
+          here and Ctrl+V to paste) — fallback for files from another
+          machine or backup
           <input id="file" type="file" accept=".json,application/json">
         </div>
         <textarea class="log" id="status" readonly
@@ -1789,6 +1790,12 @@ class RamsesFloorplanActions extends HTMLElement {
       drop.classList.remove('over');
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) this._readFile(f);
+    };
+    drop.onpaste = (e) => {
+      const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+      if (!text.trim().startsWith('{')) return; // let other pastes through
+      e.preventDefault();
+      this._run(() => this._store(text, 'pasted JSON'));
     };
 
     // editor capability rows (studio pull/push vs hfs open-editor)
