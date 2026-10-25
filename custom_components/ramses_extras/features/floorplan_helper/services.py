@@ -1342,7 +1342,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Merging into an existing plan preserves the background image,
         # walls and any editor edits — without it we emit a fresh plan.
         existing: dict[str, Any] | None = None
-        raw_project = call.data.get("project_json")
+        # project_json only makes sense for browser-side editors — for a
+        # server-side editor (hfs) the store IS the plan; a stale
+        # latest.json would resurrect the old tinkersoder 'plattegrond'
+        raw_project = (
+            call.data.get("project_json") if adapter.capabilities.browser_side else None
+        )
         if raw_project:
             try:
                 existing = adapter.parse(raw_project)
