@@ -245,7 +245,30 @@ def dock_anchor(
     if outside:
         cx, cy = max(outside, key=lambda r: r.get("area") or 0)["centroid"]
         return cx - 3.5 * 30.0, cy
-    return vb_w - 8 * 30.0 - 20.0, 44.0
+    # slide the strip right until its column is clear of every room's
+    # bounding box — on a floor whose right edge is a room (a vide, an
+    # outside terrace…) the dock lands just past the drawing instead
+    # of inside that room
+    bboxes: list[tuple[float, float, float, float]] = []
+    for r in svg_rooms.values():
+        pts = r.get("polygon") or []
+        xs = [
+            float(p.get("x") or 0) if isinstance(p, dict) else float(p[0]) for p in pts
+        ]
+        ys = [
+            float(p.get("y") or 0) if isinstance(p, dict) else float(p[1]) for p in pts
+        ]
+        if xs and ys:
+            bboxes.append((min(xs), min(ys), max(xs), max(ys)))
+    x0 = vb_w - 8 * 30.0 - 20.0
+    while any(
+        x0 < bx1 and x0 + 270.0 > bx0 and 34.0 < by1 and 644.0 > by0
+        for bx0, by0, bx1, by1 in bboxes
+    ):
+        x0 += 30.0
+        if x0 > vb_w + 400.0:
+            break
+    return x0, 44.0
 
 
 def short_label(dev: dict[str, Any]) -> str:

@@ -225,10 +225,27 @@ function _ptInPoly(x, y, poly) {
 
 function _hfsFloorDock(f) {
   // right-most outline x minus the 8-wide × 30px staging grid — mirrors
-  // python's dock_anchor (width - 8*30 - 20, y=44)
+  // python's dock_anchor: the strip slides right until it clears every
+  // room's bounding box, ending just past the drawing when the right
+  // edge is a room (vide, terras…)
   let mx = 0;
   for (const p of f.outline || []) mx = Math.max(mx, p[0] ?? p.x ?? 0);
-  return { x0: mx - 260, y0: 44 };
+  const bboxes = (f.rooms || [])
+    .map((r) => (r.pts || r.polygon || []).map((p) => [p[0] ?? p.x, p[1] ?? p.y]))
+    .filter((pts) => pts.length)
+    .map((pts) => [
+      Math.min(...pts.map((p) => p[0])),
+      Math.min(...pts.map((p) => p[1])),
+      Math.max(...pts.map((p) => p[0])),
+      Math.max(...pts.map((p) => p[1])),
+    ]);
+  let x0 = mx - 260;
+  while (
+    x0 <= mx + 400 &&
+    bboxes.some(([bx0, by0, bx1, by1]) => x0 < bx1 && x0 + 270 > bx0 && 34 < by1 && 644 > by0)
+  )
+    x0 += 30;
+  return { x0, y0: 44 };
 }
 
 function _hfsInDock(f, d, dock) {
