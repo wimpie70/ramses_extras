@@ -204,29 +204,41 @@ function _hfsDevice(card, index) {
 
 // --- gestures --------------------------------------------------------------
 
+// All ramses_extras floorplan services declare supports_response, so a
+// plain callService() (which never asks for one) fails validation —
+// callWS with return_response:true is the working shape.
+function _hfsService(service, data) {
+  const hass = _hfsHass();
+  if (!hass || !hass.callWS) return;
+  hass
+    .callWS({
+      type: 'call_service',
+      domain: DOMAIN,
+      service,
+      service_data: data,
+      return_response: true,
+    })
+    .catch((e) => console.warn(`ramses-hfs: ${service} failed`, e));
+}
+
 function _hfsTapDevice(card, index) {
   const dev = _hfsDevice(card, index);
   const entity = dev && dev.entity;
   if (!entity) return;
   const topo = _entityDevice[entity];
   const did = String((topo && topo.device_id) || '');
-  const hass = _hfsHass();
-  if (!hass || !hass.callService) return;
   if (did && _zones[did]) {
     // zone owner: tap toggles the zone, resolved server-side
-    hass.callService(DOMAIN, 'floorplan_zone_toggle', { device_id: did });
+    _hfsService('floorplan_zone_toggle', { device_id: did });
   } else {
-    hass.callService(DOMAIN, 'floorplan_device_view', { entity });
+    _hfsService('floorplan_device_view', { entity });
   }
 }
 
 function _hfsOpenDevice(card, index) {
   const dev = _hfsDevice(card, index);
   if (dev && dev.entity) {
-    const hass = _hfsHass();
-    if (hass && hass.callService) {
-      hass.callService(DOMAIN, 'floorplan_device_view', { entity: dev.entity });
-    }
+    _hfsService('floorplan_device_view', { entity: dev.entity });
   }
 }
 
@@ -783,14 +795,18 @@ function _hfsAutoSave() {
 
 async function _hfsAutoExport() {
   const hass = _hfsHass();
-  if (!hass || !hass.callService) return;
+  if (!hass || !hass.callWS) return;
   // collapse bursts and skip when an explicit export just ran (the
   // actions card stamps window.__ramsesHfsLastExport)
   if (Date.now() - (window.__ramsesHfsLastExport || 0) < 5000) return;
   window.__ramsesHfsLastExport = Date.now();
   try {
-    await hass.callService('ramses_extras', 'floorplan_export', {
-      apply: true,
+    await hass.callWS({
+      type: 'call_service',
+      domain: DOMAIN,
+      service: 'floorplan_export',
+      service_data: { apply: true },
+      return_response: true,
     });
     console.info('ramses-hfs: plan saved — floorplan cards regenerated');
   } catch (e) {
