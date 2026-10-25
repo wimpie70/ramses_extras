@@ -459,6 +459,7 @@ def studio_marker(
     label: str | None = None,
     size: int = 20,
     actions: dict[str, Any] | None = None,
+    entities: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build one studio ``Marker`` (icon type, more-info tap action)."""
     import uuid
@@ -467,7 +468,7 @@ def studio_marker(
         "id": uuid.uuid4().hex[:8],
         "x": round(x, 1),
         "y": round(y, 1),
-        "entities": [entity_id],
+        "entities": entities or [entity_id],
         # keeps studio's own rule export bound to the same element ids
         # our generated rules target (elementId wins over the
         # marker_<id> fallback for multi-entity markers)

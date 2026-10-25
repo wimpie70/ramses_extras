@@ -992,19 +992,25 @@ function _hfsStart() {
   if (hass.connection && hass.connection.subscribeEvents) {
     // their store fires this on every landed save — maps follow the
     // edit and generated cards regenerate, debounced past bursts
-    hass.connection.subscribeEvents(() => {
+    hass.connection.subscribeEvents(async () => {
       _hfsLoadLayout();
-      // reset/replace writes change the store itself — the open panel
-      // only reloads itself on *saves* it issued, so pull it forward
-      // (load() re-reads rev + layout; a cleared store → "no plan")
-      for (const p of _hfsPanels) {
-        if (typeof p.load === 'function') {
-          try {
-            p.load();
-          } catch (e) {
-            console.debug('ramses-hfs: panel reload failed', e);
+      // only pull open panels forward when the write came from outside
+      // (reset/restore/seed/another tab) — a panel's own save already
+      // bumps its rev, and a blind load() would reset zoom every time
+      try {
+        const r = await hass.callWS({ type: 'floorplan_studio/load' });
+        const rev = r && r.rev;
+        for (const p of _hfsPanels) {
+          if (rev !== undefined && p.rev !== rev && typeof p.load === 'function') {
+            try {
+              p.load();
+            } catch (e) {
+              console.debug('ramses-hfs: panel reload failed', e);
+            }
           }
         }
+      } catch (e) {
+        console.debug('ramses-hfs: rev check failed', e);
       }
       clearTimeout(_exportTimer);
       _exportTimer = setTimeout(_hfsAutoExport, 1200);

@@ -193,6 +193,32 @@ def _room_centroid(room: dict[str, Any]) -> tuple[float, float]:
     )
 
 
+def _secondary_entities(dev: dict[str, Any], primary: str) -> list[str]:
+    """The device's remaining entities — hfs renders them as the
+    marker's attached sensors/valves (tempSensors/trvs) by type."""
+    return [
+        str(e["entity_id"])
+        for e in dev.get("entities") or []
+        if e.get("entity_id") and str(e["entity_id"]) != primary
+    ]
+
+
+_HFS_DEV_TYPE = {
+    "CTL": "climate",
+    "THM": "climate",
+    "TRV": "heater",
+    "FAN": "fan",
+    "COV": "cover",
+    "HGI": "server",
+}
+
+
+def _hfs_dev_type(dev: dict[str, Any]) -> str:
+    """Model device_class → hfs device type — governs how attached
+    entities map (climate → tempSensors, heater → trvs)."""
+    return _HFS_DEV_TYPE.get(str(dev.get("device_class") or "").upper(), "other")
+
+
 def _host_floor(
     floors: list[dict[str, Any]], new_floor: dict[str, Any]
 ) -> tuple[dict[str, Any] | None, tuple[float, float]]:
@@ -359,7 +385,10 @@ def _merge_studio_project(
                         zones or {},
                         (zone_toggles or {}).get(str(dev.get("device_id") or "")),
                     ),
+                    entities=[primary, *_secondary_entities(dev, primary)],
                 )
+                if not dev.get("standalone"):
+                    marker["hfsType"] = _hfs_dev_type(dev)
                 studio_marker_zone(
                     marker, (zones or {}).get(str(dev.get("device_id") or ""))
                 )
@@ -1424,7 +1453,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     actions=studio_actions_for_device(
                         dev, zones, zone_toggles.get(dev.get("device_id"))
                     ),
+                    entities=[primary, *_secondary_entities(dev, primary)],
                 )
+                marker["hfsType"] = _hfs_dev_type(dev)
                 studio_marker_zone(marker, zones.get(dev.get("device_id")))
                 markers.append(marker)
                 placed[dev["device_id"]] = f"{fname} / {room['name']}"
