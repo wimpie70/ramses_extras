@@ -709,13 +709,16 @@ class HfsAdapter(EditorAdapter):
         }
         if style.get("label"):
             dev["name"] = str(style["label"])
+        # hfs validation: trvs/tempSensors are heater-only fields —
+        # climate/* extras read as bound valves, the rest as sensors
         extra = entities[1:]
-        if extra:
-            if dev_type == "heater":
-                dev["trvs"] = extra
-            elif dev_type in ("climate", "ac"):
-                dev["tempSensors"] = extra
-            # other types: secondary entities stay caption-level only
+        if extra and dev_type == "heater":
+            trvs = [e for e in extra if str(e).startswith("climate.")]
+            others = [e for e in extra if not str(e).startswith("climate.")]
+            if trvs:
+                dev["trvs"] = trvs
+            if others:
+                dev["tempSensors"] = others
         return dev
 
     @staticmethod

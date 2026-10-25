@@ -203,9 +203,11 @@ def _secondary_entities(dev: dict[str, Any], primary: str) -> list[str]:
     ]
 
 
+# hfs only allows trvs/tempSensors on 'heater' devices — a CTL is the
+# zone's heater in hfs terms; THM/TRV are heater types too
 _HFS_DEV_TYPE = {
-    "CTL": "climate",
-    "THM": "climate",
+    "CTL": "heater",
+    "THM": "heater",
     "TRV": "heater",
     "FAN": "fan",
     "COV": "cover",
