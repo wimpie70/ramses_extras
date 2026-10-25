@@ -358,6 +358,55 @@ class ConfigProfileStore:
             },
         )
 
+        # Floorplan/heat test: zones named after real floorplan rooms so
+        # seed_heat_zones auto-prefills areas — woonkamer/keuken on the
+        # ground floor, slaapkamers/badkamer upstairs. Each zone has a
+        # THM room sensor plus one or two TRV actuators.
+        fp_known: dict[str, dict[str, Any]] = {}
+        fp_zones: dict[str, Any] = {}
+        for zid, label, sensor, trvs in (
+            ("00", "woonkamer", "34:150001", ["04:150001", "04:150002"]),
+            ("01", "keuken", "34:150003", ["04:150003"]),
+            ("02", "slaapkamer 1", "34:150011", ["04:150011", "04:150012"]),
+            ("03", "slaapkamer 2", "34:150013", ["04:150013"]),
+            ("04", "badkamer", "34:150014", ["04:150014"]),
+        ):
+            fp_known[sensor] = {"class": "THM", "alias": f"{label} sensor"}
+            for trv in trvs:
+                fp_known[trv] = {"class": "TRV", "alias": f"{label} valve"}
+            fp_zones[zid] = {
+                f"_{SZ_NAME}": label,
+                "sensor": sensor,
+                SZ_ACTUATORS: trvs,
+            }
+
+        self._profiles["floorplan"] = SystemConfigProfile(
+            name="floorplan",
+            description=(
+                "Floorplan/heat test — one CTL, 5 named zones across two "
+                "floors (woonkamer/keuken below, slaapkamers/badkamer "
+                "above), each with THM sensor + TRVs; DHW, FAN, CO2, REM"
+            ),
+            timeout_scale=1.0,
+            device_configs={
+                "_known_list": {
+                    **_known_list(*hvac_devices),
+                    ctl_id: {"class": "CTL"},
+                    dhw_id: {"class": "DHW"},
+                    **fp_known,
+                },
+                "_enforce_known_list": {"enabled": True},
+                "_schema": {
+                    **_hvac_schema,
+                    ctl_id: {
+                        "zones": fp_zones,
+                        "stored_hotwater": {"sensor": dhw_id},
+                    },
+                },
+            },
+            remove_database=True,
+        )
+
         self._profiles["fresh_start"] = SystemConfigProfile(
             name="fresh_start",
             description=(
