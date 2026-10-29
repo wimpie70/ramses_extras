@@ -9,7 +9,7 @@ orphan "unknown" markers on the floorplan.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.helpers import device_registry as dr
@@ -41,7 +41,10 @@ def _device_entry(ident, ha_id="dev-1", area_id=None):
     return d
 
 
-def _hass_with(reg, dev_reg, stored_schema=None, runtime_schema=None):
+def _hass_with(monkeypatch, reg, dev_reg, stored_schema=None, runtime_schema=None):
+    # monkeypatch (not patch().start) so the registry/coordinator
+    # stand-ins unwind after the test — a leaked er.async_get mock
+    # breaks every later test that touches the HA registries
     hass = MagicMock()
     area_reg = MagicMock()
     area_reg.areas = {}
@@ -52,24 +55,20 @@ def _hass_with(reg, dev_reg, stored_schema=None, runtime_schema=None):
     coordinator.client.device_registry.device_by_id = {}
     zone_reg = MagicMock()
     zone_reg.list_all_zones.return_value = {}
-    patches = (
-        patch.object(topology.er, "async_get", return_value=reg),
-        patch.object(topology.dr, "async_get", return_value=dev_reg),
-        patch.object(topology.ar, "async_get", return_value=area_reg),
-        patch.object(topology.fr, "async_get", return_value=floor_reg),
-        patch.object(topology, "get_ramses_cc_coordinator", return_value=coordinator),
-        patch.object(
-            topology,
-            "get_runtime_schema",
-            AsyncMock(return_value=runtime_schema or {}),
-        ),
-        patch(
-            "custom_components.ramses_extras.framework.helpers.zones.get_zone_registry",
-            return_value=zone_reg,
-        ),
+    monkeypatch.setattr(topology.er, "async_get", lambda hass: reg)
+    monkeypatch.setattr(topology.dr, "async_get", lambda hass: dev_reg)
+    monkeypatch.setattr(topology.ar, "async_get", lambda hass: area_reg)
+    monkeypatch.setattr(topology.fr, "async_get", lambda hass: floor_reg)
+    monkeypatch.setattr(topology, "get_ramses_cc_coordinator", lambda hass: coordinator)
+    monkeypatch.setattr(
+        topology,
+        "get_runtime_schema",
+        AsyncMock(return_value=runtime_schema or {}),
     )
-    for p in patches:
-        p.start()
+    monkeypatch.setattr(
+        "custom_components.ramses_extras.framework.helpers.zones.get_zone_registry",
+        lambda hass: zone_reg,
+    )
     return hass
 
 
@@ -99,7 +98,7 @@ class TestSubdeviceMapping:
         return dev_reg
 
     @pytest.mark.asyncio
-    async def test_zone_subdevice_maps_to_zone_sensor(self):
+    async def test_zone_subdevice_maps_to_zone_sensor(self, monkeypatch):
         dev_zone = _device_entry("01:000001_01", ha_id="d1")
         dev_hw = _device_entry("01:000001_HW", ha_id="d2")
         dev_unknown = _device_entry("01:000001_99", ha_id="d3")
@@ -110,6 +109,7 @@ class TestSubdeviceMapping:
             "sensor.orphan": _ent("sensor.orphan", "d3"),
         }
         hass = _hass_with(
+            monkeypatch,
             reg,
             self._registry([dev_zone, dev_hw, dev_unknown]),
             runtime_schema=self.RUNTIME,
@@ -131,11 +131,12 @@ class TestSubdeviceMapping:
         assert "sensor.orphan" not in ents
 
     @pytest.mark.asyncio
-    async def test_zone_without_sensor_maps_to_single_actuator(self):
+    async def test_zone_without_sensor_maps_to_single_actuator(self, monkeypatch):
         dev_zone = _device_entry("01:000001_02", ha_id="d4")
         reg = MagicMock(spec=er.EntityRegistry)
         reg.entities = {"sensor.z2": _ent("sensor.z2", "d4")}
         hass = _hass_with(
+            monkeypatch,
             reg,
             self._registry([dev_zone]),
             runtime_schema=self.RUNTIME,
@@ -147,13 +148,14 @@ class TestSubdeviceMapping:
         assert "01:000001_02" not in ids
 
     @pytest.mark.asyncio
-    async def test_stored_schema_fills_subdevice_map(self):
+    async def test_stored_schema_fills_subdevice_map(self, monkeypatch):
         # when the runtime schema lacks the zone config, the stored
         # options schema supplies the mapping
         dev_zone = _device_entry("01:000001_01", ha_id="d1")
         reg = MagicMock(spec=er.EntityRegistry)
         reg.entities = {"sensor.z1_temp": _ent("sensor.z1_temp", "d1")}
         hass = _hass_with(
+            monkeypatch,
             reg,
             self._registry([dev_zone]),
             stored_schema=self.RUNTIME,
