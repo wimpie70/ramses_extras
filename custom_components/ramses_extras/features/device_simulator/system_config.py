@@ -127,7 +127,9 @@ class ConfigProfileStore:
         "normal": "Normal HVAC/heat environment",
         "hvac_only": "HVAC devices only (FAN, CO2, HUM, REM)",
         "heat_only": "Heat devices only (CTL, TRV, DHW)",
+        "heat_2": "Heat environment with fast heartbeat (100x)",
         "mixed": "Mixed heat + HVAC environment",
+        "floorplan": "Floorplan HVAC + multi-zone heat environment",
         "fresh_start": "Clean slate, re-discover all devices",
         "fresh_start_allow_unknown_devices": (
             "Clean slate with unknown device support (enforce_known_list disabled)"
