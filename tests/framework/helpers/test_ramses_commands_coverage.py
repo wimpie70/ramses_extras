@@ -181,7 +181,12 @@ class TestRamsesCommandsCoverage:
         """Test set_fan_param when no broker found."""
         commands.hass.data = {"ramses_cc": {}}
 
-        result = await commands.set_fan_param("32:123456", "7C00", "value")
+        with patch.object(
+            commands,
+            "_wait_for_ramses_cc_coordinator",
+            new=AsyncMock(return_value=None),
+        ):
+            result = await commands.set_fan_param("32:123456", "7C00", "value")
         assert result.success is False
         assert "broker not found" in result.error_message
 

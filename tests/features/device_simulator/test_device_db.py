@@ -872,10 +872,18 @@ async def test_import_user_log_persistent_dir(tmp_path: Path) -> None:
 class TestConversationPayloadValidation:
     """Tests for conversation payload validation."""
 
-    def test_hvac_discover_all_conversation_loads(self) -> None:
-        """Test that hvac_discover_all conversation can be loaded."""
+    @pytest.fixture(scope="class")
+    def loaded_db(self) -> DeviceDatabase:
+        """Load the real device database once for the whole class."""
         db = DeviceDatabase()
         db.load_all()
+        return db
+
+    def test_hvac_discover_all_conversation_loads(
+        self, loaded_db: DeviceDatabase
+    ) -> None:
+        """Test that hvac_discover_all conversation can be loaded."""
+        db = loaded_db
 
         # Try lookup by conversation ID (fallback mechanism)
         conv = db.get_conversation("hvac_discover_all")
@@ -883,10 +891,9 @@ class TestConversationPayloadValidation:
         assert conv.id == "hvac_discover_all"
         assert len(conv.frames) > 0
 
-    def test_hvac_discover_all_frame_format(self) -> None:
+    def test_hvac_discover_all_frame_format(self, loaded_db: DeviceDatabase) -> None:
         """Test that hvac_discover_all frames have correct format."""
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("hvac_discover_all")
         assert conv is not None
@@ -900,10 +907,11 @@ class TestConversationPayloadValidation:
             assert frame.verb in ["I", "RQ", "RP"]
             assert len(frame.payload) > 0 or frame.payload == "00"
 
-    def test_hvac_discover_all_payload_hex_validation(self) -> None:
+    def test_hvac_discover_all_payload_hex_validation(
+        self, loaded_db: DeviceDatabase
+    ) -> None:
         """Test that hvac_discover_all payloads are valid hex strings."""
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("hvac_discover_all")
         assert conv is not None
@@ -918,10 +926,11 @@ class TestConversationPayloadValidation:
                     f"has invalid hex payload: {frame.payload}: {e}"
                 )
 
-    def test_hvac_discover_all_10e0_payload_lengths(self) -> None:
+    def test_hvac_discover_all_10e0_payload_lengths(
+        self, loaded_db: DeviceDatabase
+    ) -> None:
         """Test that 10E0 payloads in hvac_discover_all have correct lengths."""
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("hvac_discover_all")
         assert conv is not None
@@ -939,10 +948,11 @@ class TestConversationPayloadValidation:
                     f"10E0 payload too long: {payload_len} chars for {frame.src}"
                 )
 
-    def test_hvac_discover_all_31e0_payload_lengths(self) -> None:
+    def test_hvac_discover_all_31e0_payload_lengths(
+        self, loaded_db: DeviceDatabase
+    ) -> None:
         """Test that 31E0 payloads in hvac_discover_all have correct lengths."""
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("hvac_discover_all")
         assert conv is not None
@@ -956,10 +966,11 @@ class TestConversationPayloadValidation:
                     f"got {payload_len} for {frame.src}"
                 )
 
-    def test_hvac_discover_all_no_invalid_rp_31da_for_non_fan(self) -> None:
+    def test_hvac_discover_all_no_invalid_rp_31da_for_non_fan(
+        self, loaded_db: DeviceDatabase
+    ) -> None:
         """Test that non-FAN devices do not reply to 31DA in hvac_discover_all."""
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("hvac_discover_all")
         assert conv is not None
@@ -971,10 +982,11 @@ class TestConversationPayloadValidation:
                     f"Only FAN should reply to 31DA, got {frame.src}"
                 )
 
-    def test_all_conversations_have_valid_structure(self) -> None:
+    def test_all_conversations_have_valid_structure(
+        self, loaded_db: DeviceDatabase
+    ) -> None:
         """Test that all loaded conversations have valid structure."""
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         # Get all conversation IDs
         stats = db.stats()
@@ -997,10 +1009,9 @@ class TestConversationPayloadValidation:
                 assert frame.verb is not None
                 assert frame.payload is not None
 
-    def test_conversation_scheme_filtering(self) -> None:
+    def test_conversation_scheme_filtering(self, loaded_db: DeviceDatabase) -> None:
         """Test that scheme filtering works for conversations."""
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         # Find a conversation with a scheme
         fan_rem_conv = db.get_conversation("fan_rem/speed_change")

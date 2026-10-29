@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -104,8 +104,10 @@ async def test_update_fan_params_broker_not_found() -> None:
     hass.data = {"ramses_cc": {}}
 
     cmds = ramses_commands.RamsesCommands(hass)
-
-    result = await cmds.update_fan_params("32_123456")
+    with patch.object(
+        cmds, "_wait_for_ramses_cc_coordinator", new=AsyncMock(return_value=None)
+    ):
+        result = await cmds.update_fan_params("32_123456")
 
     assert result.success is False
     assert "broker not found" in result.error_message
@@ -117,11 +119,25 @@ async def test_set_fan_param_broker_not_found() -> None:
     hass.data = {"ramses_cc": {}}
 
     cmds = ramses_commands.RamsesCommands(hass)
-
-    result = await cmds.set_fan_param("32_123456", "10", 1)
+    with patch.object(
+        cmds, "_wait_for_ramses_cc_coordinator", new=AsyncMock(return_value=None)
+    ):
+        result = await cmds.set_fan_param("32_123456", "10", 1)
 
     assert result.success is False
     assert "broker not found" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_wait_for_ramses_cc_coordinator_times_out() -> None:
+    hass = MagicMock()
+    hass.data = {"ramses_cc": {}}
+
+    cmds = ramses_commands.RamsesCommands(hass)
+
+    result = await cmds._wait_for_ramses_cc_coordinator(timeout=0.5)
+
+    assert result is None
 
 
 @pytest.mark.asyncio

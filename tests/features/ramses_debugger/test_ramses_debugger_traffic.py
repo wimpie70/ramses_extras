@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -13,6 +13,9 @@ from custom_components.ramses_extras.features.ramses_debugger import websocket_c
 from custom_components.ramses_extras.features.ramses_debugger.traffic_collector import (
     TrafficCollector,
 )
+from custom_components.ramses_extras.framework.helpers.ramses_commands import (
+    RamsesCommands,
+)
 from custom_components.ramses_extras.framework.helpers.ramses_message_stream import (
     get_ramses_message_stream,
 )
@@ -20,6 +23,23 @@ from custom_components.ramses_extras.framework.helpers.ramses_message_stream imp
 ws_traffic_get_stats = websocket_commands.ws_traffic_get_stats.__wrapped__
 ws_traffic_reset_stats = websocket_commands.ws_traffic_reset_stats.__wrapped__
 ws_traffic_subscribe_stats = websocket_commands.ws_traffic_subscribe_stats.__wrapped__
+
+
+@pytest.fixture(autouse=True)
+def _stub_ramses_cc_coordinator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the message stream a coordinator so attach succeeds at once.
+
+    Without a ramses_cc coordinator the stream's attach task retries for
+    30s (one attempt per second); every ``async_block_till_done`` then
+    blocks for the full retry window.
+    """
+    coordinator = MagicMock()
+    coordinator.add_msg_handler.return_value = lambda: None
+    monkeypatch.setattr(
+        RamsesCommands,
+        "_get_ramses_cc_coordinator",
+        AsyncMock(return_value=coordinator),
+    )
 
 
 class _FakeConnection:

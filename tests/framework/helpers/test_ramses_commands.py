@@ -834,7 +834,14 @@ async def test_update_fan_params_no_broker(ramses_commands, hass):
     """Test fan params update when broker not found."""
     hass.data = {"ramses_cc": {}}
 
-    with patch.object(ramses_commands, "_device_supports_2411", return_value=True):
+    with (
+        patch.object(
+            ramses_commands,
+            "_wait_for_ramses_cc_coordinator",
+            new=AsyncMock(return_value=None),
+        ),
+        patch.object(ramses_commands, "_device_supports_2411", return_value=True),
+    ):
         result = await ramses_commands.update_fan_params("32_123456")
 
     assert result.success is False
@@ -952,7 +959,12 @@ async def test_set_fan_param_no_broker(ramses_commands, hass):
     """Test fan param setting when broker not found."""
     hass.data = {"ramses_cc": {}}
 
-    result = await ramses_commands.set_fan_param("32_123456", "01", "value")
+    with patch.object(
+        ramses_commands,
+        "_wait_for_ramses_cc_coordinator",
+        new=AsyncMock(return_value=None),
+    ):
+        result = await ramses_commands.set_fan_param("32_123456", "01", "value")
 
     assert result.success is False
     assert "broker not found" in result.error_message

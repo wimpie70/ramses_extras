@@ -384,16 +384,22 @@ class TestScenarioContext:
 class TestConversationPlaybackIntegration:
     """Integration tests for conversation playback flow."""
 
-    @pytest.mark.asyncio
-    async def test_conversation_load_and_play(self):
-        """Test loading and playing a conversation end-to-end."""
+    @pytest.fixture(scope="class")
+    def loaded_db(self):
+        """Load the real device database once for the whole class."""
         from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
             DeviceDatabase,
         )
 
-        # Load the database
         db = DeviceDatabase()
         db.load_all()
+        return db
+
+    @pytest.mark.asyncio
+    async def test_conversation_load_and_play(self, loaded_db):
+        """Test loading and playing a conversation end-to-end."""
+        # Load the database
+        db = loaded_db
 
         # Load the hvac_discover_all conversation
         conv = db.get_conversation("hvac_discover_all")
@@ -413,14 +419,9 @@ class TestConversationPlaybackIntegration:
             prev_time = frame.t
 
     @pytest.mark.asyncio
-    async def test_conversation_frame_to_packet_conversion(self):
+    async def test_conversation_frame_to_packet_conversion(self, loaded_db):
         """Test converting conversation frames to packets."""
-        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
-            DeviceDatabase,
-        )
-
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("fan_rem/speed_change")
         if conv is None:
@@ -446,14 +447,9 @@ class TestConversationPlaybackIntegration:
             assert frame.verb in packet
 
     @pytest.mark.asyncio
-    async def test_conversation_playback_with_device_map(self):
+    async def test_conversation_playback_with_device_map(self, loaded_db):
         """Test conversation playback with explicit device map."""
-        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
-            DeviceDatabase,
-        )
-
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("hvac_discover_all")
         assert conv is not None
@@ -474,14 +470,9 @@ class TestConversationPlaybackIntegration:
             assert peer in device_map, f"Peer {peer} not in device map"
 
     @pytest.mark.asyncio
-    async def test_conversation_playback_timing(self):
+    async def test_conversation_playback_timing(self, loaded_db):
         """Test that conversation playback respects timing."""
-        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
-            DeviceDatabase,
-        )
-
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("hvac_discover_all")
         assert conv is not None
@@ -497,14 +488,9 @@ class TestConversationPlaybackIntegration:
                 assert gap >= 0, f"Frame {i} has negative gap from previous frame"
 
     @pytest.mark.asyncio
-    async def test_conversation_skip_verbs(self):
+    async def test_conversation_skip_verbs(self, loaded_db):
         """Test conversation playback with verb skipping."""
-        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
-            DeviceDatabase,
-        )
-
-        db = DeviceDatabase()
-        db.load_all()
+        db = loaded_db
 
         conv = db.get_conversation("hvac_discover_all")
         assert conv is not None
