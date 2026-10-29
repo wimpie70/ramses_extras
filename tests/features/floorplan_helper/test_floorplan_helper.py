@@ -1604,3 +1604,129 @@ class TestGestureBridgeServices:
         assert markers[0]["style"]["label"] == "FAN 32:150000"
         assert markers[0]["x"] == 2435.0
         assert markers[1]["entities"] == ["cover.klep_1_shelly"]
+
+    async def test_zone_toggle_schema_parent_rolls_up_child_zones(self):
+        # a device with no explicit zone but schema children still
+        # toggles — the implicit parent zone rolls up each child
+        # zone's areas and bound devices
+        hass, handlers = await self._registered()
+        model = _model(
+            devices=[
+                _device(),
+                _device(
+                    device_id="37:168270",
+                    device_class="REM",
+                    parent="32:153289",
+                    primary_entity="remote.37_168270",
+                ),
+            ]
+        )
+        options = {
+            "device_zones": {
+                # the parent has no entry — only the child does
+                "37:168270": {"areas": ["keuken"], "devices": ["cover.klep_1"]}
+            }
+        }
+        with (
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.build_floorplan_model",
+                new=AsyncMock(return_value=model),
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services.get_floorplan_options",
+                return_value=options,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.floorplan_helper"
+                ".services._config_entry",
+                return_value=MagicMock(),
+            ),
+        ):
+            payload = await handlers["floorplan_zone_toggle"](
+                self._call({"device_id": "32:153289"})
+            )
+        area_toggles = [
+            t for t in payload["toggles"] if t["class"] == "rx-zone-32_153289"
+        ]
+        dev_toggles = [
+            t for t in payload["toggles"] if t["class"] == "rx-zone-32_153289_dev"
+        ]
+        # the child's zone rooms roll up under the parent's toggle
+        assert area_toggles[0]["elements"] == ["area.keuken"]
+        # owner + child + the child's extra member all ring
+        els = dev_toggles[0]["elements"]
+        assert "sensor.32_153289_fan_rate" in els
+        assert "remote.37_168270" in els
+        assert "cover.klep_1" in els
+
+    def test_resolve_bound_rolls_up_child_zones(self):
+        from custom_components.ramses_extras.features.floorplan_helper.zones import (
+            resolve_bound,
+        )
+
+        model = _model(
+            devices=[
+                _device(),
+                _device(
+                    device_id="37:168270",
+                    device_class="REM",
+                    parent="32:153289",
+                    primary_entity="remote.37_168270",
+                ),
+                _device(
+                    device_id="37:169161",
+                    device_class="REM",
+                    parent="32:153289",
+                    primary_entity="remote.37_169161",
+                ),
+            ]
+        )
+        all_zones = {
+            "37:168270": {"areas": ["keuken"], "devices": ["cover.klep_1"]},
+            "37:169161": {"areas": ["keuken", "hal"], "devices": []},
+        }
+        areas, bound = resolve_bound(
+            model,
+            model["devices"][0],
+            {"areas": ["woonkamer"], "devices": []},
+            lambda d: d["primary_entity"],
+            all_zones=all_zones,
+        )
+        # parent's own areas + every child zone's areas, deduped
+        assert set(areas) == {"area.woonkamer", "area.keuken", "area.hal"}
+        # owner + both children + the child's extra member
+        assert set(bound) >= {
+            "sensor.32_153289_fan_rate",
+            "remote.37_168270",
+            "remote.37_169161",
+            "cover.klep_1",
+        }
+
+    def test_resolve_bound_without_all_zones_skips_children(self):
+        from custom_components.ramses_extras.features.floorplan_helper.zones import (
+            resolve_bound,
+        )
+
+        model = _model(
+            devices=[
+                _device(),
+                _device(
+                    device_id="37:168270",
+                    device_class="REM",
+                    parent="32:153289",
+                    primary_entity="remote.37_168270",
+                ),
+            ]
+        )
+        areas, bound = resolve_bound(
+            model,
+            model["devices"][0],
+            {"areas": ["woonkamer"], "devices": []},
+            lambda d: d["primary_entity"],
+        )
+        # no all_zones: child areas don't leak in, but the child
+        # device itself is still bound via the parent link
+        assert set(areas) == {"area.woonkamer"}
+        assert "remote.37_168270" in bound
