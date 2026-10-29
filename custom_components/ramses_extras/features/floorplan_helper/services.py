@@ -222,6 +222,35 @@ def _hfs_dev_type(dev: dict[str, Any]) -> str:
     return _HFS_DEV_TYPE.get(str(dev.get("device_class") or "").upper(), "other")
 
 
+def _host_floor(
+    floors: list[dict[str, Any]], new_floor: dict[str, Any]
+) -> tuple[dict[str, Any] | None, tuple[float, float]]:
+    """Find the existing floor already holding *new_floor*'s rooms.
+
+    A combined drawing folds every source floor into one studio floor,
+    so an incoming ``begane grond``/``1e verdieping`` must merge into
+    the combined host rather than append a duplicate floor. Returns
+    ``(floor, (ox, oy))`` where the offset translates the incoming
+    floor's coordinates into the host's (e.g. ``+800`` for a folded
+    upper floor); ``(None, (0, 0))`` when no existing floor holds any
+    of the incoming rooms — the caller appends it as genuinely new.
+    """
+    new_rooms = new_floor.get("rooms") or []
+    best: dict[str, Any] | None = None
+    best_hits: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for fl in floors:
+        have = {_room_key(r): r for r in fl.get("rooms") or []}
+        hits = [(have[_room_key(r)], r) for r in new_rooms if _room_key(r) in have]
+        if len(hits) > len(best_hits):
+            best, best_hits = fl, hits
+    if not best_hits:
+        return None, (0.0, 0.0)
+    dx = sorted(_room_centroid(h)[0] - _room_centroid(n)[0] for h, n in best_hits)
+    dy = sorted(_room_centroid(h)[1] - _room_centroid(n)[1] for h, n in best_hits)
+    mid = len(best_hits) // 2
+    return best, (dx[mid], dy[mid])
+
+
 _RAMSES_ENT_ID_RE = re.compile(r"(?<!\d)(\d{2})_(\d{6})(?!\d)")
 
 
@@ -309,35 +338,6 @@ def _rebind_or_prune_migrated_markers(
                 kept.append(m)
             # else: ambiguous or obsolete foreign RAMSES marker — prune
         fl["markers"] = kept
-
-
-def _host_floor(
-    floors: list[dict[str, Any]], new_floor: dict[str, Any]
-) -> tuple[dict[str, Any] | None, tuple[float, float]]:
-    """Find the existing floor already holding *new_floor*'s rooms.
-
-    A combined drawing folds every source floor into one studio floor,
-    so an incoming ``begane grond``/``1e verdieping`` must merge into
-    the combined host rather than append a duplicate floor. Returns
-    ``(floor, (ox, oy))`` where the offset translates the incoming
-    floor's coordinates into the host's (e.g. ``+800`` for a folded
-    upper floor); ``(None, (0, 0))`` when no existing floor holds any
-    of the incoming rooms — the caller appends it as genuinely new.
-    """
-    new_rooms = new_floor.get("rooms") or []
-    best: dict[str, Any] | None = None
-    best_hits: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for fl in floors:
-        have = {_room_key(r): r for r in fl.get("rooms") or []}
-        hits = [(have[_room_key(r)], r) for r in new_rooms if _room_key(r) in have]
-        if len(hits) > len(best_hits):
-            best, best_hits = fl, hits
-    if not best_hits:
-        return None, (0.0, 0.0)
-    dx = sorted(_room_centroid(h)[0] - _room_centroid(n)[0] for h, n in best_hits)
-    dy = sorted(_room_centroid(h)[1] - _room_centroid(n)[1] for h, n in best_hits)
-    mid = len(best_hits) // 2
-    return best, (dx[mid], dy[mid])
 
 
 def _merge_studio_project(
