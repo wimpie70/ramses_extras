@@ -23,9 +23,9 @@
  *   - "Sync areas → HA" — link rooms to HA areas and set each entity's
  *     HA area from which room its marker sits inside
  *   - "Export ⇒" — snapshot the live project, run floorplan_export,
- *     copy the card yaml (dashboard cards untouched)
- *   - "⇒ Update cards" — same export, plus every floorplan card
- *     showing a generated map is updated in place
+ *     copy the card yaml (dashboard cards untouched; landed saves
+ *     already auto-export + apply via the overlay's
+ *     floorplan_studio_updated listener)
  *   - "⚙ Zones" — zone editor: pick a device, check the rooms it
  *     serves and the extra markers bound to it; the swatch sets the
  *     selected-zone highlight colour only — room fills stay studio's
@@ -1087,14 +1087,18 @@ class RamsesFloorplanActions extends HTMLElement {
     const root = ed && ed.shadowRoot;
     if (!root || !floor) return;
 
-    const roomAreas = (floor.rooms || []).map((r) =>
-      this._slug(r.area || r.name)
-    );
     const want = new Set([...areas].map((a) => this._slug(a)));
+    // data-r is the room's id on current hfs (the editor scene keys
+    // rooms by id); older builds used the array index — support both
+    const roomByKey = new Map();
+    (floor.rooms || []).forEach((r, i) => {
+      roomByKey.set(String(r.id ?? i), r);
+      roomByKey.set(String(i), r);
+    });
     const names = [];
     for (const poly of root.querySelectorAll('polygon[data-r]')) {
-      const i = Number(poly.getAttribute('data-r'));
-      if (!want.has(roomAreas[i])) continue;
+      const room = roomByKey.get(poly.getAttribute('data-r'));
+      if (!room || !want.has(this._slug(room.area || room.name))) continue;
       this._hiPatched.push([
         poly,
         {
@@ -1106,7 +1110,7 @@ class RamsesFloorplanActions extends HTMLElement {
       poly.setAttribute('stroke', color);
       poly.setAttribute('stroke-width', '3');
       poly.setAttribute('stroke-dasharray', '6 3');
-      names.push((floor.rooms[i] || {}).name || roomAreas[i]);
+      names.push(room.name || this._slug(room.area || room.name));
     }
 
     const bound = new Set([devId]);
@@ -1674,9 +1678,10 @@ class RamsesFloorplanActions extends HTMLElement {
       <ha-card>
         <div class="title">Floorplan</div>
         <div class="hint">
-          Edit markers in studio, store the project, export — the studio
-          project is the source of truth; export compiles it into the
-          floorplan bundle (rules + CSS + card YAML).
+          Edit the plan in the editor — changes autosave and regenerate
+          the cards automatically. The plan in Home Assistant storage is
+          the source of truth; export compiles it into the floorplan
+          bundle (rules + CSS + card YAML) for manual dashboards.
         </div>
         <div class="row" id="row-studio">
           <span class="lbl">studio project:</span>
@@ -1697,9 +1702,7 @@ class RamsesFloorplanActions extends HTMLElement {
           <button id="b-sync" class="secondary"
             title="Walk every studio room: link it to an HA area (creating the area if missing), then set the HA area of every entity whose marker sits inside that room's polygon. This makes the drawing drive real HA areas, so dashboards and automations can group by area">Sync areas → HA</button>
           <button id="b-export" class="secondary"
-            title="Snapshot the selected studio project and regenerate the card files (merged SVG + state rules + captions). The card YAML is copied to your clipboard — dashboard cards are NOT updated (use ⇒ Update cards for that)">Export ⇒</button>
-          <button id="b-apply" class="secondary"
-            title="Same as Export ⇒, plus every floorplan card on your dashboards that shows a generated map is updated in place — no edit mode, no paste needed">⇒ Update cards</button>
+            title="Snapshot the selected studio project and regenerate the card files (merged SVG + state rules + captions). The card YAML is copied to your clipboard — dashboard cards update automatically when the plan saves">Export ⇒</button>
           <button id="b-tweaks" class="secondary"
             title="Zone editor — which rooms and markers belong to each device's zone">⚙ Zones</button>
           <button id="b-reset" class="secondary"
@@ -1768,7 +1771,6 @@ class RamsesFloorplanActions extends HTMLElement {
     $('b-open-editor').onclick = () =>
       this._navigate((this._fpConfig && this._fpConfig.editor_url) || '');
     $('b-export').onclick = () => this._run(() => this._export(false));
-    $('b-apply').onclick = () => this._run(() => this._export(true));
     $('b-sync').onclick = () => this._run(() => this._sync());
     $('b-tweaks').onclick = () => {
       const t = $('tweaks');
