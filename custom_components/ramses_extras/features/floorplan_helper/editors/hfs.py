@@ -175,7 +175,11 @@ class HfsAdapter(EditorAdapter):
     # ---- storage helpers ----------------------------------------------
 
     def _layout_store(self, hass: HomeAssistant) -> Any:
-        """Return the integration's own ``LayoutStore`` (rev-checked)."""
+        """Return the integration's shared ``LayoutStore`` (rev-checked)."""
+        data = getattr(hass, "data", None)
+        shared = data.get(HFS_DOMAIN) if isinstance(data, dict) else None
+        if shared is not None and hasattr(shared, "async_load_with_rev"):
+            return shared
         from custom_components.floorplan_studio.storage import LayoutStore
 
         return LayoutStore(hass)
@@ -226,17 +230,17 @@ class HfsAdapter(EditorAdapter):
         # expected_rev guards against racing the editor's own autosave —
         # a conflict loses with a clear error rather than overwriting
         try:
-            await store.async_save(layout, expected_rev=rev)
+            new_rev = await store.async_save(layout, expected_rev=rev)
         except Exception:  # noqa: BLE001 — RevConflict on concurrent edit
             _LOGGER.info("hfs layout revision conflict — reloading and retrying")
             current, rev = await store.async_load_with_rev()
             layout = self._plan_to_layout(
                 plan, current if isinstance(current, dict) else {}
             )
-            await store.async_save(layout, expected_rev=rev)
+            new_rev = await store.async_save(layout, expected_rev=rev)
         # mirror the integration's own save path so open editor panels
-        # and live cards reload (websocket.py fires this after its save)
-        hass.bus.async_fire("floorplan_studio_updated")
+        # and live cards reload (websocket.py fires this with {"rev"} after save)
+        hass.bus.async_fire("floorplan_studio_updated", {"rev": new_rev})
         return ".storage/floorplan_studio.layout"
 
     async def async_clear(self, hass: HomeAssistant) -> bool:
