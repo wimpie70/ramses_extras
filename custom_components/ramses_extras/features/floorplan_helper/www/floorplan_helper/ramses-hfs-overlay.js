@@ -43,6 +43,7 @@ const SYMBOL_SHEET =
   '/local/ramses_extras/features/floorplan_helper/symbol-sheet.svg';
 
 let _hfsLayout = null; // floorplan_studio/load payload
+let _hfsRev; // layout rev our last floorplan_studio/load saw
 let _entityDevice = {}; // entity_id -> topology device record
 let _deviceById = {}; // device_id -> topology device record
 let _zones = {}; // device_zones option {device_id: {areas, devices, color}}
@@ -83,51 +84,59 @@ function _slug(value) {
 async function _hfsLoadState() {
   const hass = _hfsHass();
   if (!hass || !hass.callWS) return;
-  try {
-    const topo = await hass.callWS({
-      type: 'ramses_extras/floorplan_helper/get_topology',
-    });
-    _entityDevice = {};
-    _deviceById = {};
-    for (const d of (topo && topo.devices) || []) {
-      const did = String(d.device_id || '');
-      if (did) _deviceById[did] = d;
-      if (d.primary_entity) _entityDevice[d.primary_entity] = d;
-      for (const e of d.entities || []) {
-        if (e.entity_id) _entityDevice[e.entity_id] = d;
-      }
-    }
-  } catch {
-    _entityDevice = {};
-    _deviceById = {};
-  }
-  try {
-    const cfg = await hass.callWS({
-      type: 'ramses_extras/floorplan_helper/get_config',
-    });
-    _zones = cfg.device_zones || {};
-    _deviceIcons = cfg.device_icons || {};
-    _deviceRoles = cfg.device_roles || {};
-    _deviceCaptions = cfg.device_captions || {};
-    _deviceDomains = cfg.device_domains || {};
-    _stateEnts = new Set();
-    for (const roles of Object.values(_deviceRoles)) {
-      for (const ents of Object.values(roles)) {
-        for (const eid of ents) _stateEnts.add(eid);
-      }
-    }
-    for (const pairs of Object.values(_deviceCaptions)) {
-      for (const p of pairs) _stateEnts.add(p[0]);
-    }
-  } catch {
-    _zones = {};
-    _deviceIcons = {};
-    _deviceRoles = {};
-    _deviceCaptions = {};
-    _deviceDomains = {};
-  }
-  await _hfsLoadIcons();
-  await _hfsLoadLayout();
+  // fetch concurrently — serialized round-trips pushed first paint out
+  // by seconds on a cold page load
+  await Promise.all([
+    hass
+      .callWS({
+        type: 'ramses_extras/floorplan_helper/get_topology',
+      })
+      .then((topo) => {
+        _entityDevice = {};
+        _deviceById = {};
+        for (const d of (topo && topo.devices) || []) {
+          const did = String(d.device_id || '');
+          if (did) _deviceById[did] = d;
+          if (d.primary_entity) _entityDevice[d.primary_entity] = d;
+          for (const e of d.entities || []) {
+            if (e.entity_id) _entityDevice[e.entity_id] = d;
+          }
+        }
+      })
+      .catch(() => {
+        _entityDevice = {};
+        _deviceById = {};
+      }),
+    hass
+      .callWS({
+        type: 'ramses_extras/floorplan_helper/get_config',
+      })
+      .then((cfg) => {
+        _zones = cfg.device_zones || {};
+        _deviceIcons = cfg.device_icons || {};
+        _deviceRoles = cfg.device_roles || {};
+        _deviceCaptions = cfg.device_captions || {};
+        _deviceDomains = cfg.device_domains || {};
+        _stateEnts = new Set();
+        for (const roles of Object.values(_deviceRoles)) {
+          for (const ents of Object.values(roles)) {
+            for (const eid of ents) _stateEnts.add(eid);
+          }
+        }
+        for (const pairs of Object.values(_deviceCaptions)) {
+          for (const p of pairs) _stateEnts.add(p[0]);
+        }
+      })
+      .catch(() => {
+        _zones = {};
+        _deviceIcons = {};
+        _deviceRoles = {};
+        _deviceCaptions = {};
+        _deviceDomains = {};
+      }),
+    _hfsLoadIcons(),
+    _hfsLoadLayout(),
+  ]);
 }
 
 // The mdi paths behind our icon keys already ship in the
@@ -158,6 +167,7 @@ async function _hfsLoadLayout() {
   try {
     const r = await hass.callWS({ type: 'floorplan_studio/load' });
     _hfsLayout = (r && r.layout) || r || null;
+    _hfsRev = r && r.rev;
   } catch {
     _hfsLayout = null;
   }
@@ -1113,7 +1123,10 @@ function _hfsScan() {
 
 function _hfsScheduleScans() {
   _hfsScan();
-  for (const ms of [60, 250, 750, 1500]) {
+  // the tail covers late card mounts — Lovelace builds views
+  // asynchronously and hfs code-splits its frontend, so a card can
+  // appear seconds after the event that triggered us
+  for (const ms of [60, 250, 750, 1500, 3000, 5000]) {
     setTimeout(_hfsScan, ms);
   }
 }
@@ -1123,32 +1136,33 @@ function _hfsStart() {
   const hass = _hfsHass();
   if (!hass) return;
   _started = true;
-  _hfsLoadState().then(_hfsScan);
+  // attach early so gestures work while state streams in, then repaint
+  // once everything has landed
+  _hfsScheduleScans();
+  _hfsLoadState().then(_hfsScheduleScans);
   if (hass.connection && hass.connection.subscribeEvents) {
     // their store fires this on every landed save — maps follow the
     // edit and generated cards regenerate, debounced past bursts
-    hass.connection.subscribeEvents(async () => {
+    hass.connection.subscribeEvents(async (e) => {
       // reload topology + config + layout so newly seeded devices,
       // auto-seeded heat zones, or profile switches take effect
       // without a page reload
       await _hfsLoadState();
       // only pull open panels forward when the write came from outside
       // (reset/restore/seed/another tab) — a panel's own save already
-      // bumps its rev, and a blind load() would reset zoom every time
-      try {
-        const r = await hass.callWS({ type: 'floorplan_studio/load' });
-        const rev = r && r.rev;
-        for (const p of _hfsPanels) {
-          if (rev !== undefined && p.rev !== rev && typeof p.load === 'function') {
-            try {
-              p.load();
-            } catch (e) {
-              console.debug('ramses-hfs: panel reload failed', e);
-            }
+      // bumps its rev, and a blind load() would reset zoom every time.
+      // 0.38+ carries the rev on the event; older versions don't —
+      // then fall back to the rev our layout reload just fetched.
+      const evRev = e && e.data && e.data.rev;
+      const rev = evRev !== undefined ? evRev : _hfsRev;
+      for (const p of _hfsPanels) {
+        if (rev !== undefined && p.rev !== rev && typeof p.load === 'function') {
+          try {
+            p.load();
+          } catch (err) {
+            console.debug('ramses-hfs: panel reload failed', err);
           }
         }
-      } catch (e) {
-        console.debug('ramses-hfs: rev check failed', e);
       }
       clearTimeout(_exportTimer);
       _exportTimer = setTimeout(_hfsAutoExport, 1200);
@@ -1173,6 +1187,17 @@ function _hfsStart() {
 }
 
 _hfsBridge();
+// hfs code-splits its frontend, so the card/panel element classes can
+// register after our first scans — rescan the moment each upgrades
+for (const tag of [
+  'floorplan-studio-card',
+  'hfs-floorplan-card',
+  'floorplan-studio-panel',
+]) {
+  Promise.resolve(customElements.whenDefined(tag))
+    .then(_hfsScheduleScans)
+    .catch(() => {});
+}
 _hfsStart();
 if (!_started) {
   const timer = setInterval(() => {
