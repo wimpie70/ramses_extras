@@ -1079,24 +1079,6 @@ function _hfsBridge() {
     clearTimeout(_autoSaveTimer);
     _autoSaveTimer = setTimeout(_hfsAutoSave, 2500);
   });
-  // Clicking beside the map (outside any floorplan card, editor, or
-  // actions card) deselects active zone highlights.
-  document.addEventListener('pointerup', (ev) => {
-    const path = ev.composedPath ? ev.composedPath() : [];
-    const insideCardOrEditor = path.some(
-      (n) =>
-        n &&
-        n.tagName &&
-        (HFS_TAGS.has(n.tagName) ||
-          n.tagName === HFS_PANEL_TAG ||
-          n.tagName === 'FLOORPLAN-STUDIO-EDITOR' ||
-          n.tagName === 'RAMSES-FLOORPLAN-ACTIONS' ||
-          n.tagName === 'FLOORPLAN-CARD')
-    );
-    if (!insideCardOrEditor) {
-      _hfsClearZones();
-    }
-  });
   // "focus lost" — leaving the tab flushes pending edits
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
