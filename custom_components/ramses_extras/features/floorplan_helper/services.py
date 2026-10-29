@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -219,6 +220,95 @@ def _hfs_dev_type(dev: dict[str, Any]) -> str:
     """Model device_class → hfs device type — governs how attached
     entities map (climate → tempSensors, heater → trvs)."""
     return _HFS_DEV_TYPE.get(str(dev.get("device_class") or "").upper(), "other")
+
+
+_RAMSES_ENT_ID_RE = re.compile(r"(?<!\d)(\d{2})_(\d{6})(?!\d)")
+
+
+def _rebind_or_prune_migrated_markers(
+    project: dict[str, Any],
+    model: dict[str, Any],
+    entity_device: dict[str, str],
+) -> None:
+    """Rebind 1:1 foreign RAMSES markers or prune dead ones before seed.
+
+    When migrating a layout across instances or profiles, markers bound
+    to foreign RAMSES entities (containing ``XX_XXXXXX`` not in the
+    local ``entity_device`` map) either rebind in-place when there is a
+    unique unplaced local device of the same class/prefix (keeping room
+    coordinates), or are removed so local devices stage cleanly.
+    Non-RAMSES markers (e.g. Shelly valve covers) are untouched.
+    """
+    if not entity_device:
+        return
+    devices: list[dict[str, Any]] = [
+        d for d in (model.get("devices") or []) if d.get("primary_entity")
+    ]
+    placed_dids: set[str] = {
+        entity_device[e]
+        for fl in project.get("floors") or []
+        for m in fl.get("markers") or []
+        for e in (m.get("entities") or [])
+        if e in entity_device
+    }
+
+    def _marker_hint(m: dict[str, Any], match: re.Match[str]) -> tuple[str, str]:
+        prefix = match.group(1)
+        label = str((m.get("style") or {}).get("label") or "").strip()
+        head = label.split(" ", 1)[0].upper() if label else ""
+        cls = head if head in FLOORPLAN_DEVICE_ICON_MAP else ""
+        return cls, prefix
+
+    # Count foreign markers per (cls, prefix) so we only rebind 1:1
+    foreign_counts: dict[tuple[str, str], int] = {}
+    for fl in project.get("floors") or []:
+        for m in fl.get("markers") or []:
+            ents = [str(e) for e in (m.get("entities") or []) if e]
+            if not ents or any(e in entity_device for e in ents):
+                continue
+            rm = _RAMSES_ENT_ID_RE.search(ents[0])
+            if rm is None:
+                continue
+            key = _marker_hint(m, rm)
+            foreign_counts[key] = foreign_counts.get(key, 0) + 1
+
+    for fl in project.get("floors") or []:
+        kept: list[dict[str, Any]] = []
+        for m in fl.get("markers") or []:
+            ents = [str(e) for e in (m.get("entities") or []) if e]
+            if not ents or any(e in entity_device for e in ents):
+                kept.append(m)
+                continue
+            rm = _RAMSES_ENT_ID_RE.search(ents[0])
+            if rm is None:
+                # Non-RAMSES entity (e.g. DIY cover/sensor) — keep as-is
+                kept.append(m)
+                continue
+            cls, prefix = _marker_hint(m, rm)
+            cands = [
+                d
+                for d in devices
+                if str(d.get("device_id") or "") not in placed_dids
+                and (
+                    (cls and str(d.get("device_class") or "").upper() == cls)
+                    or (
+                        not cls
+                        and str(d.get("device_id") or "").startswith(f"{prefix}:")
+                    )
+                )
+            ]
+            if len(cands) == 1 and foreign_counts.get((cls, prefix), 0) == 1:
+                cand = cands[0]
+                primary = str(cand["primary_entity"])
+                m["entities"] = [primary]
+                m["elementId"] = primary
+                style = dict(m.get("style") or {})
+                style["label"] = str(cand.get("display_name") or cand["device_id"])
+                m["style"] = style
+                placed_dids.add(str(cand["device_id"]))
+                kept.append(m)
+            # else: ambiguous or obsolete foreign RAMSES marker — prune
+        fl["markers"] = kept
 
 
 def _host_floor(
@@ -1504,6 +1594,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 entity_device[str(dev["primary_entity"])] = did
 
         if existing is not None:
+            _rebind_or_prune_migrated_markers(existing, model, entity_device)
             project = _merge_studio_project(
                 existing,
                 floors_json,

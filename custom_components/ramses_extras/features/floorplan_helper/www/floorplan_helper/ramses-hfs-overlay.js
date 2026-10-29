@@ -257,9 +257,27 @@ function _hfsInDock(f, d, dock) {
   return true;
 }
 
+let _lastStagingFp = '';
+function _hfsDevicesFingerprint(layout) {
+  if (!layout || !layout.floors) return '';
+  const parts = [];
+  for (const [fk, f] of Object.entries(layout.floors)) {
+    for (const d of (f && f.devices) || []) {
+      parts.push(
+        `${fk}:${d.entity || ''}@${Math.round(d.x || 0)},${Math.round(d.y || 0)}`
+      );
+    }
+  }
+  return parts.join('|');
+}
+
 function _hfsSyncStaging(ed) {
-  const layout = ed && ed.st && ed.st.layout;
+  if (!ed || ed.asideMode === 'place' || ed.placeRoom) return;
+  const layout = ed.st && ed.st.layout;
   if (!layout || !layout.floors) return;
+  const fp = _hfsDevicesFingerprint(layout);
+  if (fp === _lastStagingFp) return;
+  _lastStagingFp = fp;
   const fkeys = Object.keys(layout.floors);
   if (fkeys.length < 2) return;
   const byEnt = {};
@@ -317,6 +335,7 @@ function _hfsSyncStaging(ed) {
     }
   }
   if (changed) {
+    _lastStagingFp = _hfsDevicesFingerprint(layout);
     try {
       ed.st && ed.st.persist && ed.st.persist();
       ed.refresh && ed.refresh();

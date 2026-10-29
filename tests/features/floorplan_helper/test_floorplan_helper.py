@@ -1525,3 +1525,82 @@ class TestGestureBridgeServices:
                 self._call({"entity": "cover.klep_1"})
             )
         assert payload == {"device_id": "", "entity": "cover.klep_1", "card": ""}
+
+    def test_rebind_or_prune_migrated_markers(self):
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            services,
+        )
+
+        # Arrange: migrated floor has a foreign FAN marker (1:1 match),
+        # two foreign REM markers (ambiguous), and a non-RAMSES cover.
+        project = {
+            "floors": [
+                {
+                    "name": "bg",
+                    "markers": [
+                        {
+                            "id": "m_fan",
+                            "x": 2435.0,
+                            "y": 1265.0,
+                            "entities": ["climate.32_153289"],
+                            "style": {"label": "FAN 32:153289"},
+                        },
+                        {
+                            "id": "m_rem1",
+                            "x": 880.0,
+                            "y": 840.0,
+                            "entities": ["remote.37_168270"],
+                            "style": {"label": "REM 37:168270"},
+                        },
+                        {
+                            "id": "m_rem2",
+                            "x": 880.0,
+                            "y": 720.0,
+                            "entities": ["remote.37_169161"],
+                            "style": {"label": "REM 37:169161"},
+                        },
+                        {
+                            "id": "m_cov",
+                            "x": 115.0,
+                            "y": 1440.0,
+                            "entities": ["cover.klep_1_shelly"],
+                            "style": {"label": "klep_1"},
+                        },
+                    ],
+                }
+            ]
+        }
+        model = {
+            "devices": [
+                {
+                    "device_id": "32:150000",
+                    "device_class": "FAN",
+                    "display_name": "FAN 32:150000",
+                    "primary_entity": "climate.fan_32_150000",
+                    "entities": [{"entity_id": "climate.fan_32_150000"}],
+                },
+                {
+                    "device_id": "37:170000",
+                    "device_class": "REM",
+                    "display_name": "REM 37:170000",
+                    "primary_entity": "remote.rem_37_170000",
+                    "entities": [{"entity_id": "remote.rem_37_170000"}],
+                },
+            ]
+        }
+        entity_device = {
+            "climate.fan_32_150000": "32:150000",
+            "remote.rem_37_170000": "37:170000",
+        }
+
+        # Act
+        services._rebind_or_prune_migrated_markers(project, model, entity_device)
+
+        # Assert: 1:1 FAN marker rebounds in-place, ambiguous REMs prune,
+        # non-RAMSES cover marker stays intact.
+        markers = project["floors"][0]["markers"]
+        assert [m["id"] for m in markers] == ["m_fan", "m_cov"]
+        assert markers[0]["entities"] == ["climate.fan_32_150000"]
+        assert markers[0]["style"]["label"] == "FAN 32:150000"
+        assert markers[0]["x"] == 2435.0
+        assert markers[1]["entities"] == ["cover.klep_1_shelly"]
