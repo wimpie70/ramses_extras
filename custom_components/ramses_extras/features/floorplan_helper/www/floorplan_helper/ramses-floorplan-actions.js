@@ -1104,7 +1104,23 @@ class RamsesFloorplanActions extends HTMLElement {
     const root = ed && ed.shadowRoot;
     if (!root || !floor) return;
 
-    const want = new Set([...areas].map((a) => this._slug(a)));
+    // per-owner colors: each bound member that owns a zone paints its
+    // rooms + marker in its own zone colour, the parent's colour is
+    // the fallback
+    const zones = (this._fpConfig || {}).device_zones || {};
+    const areaColor = new Map(); // room slug -> color
+    const idColor = new Map(); // bound key -> color
+    for (const b of bound) {
+      const bz = zones[b];
+      const c = (bz && bz.color) || color;
+      idColor.set(b, c);
+      for (const a of (bz && bz.areas) || []) {
+        areaColor.set(this._slug(a), c);
+      }
+    }
+    for (const a of areas) {
+      if (!areaColor.has(this._slug(a))) areaColor.set(this._slug(a), color);
+    }
     // data-r is the room index on the card ("16"); the editor scene
     // may key rooms differently (r{index} like its data-e edge keys,
     // or the room id) — cover all three, then draw our own overlay
@@ -1121,12 +1137,13 @@ class RamsesFloorplanActions extends HTMLElement {
     for (const poly of root.querySelectorAll('polygon[data-r]')) {
       host = host || poly.parentElement;
       const room = roomByKey.get(poly.getAttribute('data-r'));
-      if (!room || !want.has(this._slug(room.area || room.name))) continue;
+      const rc = room && areaColor.get(this._slug(room.area || room.name));
+      if (!rc) continue;
       hit.add(room);
       // inline style, not attributes — presentation attributes lose to
       // stylesheet rules on the room class; style wins them all
       this._hiPatched.push([poly, { style: poly.getAttribute('style') }]);
-      poly.style.stroke = color;
+      poly.style.stroke = rc;
       poly.style.strokeWidth = '3px';
       poly.style.strokeDasharray = '6 3';
       poly.style.vectorEffect = 'non-scaling-stroke';
@@ -1139,7 +1156,8 @@ class RamsesFloorplanActions extends HTMLElement {
     const NS = 'http://www.w3.org/2000/svg';
     let overlay = null;
     for (const room of floor.rooms || []) {
-      if (!want.has(this._slug(room.area || room.name))) continue;
+      const rc = areaColor.get(this._slug(room.area || room.name));
+      if (!rc) continue;
       if (!Array.isArray(room.pts) || room.pts.length < 3) continue;
       if (!host) {
         const dev = root.querySelector('g.dev[data-x]');
@@ -1160,9 +1178,9 @@ class RamsesFloorplanActions extends HTMLElement {
         'points',
         room.pts.map((p) => `${p[0]},${p[1]}`).join(' ')
       );
-      poly.setAttribute('fill', color);
+      poly.setAttribute('fill', rc);
       poly.setAttribute('fill-opacity', '0.18');
-      poly.setAttribute('stroke', color);
+      poly.setAttribute('stroke', rc);
       poly.setAttribute('stroke-width', '3');
       poly.setAttribute('stroke-dasharray', '6 3');
       poly.setAttribute('vector-effect', 'non-scaling-stroke');
@@ -1178,9 +1196,10 @@ class RamsesFloorplanActions extends HTMLElement {
       if (!d) continue;
       const t = d.entity && this._entityDevice[d.entity];
       const key = t ? String(t.device_id) : d.entity;
-      if (!bound.has(key) && !bound.has(d.entity)) continue;
+      const dc = idColor.get(key) ?? idColor.get(d.entity);
+      if (!dc) continue;
       this._hiPatched.push([g, { style: g.getAttribute('style') }]);
-      g.style.filter = `drop-shadow(0 0 5px ${color})`;
+      g.style.filter = `drop-shadow(0 0 5px ${dc})`;
       nDev++;
     }
     if (nDev) names.push(`${nDev} bound device(s)`);
