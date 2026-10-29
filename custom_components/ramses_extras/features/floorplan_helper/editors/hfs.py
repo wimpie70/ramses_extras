@@ -175,7 +175,11 @@ class HfsAdapter(EditorAdapter):
     # ---- storage helpers ----------------------------------------------
 
     def _layout_store(self, hass: HomeAssistant) -> Any:
-        """Return the integration's own ``LayoutStore`` (rev-checked)."""
+        """Return the integration's shared ``LayoutStore`` (rev-checked)."""
+        data = getattr(hass, "data", None)
+        shared = data.get(HFS_DOMAIN) if isinstance(data, dict) else None
+        if shared is not None and hasattr(shared, "async_load_with_rev"):
+            return shared
         from custom_components.floorplan_studio.storage import LayoutStore
 
         return LayoutStore(hass)
@@ -226,17 +230,17 @@ class HfsAdapter(EditorAdapter):
         # expected_rev guards against racing the editor's own autosave —
         # a conflict loses with a clear error rather than overwriting
         try:
-            await store.async_save(layout, expected_rev=rev)
+            new_rev = await store.async_save(layout, expected_rev=rev)
         except Exception:  # noqa: BLE001 — RevConflict on concurrent edit
             _LOGGER.info("hfs layout revision conflict — reloading and retrying")
             current, rev = await store.async_load_with_rev()
             layout = self._plan_to_layout(
                 plan, current if isinstance(current, dict) else {}
             )
-            await store.async_save(layout, expected_rev=rev)
+            new_rev = await store.async_save(layout, expected_rev=rev)
         # mirror the integration's own save path so open editor panels
-        # and live cards reload (websocket.py fires this after its save)
-        hass.bus.async_fire("floorplan_studio_updated")
+        # and live cards reload (websocket.py fires this with {"rev"} after save)
+        hass.bus.async_fire("floorplan_studio_updated", {"rev": new_rev})
         return ".storage/floorplan_studio.layout"
 
     async def async_clear(self, hass: HomeAssistant) -> bool:
@@ -616,6 +620,16 @@ class HfsAdapter(EditorAdapter):
     ) -> dict[str, Any]:
         out = dict(base)
         out["title"] = str(floor.get("name") or out.get("title") or "Floor")
+        base_rooms_by_id: dict[str, dict[str, Any]] = {}
+        base_rooms_by_slug: dict[str, dict[str, Any]] = {}
+        for br in base.get("rooms") or []:
+            if not isinstance(br, dict):
+                continue
+            if br.get("id"):
+                base_rooms_by_id[str(br["id"])] = br
+            rslug = slugify(str(br.get("area") or br.get("name") or ""))
+            if rslug and rslug not in base_rooms_by_slug:
+                base_rooms_by_slug[rslug] = br
         rooms = []
         for r in floor.get("rooms") or []:
             pts = [
@@ -625,56 +639,90 @@ class HfsAdapter(EditorAdapter):
             ]
             if len(pts) < 3:
                 continue
-            room: dict[str, Any] = {
-                "id": str(r.get("id") or uuid.uuid4().hex[:8]),
-                "name": str(r.get("name") or ""),
-                "area": str(r.get("areaId") or ""),
-                "kind": str(r.get("kind") or "room"),
-                "pts": pts,
-                "wk": ["wall"] * len(pts),
-            }
+            rid = str(r.get("id") or "")
+            rslug = slugify(str(r.get("areaId") or r.get("name") or ""))
+            base_r = base_rooms_by_id.get(rid) or base_rooms_by_slug.get(rslug)
+            room: dict[str, Any] = dict(base_r) if isinstance(base_r, dict) else {}
+            base_wk = room.get("wk")
+            wk = (
+                list(base_wk)
+                if isinstance(base_wk, list) and len(base_wk) == len(pts)
+                else ["wall"] * len(pts)
+            )
+            room.update(
+                {
+                    "id": rid or str(room.get("id") or uuid.uuid4().hex[:8]),
+                    "name": str(r.get("name") or room.get("name") or ""),
+                    "area": str(r.get("areaId") or room.get("area") or ""),
+                    "kind": str(r.get("kind") or room.get("kind") or "room"),
+                    "pts": pts,
+                    "wk": wk,
+                }
+            )
             if r.get("fill"):
                 room["color"] = str(r["fill"])
             rooms.append(room)
         out["rooms"] = rooms
         out["outline"] = list(out.get("outline") or self._bbox_outline(rooms))
         out.setdefault("owk", ["external"] * len(out["outline"]))
-        # canonical walls are polylines — explode each into {a,b}
-        # segments; the wall id is kept on its first segment only so a
-        # round-trip does not spray duplicate ids
-        walls_out: list[dict[str, Any]] = []
-        for w in floor.get("walls") or []:
-            wpts = [p for p in (w.get("points") or []) if isinstance(p, dict)]
-            for i, (p, q) in enumerate(zip(wpts, wpts[1:], strict=False)):
-                walls_out.append(
-                    {
-                        "id": str(w.get("id") or uuid.uuid4().hex[:8])
-                        if i == 0
-                        else uuid.uuid4().hex[:8],
-                        "a": [float(p["x"]), float(p["y"])],
-                        "b": [float(q["x"]), float(q["y"])],
-                        "kind": "wall",
-                    }
-                )
-        out["walls"] = walls_out
-        out["doors"] = [
-            {
-                "id": str(o.get("id") or uuid.uuid4().hex[:8]),
-                "name": str(o.get("kind") or "door"),
-                "kind": o.get("kind") if o.get("kind") in _DOOR_FILL else "door",
-                "a": [float(o["a"]["x"]), float(o["a"]["y"])],
-                "b": [float(o["b"]["x"]), float(o["b"]["y"])],
-            }
-            for o in (floor.get("openings") or [])
-            if isinstance(o.get("a"), dict) and isinstance(o.get("b"), dict)
-        ]
+        # Preserve native walls/doors/openings when updating an existing
+        # hfs floor so per-edge kinds, door swings, and locked flags
+        # survive round-trips; when synthesizing walls for a new floor,
+        # skip derived wk-* edge walls (those exist only for canonical
+        # SVG rendering).
+        if "walls" not in base:
+            walls_out: list[dict[str, Any]] = []
+            for w in floor.get("walls") or []:
+                wid = str(w.get("id") or "")
+                if wid.startswith("wk-"):
+                    continue
+                wpts = [p for p in (w.get("points") or []) if isinstance(p, dict)]
+                for i, (p, q) in enumerate(zip(wpts, wpts[1:], strict=False)):
+                    walls_out.append(
+                        {
+                            "id": wid if (i == 0 and wid) else uuid.uuid4().hex[:8],
+                            "a": [float(p["x"]), float(p["y"])],
+                            "b": [float(q["x"]), float(q["y"])],
+                            "kind": "wall",
+                        }
+                    )
+            out["walls"] = walls_out
+        if "doors" not in base:
+            out["doors"] = [
+                {
+                    "id": str(o.get("id") or uuid.uuid4().hex[:8]),
+                    "name": str(o.get("kind") or "door"),
+                    "kind": (o.get("kind") if o.get("kind") in _DOOR_FILL else "door"),
+                    "a": [float(o["a"]["x"]), float(o["a"]["y"])],
+                    "b": [float(o["b"]["x"]), float(o["b"]["y"])],
+                }
+                for o in (floor.get("openings") or [])
+                if isinstance(o.get("a"), dict) and isinstance(o.get("b"), dict)
+            ]
         out.setdefault("openings", [])
         out.setdefault("stairs", [])
         out.setdefault("extras", [])
+        base_devs_by_id: dict[str, dict[str, Any]] = {}
+        base_devs_by_ent: dict[str, dict[str, Any]] = {}
+        for bd in base.get("devices") or []:
+            if not isinstance(bd, dict):
+                continue
+            if bd.get("id"):
+                base_devs_by_id[str(bd["id"])] = bd
+            if bd.get("entity") and str(bd["entity"]) not in base_devs_by_ent:
+                base_devs_by_ent[str(bd["entity"])] = bd
         out["devices"] = [
             dev
             for m in (floor.get("markers") or [])
-            for dev in [self._marker_to_device(m)]
+            for dev in [
+                self._marker_to_device(
+                    m,
+                    base_devs_by_id.get(str(m.get("id") or ""))
+                    or base_devs_by_ent.get(
+                        str((m.get("entities") or [""])[0] if m.get("entities") else "")
+                    ),
+                )
+            ]
             if dev is not None
         ]
         out.setdefault("furniture", [])
@@ -682,7 +730,7 @@ class HfsAdapter(EditorAdapter):
         # preserve a native trace; a canonical background image becomes
         # one so the editor shows the same picture
         bg = floor.get("background") or {}
-        if bg.get("dataUri"):
+        if bg.get("dataUri") and "trace" not in base:
             out["trace"] = {
                 "src": str(bg["dataUri"]),
                 "x": float(bg.get("x") or 0),
@@ -694,31 +742,61 @@ class HfsAdapter(EditorAdapter):
             }
         return out
 
-    def _marker_to_device(self, marker: dict[str, Any]) -> dict[str, Any] | None:
+    def _marker_to_device(
+        self,
+        marker: dict[str, Any],
+        existing: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         entities = [str(e) for e in (marker.get("entities") or []) if e]
         if not entities:
             return None
         style = marker.get("style") or {}
-        dev_type = str(marker.get("hfsType") or "other")
-        dev: dict[str, Any] = {
-            "id": str(marker.get("id") or uuid.uuid4().hex[:8]),
-            "type": dev_type,
-            "entity": entities[0],
-            "x": round(float(marker.get("x") or 0), 1),
-            "y": round(float(marker.get("y") or 0), 1),
-        }
+        dev_type = str(
+            marker.get("hfsType")
+            or (existing.get("type") if isinstance(existing, dict) else None)
+            or "other"
+        )
+        dev: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+        for field in ("trvs", "tempSensors", "linked"):
+            dev.pop(field, None)
+        dev["id"] = str(marker.get("id") or dev.get("id") or uuid.uuid4().hex[:8])
+        dev["type"] = dev_type
+        dev["entity"] = entities[0]
+        mx = round(float(marker.get("x") or 0), 1)
+        my = round(float(marker.get("y") or 0), 1)
+        # Preserve wall-mounted {a, b} span when the marker stays at its
+        # midpoint; otherwise store point {x, y} coordinates.
+        if (
+            isinstance(existing, dict)
+            and "x" not in existing
+            and isinstance(existing.get("a"), list)
+            and isinstance(existing.get("b"), list)
+            and round((float(existing["a"][0]) + float(existing["b"][0])) / 2, 1) == mx
+            and round((float(existing["a"][1]) + float(existing["b"][1])) / 2, 1) == my
+        ):
+            dev.pop("x", None)
+            dev.pop("y", None)
+        else:
+            dev.pop("a", None)
+            dev.pop("b", None)
+            dev["x"] = mx
+            dev["y"] = my
         if style.get("label"):
             dev["name"] = str(style["label"])
-        # hfs validation: trvs/tempSensors are heater-only fields —
-        # climate/* extras read as bound valves, the rest as sensors
-        extra = entities[1:]
+        # hfs validation: trvs (climate.*) and tempSensors (sensor.*) are
+        # heater-only fields; linked (climate.*) is ac-only.
+        extra = [e for e in entities[1:] if e != entities[0]]
         if extra and dev_type == "heater":
-            trvs = [e for e in extra if str(e).startswith("climate.")]
-            others = [e for e in extra if not str(e).startswith("climate.")]
+            trvs = [e for e in extra if e.startswith("climate.")]
+            sensors = [e for e in extra if e.startswith("sensor.")]
             if trvs:
                 dev["trvs"] = trvs
-            if others:
-                dev["tempSensors"] = others
+            if sensors:
+                dev["tempSensors"] = sensors
+        elif extra and dev_type == "ac":
+            linked = [e for e in extra if e.startswith("climate.")]
+            if linked:
+                dev["linked"] = linked
         return dev
 
     @staticmethod
