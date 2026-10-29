@@ -200,6 +200,7 @@ class RamsesFloorplanActions extends HTMLElement {
     this._zoneRowFor = null;           // device the zone lists are built for
     this._sawStudioSel = false;        // studio selection seen non-empty
     this._suppressMenuClear = false;   // ignore the post-remount deselect
+    this._uiInteractAt = 0;            // last interaction inside this card
   }
 
   setConfig(config) {
@@ -223,6 +224,16 @@ class RamsesFloorplanActions extends HTMLElement {
   connectedCallback() {
     if (!this._watch) {
       this._watch = setInterval(() => this._pollSelection(), 700);
+    }
+    if (!this._uiStamp) {
+      // hfs clears the editor's st.sel when focus leaves the editor —
+      // interacting with this card must not read as a canvas deselect
+      this._uiStamp = () => {
+        this._uiInteractAt = Date.now();
+      };
+      for (const ev of ['pointerdown', 'focusin', 'input', 'change']) {
+        this.addEventListener(ev, this._uiStamp, true);
+      }
     }
     // ll-custom is handled by the module-level popup below — it works on
     // every view, not only ones containing this card.
@@ -742,6 +753,19 @@ class RamsesFloorplanActions extends HTMLElement {
     this._syncZoneSelection(memberIds, roomIds, soleDev);
   }
 
+  // True while the interaction lives inside this card's own UI —
+  // the native colour dialog drops document focus entirely, so a
+  // recent interaction timestamp backs up :focus-within. Either way
+  // an empty st.sel during this is upstream's focus-out clear, not a
+  // canvas deselect.
+  _ownUiActive() {
+    return (
+      !document.hasFocus() ||
+      this.matches(':focus-within') ||
+      Date.now() - (this._uiInteractAt || 0) < 2500
+    );
+  }
+
   // Editor → menu: while the zone editor is open, selection changes
   // on the canvas toggle the matching listbox entries (delta-only —
   // a cleared canvas selection means "no selection", not "clear the
@@ -770,6 +794,13 @@ class RamsesFloorplanActions extends HTMLElement {
     if (!memberIds.size && !roomIds.size) {
       if (this._suppressMenuClear) {
         this._suppressMenuClear = false;
+      } else if (this._ownUiActive()) {
+        // upstream cleared st.sel on focus-out (our colour swatch,
+        // listboxes…): keep the pick, and put the marker's selection
+        // ring back so canvas and menu stay in sync
+        if (devSel.value && this._resolvedEditor === 'hfs') {
+          this._hfsSelectDevice(devSel.value);
+        }
       } else if (this._sawStudioSel && devSel.value) {
         devSel.value = '';
         this._zoneRowFor = null;
