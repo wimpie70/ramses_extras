@@ -24,6 +24,7 @@ Managed-regeneration surface for the ha-floorplan bundle:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -33,7 +34,6 @@ from typing import Any
 
 import voluptuous as vol
 import yaml
-from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
@@ -42,19 +42,15 @@ from ...const import DOMAIN
 from .bundle import async_generate_bundle
 from .const import (
     DEFAULT_ICON,
-    DEVICE_VIEW_SERVICE,
     EVENT_DEVICE_VIEW,
     EVENT_ZONE_TOGGLE,
-    FEATURE_ID,
     FLOORPLAN_DEVICE_ICON_MAP,
     FLOORPLAN_ICON_MDI,
     FLOORPLAN_ICONS,
     FLOORPLAN_UPLOAD_DIR_NAME,
     OPTION_CAPTION_OVERRIDES,
     OPTION_CUSTOM_SVG_PATH,
-    OPTION_DEVICE_VIEW_URL,
     OPTION_DEVICE_ZONES,
-    OPTION_EDITOR,
     OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
@@ -63,17 +59,19 @@ from .const import (
     OPTION_TOOLBAR_ENABLED,
     SVG_MODE_CUSTOM,
     SVG_MODE_GENERATED,
-    ZONE_TOGGLE_SERVICE,
     is_generated_rule,
 )
+from .dashboard_apply import (
+    NOTIFICATION_ID,
+    apply_cards_to_dashboards,
+    notify_export,
+)
 from .domains import caption_suffix_for, get_domain
-from .editors import resolve_editor
+from .editors import async_ensure_editors_ready, resolve_editor
 from .editors.base import EditorAdapter
-from .editors.hfs import hfs_type_for_device
 from .importer import (
     build_studio_project,
     combine_svgs,
-    dedupe_rooms,
     merge_project_floors,
     parse_floorplan_yaml,
     parse_studio_project,
@@ -100,9 +98,21 @@ from .markers import (
     dock_anchor,
     effective_zones,
     element_id_for_device,
-    icon_for_device,
     standalone_icon,
     strip_toolbar,
+)
+from .plan_sync import (
+    _hfs_dev_type,
+    _host_floor,
+    _merge_studio_project,
+    _rebind_or_prune_migrated_markers,
+    _room_centroid,
+    _room_key,
+    _secondary_entities,
+    _stamp_marker_actions,
+    _write_caption_to_project,
+    _write_icon_to_project,
+    _write_zone_to_project,
 )
 from .rules import stale_managed_rule
 from .svg_utils import slugify
@@ -140,8 +150,6 @@ SVC_DEVICE_VIEW = "floorplan_device_view"
 # project_json). Timestamped copies go alongside for history.
 PROJECT_LATEST_NAME = "latest.json"
 
-NOTIFICATION_ID = "ramses_extras_floorplan_export"
-
 
 async def _adapter(hass: HomeAssistant, editor: str | None = None) -> EditorAdapter:
     """Resolve the editor adapter for this call.
@@ -175,493 +183,6 @@ async def _load_plan(hass: HomeAssistant, editor: str | None = None) -> dict[str
     return plan
 
 
-def _room_key(room: dict[str, Any]) -> str:
-    """Stable identity for a studio room — slug of ``areaId`` else of
-    ``name``. Both sides slug-normalised so a name-bound copy
-    (``deel bg``) and an area-bound copy (``deel_bg``) of the same
-    room collide instead of duplicating."""
-    return slugify(str(room.get("areaId") or room.get("name") or ""))
-
-
-def _room_centroid(room: dict[str, Any]) -> tuple[float, float]:
-    """Centroid of a studio room's ``[{x, y}, …]`` polygon."""
-    pts = room.get("polygon") or []
-    if not pts:
-        return 0.0, 0.0
-    return (
-        sum(float(p.get("x") or 0) for p in pts) / len(pts),
-        sum(float(p.get("y") or 0) for p in pts) / len(pts),
-    )
-
-
-def _host_floor(
-    floors: list[dict[str, Any]], new_floor: dict[str, Any]
-) -> tuple[dict[str, Any] | None, tuple[float, float]]:
-    """Find the existing floor already holding *new_floor*'s rooms.
-
-    A combined drawing folds every source floor into one studio floor,
-    so an incoming ``begane grond``/``1e verdieping`` must merge into
-    the combined host rather than append a duplicate floor. Returns
-    ``(floor, (ox, oy))`` where the offset translates the incoming
-    floor's coordinates into the host's (e.g. ``+800`` for a folded
-    upper floor); ``(None, (0, 0))`` when no existing floor holds any
-    of the incoming rooms — the caller appends it as genuinely new.
-    """
-    new_rooms = new_floor.get("rooms") or []
-    best: dict[str, Any] | None = None
-    best_hits: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for fl in floors:
-        have = {_room_key(r): r for r in fl.get("rooms") or []}
-        hits = [(have[_room_key(r)], r) for r in new_rooms if _room_key(r) in have]
-        if len(hits) > len(best_hits):
-            best, best_hits = fl, hits
-    if not best_hits:
-        return None, (0.0, 0.0)
-    dx = sorted(_room_centroid(h)[0] - _room_centroid(n)[0] for h, n in best_hits)
-    dy = sorted(_room_centroid(h)[1] - _room_centroid(n)[1] for h, n in best_hits)
-    mid = len(best_hits) // 2
-    return best, (dx[mid], dy[mid])
-
-
-_RAMSES_ENT_ID_RE = re.compile(r"(?<!\d)(\d{2})_(\d{6})(?!\d)")
-
-
-def _rebind_or_prune_migrated_markers(
-    project: dict[str, Any],
-    model: dict[str, Any],
-    entity_device: dict[str, str],
-) -> None:
-    """Rebind 1:1 foreign RAMSES markers or prune dead ones before seed.
-
-    When migrating a layout across instances or profiles, markers bound
-    to foreign RAMSES entities (containing ``XX_XXXXXX`` not in the
-    local ``entity_device`` map) either rebind in-place when there is a
-    unique unplaced local device of the same class/prefix (keeping room
-    coordinates), or are removed so local devices stage cleanly.
-    Non-RAMSES markers (e.g. Shelly valve covers) are untouched.
-    """
-    if not entity_device:
-        return
-    devices: list[dict[str, Any]] = [
-        d for d in (model.get("devices") or []) if d.get("primary_entity")
-    ]
-    placed_dids: set[str] = {
-        entity_device[e]
-        for fl in project.get("floors") or []
-        for m in fl.get("markers") or []
-        for e in (m.get("entities") or [])
-        if e in entity_device
-    }
-
-    def _marker_hint(m: dict[str, Any], match: re.Match[str]) -> tuple[str, str]:
-        prefix = match.group(1)
-        label = str((m.get("style") or {}).get("label") or "").strip()
-        head = label.split(" ", 1)[0].upper() if label else ""
-        cls = head if head in FLOORPLAN_DEVICE_ICON_MAP else ""
-        return cls, prefix
-
-    # Count foreign markers per (cls, prefix) so we only rebind 1:1
-    foreign_counts: dict[tuple[str, str], int] = {}
-    for fl in project.get("floors") or []:
-        for m in fl.get("markers") or []:
-            ents = [str(e) for e in (m.get("entities") or []) if e]
-            if not ents or any(e in entity_device for e in ents):
-                continue
-            rm = _RAMSES_ENT_ID_RE.search(ents[0])
-            if rm is None:
-                continue
-            key = _marker_hint(m, rm)
-            foreign_counts[key] = foreign_counts.get(key, 0) + 1
-
-    for fl in project.get("floors") or []:
-        kept: list[dict[str, Any]] = []
-        for m in fl.get("markers") or []:
-            ents = [str(e) for e in (m.get("entities") or []) if e]
-            if not ents or any(e in entity_device for e in ents):
-                kept.append(m)
-                continue
-            rm = _RAMSES_ENT_ID_RE.search(ents[0])
-            if rm is None:
-                # Non-RAMSES entity (e.g. DIY cover/sensor) — keep as-is
-                kept.append(m)
-                continue
-            cls, prefix = _marker_hint(m, rm)
-            cands = [
-                d
-                for d in devices
-                if str(d.get("device_id") or "") not in placed_dids
-                and (
-                    (cls and str(d.get("device_class") or "").upper() == cls)
-                    or (
-                        not cls
-                        and str(d.get("device_id") or "").startswith(f"{prefix}:")
-                    )
-                )
-            ]
-            if len(cands) == 1 and foreign_counts.get((cls, prefix), 0) == 1:
-                cand = cands[0]
-                primary = str(cand["primary_entity"])
-                m["entities"] = [primary]
-                m["elementId"] = primary
-                style = dict(m.get("style") or {})
-                style["label"] = str(cand.get("display_name") or cand["device_id"])
-                m["style"] = style
-                placed_dids.add(str(cand["device_id"]))
-                kept.append(m)
-            # else: ambiguous or obsolete foreign RAMSES marker — prune
-        fl["markers"] = kept
-
-
-def _merge_studio_project(
-    existing: dict[str, Any],
-    floors_json: list[dict[str, Any]],
-    staging: bool,
-    extra_markers: list[dict[str, Any]],
-    mdi: Any,
-    marker_size: int = 20,
-    zones: dict[str, Any] | None = None,
-    zone_toggles: dict[str, list[dict[str, Any]]] | None = None,
-    entity_device: dict[str, str] | None = None,
-    dock: dict[str, tuple[float, float]] | None = None,
-    fold_hosts: bool = True,
-) -> dict[str, Any]:
-    """Merge generated floors into an existing studio project.
-
-    Floors match by name; when the name misses, a floor whose rooms
-    already live inside another floor (a combined drawing) merges into
-    that host, translated by the room offset — only floors with zero
-    matching rooms are appended as genuinely new. Rooms are added when
-    missing; markers whose *device* is already present anywhere in the
-    project are skipped (user's own placement wins) — dedup is by
-    device via ``entity_device``, since an older marker may bind a
-    different entity of the same device (e.g. ``*_battery_low`` from an
-    older primary-entity choice). ``extra_markers`` are devices without
-    a matching room — parked at the in-canvas dock (same anchor the
-    merged-SVG export uses) so they stay visible in studio.
-    """
-    project = dict(existing)
-    project["floors"] = list(existing.get("floors") or [])
-    by_name = {str(f.get("name", "")).lower(): f for f in project["floors"]}
-    entity_device = entity_device or {}
-    dock = dock or {}
-
-    def _placed() -> tuple[set[str], set[str]]:
-        ents = {
-            e
-            for f in project["floors"]
-            for m in f.get("markers", [])
-            for e in (m.get("entities") or [])
-        }
-        return ents, {entity_device[e] for e in ents if e in entity_device}
-
-    def _new_marker(m: dict[str, Any], placed_e: set[str], placed_d: set[str]) -> bool:
-        ents = set(m.get("entities") or [])
-        if ents & placed_e:
-            return False
-        return not ({entity_device.get(e) for e in ents} & placed_d)
-
-    for new_floor in floors_json:
-        floor = by_name.get(str(new_floor["name"]).lower())
-        ox = oy = 0.0
-        if floor is None:
-            # host-floor folding only makes sense for browser-side
-            # studio's combined single-floor drawings — a server-side
-            # editor (hfs) has real multi-floor plans where folding
-            # dupes one floor's rooms into another
-            floor, (ox, oy) = (
-                _host_floor(project["floors"], new_floor)
-                if fold_hosts
-                else (None, (0.0, 0.0))
-            )
-            if floor is None:
-                project["floors"].append(new_floor)
-                by_name[str(new_floor["name"]).lower()] = new_floor
-                continue
-            # host-floor merge: shift incoming geometry into host space
-            for m in new_floor.get("markers") or []:
-                m["x"], m["y"] = (
-                    float(m.get("x") or 0) + ox,
-                    float(m.get("y") or 0) + oy,
-                )
-            for r in new_floor.get("rooms") or []:
-                for p in r.get("polygon") or []:
-                    p["x"], p["y"] = p.get("x", 0) + ox, p.get("y", 0) + oy
-        have_rooms = {_room_key(r) for r in floor.get("rooms", [])}
-        floor.setdefault("rooms", []).extend(
-            r for r in new_floor["rooms"] if _room_key(r) not in have_rooms
-        )
-        # collapse pre-existing same-room duplicates (name-bound vs
-        # area-bound copies) — first entry wins style, later copies
-        # fill gaps like a seeded clone's areaId
-        floor["rooms"] = dedupe_rooms(floor["rooms"])
-        placed_e, placed_d = _placed()
-        floor.setdefault("markers", []).extend(
-            m for m in new_floor["markers"] if _new_marker(m, placed_e, placed_d)
-        )
-
-    if staging and project["floors"]:
-        placed_e, placed_d = _placed()
-        slot = 0
-        for dev in extra_markers:
-            primary = dev.get("primary_entity")
-            if not primary or primary in placed_e or dev.get("device_id") in placed_d:
-                continue
-            # standalone members (DIY valves, zigbee sensors…) have no
-            # home floor — stage a marker on every floor so the user
-            # can drag the copy on the floor the device lives on; the
-            # merged export already renders them per floor anyway.
-            # Model devices stage on the first floor only. The dock
-            # sits inside the canvas so studio actually shows it.
-            # a device with a matching room on one floor parks on that
-            # floor's dock only; with no match it stages on EVERY floor
-            # (same as standalone) — the user keeps the copy on the
-            # right floor and deletes the rest; entity dedupe means a
-            # kept copy is never re-seeded
-            home = [
-                f
-                for f in project["floors"]
-                if dev.get("area_id")
-                and str(dev["area_id"])
-                in {
-                    slugify(str(r.get("areaId") or r.get("name") or ""))
-                    for r in f.get("rooms") or []
-                }
-            ]
-            floors_for = (
-                project["floors"]
-                if dev.get("standalone")
-                else (home or project["floors"])
-            )
-            for fl in floors_for:
-                anchor = dock.get(str(fl.get("name") or "").lower())
-                if anchor is None:
-                    width = float(fl.get("canvas", {}).get("width") or 800)
-                    anchor = (width - 8 * 30.0 - 20.0, 44.0)
-                marker = studio_marker(
-                    primary,
-                    anchor[0] + (slot % 8) * 30.0,
-                    anchor[1] + (slot // 8) * 30.0,
-                    mdi(dev),
-                    label=str(dev.get("display_name") or dev["device_id"]),
-                    size=marker_size,
-                    actions=studio_actions_for_device(
-                        dev,
-                        zones or {},
-                        (zone_toggles or {}).get(str(dev.get("device_id") or "")),
-                    ),
-                )
-                marker["hfsType"] = hfs_type_for_device(dev)
-                studio_marker_zone(
-                    marker, (zones or {}).get(str(dev.get("device_id") or ""))
-                )
-                fl.setdefault("markers", []).append(marker)
-            placed_e.add(primary)
-            slot += 1
-    return project
-
-
-def _stamp_marker_actions(
-    project: dict[str, Any],
-    model: dict[str, Any],
-    zones: dict[str, Any],
-    options: dict[str, Any],
-) -> None:
-    """Write the effective gestures into ``marker.actions`` (in place).
-
-    Studio's inspector reads ``actions.tap/hold/double`` straight from
-    the marker — a default ``more-info`` hides that the generated card
-    will zone-toggle on tap and open the device view on double-tap.
-    For each zone-owner marker, gestures that are still default
-    (``none``/``more-info``) or point at our bridge services get the
-    freshly generated action — same shorthand/detection precedence as
-    ``rules._device_rules``, so a deliberate user gesture always wins
-    and stale ``serviceData`` is regenerated from live zone config.
-    """
-    entity_device: dict[str, dict[str, Any]] = {}
-    for dev in model.get("devices") or []:
-        for e in dev.get("entities") or []:
-            if e.get("entity_id"):
-                entity_device[str(e["entity_id"])] = dev
-        if dev.get("primary_entity"):
-            entity_device[str(dev["primary_entity"])] = dev
-
-    def _is_default(action: Any, shorthand: set[str]) -> bool:
-        if not isinstance(action, dict):
-            return True
-        kind = action.get("kind")
-        if kind in (None, "none", "more-info"):
-            return True
-        return kind == "call-service" and action.get("service") in shorthand
-
-    zone_shorthand = {ZONE_TOGGLE_SERVICE, "floorplan.class_toggle"}
-    view_shorthand = {DEVICE_VIEW_SERVICE}
-    view_url = str(options.get(OPTION_DEVICE_VIEW_URL) or "")
-
-    for floor in project.get("floors") or []:
-        for marker in floor.get("markers") or []:
-            dev = next(
-                (
-                    entity_device[e]
-                    for e in (marker.get("entities") or [])
-                    if e in entity_device
-                ),
-                None,
-            )
-            if dev is None:
-                continue
-            device_id = str(dev.get("device_id") or "")
-            zone = zones.get(device_id)
-            if not zone:
-                continue
-            areas, bound = resolve_bound(
-                model, dev, zone, lambda d: element_id_for_device(d, options)
-            )
-            seeded = studio_actions_for_device(
-                dev, {device_id: zone}, zone_toggle_specs(device_id, areas, bound)
-            )
-            if view_url:
-                seeded["double"] = {"kind": "navigate", "navPath": view_url}
-            actions = marker.setdefault("actions", {})
-            if _is_default(actions.get("tap"), zone_shorthand):
-                actions["tap"] = seeded["tap"]
-            if _is_default(actions.get("hold"), set()):
-                actions["hold"] = seeded["hold"]
-            if _is_default(actions.get("double"), view_shorthand):
-                actions["double"] = seeded["double"]
-
-
-async def _write_zone_to_project(
-    hass: HomeAssistant,
-    device_id: str,
-    zone: dict[str, Any] | None,
-    editor: str | None = None,
-) -> None:
-    """Write/clear ``marker.ramsesZone`` in the editor's stored plan.
-
-    The plan is the single source of truth for zone config —
-    option-level zones only fill in devices without a marker zone
-    (see ``markers.effective_zones``). Editors that round-trip unknown
-    fields (``capabilities.stamp_extras``) keep the marker stamp; for
-    the rest the option level *is* the store.
-    """
-    adapter = await _adapter(hass, editor)
-    if not adapter.capabilities.stamp_extras:
-        return
-    project = await adapter.async_load(hass)
-    if not isinstance(project, dict):
-        return
-    model = await build_floorplan_model(hass)
-    dev = next(
-        (d for d in model.get("devices") or [] if d.get("device_id") == device_id),
-        None,
-    )
-    targets = {dev.get("primary_entity")} if dev else set()
-    targets.update(e.get("entity_id") for e in (dev or {}).get("entities") or [])
-    targets.discard(None)
-    changed = False
-    for floor in project.get("floors") or []:
-        for marker in floor.get("markers") or []:
-            if set(marker.get("entities") or []) & targets:
-                studio_marker_zone(marker, zone)
-                changed = True
-    if changed:
-        await adapter.async_store(hass, project)
-
-
-async def _write_caption_to_project(
-    hass: HomeAssistant,
-    device_id: str,
-    items: list[str] | None,
-    editor: str | None = None,
-) -> None:
-    """Write/clear ``marker.ramsesCaption`` in the editor's stored plan.
-
-    Same SSOT pattern as :func:`_write_zone_to_project` — the option
-    override is only the fallback for markers without the field.
-    ``items=None`` removes the field (marker returns to defaults).
-    """
-    adapter = await _adapter(hass, editor)
-    if not adapter.capabilities.stamp_extras:
-        return
-    project = await adapter.async_load(hass)
-    if not isinstance(project, dict):
-        return
-    model = await build_floorplan_model(hass)
-    dev = next(
-        (d for d in model.get("devices") or [] if d.get("device_id") == device_id),
-        None,
-    )
-    targets = {dev.get("primary_entity")} if dev else {device_id}
-    targets.update(e.get("entity_id") for e in (dev or {}).get("entities") or [])
-    targets.discard(None)
-    changed = False
-    for floor in project.get("floors") or []:
-        for marker in floor.get("markers") or []:
-            if not set(marker.get("entities") or []) & targets:
-                continue
-            if items is None:
-                marker.pop("ramsesCaption", None)
-            else:
-                marker["ramsesCaption"] = items
-            changed = True
-    if changed:
-        await adapter.async_store(hass, project)
-
-
-async def _write_icon_to_project(
-    hass: HomeAssistant,
-    target: str,
-    icon_key: str | None,
-    editor: str | None = None,
-) -> None:
-    """Write/clear ``marker.style.icon`` in the editor's stored plan.
-
-    ``floorplan_set_icon`` still stores the option-level override (the
-    fallback for elements without a marker), but the marker is the
-    single source of truth — stamping the mdi name here keeps studio
-    showing the same icon we render. On clear, the marker falls back
-    to the device's domain default so studio never sees a missing
-    icon. Editors without per-marker icons (hfs's fixed type enum)
-    skip the stamp — the option override stays the fallback.
-
-    :param target: device id, device class, or entity id — the same
-        keys the option-level override resolves against
-    """
-    adapter = await _adapter(hass, editor)
-    if not adapter.capabilities.stamp_extras:
-        return
-    project = await adapter.async_load(hass)
-    if not isinstance(project, dict):
-        return
-    model = await build_floorplan_model(hass)
-    options = get_floorplan_options(_config_entry(hass))
-
-    def icon_for(dev: dict[str, Any]) -> str | None:
-        key = icon_key or icon_for_device(dev, options)
-        return FLOORPLAN_ICON_MDI.get(str(key))
-
-    targets: dict[str, str] = {}
-    for dev in model.get("devices") or []:
-        keys = {str(dev.get("device_id")), str(dev.get("device_class"))}
-        keys.add(str(dev.get("primary_entity") or ""))
-        keys.update(str(e.get("entity_id")) for e in dev.get("entities") or [])
-        if target in keys:
-            mdi = icon_for(dev)
-            for eid in keys:
-                if eid:
-                    targets[eid] = mdi or ""
-    changed = False
-    for floor in project.get("floors") or []:
-        for marker in floor.get("markers") or []:
-            ents = [str(e) for e in marker.get("entities") or []]
-            hit = next((e for e in ents if e in targets), None)
-            if hit and targets[hit]:
-                marker.setdefault("style", {})["icon"] = targets[hit]
-                changed = True
-    if changed:
-        await adapter.async_store(hass, project)
-
-
 async def _floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
     """The topology model, or ``{}`` when registries aren't ready —
     gesture bridges degrade to no toggles / no card rather than fail."""
@@ -680,145 +201,22 @@ def _config_entry(hass: HomeAssistant) -> ConfigEntry:
     return entry
 
 
-def notify_export(hass: HomeAssistant, bundle: dict[str, Any]) -> None:
-    """Raise a persistent_notification summarising an export.
-
-    Needed because tap_action service calls (the in-SVG export button)
-    can't display a service response.
-    """
-    changes = bundle.get("changes") or {}
-    lines = [
-        f"{len(bundle.get('rules', []))} rules, "
-        f"{len(bundle.get('files_written', []))} files written.",
-    ]
-    if changes.get("first_export"):
-        lines.append("First export — snapshot stored.")
-    else:
-        for key in ("devices_added", "devices_removed", "devices_changed"):
-            if changes.get(key):
-                lines.append(f"{key.replace('_', ' ')}: {', '.join(changes[key])}")
-    for warning in bundle.get("warnings", []):
-        lines.append(f"⚠ {warning}")
-    persistent_notification.async_create(
-        hass,
-        "\n".join(lines),
-        title="Floorplan bundle regenerated",
-        notification_id=NOTIFICATION_ID,
-    )
-
-
-async def _async_ensure_hfs_entry(hass: HomeAssistant) -> None:
-    """Create the floorplan_studio config entry when hfs is installed but
-    never added — its user step is a one-click ``async_create_entry``, so
-    "install hfs + enable this feature" is all the setup the card needs.
-    Skipped when the user pinned ``editor: studio`` (legacy tinkersoder).
-    """
+async def _async_ensure_editors(hass: HomeAssistant) -> None:
+    """Initialize any installed editor adapter that needs an HA entry."""
     try:
-        from .editors.hfs import HfsAdapter  # noqa: PLC0415
-
         options = get_floorplan_options(_config_entry(hass))
-        if options.get(OPTION_EDITOR) == "studio":
-            return
-        if not await HfsAdapter().async_detect(hass):
-            return
-        if hass.config_entries.async_entries("floorplan_studio"):
-            return
-        result = await hass.config_entries.flow.async_init(
-            "floorplan_studio", context={"source": "user"}, data={}
-        )
-        _LOGGER.info(
-            "floorplan_studio config entry auto-created (flow %s)",
-            result.get("type"),
-        )
-    except Exception:  # noqa: BLE001 — hfs setup must never break ours
-        _LOGGER.debug("Could not auto-create floorplan_studio entry")
+    except Exception:  # noqa: BLE001
+        options = None
+    await async_ensure_editors_ready(hass, options)
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Register floorplan helper services."""
 
-    hass.async_create_task(_async_ensure_hfs_entry(hass))
-
-    async def _apply_cards_to_dashboards(
-        cards: dict[str, dict[str, Any]],
-        match: str | None = None,
-        url_path: str | None = None,
-    ) -> dict[str, int]:
-        """Replace generated floorplan card(s) on storage dashboards.
-
-        A card is matched by the map file it displays: exact
-        ``config.image.location`` against each generated card — so
-        several floorplan cards with different maps each get their own
-        update and hand-made cards stay untouched — or the ``match``
-        substring override. ``url_path`` limits the scan to one
-        dashboard; yaml-mode dashboards can't be patched.
-        """
-        try:
-            from homeassistant.components.lovelace import LOVELACE_DATA
-            from homeassistant.components.lovelace.const import ConfigNotFound
-            from homeassistant.components.lovelace.dashboard import (
-                LovelaceStorage,
-            )
-        except ImportError:
-            return {"dashboards": 0, "cards": 0}
-
-        data = hass.data.get(LOVELACE_DATA)
-        if data is None:
-            return {"dashboards": 0, "cards": 0}
-
-        def _image_of(card: Any) -> str:
-            if not isinstance(card, dict):
-                return ""
-            img = (card.get("config") or {}).get("image") or {}
-            return str(img.get("location") or "")
-
-        def _replacement(card: Any) -> dict[str, Any] | None:
-            if not isinstance(card, dict):
-                return None
-            if card.get("type") != "custom:floorplan-card":
-                return None
-            if match:
-                return next(iter(cards.values())) if match in _image_of(card) else None
-            for cfg in cards.values():
-                img = (cfg.get("config") or {}).get("image") or {}
-                if img.get("location") == _image_of(card):
-                    return cfg
-            return None
-
-        n_cards = 0
-        n_dashes = 0
-        for path, dash in (data.dashboards or {}).items():
-            if url_path is not None and path != url_path:
-                continue
-            if not isinstance(dash, LovelaceStorage):
-                continue  # yaml-mode dashboards can't be patched
-            try:
-                conf = await dash.async_load(False)
-            except ConfigNotFound:
-                continue
-            except Exception:  # noqa: BLE001 — one bad dashboard must
-                _LOGGER.debug(  # not fail the export
-                    "floorplan apply: skipping dashboard %s", path, exc_info=True
-                )
-                continue
-            n = 0
-            for view in (conf or {}).get("views", []) or []:
-                for i, card in enumerate(view.get("cards") or []):
-                    rep = _replacement(card)
-                    if rep:
-                        view["cards"][i] = rep
-                        n += 1
-                for sec in view.get("sections") or []:
-                    for i, card in enumerate(sec.get("cards") or []):
-                        rep = _replacement(card)
-                        if rep:
-                            sec["cards"][i] = rep
-                            n += 1
-            if n:
-                await dash.async_save(conf)
-                n_cards += n
-                n_dashes += 1
-        return {"dashboards": n_dashes, "cards": n_cards}
+    coro = _async_ensure_editors(hass)
+    task = hass.async_create_task(coro)
+    if not isinstance(task, asyncio.Future):
+        coro.close()
 
     async def _async_export(call: ServiceCall) -> dict[str, Any]:
         """Regenerate the floorplan bundle and return it."""
@@ -827,7 +225,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         notify_export(hass, bundle)
         if call.data.get("apply", True) and bundle.get("cards"):
-            bundle["applied"] = await _apply_cards_to_dashboards(
+            bundle["applied"] = await apply_cards_to_dashboards(
+                hass,
                 bundle["cards"],
                 match=call.data.get("apply_match"),
                 url_path=call.data.get("apply_dashboard"),
@@ -871,7 +270,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # the plan is the source of truth — stamp the icon onto
         # matching markers too (round-trips untouched through studio,
         # like marker.ramsesZone)
-        await _write_icon_to_project(hass, target, icon, call.data.get("editor"))
+        adapter = await _adapter(hass, call.data.get("editor"))
+        await _write_icon_to_project(hass, adapter, _config_entry(hass), target, icon)
         return {
             "target": target,
             "icon": icon,
@@ -923,9 +323,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         section = set_device_zone(hass, _config_entry(hass), device_id, zone)
         # the plan is the source of truth — write the zone onto the
         # marker too (round-trips untouched through studio)
-        await _write_zone_to_project(
-            hass, device_id, None if remove else zone, call.data.get("editor")
-        )
+        adapter = await _adapter(hass, call.data.get("editor"))
+        await _write_zone_to_project(hass, adapter, device_id, None if remove else zone)
         return {
             "device_id": device_id,
             "zone": section.get(OPTION_DEVICE_ZONES, {}).get(device_id),
@@ -963,7 +362,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             ]
         entry = _config_entry(hass)
         section = set_caption_override(hass, entry, device_id, items)
-        await _write_caption_to_project(hass, device_id, items, call.data.get("editor"))
+        adapter = await _adapter(hass, call.data.get("editor"))
+        await _write_caption_to_project(hass, adapter, device_id, items)
         return {
             "device_id": device_id,
             "caption": items,
@@ -1524,7 +924,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         dev, zones, zone_toggles.get(dev.get("device_id"))
                     ),
                 )
-                marker["hfsType"] = hfs_type_for_device(dev)
+                marker["hfsType"] = adapter.marker_type_for_device(
+                    dev
+                ) or _hfs_dev_type(dev)
                 studio_marker_zone(marker, zones.get(dev.get("device_id")))
                 markers.append(marker)
                 placed[dev["device_id"]] = f"{fname} / {room['name']}"
@@ -1581,6 +983,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 # host-floor folding exists for browser-side studio's
                 # combined single-floor drawings; hfs has real floors
                 fold_hosts=bool(adapter.capabilities.browser_side),
+                marker_type_fn=adapter.marker_type_for_device,
             )
         else:
             # Park devices with no matching room at the in-canvas dock
@@ -1644,7 +1047,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 dev = dev_by_id.get(mdid) if mdid else None
                 if dev is None:
                     dev = {"primary_entity": (marker.get("entities") or [""])[0]}
-                marker.setdefault("hfsType", hfs_type_for_device(dev))
+                mtype = adapter.marker_type_for_device(dev)
+                if mtype:
+                    marker.setdefault("hfsType", mtype)
 
         project_out = json.dumps(project)
         backup_path = await adapter.async_backup(hass, project_out)
