@@ -43,6 +43,7 @@ const SYMBOL_SHEET =
   '/local/ramses_extras/features/floorplan_helper/symbol-sheet.svg';
 
 let _hfsLayout = null; // floorplan_studio/load payload
+let _hfsRev; // layout rev our last floorplan_studio/load saw
 let _entityDevice = {}; // entity_id -> topology device record
 let _deviceById = {}; // device_id -> topology device record
 let _zones = {}; // device_zones option {device_id: {areas, devices, color}}
@@ -83,51 +84,59 @@ function _slug(value) {
 async function _hfsLoadState() {
   const hass = _hfsHass();
   if (!hass || !hass.callWS) return;
-  try {
-    const topo = await hass.callWS({
-      type: 'ramses_extras/floorplan_helper/get_topology',
-    });
-    _entityDevice = {};
-    _deviceById = {};
-    for (const d of (topo && topo.devices) || []) {
-      const did = String(d.device_id || '');
-      if (did) _deviceById[did] = d;
-      if (d.primary_entity) _entityDevice[d.primary_entity] = d;
-      for (const e of d.entities || []) {
-        if (e.entity_id) _entityDevice[e.entity_id] = d;
-      }
-    }
-  } catch {
-    _entityDevice = {};
-    _deviceById = {};
-  }
-  try {
-    const cfg = await hass.callWS({
-      type: 'ramses_extras/floorplan_helper/get_config',
-    });
-    _zones = cfg.device_zones || {};
-    _deviceIcons = cfg.device_icons || {};
-    _deviceRoles = cfg.device_roles || {};
-    _deviceCaptions = cfg.device_captions || {};
-    _deviceDomains = cfg.device_domains || {};
-    _stateEnts = new Set();
-    for (const roles of Object.values(_deviceRoles)) {
-      for (const ents of Object.values(roles)) {
-        for (const eid of ents) _stateEnts.add(eid);
-      }
-    }
-    for (const pairs of Object.values(_deviceCaptions)) {
-      for (const p of pairs) _stateEnts.add(p[0]);
-    }
-  } catch {
-    _zones = {};
-    _deviceIcons = {};
-    _deviceRoles = {};
-    _deviceCaptions = {};
-    _deviceDomains = {};
-  }
-  await _hfsLoadIcons();
-  await _hfsLoadLayout();
+  // fetch concurrently — serialized round-trips pushed first paint out
+  // by seconds on a cold page load
+  await Promise.all([
+    hass
+      .callWS({
+        type: 'ramses_extras/floorplan_helper/get_topology',
+      })
+      .then((topo) => {
+        _entityDevice = {};
+        _deviceById = {};
+        for (const d of (topo && topo.devices) || []) {
+          const did = String(d.device_id || '');
+          if (did) _deviceById[did] = d;
+          if (d.primary_entity) _entityDevice[d.primary_entity] = d;
+          for (const e of d.entities || []) {
+            if (e.entity_id) _entityDevice[e.entity_id] = d;
+          }
+        }
+      })
+      .catch(() => {
+        _entityDevice = {};
+        _deviceById = {};
+      }),
+    hass
+      .callWS({
+        type: 'ramses_extras/floorplan_helper/get_config',
+      })
+      .then((cfg) => {
+        _zones = cfg.device_zones || {};
+        _deviceIcons = cfg.device_icons || {};
+        _deviceRoles = cfg.device_roles || {};
+        _deviceCaptions = cfg.device_captions || {};
+        _deviceDomains = cfg.device_domains || {};
+        _stateEnts = new Set();
+        for (const roles of Object.values(_deviceRoles)) {
+          for (const ents of Object.values(roles)) {
+            for (const eid of ents) _stateEnts.add(eid);
+          }
+        }
+        for (const pairs of Object.values(_deviceCaptions)) {
+          for (const p of pairs) _stateEnts.add(p[0]);
+        }
+      })
+      .catch(() => {
+        _zones = {};
+        _deviceIcons = {};
+        _deviceRoles = {};
+        _deviceCaptions = {};
+        _deviceDomains = {};
+      }),
+    _hfsLoadIcons(),
+    _hfsLoadLayout(),
+  ]);
 }
 
 // The mdi paths behind our icon keys already ship in the
@@ -158,6 +167,7 @@ async function _hfsLoadLayout() {
   try {
     const r = await hass.callWS({ type: 'floorplan_studio/load' });
     _hfsLayout = (r && r.layout) || r || null;
+    _hfsRev = r && r.rev;
   } catch {
     _hfsLayout = null;
   }
@@ -179,22 +189,31 @@ function _hfsCards() {
   return cards;
 }
 
+function _hfsCardFloors(card) {
+  const own = card && card._layout && card._layout.floors;
+  if (own && typeof own === 'object') return own;
+  return (_hfsLayout && _hfsLayout.floors) || null;
+}
+
 function _hfsFloorKey(card) {
   // The card keeps the shown floor on `_floorKey()` (no data attribute
   // in the DOM); fall back to the only floor when there's just one.
+  const floors = _hfsCardFloors(card);
+  if (!floors) return null;
   try {
     const k = typeof card._floorKey === 'function' ? card._floorKey() : null;
-    if (k && _hfsLayout && _hfsLayout.floors && _hfsLayout.floors[k]) return k;
+    if (k && floors[k]) return k;
   } catch {
     /* private-shape drift — fall through to the single-floor guess */
   }
-  const keys = Object.keys((_hfsLayout && _hfsLayout.floors) || {});
+  const keys = Object.keys(floors);
   return keys.length === 1 ? keys[0] : null;
 }
 
 function _hfsFloor(card) {
+  const floors = _hfsCardFloors(card);
   const key = _hfsFloorKey(card);
-  return key ? _hfsLayout.floors[key] : null;
+  return floors && key ? floors[key] : null;
 }
 
 function _hfsDevice(card, index) {
@@ -354,8 +373,8 @@ let _stagingTimer = null;
 // callWS with return_response:true is the working shape.
 function _hfsService(service, data) {
   const hass = _hfsHass();
-  if (!hass || !hass.callWS) return;
-  hass
+  if (!hass || !hass.callWS) return Promise.resolve({});
+  return hass
     .callWS({
       type: 'call_service',
       domain: DOMAIN,
@@ -363,7 +382,58 @@ function _hfsService(service, data) {
       service_data: data,
       return_response: true,
     })
-    .catch((e) => console.warn(`ramses-hfs: ${service} failed`, e));
+    .then((r) => (r && r.response) || {})
+    .catch((e) => {
+      console.warn(`ramses-hfs: ${service} failed`, e);
+      return {};
+    });
+}
+
+function _hfsZoneTarget(did, entity) {
+  if (did) {
+    const z = _zones[did];
+    if (
+      z &&
+      ((z.areas && z.areas.length) || (z.devices && z.devices.length))
+    ) {
+      return did;
+    }
+    const dev = _deviceById[did];
+    const cls = String((dev && dev.device_class) || '').toUpperCase();
+    if (cls === 'FAN' || cls === 'HVAC' || cls === 'CTL' || cls === 'THM') {
+      return did;
+    }
+    if (Object.values(_deviceById).some((d) => d && d.parent === did)) {
+      return did;
+    }
+  }
+  // A member of a zone (e.g. a TRV bound to a THM room zone, or a DIY
+  // valve cover bound to a FAN zone) toggles its owning zone on
+  // single-tap; double-tap opens the member's own popup.
+  for (const [ownerDid, z] of Object.entries(_zones)) {
+    const members = (z && z.devices) || [];
+    if ((did && members.includes(did)) || (entity && members.includes(entity))) {
+      return ownerDid;
+    }
+  }
+  if (did && _zones[did]) return did;
+  return '';
+}
+
+let _tapTimer = 0;
+
+function _hfsClearZones() {
+  let hadAny = false;
+  for (const c of _hfsCards()) {
+    if (c.__rxZones && c.__rxZones.size) {
+      c.__rxZones.clear();
+      _hfsPaint(c);
+      hadAny = true;
+    }
+  }
+  if (hadAny) {
+    _hfsService('floorplan_zone_toggle', { clear: true, toggles: [] });
+  }
 }
 
 function _hfsTapDevice(card, index) {
@@ -372,15 +442,24 @@ function _hfsTapDevice(card, index) {
   if (!entity) return;
   const topo = _entityDevice[entity];
   const did = String((topo && topo.device_id) || '');
-  if (did && _zones[did]) {
-    // zone owner: tap toggles the zone, resolved server-side
-    _hfsService('floorplan_zone_toggle', { device_id: did });
-  } else {
-    _hfsService('floorplan_device_view', { entity });
-  }
+  clearTimeout(_tapTimer);
+  // Delay single-tap slightly so a double-click cancels it instead of
+  // firing both a zone toggle and a popup open.
+  _tapTimer = setTimeout(() => {
+    _tapTimer = 0;
+    const zoneDid = _hfsZoneTarget(did, entity);
+    if (zoneDid) {
+      _hfsService('floorplan_zone_toggle', { device_id: zoneDid });
+    } else {
+      _hfsClearZones();
+      _hfsService('floorplan_device_view', { entity });
+    }
+  }, 220);
 }
 
 function _hfsOpenDevice(card, index) {
+  clearTimeout(_tapTimer);
+  _tapTimer = 0;
   const dev = _hfsDevice(card, index);
   if (dev && dev.entity) {
     _hfsService('floorplan_device_view', { entity: dev.entity });
@@ -415,11 +494,25 @@ function _hfsAttach(card) {
         e.target && e.target.closest
           ? e.target.closest('g[data-x], svg.fp3-ic')
           : null;
-      if (g)
+      if (g) {
         _hfsTapDevice(
           card,
           Number(g.getAttribute('data-x') ?? g.getAttribute('data-i'))
         );
+        return;
+      }
+      // Keep selection when clicking floor switcher or card UI controls;
+      // clicking another object (room/wall/furniture) or empty canvas
+      // deselects the active zone.
+      const isUiControl =
+        e.target &&
+        e.target.closest &&
+        e.target.closest(
+          'button, .fp-floors, .fp-head, .fp-stack, .fp-sheet-top, .fp-active-head, .fp-dialog, a, input, select'
+        );
+      if (!isUiControl) {
+        _hfsClearZones();
+      }
     },
     true
   );
@@ -500,16 +593,31 @@ function _hfsRoomIndex(floor, slug) {
   );
 }
 
-function _hfsDeviceIndex(floor, elementId) {
+function _hfsDeviceIndices(floor, elementId) {
   const devices = (floor && floor.devices) || [];
-  // element ids are entity ids, or `device.<did>` as fallback
   let want = elementId;
+  let wantDid = '';
   if (want.startsWith('device.')) {
-    const dev = _deviceById[want.slice(7)];
+    wantDid = want.slice(7);
+    const dev = _deviceById[wantDid];
     want = (dev && dev.primary_entity) || '';
-    if (!want) return -1;
+  } else if (_entityDevice[want]) {
+    wantDid = String(_entityDevice[want].device_id || '');
   }
-  return devices.findIndex((d) => String(d.entity || '') === want);
+  const out = [];
+  for (let i = 0; i < devices.length; i++) {
+    const ent = String((devices[i] && devices[i].entity) || '');
+    if (!ent) continue;
+    if (
+      ent === want ||
+      (wantDid &&
+        _entityDevice[ent] &&
+        String(_entityDevice[ent].device_id || '') === wantDid)
+    ) {
+      out.push(i);
+    }
+  }
+  return out;
 }
 
 function _hfsZoneColor(cls) {
@@ -775,22 +883,34 @@ function _hfsPaint(card) {
         poly.setAttribute('vector-effect', 'non-scaling-stroke');
         layer.appendChild(poly);
       } else {
-        const i = _hfsDeviceIndex(floor, id);
-        const dev = floor.devices[i];
-        if (i < 0 || !dev || dev.x === undefined) continue;
-        const ring = document.createElementNS(
-          'http://www.w3.org/2000/svg',
-          'circle'
-        );
-        ring.setAttribute('cx', String(dev.x));
-        ring.setAttribute('cy', String(dev.y));
-        ring.setAttribute('r', '30');
-        ring.setAttribute('fill', 'none');
-        ring.setAttribute('stroke', color);
-        ring.setAttribute('stroke-width', '4');
-        ring.setAttribute('vector-effect', 'non-scaling-stroke');
-        ring.setAttribute('stroke-dasharray', '8 5');
-        layer.appendChild(ring);
+        for (const i of _hfsDeviceIndices(floor, id)) {
+          const dev = floor.devices[i];
+          if (!dev) continue;
+          let cx = dev.x;
+          let cy = dev.y;
+          if (
+            (cx === undefined || cy === undefined) &&
+            Array.isArray(dev.a) &&
+            Array.isArray(dev.b)
+          ) {
+            cx = (Number(dev.a[0]) + Number(dev.b[0])) / 2;
+            cy = (Number(dev.b[1]) + Number(dev.a[1])) / 2;
+          }
+          if (cx === undefined || cy === undefined) continue;
+          const ring = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'circle'
+          );
+          ring.setAttribute('cx', String(cx));
+          ring.setAttribute('cy', String(cy));
+          ring.setAttribute('r', '30');
+          ring.setAttribute('fill', 'none');
+          ring.setAttribute('stroke', color);
+          ring.setAttribute('stroke-width', '4');
+          ring.setAttribute('vector-effect', 'non-scaling-stroke');
+          ring.setAttribute('stroke-dasharray', '8 5');
+          layer.appendChild(ring);
+        }
       }
     }
   }
@@ -812,15 +932,24 @@ function _hfsZoneApply(card, toggles, clear, skip) {
   if (clear && !(toggles || []).length) {
     state.clear();
   } else if (!skip) {
-    for (const t of toggles || []) {
-      let set = state.get(t.class);
-      if (!set) state.set(t.class, (set = new Set()));
-      for (const id of t.elements || []) {
-        if (clear) set.delete(id);
-        else if (set.has(id)) set.delete(id);
-        else set.add(id);
+    if (!clear && (toggles || []).length) {
+      const sameZone = toggles.some((t) => state.has(t.class));
+      // Exclusive zone selection: tapping the same zone toggles it off;
+      // tapping a different zone replaces the previous highlight.
+      state.clear();
+      if (!sameZone) {
+        for (const t of toggles) {
+          const set = new Set(t.elements || []);
+          if (set.size) state.set(t.class, set);
+        }
       }
-      if (!set.size) state.delete(t.class);
+    } else {
+      for (const t of toggles || []) {
+        const set = state.get(t.class);
+        if (!set) continue;
+        for (const id of t.elements || []) set.delete(id);
+        if (!set.size) state.delete(t.class);
+      }
     }
   }
   _hfsPaint(card);
@@ -842,10 +971,12 @@ function _hfsDecoratePanel(panel) {
   if (!root) return;
   _hfsAnimStyle(root);
   const floorKey = ed.floor;
+  const liveFloors = ed.st && ed.st.layout && ed.st.layout.floors;
   const floor =
-    floorKey && _hfsLayout && _hfsLayout.floors
+    (floorKey && liveFloors && liveFloors[floorKey]) ||
+    (floorKey && _hfsLayout && _hfsLayout.floors
       ? _hfsLayout.floors[floorKey]
-      : null;
+      : null);
   for (const svg of root.querySelectorAll('svg')) {
     _hfsDecorate(svg, floor);
   }
@@ -868,6 +999,24 @@ function _hfsAttachPanel(panel) {
       });
     });
     mo.observe(ed.shadowRoot, { childList: true, subtree: true });
+    // double-click a marker -> our device popup, same as the card;
+    // single-click stays the editor's own selection gesture
+    // capture: the editor's own handlers may stopPropagation before
+    // our bubble listener on the root would see the event
+    ed.shadowRoot.addEventListener('dblclick', (e) => {
+      const g =
+        e.target && e.target.closest
+          ? e.target.closest('g.dev[data-x]')
+          : null;
+      if (!g) return;
+      const floors =
+        (ed.st && ed.st.layout && ed.st.layout.floors) || {};
+      const floor = floors[ed.floor];
+      const dev = (floor.devices || [])[Number(g.getAttribute('data-x'))];
+      if (dev && dev.entity) {
+        _hfsService('floorplan_device_view', { entity: dev.entity });
+      }
+    }, true);
     _hfsDecoratePanel(panel);
     return true;
   };
@@ -912,6 +1061,7 @@ window.__ramsesHfsInfo = () => ({
   layout: _hfsLayout,
   editor: _hfsEditorEl(),
 });
+window.__ramsesHfsRefresh = _hfsLoadState;
 
 // --- save → export bridge --------------------------------------------------
 // hfs's editor emits `layout-changed` after every edit and its store
@@ -992,14 +1142,30 @@ function _hfsBridge() {
 // --- boot: discovery + state -----------------------------------------------
 
 function _hfsScan() {
-  for (const card of _hfsCards()) _hfsAttach(card);
+  for (const card of _hfsCards()) {
+    _hfsAttach(card);
+    _hfsPaint(card);
+  }
   const walk = (root) => {
     for (const el of root.querySelectorAll('*')) {
-      if (el.tagName === HFS_PANEL_TAG) _hfsAttachPanel(el);
+      if (el.tagName === HFS_PANEL_TAG) {
+        _hfsAttachPanel(el);
+        _hfsDecoratePanel(el);
+      }
       if (el.shadowRoot) walk(el.shadowRoot);
     }
   };
   walk(document);
+}
+
+function _hfsScheduleScans() {
+  _hfsScan();
+  // the tail covers late card mounts — Lovelace builds views
+  // asynchronously and hfs code-splits its frontend, so a card can
+  // appear seconds after the event that triggered us
+  for (const ms of [60, 250, 750, 1500, 3000, 5000]) {
+    setTimeout(_hfsScan, ms);
+  }
 }
 
 function _hfsStart() {
@@ -1007,29 +1173,33 @@ function _hfsStart() {
   const hass = _hfsHass();
   if (!hass) return;
   _started = true;
-  _hfsLoadState().then(_hfsScan);
+  // attach early so gestures work while state streams in, then repaint
+  // once everything has landed
+  _hfsScheduleScans();
+  _hfsLoadState().then(_hfsScheduleScans);
   if (hass.connection && hass.connection.subscribeEvents) {
     // their store fires this on every landed save — maps follow the
     // edit and generated cards regenerate, debounced past bursts
-    hass.connection.subscribeEvents(async () => {
-      _hfsLoadLayout();
+    hass.connection.subscribeEvents(async (e) => {
+      // reload topology + config + layout so newly seeded devices,
+      // auto-seeded heat zones, or profile switches take effect
+      // without a page reload
+      await _hfsLoadState();
       // only pull open panels forward when the write came from outside
       // (reset/restore/seed/another tab) — a panel's own save already
-      // bumps its rev, and a blind load() would reset zoom every time
-      try {
-        const r = await hass.callWS({ type: 'floorplan_studio/load' });
-        const rev = r && r.rev;
-        for (const p of _hfsPanels) {
-          if (rev !== undefined && p.rev !== rev && typeof p.load === 'function') {
-            try {
-              p.load();
-            } catch (e) {
-              console.debug('ramses-hfs: panel reload failed', e);
-            }
+      // bumps its rev, and a blind load() would reset zoom every time.
+      // 0.38+ carries the rev on the event; older versions don't —
+      // then fall back to the rev our layout reload just fetched.
+      const evRev = e && e.data && e.data.rev;
+      const rev = evRev !== undefined ? evRev : _hfsRev;
+      for (const p of _hfsPanels) {
+        if (rev !== undefined && p.rev !== rev && typeof p.load === 'function') {
+          try {
+            p.load();
+          } catch (err) {
+            console.debug('ramses-hfs: panel reload failed', err);
           }
         }
-      } catch (e) {
-        console.debug('ramses-hfs: rev check failed', e);
       }
       clearTimeout(_exportTimer);
       _exportTimer = setTimeout(_hfsAutoExport, 1200);
@@ -1042,9 +1212,11 @@ function _hfsStart() {
       if (eid && _stateEnts.has(eid)) _hfsRepaintAll();
     }, 'state_changed');
   }
-  // late-added cards: rescan on navigation plus a slow fallback — a
-  // deep shadow-DOM walk is not cheap on a busy dashboard
-  window.addEventListener('location-changed', _hfsScan);
+  // late-added cards: rescan on navigation (with staggered follow-ups
+  // because Lovelace mounts the new view asynchronously after
+  // location-changed) plus a fallback interval
+  window.addEventListener('location-changed', _hfsScheduleScans);
+  window.addEventListener('popstate', _hfsScheduleScans);
   const timer = setInterval(() => {
     _hfsScan();
     if (!_hfsHass()) clearInterval(timer);
@@ -1052,6 +1224,17 @@ function _hfsStart() {
 }
 
 _hfsBridge();
+// hfs code-splits its frontend, so the card/panel element classes can
+// register after our first scans — rescan the moment each upgrades
+for (const tag of [
+  'floorplan-studio-card',
+  'hfs-floorplan-card',
+  'floorplan-studio-panel',
+]) {
+  Promise.resolve(customElements.whenDefined(tag))
+    .then(_hfsScheduleScans)
+    .catch(() => {});
+}
 _hfsStart();
 if (!_started) {
   const timer = setInterval(() => {

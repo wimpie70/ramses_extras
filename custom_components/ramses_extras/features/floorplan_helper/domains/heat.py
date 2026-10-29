@@ -27,10 +27,10 @@ CTL_DOMAIN = DeviceDomain(
     default_icon="thermostat",
 )
 
-# Room thermostats — display units without a valve.
+# Room thermostats and sensors — display units without a valve.
 STAT_DOMAIN = DeviceDomain(
     key="heat",
-    device_classes=("DTS", "DT2"),
+    device_classes=("DTS", "DT2", "THM", "RND", "SEN", "ZON"),
     default_icon="thermostat",
 )
 
