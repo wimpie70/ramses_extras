@@ -12,6 +12,11 @@ import pytest
 if not hasattr(pytest, "mock"):
     pytest.mock = _mock
 
+# tools/esp_usb_feasibility_test.py is a manual hardware probe (run via
+# ``python -m tools.esp_usb_feasibility_test /dev/ttyACM0``), not a pytest
+# suite — its test_* functions need a serial port and error on collection.
+collect_ignore = ["tools/esp_usb_feasibility_test.py"]
+
 
 def sync_generate_entity_ids(
     entity_manager: Any, feature_id: str, device_id: str
