@@ -23,9 +23,9 @@
  *   - "Sync areas → HA" — link rooms to HA areas and set each entity's
  *     HA area from which room its marker sits inside
  *   - "Export ⇒" — snapshot the live project, run floorplan_export,
- *     copy the card yaml (dashboard cards untouched)
- *   - "⇒ Update cards" — same export, plus every floorplan card
- *     showing a generated map is updated in place
+ *     copy the card yaml (dashboard cards untouched; landed saves
+ *     already auto-export + apply via the overlay's
+ *     floorplan_studio_updated listener)
  *   - "⚙ Zones" — zone editor: pick a device, check the rooms it
  *     serves and the extra markers bound to it; the swatch sets the
  *     selected-zone highlight colour only — room fills stay studio's
@@ -200,6 +200,7 @@ class RamsesFloorplanActions extends HTMLElement {
     this._zoneRowFor = null;           // device the zone lists are built for
     this._sawStudioSel = false;        // studio selection seen non-empty
     this._suppressMenuClear = false;   // ignore the post-remount deselect
+    this._uiInteractAt = 0;            // last interaction inside this card
   }
 
   setConfig(config) {
@@ -223,6 +224,16 @@ class RamsesFloorplanActions extends HTMLElement {
   connectedCallback() {
     if (!this._watch) {
       this._watch = setInterval(() => this._pollSelection(), 700);
+    }
+    if (!this._uiStamp) {
+      // hfs clears the editor's st.sel when focus leaves the editor —
+      // interacting with this card must not read as a canvas deselect
+      this._uiStamp = () => {
+        this._uiInteractAt = Date.now();
+      };
+      for (const ev of ['pointerdown', 'focusin', 'input', 'change']) {
+        this.addEventListener(ev, this._uiStamp, true);
+      }
     }
     // ll-custom is handled by the module-level popup below — it works on
     // every view, not only ones containing this card.
@@ -742,6 +753,19 @@ class RamsesFloorplanActions extends HTMLElement {
     this._syncZoneSelection(memberIds, roomIds, soleDev);
   }
 
+  // True while the interaction lives inside this card's own UI —
+  // the native colour dialog drops document focus entirely, so a
+  // recent interaction timestamp backs up :focus-within. Either way
+  // an empty st.sel during this is upstream's focus-out clear, not a
+  // canvas deselect.
+  _ownUiActive() {
+    return (
+      !document.hasFocus() ||
+      this.matches(':focus-within') ||
+      Date.now() - (this._uiInteractAt || 0) < 2500
+    );
+  }
+
   // Editor → menu: while the zone editor is open, selection changes
   // on the canvas toggle the matching listbox entries (delta-only —
   // a cleared canvas selection means "no selection", not "clear the
@@ -770,6 +794,13 @@ class RamsesFloorplanActions extends HTMLElement {
     if (!memberIds.size && !roomIds.size) {
       if (this._suppressMenuClear) {
         this._suppressMenuClear = false;
+      } else if (this._ownUiActive()) {
+        // upstream cleared st.sel on focus-out (our colour swatch,
+        // listboxes…): keep the pick, and put the marker's selection
+        // ring back so canvas and menu stay in sync
+        if (devSel.value && this._resolvedEditor === 'hfs') {
+          this._hfsSelectDevice(devSel.value);
+        }
       } else if (this._sawStudioSel && devSel.value) {
         devSel.value = '';
         this._zoneRowFor = null;
@@ -957,6 +988,10 @@ class RamsesFloorplanActions extends HTMLElement {
 
   _clearZoneHighlight() {
     for (const [el, attrs] of this._hiPatched) {
+      if (attrs === null) {
+        el.remove();
+        continue;
+      }
       for (const [k, v] of Object.entries(attrs)) {
         if (v === null) el.removeAttribute(k);
         else el.setAttribute(k, v);
@@ -968,9 +1003,26 @@ class RamsesFloorplanActions extends HTMLElement {
   async _applyZoneHighlight(devId, dev) {
     this._clearZoneHighlight();
     if (!devId) return;
-    const zone = ((this._fpConfig || {}).device_zones || {})[devId];
+    const zones = (this._fpConfig || {}).device_zones || {};
+    const zone = zones[devId];
     if (!zone) return;
+    // roll up child zones the same way the service's resolve_bound
+    // does: a parent zone highlights its children's rooms and bound
+    // markers too
+    const bound = new Set([devId]);
+    for (const d of (this._topology || {}).devices || []) {
+      if (d.parent === devId && d.device_class !== 'HGI') {
+        bound.add(d.device_id);
+      }
+    }
+    for (const b of zone.devices || []) bound.add(String(b));
     const areas = new Set(zone.areas || []);
+    for (const b of [...bound]) {
+      for (const a of (zones[b] || {}).areas || []) areas.add(a);
+      for (const d2 of (zones[b] || {}).devices || []) {
+        bound.add(String(d2));
+      }
+    }
     if (!areas.size) return;
     const rooms = await this._projectRooms();
     // same resolution as the export: the stored zone colour is the
@@ -985,7 +1037,7 @@ class RamsesFloorplanActions extends HTMLElement {
     if (!color) color = '#f59e0b';
 
     if (this._resolvedEditor === 'hfs') {
-      this._applyZoneHighlightHfs(devId, dev, zone, areas, color);
+      this._applyZoneHighlightHfs(devId, dev, zone, areas, color, bound);
       return;
     }
 
@@ -1013,13 +1065,9 @@ class RamsesFloorplanActions extends HTMLElement {
     }
 
     // bound devices: schema parent links (remotes/sensors of a FAN) +
-    // the zone's devices list — the latter may hold non-ramses entity
-    // ids (DIY valves, zigbee sensors); HGI gateways never highlight.
-    const bound = new Set([devId]);
-    for (const d of (this._topology || {}).devices || []) {
-      if (d.parent === devId && d.device_class !== 'HGI') bound.add(d.device_id);
-    }
-    for (const b of zone.devices || []) bound.add(String(b));
+    // the zone's devices list + child zones' members — the latter may
+    // hold non-ramses entity ids (DIY valves, zigbee sensors); HGI
+    // gateways never highlight. Computed above, before the areas.
     const entsLayer = root.querySelector('g[data-layer="entities"]');
     if (entsLayer) {
       let nDev = 0;
@@ -1048,7 +1096,7 @@ class RamsesFloorplanActions extends HTMLElement {
   // hfs editor canvas: stroke the zone's room polygons (data-r index)
   // and drop-shadow bound device markers (data-x index) — the same
   // patch/restore scheme as the studio path (_hiPatched).
-  _applyZoneHighlightHfs(devId, dev, zone, areas, color) {
+  _applyZoneHighlightHfs(devId, dev, zone, areas, color, bound) {
     const info = window.__ramsesHfsInfo && window.__ramsesHfsInfo();
     const ed = info && info.editor;
     const floors = (info && info.layout && info.layout.floors) || {};
@@ -1056,44 +1104,102 @@ class RamsesFloorplanActions extends HTMLElement {
     const root = ed && ed.shadowRoot;
     if (!root || !floor) return;
 
-    const roomAreas = (floor.rooms || []).map((r) =>
-      this._slug(r.area || r.name)
-    );
-    const want = new Set([...areas].map((a) => this._slug(a)));
-    const names = [];
-    for (const poly of root.querySelectorAll('polygon[data-r]')) {
-      const i = Number(poly.getAttribute('data-r'));
-      if (!want.has(roomAreas[i])) continue;
-      this._hiPatched.push([
-        poly,
-        {
-          stroke: poly.getAttribute('stroke'),
-          'stroke-width': poly.getAttribute('stroke-width'),
-          'stroke-dasharray': poly.getAttribute('stroke-dasharray'),
-        },
-      ]);
-      poly.setAttribute('stroke', color);
-      poly.setAttribute('stroke-width', '3');
-      poly.setAttribute('stroke-dasharray', '6 3');
-      names.push((floor.rooms[i] || {}).name || roomAreas[i]);
-    }
-
-    const bound = new Set([devId]);
-    for (const d of (this._topology || {}).devices || []) {
-      if (d.parent === devId && d.device_class !== 'HGI') {
-        bound.add(d.device_id);
+    // per-owner colors: each bound member that owns a zone paints its
+    // rooms + marker in its own zone colour, the parent's colour is
+    // the fallback
+    const zones = (this._fpConfig || {}).device_zones || {};
+    const areaColor = new Map(); // room slug -> color
+    const idColor = new Map(); // bound key -> color
+    for (const b of bound) {
+      const bz = zones[b];
+      const c = (bz && bz.color) || color;
+      idColor.set(b, c);
+      for (const a of (bz && bz.areas) || []) {
+        areaColor.set(this._slug(a), c);
       }
     }
-    for (const b of zone.devices || []) bound.add(String(b));
+    for (const a of areas) {
+      if (!areaColor.has(this._slug(a))) areaColor.set(this._slug(a), color);
+    }
+    // data-r is the room index on the card ("16"); the editor scene
+    // may key rooms differently (r{index} like its data-e edge keys,
+    // or the room id) — cover all three, then draw our own overlay
+    // polygon for any wanted room the markup still doesn't expose
+    const roomByKey = new Map();
+    (floor.rooms || []).forEach((r, i) => {
+      roomByKey.set(String(r.id ?? i), r);
+      roomByKey.set(String(i), r);
+      roomByKey.set(`r${i}`, r);
+    });
+    const names = [];
+    const hit = new Set();
+    let host = null;
+    for (const poly of root.querySelectorAll('polygon[data-r]')) {
+      host = host || poly.parentElement;
+      const room = roomByKey.get(poly.getAttribute('data-r'));
+      const rc = room && areaColor.get(this._slug(room.area || room.name));
+      if (!rc) continue;
+      hit.add(room);
+      // inline style, not attributes — presentation attributes lose to
+      // stylesheet rules on the room class; style wins them all
+      this._hiPatched.push([poly, { style: poly.getAttribute('style') }]);
+      poly.style.stroke = rc;
+      poly.style.strokeWidth = '3px';
+      poly.style.strokeDasharray = '6 3';
+      poly.style.vectorEffect = 'non-scaling-stroke';
+      names.push(room.name || this._slug(room.area || room.name));
+    }
+    // overlay: same approach as the card's zone layer — our own
+    // polygons in the plan's coordinate space (siblinged next to a
+    // room polygon or the devices layer), so the highlight survives
+    // even where the editor's markup can't be patched
+    const NS = 'http://www.w3.org/2000/svg';
+    let overlay = null;
+    for (const room of floor.rooms || []) {
+      const rc = areaColor.get(this._slug(room.area || room.name));
+      if (!rc) continue;
+      if (!Array.isArray(room.pts) || room.pts.length < 3) continue;
+      if (!host) {
+        const dev = root.querySelector('g.dev[data-x]');
+        host =
+          (dev && dev.parentElement) ||
+          root.querySelector('.canvas > svg') ||
+          root.querySelector('svg');
+      }
+      if (!host) break;
+      if (!overlay) {
+        overlay = document.createElementNS(NS, 'g');
+        overlay.setAttribute('pointer-events', 'none');
+        host.appendChild(overlay);
+        this._hiPatched.push([overlay, null]);
+      }
+      const poly = document.createElementNS(NS, 'polygon');
+      poly.setAttribute(
+        'points',
+        room.pts.map((p) => `${p[0]},${p[1]}`).join(' ')
+      );
+      poly.setAttribute('fill', rc);
+      poly.setAttribute('fill-opacity', '0.18');
+      poly.setAttribute('stroke', rc);
+      poly.setAttribute('stroke-width', '3');
+      poly.setAttribute('stroke-dasharray', '6 3');
+      poly.setAttribute('vector-effect', 'non-scaling-stroke');
+      overlay.appendChild(poly);
+      if (!hit.has(room)) {
+        names.push(room.name || this._slug(room.area || room.name));
+      }
+    }
+
     let nDev = 0;
     for (const g of root.querySelectorAll('g.dev[data-x]')) {
       const d = (floor.devices || [])[Number(g.getAttribute('data-x'))];
       if (!d) continue;
       const t = d.entity && this._entityDevice[d.entity];
       const key = t ? String(t.device_id) : d.entity;
-      if (!bound.has(key) && !bound.has(d.entity)) continue;
+      const dc = idColor.get(key) ?? idColor.get(d.entity);
+      if (!dc) continue;
       this._hiPatched.push([g, { style: g.getAttribute('style') }]);
-      g.style.filter = `drop-shadow(0 0 5px ${color})`;
+      g.style.filter = `drop-shadow(0 0 5px ${dc})`;
       nDev++;
     }
     if (nDev) names.push(`${nDev} bound device(s)`);
@@ -1359,6 +1465,9 @@ class RamsesFloorplanActions extends HTMLElement {
       });
     }
     await this._fetchConfig();
+    if (typeof window.__ramsesHfsRefresh === 'function') {
+      window.__ramsesHfsRefresh();
+    }
     this._status(
       `Zone ${devId}: ${areas.length ? areas.join(', ') : 'no rooms'} ` +
         `+ ${devices.length} marker(s)` +
@@ -1640,9 +1749,10 @@ class RamsesFloorplanActions extends HTMLElement {
       <ha-card>
         <div class="title">Floorplan</div>
         <div class="hint">
-          Edit markers in studio, store the project, export — the studio
-          project is the source of truth; export compiles it into the
-          floorplan bundle (rules + CSS + card YAML).
+          Edit the plan in the editor — changes autosave and regenerate
+          the cards automatically. The plan in Home Assistant storage is
+          the source of truth; export compiles it into the floorplan
+          bundle (rules + CSS + card YAML) for manual dashboards.
         </div>
         <div class="row" id="row-studio">
           <span class="lbl">studio project:</span>
@@ -1663,9 +1773,7 @@ class RamsesFloorplanActions extends HTMLElement {
           <button id="b-sync" class="secondary"
             title="Walk every studio room: link it to an HA area (creating the area if missing), then set the HA area of every entity whose marker sits inside that room's polygon. This makes the drawing drive real HA areas, so dashboards and automations can group by area">Sync areas → HA</button>
           <button id="b-export" class="secondary"
-            title="Snapshot the selected studio project and regenerate the card files (merged SVG + state rules + captions). The card YAML is copied to your clipboard — dashboard cards are NOT updated (use ⇒ Update cards for that)">Export ⇒</button>
-          <button id="b-apply" class="secondary"
-            title="Same as Export ⇒, plus every floorplan card on your dashboards that shows a generated map is updated in place — no edit mode, no paste needed">⇒ Update cards</button>
+            title="Snapshot the selected studio project and regenerate the card files (merged SVG + state rules + captions). The card YAML is copied to your clipboard — dashboard cards update automatically when the plan saves">Export ⇒</button>
           <button id="b-tweaks" class="secondary"
             title="Zone editor — which rooms and markers belong to each device's zone">⚙ Zones</button>
           <button id="b-reset" class="secondary"
@@ -1734,7 +1842,6 @@ class RamsesFloorplanActions extends HTMLElement {
     $('b-open-editor').onclick = () =>
       this._navigate((this._fpConfig && this._fpConfig.editor_url) || '');
     $('b-export').onclick = () => this._run(() => this._export(false));
-    $('b-apply').onclick = () => this._run(() => this._export(true));
     $('b-sync').onclick = () => this._run(() => this._sync());
     $('b-tweaks').onclick = () => {
       const t = $('tweaks');
@@ -2174,14 +2281,19 @@ async function _openGlobalDevicePopup(detail) {
 // toggles to EVERY floorplan card, so a FAN's served rooms + bound
 // devices light up on all floors (and all open browsers) at once.
 // The legacy ll-custom path stays for previously exported yaml.
+function _fpIsHfsCard(el) {
+  return (
+    (el.tagName === 'HFS-FLOORPLAN-CARD' ||
+      el.tagName === 'FLOORPLAN-STUDIO-CARD') &&
+    typeof el._floorKey === 'function'
+  );
+}
+
 function _fpFloorplanCards() {
   const cards = [];
   const walk = (root) => {
     for (const el of root.querySelectorAll('*')) {
-      if (
-        el.tagName === 'FLOORPLAN-CARD' ||
-        el.tagName === 'HFS-FLOORPLAN-CARD'
-      )
+      if (el.tagName === 'FLOORPLAN-CARD' || _fpIsHfsCard(el))
         cards.push(el);
       if (el.shadowRoot) walk(el.shadowRoot);
     }
@@ -2192,25 +2304,30 @@ function _fpFloorplanCards() {
 
 function _fpZoneApply(toggles, clear, skipCard) {
   for (const card of _fpFloorplanCards()) {
-    if (card.tagName === 'HFS-FLOORPLAN-CARD') {
+    if (_fpIsHfsCard(card)) {
       // index-based DOM — the overlay module resolves the logical
       // element ids; skipCard is honoured inside the overlay
       window.__ramsesHfsZoneApply?.(card, toggles, clear, card === skipCard);
       continue;
     }
     if (skipCard && card === skipCard) continue;
+    const strip = (root, keepClasses) => {
+      for (const el of root.querySelectorAll('[class]')) {
+        for (const c of [...(el.classList || [])]) {
+          if (c.startsWith('rx-zone-') && (!keepClasses || !keepClasses.has(c)))
+            el.classList.remove(c);
+        }
+      }
+    };
     if (clear && !(toggles || []).length) {
       // blanket clear: strip every rx-zone-* class on this card —
       // used by the device-view bridge before the popup opens
-      const strip = (root) => {
-        for (const el of root.querySelectorAll('[class]')) {
-          for (const c of [...(el.classList || [])]) {
-            if (c.startsWith('rx-zone-')) el.classList.remove(c);
-          }
-        }
-      };
       strip(card.shadowRoot || card);
       continue;
+    }
+    if (!clear && (toggles || []).length) {
+      const incoming = new Set((toggles || []).map((t) => t.class));
+      strip(card.shadowRoot || card, incoming);
     }
     for (const t of toggles || []) {
       for (const id of t.elements || []) {
