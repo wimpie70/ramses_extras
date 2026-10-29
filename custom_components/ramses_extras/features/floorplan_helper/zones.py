@@ -78,6 +78,7 @@ def resolve_bound(
     dev: dict[str, Any],
     zone: dict[str, Any],
     element_id_for_device: Any,
+    all_zones: dict[str, Any] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Resolve a zone into ``(room element ids, bound element ids)``.
 
@@ -88,14 +89,32 @@ def resolve_bound(
     device_id = str(dev.get("device_id") or "")
     devices: list[dict[str, Any]] = model.get("devices") or []
 
-    area_elements = [f"area.{slugify(a)}" for a in (zone.get("areas") or []) if a]
-
-    bound_ids = {
+    children = {
         str(d.get("device_id"))
         for d in devices
         if d.get("parent") == device_id and zone_eligible(d)
     }
+
+    area_slugs: list[str] = []
+    for a in zone.get("areas") or []:
+        s = slugify(a) if a else ""
+        if s and s not in area_slugs:
+            area_slugs.append(s)
+    if all_zones:
+        for cid in sorted(children):
+            cz = all_zones.get(cid) or {}
+            for a in cz.get("areas") or []:
+                s = slugify(a) if a else ""
+                if s and s not in area_slugs:
+                    area_slugs.append(s)
+    area_elements = [f"area.{s}" for s in area_slugs]
+
+    bound_ids = set(children)
     bound_ids.update(str(b) for b in zone.get("devices") or [])
+    if all_zones:
+        for cid in children:
+            cz = all_zones.get(cid) or {}
+            bound_ids.update(str(b) for b in cz.get("devices") or [])
     bound_ids.add(device_id)
 
     bound = [
