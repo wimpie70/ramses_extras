@@ -1341,16 +1341,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 options = get_floorplan_options(_config_entry(hass))
             except RuntimeError, KeyError:
                 options = {}
-            zone = (options.get(OPTION_DEVICE_ZONES) or {}).get(
-                str((dev or {}).get("device_id"))
-            )
+            all_zones = dict(options.get(OPTION_DEVICE_ZONES) or {})
+            did = str((dev or {}).get("device_id") or "")
+            zone = all_zones.get(did)
+            if zone is None and dev is not None and did:
+                if any(d.get("parent") == did for d in model.get("devices") or []):
+                    zone = {"areas": [], "devices": [], "color": "#22c55e"}
             if dev is not None and zone:
-                did = str(dev["device_id"])
                 areas, bound = resolve_bound(
                     model,
                     dev,
                     zone,
                     lambda d: element_id_for_device(d, options),
+                    all_zones=all_zones,
                 )
                 toggles = zone_toggle_specs(did, areas, bound)
         payload = {
