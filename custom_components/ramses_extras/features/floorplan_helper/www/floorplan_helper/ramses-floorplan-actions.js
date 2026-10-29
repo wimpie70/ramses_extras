@@ -1116,16 +1116,17 @@ class RamsesFloorplanActions extends HTMLElement {
       poly.style.stroke = color;
       poly.style.strokeWidth = '3px';
       poly.style.strokeDasharray = '6 3';
+      poly.style.vectorEffect = 'non-scaling-stroke';
       names.push(room.name || this._slug(room.area || room.name));
     }
-    // overlay fallback: same approach as the card's zone layer — the
-    // polygons live in the plan's coordinate space, so sibling them
-    // next to a room polygon (or the devices layer) aligns them
+    // overlay: same approach as the card's zone layer — our own
+    // polygons in the plan's coordinate space (siblinged next to a
+    // room polygon or the devices layer), so the highlight survives
+    // even where the editor's markup can't be patched
     const NS = 'http://www.w3.org/2000/svg';
     let overlay = null;
     for (const room of floor.rooms || []) {
-      if (hit.has(room) || !want.has(this._slug(room.area || room.name)))
-        continue;
+      if (!want.has(this._slug(room.area || room.name))) continue;
       if (!Array.isArray(room.pts) || room.pts.length < 3) continue;
       if (!host) {
         const dev = root.querySelector('g.dev[data-x]');
@@ -1153,7 +1154,9 @@ class RamsesFloorplanActions extends HTMLElement {
       poly.setAttribute('stroke-dasharray', '6 3');
       poly.setAttribute('vector-effect', 'non-scaling-stroke');
       overlay.appendChild(poly);
-      names.push(room.name || this._slug(room.area || room.name));
+      if (!hit.has(room)) {
+        names.push(room.name || this._slug(room.area || room.name));
+      }
     }
 
     const bound = new Set([devId]);
