@@ -1359,6 +1359,9 @@ class RamsesFloorplanActions extends HTMLElement {
       });
     }
     await this._fetchConfig();
+    if (typeof window.__ramsesHfsRefresh === 'function') {
+      window.__ramsesHfsRefresh();
+    }
     this._status(
       `Zone ${devId}: ${areas.length ? areas.join(', ') : 'no rooms'} ` +
         `+ ${devices.length} marker(s)` +

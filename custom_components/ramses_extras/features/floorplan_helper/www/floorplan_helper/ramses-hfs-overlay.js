@@ -823,10 +823,12 @@ function _hfsDecoratePanel(panel) {
   if (!root) return;
   _hfsAnimStyle(root);
   const floorKey = ed.floor;
+  const liveFloors = ed.st && ed.st.layout && ed.st.layout.floors;
   const floor =
-    floorKey && _hfsLayout && _hfsLayout.floors
+    (floorKey && liveFloors && liveFloors[floorKey]) ||
+    (floorKey && _hfsLayout && _hfsLayout.floors
       ? _hfsLayout.floors[floorKey]
-      : null;
+      : null);
   for (const svg of root.querySelectorAll('svg')) {
     _hfsDecorate(svg, floor);
   }
@@ -893,6 +895,7 @@ window.__ramsesHfsInfo = () => ({
   layout: _hfsLayout,
   editor: _hfsEditorEl(),
 });
+window.__ramsesHfsRefresh = _hfsLoadState;
 
 // --- save → export bridge --------------------------------------------------
 // hfs's editor emits `layout-changed` after every edit and its store
@@ -993,7 +996,10 @@ function _hfsStart() {
     // their store fires this on every landed save — maps follow the
     // edit and generated cards regenerate, debounced past bursts
     hass.connection.subscribeEvents(async () => {
-      _hfsLoadLayout();
+      // reload topology + config + layout so newly seeded devices,
+      // auto-seeded heat zones, or profile switches take effect
+      // without a page reload
+      await _hfsLoadState();
       // only pull open panels forward when the write came from outside
       // (reset/restore/seed/another tab) — a panel's own save already
       // bumps its rev, and a blind load() would reset zoom every time
