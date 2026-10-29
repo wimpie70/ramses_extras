@@ -12,12 +12,13 @@ device looks like on the plan*.
 
 from __future__ import annotations
 
+import re
+import xml.etree.ElementTree as ET
 from typing import Any
 
 from .const import (
     DEFAULT_EDITOR_URL,
     DEFAULT_ICON,
-    DEFAULT_PLANNER_URL,
     FLOORPLAN_DEVICE_ICON_MAP,
     FLOORPLAN_ICON_MDI,
     OPTION_AREA_OVERRIDES,
@@ -25,15 +26,14 @@ from .const import (
     OPTION_EDITOR_URL,
     OPTION_ELEMENT_BINDINGS,
     OPTION_ICON_OVERRIDES,
-    OPTION_PLANNER_URL,
-    OPTION_TOOLBAR_ENABLED,
+    OPTION_MARKER_STYLE_OVERRIDES,
     TOOLBAR_ELEMENT_EDITOR,
     TOOLBAR_ELEMENT_EXPORT,
-    TOOLBAR_ELEMENT_IMPORT,
-    TOOLBAR_ELEMENT_PLANNER,
     TOOLBAR_ELEMENT_UPLOAD,
+    split_top_level_commas,
 )
-from .importer import rooms_from_svg
+from .domains import get_domain
+from .importer import _point_in_polygon, _polygon_area, _svg_parse, rooms_from_svg
 from .svg_utils import (
     load_icon_symbol,
     marker_svg,
@@ -113,7 +113,7 @@ def icon_for_device(device: dict[str, Any], options: dict[str, Any]) -> str:
     """Resolve the icon key for a device.
 
     Precedence: per-entity override → per-class override → element
-    binding icon → device-class default table → DEFAULT_ICON.
+    binding icon → domain default → device-class table → DEFAULT_ICON.
     """
     overrides: dict[str, str] = options.get(OPTION_ICON_OVERRIDES, {}) or {}
     bindings: dict[str, Any] = options.get(OPTION_ELEMENT_BINDINGS, {}) or {}
@@ -134,7 +134,45 @@ def icon_for_device(device: dict[str, Any], options: dict[str, Any]) -> str:
                 continue
             if isinstance(binding, dict) and binding.get("icon"):
                 return str(binding["icon"])
-    return FLOORPLAN_DEVICE_ICON_MAP.get(device_class, DEFAULT_ICON)
+    return get_domain(device).default_icon or FLOORPLAN_DEVICE_ICON_MAP.get(
+        device_class, DEFAULT_ICON
+    )
+
+
+def parse_marker_style(raw: Any) -> dict[str, str]:
+    """Normalise a marker-style override value into ``{part: colour}``.
+
+    Accepts the stored dict form or the config-menu string
+    ``"disc:#22c55e,glyph:#fff,ring:rgba(0,0,0,0.4),opacity:0.8"``.
+    Unknown parts are dropped.
+    """
+    if isinstance(raw, dict):
+        return {p: str(v) for p, v in raw.items() if p in _STYLE_PARTS and v}
+    out: dict[str, str] = {}
+    for item in split_top_level_commas(str(raw or "")):
+        part, _, value = item.strip().partition(":")
+        if part.strip() in _STYLE_PARTS and value.strip():
+            out[part.strip()] = value.strip()
+    return out
+
+
+_STYLE_PARTS = ("disc", "glyph", "ring", "opacity")
+
+
+def marker_style_for_key(
+    device: dict[str, Any], options: dict[str, Any]
+) -> dict[str, str]:
+    """Badge style overrides for a device — device id → class →
+    primary entity, same precedence as icon/caption overrides."""
+    overrides: dict[str, Any] = options.get(OPTION_MARKER_STYLE_OVERRIDES) or {}
+    for key in (
+        device.get("device_id"),
+        device.get("device_class"),
+        device.get("primary_entity"),
+    ):
+        if key is not None and str(key) in overrides:
+            return parse_marker_style(overrides[str(key)])
+    return {}
 
 
 def apply_area_overrides(model: dict[str, Any], options: dict[str, Any]) -> None:
@@ -189,12 +227,12 @@ def group_devices(
     return [(k, labels[k], v) for k, v in sorted(groups.items(), key=sort_key)]
 
 
-def _standalone_icon(entity_id: str) -> str:
+def standalone_icon(entity_id: str) -> str:
     """Icon key for a non-ramses zone member, based on entity domain."""
     return _ENTITY_DOMAIN_ICONS.get(entity_id.split(".", 1)[0], DEFAULT_ICON)
 
 
-def _dock_anchor(
+def dock_anchor(
     svg_rooms: dict[str, dict[str, Any]], vb_w: float
 ) -> tuple[float, float]:
     """Anchor (row start) for the unplaced-device dock.
@@ -207,7 +245,30 @@ def _dock_anchor(
     if outside:
         cx, cy = max(outside, key=lambda r: r.get("area") or 0)["centroid"]
         return cx - 3.5 * 30.0, cy
-    return vb_w - 8 * 30.0 - 20.0, 44.0
+    # slide the strip right until its column is clear of every room's
+    # bounding box — on a floor whose right edge is a room (a vide, an
+    # outside terrace…) the dock lands just past the drawing instead
+    # of inside that room
+    bboxes: list[tuple[float, float, float, float]] = []
+    for r in svg_rooms.values():
+        pts = r.get("polygon") or []
+        xs = [
+            float(p.get("x") or 0) if isinstance(p, dict) else float(p[0]) for p in pts
+        ]
+        ys = [
+            float(p.get("y") or 0) if isinstance(p, dict) else float(p[1]) for p in pts
+        ]
+        if xs and ys:
+            bboxes.append((min(xs), min(ys), max(xs), max(ys)))
+    x0 = vb_w - 8 * 30.0 - 20.0
+    while any(
+        x0 < bx1 and x0 + 270.0 > bx0 and 34.0 < by1 and 644.0 > by0
+        for bx0, by0, bx1, by1 in bboxes
+    ):
+        x0 += 30.0
+        if x0 > vb_w + 400.0:
+            break
+    return x0, 44.0
 
 
 def short_label(dev: dict[str, Any]) -> str:
@@ -216,11 +277,95 @@ def short_label(dev: dict[str, Any]) -> str:
     return name if len(name) <= 24 else name[:22] + "…"
 
 
+def marker_meta_for_device(
+    dev: dict[str, Any],
+    marker_meta: dict[str, dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Find a device's studio-marker entry in a positions map.
+
+    Matches the marker bound to the primary entity first, then any of
+    the device's entities — same lookup as the overlay placement.
+    ``marker_meta`` is the value map of
+    :func:`importer.studio_marker_positions`.
+    """
+    if not marker_meta:
+        return None
+    candidates = [dev.get("primary_entity")] + [
+        e.get("entity_id") for e in dev.get("entities") or []
+    ]
+    for ent in candidates:
+        if ent and ent in marker_meta:
+            return marker_meta[ent]
+    return None
+
+
+def _studio_style(
+    pos: dict[str, Any] | None, overrides: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge studio marker style fields over menu style overrides.
+
+    The studio project is the single source of truth: ``style.color``
+    owns the badge disc, and our extra keys ``style.glyph`` /
+    ``style.ring`` / ``style.opacity`` (unknown to studio, but
+    round-tripped untouched) beat the option-level overrides. Menu
+    overrides remain the fallback for elements without a studio
+    marker.
+    """
+    if not pos:
+        return overrides
+    style = dict(overrides)
+    for key in ("glyph", "ring", "opacity"):
+        if pos.get(key) is not None:
+            style[key] = pos[key]
+    if pos.get("color"):
+        style["disc"] = pos["color"]
+    return style
+
+
+def effective_zones(
+    model: dict[str, Any],
+    options: dict[str, Any],
+    marker_meta: dict[str, dict[str, Any]] | None = None,
+    room_fills: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Zone config, project-first.
+
+    ``marker.ramsesZone`` in the studio project is the single source
+    of truth — the ``device_zones`` option only fills in devices that
+    have no marker zone yet (back-compat for pre-project zones).
+
+    ``zone.color`` is the highlight/outline colour only — room base
+    fills stay whatever studio's inspector set. When a zone has no
+    explicit colour, the fill of its first studio room
+    (``room_fills`` from :func:`importer.studio_room_fills`) is the
+    adaptive fallback.
+    """
+    zones = dict(options.get(OPTION_DEVICE_ZONES) or {})
+    for dev in model.get("devices") or []:
+        meta = marker_meta_for_device(dev, marker_meta)
+        rz = (meta or {}).get("ramses_zone")
+        if isinstance(rz, dict) and dev.get("device_id"):
+            zones[str(dev["device_id"])] = rz
+    if room_fills:
+        for dev_id, z in list(zones.items()):
+            if not isinstance(z, dict) or z.get("color"):
+                continue
+            for area in z.get("areas") or []:
+                fill = room_fills.get(slugify(str(area)))
+                if fill:
+                    z = dict(z)
+                    z["color"] = fill
+                    zones[dev_id] = z
+                    break
+    return zones
+
+
 def build_overlay_fragment(
     model: dict[str, Any],
     options: dict[str, Any],
     positions: dict[str, dict[str, Any]],
     svg_text: str,
+    room_fills: dict[str, str] | None = None,
 ) -> tuple[str, list[str]]:
     """Build the marker/toolbar fragment to splice into a user SVG.
 
@@ -235,11 +380,11 @@ def build_overlay_fragment(
     """
     svg_rooms = {r["slug"]: r for r in rooms_from_svg(svg_text)}
     vb_w, vb_h = svg_viewbox_size(svg_text)
-    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    zones = effective_zones(model, options, positions, room_fills)
     warnings: list[str] = []
     used_icons: set[str] = set()
     body: list[str] = []
-    dock_x, dock_y = _dock_anchor(svg_rooms, vb_w)
+    dock_x, dock_y = dock_anchor(svg_rooms, vb_w)
     unplaced = 0
 
     def _dock_pos() -> tuple[float, float]:
@@ -255,14 +400,7 @@ def build_overlay_fragment(
     for dev in model.get("devices", []):
         element_id = element_id_for_device(dev, options)
         icon_key = icon_for_device(dev, options)
-        pos: dict[str, Any] | None = None
-        candidates = [dev.get("primary_entity")] + [
-            e.get("entity_id") for e in dev.get("entities") or []
-        ]
-        for ent in candidates:
-            if ent and ent in positions:
-                pos = positions[ent]
-                break
+        pos = marker_meta_for_device(dev, positions)
         if pos is not None:
             icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), icon_key)
             x, y, size = pos["x"], pos["y"], float(pos.get("size") or 20)
@@ -286,9 +424,12 @@ def build_overlay_fragment(
                 y,
                 size,
                 icon_key,
-                label=short_label(dev),
+                # a label typed into studio wins over the generated
+                # slug; it persists with the project
+                label=str((pos or {}).get("label") or short_label(dev)),
                 color=color,
                 text_color=DEFAULT_TEXT_COLOR,
+                style=_studio_style(pos, marker_style_for_key(dev, options)),
             )
         )
 
@@ -296,13 +437,13 @@ def build_overlay_fragment(
         pos = positions.get(ent)
         if pos is not None:
             x, y, size = pos["x"], pos["y"], float(pos.get("size") or 20)
-            icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), _standalone_icon(ent))
+            icon_key = _MDI_TO_ICON_KEY.get(str(pos.get("icon")), standalone_icon(ent))
             color = pos.get("color") or DEFAULT_MARKER_COLOR
         else:
             x, y = _dock_pos()
             unplaced += 1
             size = 20.0
-            icon_key, color = _standalone_icon(ent), DEFAULT_MARKER_COLOR
+            icon_key, color = standalone_icon(ent), DEFAULT_MARKER_COLOR
         used_icons.add(icon_key)
         body.append(
             marker_svg(
@@ -311,11 +452,21 @@ def build_overlay_fragment(
                 y,
                 size,
                 icon_key,
-                label=short_label(
-                    {"device_id": ent, "display_name": ent.split(".", 1)[-1]}
+                label=str(
+                    (pos or {}).get("label")
+                    or short_label(
+                        {"device_id": ent, "display_name": ent.split(".", 1)[-1]}
+                    )
                 ),
                 color=color,
                 text_color=DEFAULT_TEXT_COLOR,
+                # standalone members have no device — entity_id is the key
+                style=_studio_style(
+                    pos,
+                    parse_marker_style(
+                        (options.get(OPTION_MARKER_STYLE_OVERRIDES) or {}).get(ent)
+                    ),
+                ),
             )
         )
     if unplaced:
@@ -335,16 +486,6 @@ def build_overlay_fragment(
         *body,
         "</g>",
     ]
-    if (
-        options.get(OPTION_TOOLBAR_ENABLED, True)
-        and "floorplan.toolbar" not in svg_text
-    ):
-        tx = max(0.0, vb_w - 5 * 34 - 8)
-        ty = max(0.0, vb_h - 32)
-        parts.append(
-            f'<g transform="translate({tx:.0f},{ty:.0f})">'
-            f"{build_toolbar_svg(options)}</g>"
-        )
     return "\n".join(p for p in parts if p), warnings
 
 
@@ -353,6 +494,76 @@ def strip_toolbar(svg_text: str) -> str:
     wrapper) so a fresh one — current button set + tooltips — can be
     re-injected."""
     return strip_element(svg_text, "floorplan.toolbar")
+
+
+_LABEL_CLASSES = {"label", "label-sm"}
+_TRANSLATE_RE = re.compile(r"translate\(\s*(-?[\d.eE+-]+)[,\s]+(-?[\d.eE+-]+)\s*\)")
+
+
+def apply_room_labels(svg_text: str, rooms: list[dict[str, Any]] | None) -> str:
+    """Rewrite ``label``/``label-sm`` text contents to the studio room
+    containing each label's anchor point.
+
+    The project's room names are the single source of truth for what a
+    room is called — the drawing's baked ``<text>`` only contributes a
+    hand-placed position. When several texts land in one room (a
+    fixture note beside the room name), only the label nearest the
+    room's centroid is renamed; other in-room texts and labels outside
+    every room (scale legend, detached notes) keep their content.
+    Studio room polygons are in combined-floor space, so ancestor
+    ``translate()`` offsets are composed per element (floor-2 content
+    sits inside a wrapper group).
+    """
+    if not rooms:
+        return svg_text
+    polys = [
+        (r, r.get("polygon") or [], _polygon_area(r.get("polygon") or []))
+        for r in rooms
+    ]
+
+    def _room_at(x: float, y: float) -> dict[str, Any] | None:
+        hits = [t for t in polys if t[1] and _point_in_polygon(x, y, t[1])]
+        # overlapping fills happen — the smallest containing room is
+        # the most specific label target (mirrors room_for_point)
+        return min(hits, key=lambda t: t[2])[0] if hits else None
+
+    root = _svg_parse(svg_text)
+    found: list[tuple[ET.Element, dict[str, Any], float, float]] = []
+
+    def _walk(el: ET.Element, dx: float, dy: float) -> None:
+        m = _TRANSLATE_RE.search(el.get("transform") or "")
+        if m:
+            dx += float(m.group(1))
+            dy += float(m.group(2))
+        if el.tag.rsplit("}", 1)[-1] == "text" and (
+            set((el.get("class") or "").split()) & _LABEL_CLASSES
+        ):
+            x = float(el.get("x") or 0) + dx
+            y = float(el.get("y") or 0) + dy
+            room = _room_at(x, y)
+            if room is not None:
+                found.append((el, room, x, y))
+        for child in list(el):
+            _walk(child, dx, dy)
+
+    _walk(root, 0.0, 0.0)
+
+    # several texts may land in one room (a fixture note beside the
+    # room name) — only the label nearest the centroid takes the room
+    # name; the rest keep their authored content
+    by_room: dict[int, list[tuple[ET.Element, dict[str, Any], float]]] = {}
+    for el, room, x, y in found:
+        pts = room.get("polygon") or []
+        cx = sum(float(p.get("x") or 0) for p in pts) / len(pts)
+        cy = sum(float(p.get("y") or 0) for p in pts) / len(pts)
+        by_room.setdefault(id(room), []).append(
+            (el, room, (x - cx) ** 2 + (y - cy) ** 2)
+        )
+    for entries in by_room.values():
+        el, room, _ = min(entries, key=lambda t: t[2])
+        if room.get("name"):
+            el.text = str(room["name"])
+    return ET.tostring(root, encoding="unicode")
 
 
 def apply_room_styles(svg_text: str, rooms: list[dict[str, Any]] | None) -> str:
@@ -426,40 +637,35 @@ def build_elements_svg(model: dict[str, Any], options: dict[str, Any]) -> str:
         y = row_y + rows * _CELL_H + _GROUP_GAP
         parts.append("</g>")
 
-    if options.get(OPTION_TOOLBAR_ENABLED, True):
-        parts.append(
-            f'<g transform="translate(770,605)">{build_toolbar_svg(options)}</g>'
-        )
-
     parts.extend(["</g>", "</svg>"])
     return "\n".join(parts)
 
 
 def editor_url(options: dict[str, Any]) -> str:
-    return str(options.get(OPTION_EDITOR_URL) or DEFAULT_EDITOR_URL)
+    """The floorplan-studio view URL — the in-SVG `⛓` button target.
 
-
-def planner_url(options: dict[str, Any]) -> str:
-    return str(options.get(OPTION_PLANNER_URL) or DEFAULT_PLANNER_URL)
+    A stored value equal to the old external-editor default is treated
+    as unset: it was written before studio became the editor.
+    """
+    url = str(options.get(OPTION_EDITOR_URL) or "")
+    if not url or url == "https://qaddodi.github.io/ha-floorplan-editor/":
+        return DEFAULT_EDITOR_URL
+    return url
 
 
 def build_toolbar_svg(options: dict[str, Any] | None = None) -> str:
     """Return the toolbar ``<g>`` snippet — paste once into a custom SVG.
 
-    Up to five 26px glyph buttons spaced 34px apart, styled via the
+    Three 26px glyph buttons spaced 34px apart, styled via the
     ``rx-toolbar*`` classes in ramses-floorplan.css; each carries a
     ``<title>`` tooltip. Wrap coordinates with a
-    ``transform="translate(x,y)"`` to position it. The planner button is
-    skipped when it resolves to the same URL as the editor button.
+    ``transform="translate(x,y)"`` to position it.
     """
     glyphs = [
         (TOOLBAR_ELEMENT_EXPORT, "↻", "Export bundle (merged SVGs + card yamls)"),
-        (TOOLBAR_ELEMENT_IMPORT, "⇣", "Import floorplan YAML (bindings + rules)"),
         (TOOLBAR_ELEMENT_UPLOAD, "⇡", "Upload an SVG to the floorplan folder"),
         (TOOLBAR_ELEMENT_EDITOR, "⛓", "Open floorplan studio"),
     ]
-    if options is None or planner_url(options) != editor_url(options):
-        glyphs.append((TOOLBAR_ELEMENT_PLANNER, "✎", "Open floor planner"))
     parts = ['<g id="floorplan.toolbar">']
     for idx, (element_id, glyph, tooltip) in enumerate(glyphs):
         parts.append(svg_button(element_id, glyph, tooltip, idx * 34))
@@ -469,16 +675,20 @@ def build_toolbar_svg(options: dict[str, Any] | None = None) -> str:
 
 __all__ = [
     "apply_area_overrides",
+    "apply_room_labels",
     "apply_room_styles",
     "binding_maps",
     "build_elements_svg",
     "build_overlay_fragment",
     "build_toolbar_svg",
+    "dock_anchor",
     "editor_url",
     "element_id_for_device",
     "group_devices",
     "icon_for_device",
-    "planner_url",
+    "effective_zones",
+    "marker_meta_for_device",
     "short_label",
+    "standalone_icon",
     "strip_toolbar",
 ]

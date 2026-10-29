@@ -112,9 +112,12 @@ class ZoneDemandRegistry:
         ):
             return
 
-        existing = self._actuation_debounce_handles.pop(normalized, None)
-        if existing is not None:
-            existing.cancel()
+        # A pending call evaluates the latest demand/veto state when it
+        # fires, so it already absorbs this update — cancelling and
+        # re-arming on every signal would let a sustained signal stream
+        # starve actuation indefinitely (issue 292).
+        if normalized in self._actuation_debounce_handles:
+            return
 
         async def _async_run() -> None:
             try:

@@ -140,6 +140,7 @@ class TestConfigProfileStoreGet:
         builtin = store.list_builtin_profiles()
         assert "normal" in builtin
         assert "heat_only" in builtin
+        assert "floorplan" in builtin
 
 
 class TestConfigProfileStoreSave:

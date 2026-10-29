@@ -18,6 +18,7 @@ The model is consumed by generator.py to emit the ha-floorplan bundle.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -186,10 +187,70 @@ async def build_floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
             }
         )
 
+    # Non-ramses entities wired into _extras features (paired-valve
+    # zones, zone sensors/actuators) — the floorplan treats them as
+    # standalone members so everything _extras uses is visible and
+    # draggable in studio.
+    from ...framework.helpers.zones import get_zone_registry
+
+    model_ids = {str(e["entity_id"]) for d in devices for e in d.get("entities") or []}
+    extras_entities: set[str] = set()
+    for zones in get_zone_registry(hass).list_all_zones().values():
+        for zone in zones:
+            for key in ("inlet_valve_entity", "outlet_valve_entity"):
+                if zone.get(key):
+                    extras_entities.add(str(zone[key]))
+            extras_entities.update(
+                str(ent) for ent in (zone.get("sensors") or {}).values() if ent
+            )
+            actuator = zone.get("actuator") or {}
+            if actuator.get("entity_id"):
+                extras_entities.add(str(actuator["entity_id"]))
+    extras_entities.difference_update(model_ids)
+
+    # Evohome zone topology, for zone auto-seeding: each TCS zone
+    # carries its room name, zone sensor and actuator devices. ``_name``
+    # is only reliable in the stored schema (the runtime schema may not
+    # have hydrated names yet), so merge that in.
+    stored_schema: dict[str, Any] = {}
+    coordinator_options = getattr(coordinator, "options", None)
+    if isinstance(coordinator_options, Mapping):
+        stored = coordinator_options.get("schema")
+        if isinstance(stored, dict):
+            stored_schema = stored
+    heat_zones: list[dict[str, Any]] = []
+    if isinstance(runtime_schema, dict):
+        for tcs_id, tcs in runtime_schema.items():
+            if not isinstance(tcs, dict):
+                continue
+            stored_zones = (stored_schema.get(str(tcs_id)) or {}).get("zones") or {}
+            for zone_id, zone in (tcs.get("zones") or {}).items():
+                if not isinstance(zone, dict):
+                    continue
+                stored_zone = stored_zones.get(str(zone_id)) or {}
+                # Stored (user-declared) name wins over the packet-learned
+                # runtime name — renames in the config flow take effect.
+                heat_zones.append(
+                    {
+                        "ctl_id": str(tcs_id),
+                        "zone_id": str(zone_id),
+                        "name": str(
+                            stored_zone.get("_name")
+                            or zone.get("_name")
+                            or f"zone {zone_id}"
+                        ),
+                        "sensor": str(zone["sensor"]) if zone.get("sensor") else None,
+                        "actuators": [str(a) for a in zone.get("actuators") or []],
+                        "class": str(zone.get("class") or ""),
+                    }
+                )
+
     return {
         "devices": devices,
         "areas": areas,
         "floors": floors,
+        "extras_entities": sorted(extras_entities),
+        "heat_zones": heat_zones,
     }
 
 

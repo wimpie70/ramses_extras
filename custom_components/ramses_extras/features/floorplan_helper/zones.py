@@ -21,8 +21,46 @@ from __future__ import annotations
 
 from typing import Any
 
+from .const import ZONE_SEED_PALETTE, ZONE_TOGGLE_SERVICE
 from .domains import zone_eligible
 from .svg_utils import slugify
+
+
+def seed_heat_zones(
+    heat_zones: list[dict[str, Any]],
+    room_slugs: set[str],
+    zones: dict[str, Any],
+) -> list[str]:
+    """Auto-seed ``device_zones`` entries from evohome TCS zones.
+
+    Each zone's *sensor* (the room stat — the device users identify the
+    zone with) becomes the zone parent; its ``actuators`` (TRVs, zone
+    valves) become members. The zone's ``_name`` is matched against
+    studio room names (slugified) to pre-fill ``areas``; unmatched zones
+    still get member rings and are editable in the ⚙ panel. Colours
+    cycle through ``ZONE_SEED_PALETTE``. Zones whose parent already has
+    an entry are left untouched — user edits always win.
+
+    :param heat_zones: ``model["heat_zones"]`` rows
+    :param room_slugs: room slugs known to the project (all floors)
+    :param zones: the ``device_zones`` dict — mutated in place
+    :return: list of seeded parent device ids
+    """
+    seeded: list[str] = []
+    for z in heat_zones:
+        actuators = [str(a) for a in z.get("actuators") or []]
+        parent = z.get("sensor") or (actuators[0] if actuators else None)
+        if not parent or str(parent) in zones:
+            continue
+        members = [m for m in actuators if m != parent]
+        slug = slugify(str(z.get("name") or ""))
+        zones[str(parent)] = {
+            "devices": members,
+            "areas": [slug] if slug and slug in room_slugs else [],
+            "color": ZONE_SEED_PALETTE[len(zones) % len(ZONE_SEED_PALETTE)],
+        }
+        seeded.append(str(parent))
+    return seeded
 
 
 def zone_class(device_id: str) -> str:
@@ -110,7 +148,10 @@ def model_entity_ids(model: dict[str, Any]) -> set[str]:
 
 def standalone_members(model: dict[str, Any], zones: dict[str, Any]) -> list[str]:
     """Entity ids listed in zones' ``devices`` that aren't ramses model
-    devices — DIY valves, zigbee area sensors… (deduped, sorted)."""
+    devices — DIY valves, zigbee area sensors… — plus the non-ramses
+    entities _extras features wire up (paired-valve zones, zone
+    sensors/actuators), carried on the model as ``extras_entities``
+    (deduped, sorted)."""
     ids = model_entity_ids(model)
     out: set[str] = set()
     for z in zones.values():
@@ -118,6 +159,10 @@ def standalone_members(model: dict[str, Any], zones: dict[str, Any]) -> list[str
             ent = str(ent)
             if "." in ent and ent not in ids:
                 out.add(ent)
+    for ent in model.get("extras_entities") or []:
+        ent = str(ent)
+        if "." in ent and ent not in ids:
+            out.add(ent)
     return sorted(out)
 
 
@@ -126,8 +171,8 @@ def zone_defs(model: dict[str, Any], zones: dict[str, Any]) -> str:
 
     The room class swaps the fill for a translucent diagonal hatch in
     the zone colour plus a solid outline — visible over any base fill.
-    The ``-dev`` variant outlines the bound markers with a glow and
-    leaves their icon fill to the rx-* state classes.
+    The ``-dev`` variant rings the bound markers' badge in the zone
+    colour and leaves their disc/glyph to the rx-* state classes.
     """
     css: list[str] = []
     patterns: list[str] = []
@@ -152,11 +197,13 @@ def zone_defs(model: dict[str, Any], zones: dict[str, Any]) -> str:
                 f"fill: url(#{pat}) !important; fill-opacity: 1 !important; "
                 f"stroke: {color} !important; stroke-width: 3px !important; }}"
             )
-        # bound markers recolour in the zone colour — a drop-shadow
-        # glow or a stroke on fill-path icons just reads as blur; the
-        # !important fill wins over the marker's base fill and the
-        # rx-* status classes (membership beats status while lit)
-        css.append(f".{zone_dev_class(device_id)} {{ fill: {color} !important; }}")
+        # bound markers show membership on the badge ring — a crisp
+        # circle outline in the zone colour (a glow/stroke on fill-path
+        # icons just reads as blur); !important wins over the rx-*
+        # status ring classes (membership beats status while lit)
+        css.append(
+            f".{zone_dev_class(device_id)} .rx-ring {{ stroke: {color} !important; }}"
+        )
     if not css and not patterns:
         return ""
     parts = [f"<style>\n{chr(10).join(css)}\n</style>", "<defs>", *patterns, "</defs>"]
@@ -175,29 +222,41 @@ def zone_toggle_specs(
     return toggles
 
 
+def zone_tap_action(
+    toggles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Single-tap action: one ``call-service`` to the zone bridge.
+
+    ``ramses_extras.floorplan_zone_toggle`` fires an HA event the
+    frontend module turns into class toggles on every floorplan card —
+    so the action is a plain service call (fully expressible in
+    studio's marker actions and surviving studio's own export),
+    instead of a client-side list mixing class_toggle + ll-custom.
+    """
+    return {
+        "action": "call-service",
+        "service": ZONE_TOGGLE_SERVICE,
+        "service_data": {"toggles": toggles},
+    }
+
+
 def zone_tap_actions(
     toggles: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Single-tap action list: local class_toggle + cross-card sync."""
-    actions: list[dict[str, Any]] = [
-        {
-            "action": "call-service",
-            "service": "floorplan.class_toggle",
-            "service_data": t,
-        }
-        for t in toggles
-    ]
-    actions.append({"action": "fire-dom-event", "ramses_zone_sync": toggles})
-    return actions
+) -> dict[str, Any]:
+    """Backwards-compatible alias for :func:`zone_tap_action`.
+
+    Older exports emitted an action *list*; the current shape is a
+    single call-service dict — same return value either way.
+    """
+    return zone_tap_action(toggles)
 
 
 def zone_clear_action(toggles: list[dict[str, Any]]) -> dict[str, Any]:
-    """fire-dom-event spec that removes the zone classes on ALL cards.
+    """Legacy ll-custom clear spec — kept for previously exported yaml.
 
-    Unlike the toggle broadcast, the listener includes the originating
-    card — a quick second click is eaten as a double tap by
-    ha-floorplan's gesture handler, so this deterministic clear is what
-    keeps "tap again to deselect" working before the device view opens.
+    New exports clear zones inside the device-view event handler
+    instead; the module's ll-custom listener still honours this so
+    old generated cards keep working.
     """
     return {"action": "fire-dom-event", "ramses_zone_clear": toggles}
 
@@ -206,11 +265,13 @@ __all__ = [
     "device_of_entity",
     "model_entity_ids",
     "resolve_bound",
+    "seed_heat_zones",
     "standalone_members",
     "zone_class",
     "zone_clear_action",
     "zone_defs",
     "zone_dev_class",
+    "zone_tap_action",
     "zone_tap_actions",
     "zone_toggle_specs",
 ]

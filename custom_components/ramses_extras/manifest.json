@@ -1,6 +1,7 @@
 {
   "domain": "ramses_extras",
   "name": "Ramses Extras",
+  "after_dependencies": ["lovelace"],
   "codeowners": ["@wimpie70"],
   "config_flow": true,
   "dependencies": ["ramses_cc", "mqtt", "frontend", "http"],

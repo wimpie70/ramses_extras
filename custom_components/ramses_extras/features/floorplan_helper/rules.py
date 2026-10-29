@@ -19,21 +19,17 @@ from typing import Any
 import yaml
 
 from .const import (
+    DEVICE_VIEW_SERVICE,
     GENERATED_RULE_TAG,
+    OPTION_CAPTION_FIELDS,
     OPTION_CAPTION_OVERRIDES,
     OPTION_DEVICE_VIEW_URL,
-    OPTION_DEVICE_ZONES,
     OPTION_ELEMENT_BINDINGS,
     OPTION_EXTRA_RULES,
-    OPTION_TOOLBAR_ENABLED,
-    TOOLBAR_ELEMENT_EDITOR,
-    TOOLBAR_ELEMENT_EXPORT,
-    TOOLBAR_ELEMENT_IMPORT,
-    TOOLBAR_ELEMENT_PLANNER,
-    TOOLBAR_ELEMENT_UPLOAD,
+    ZONE_TOGGLE_SERVICE,
     is_generated_rule,
 )
-from .domains import get_domain
+from .domains import caption_group_key, caption_suffix_for, get_domain
 from .expressions import (
     CLASS_ROLES,
     element_caption_expr,
@@ -42,15 +38,14 @@ from .expressions import (
 )
 from .markers import (
     binding_maps,
-    editor_url,
+    effective_zones,
     element_id_for_device,
-    planner_url,
+    marker_meta_for_device,
 )
 from .zones import (
     model_entity_ids,
     resolve_bound,
     standalone_members,
-    zone_clear_action,
     zone_tap_actions,
     zone_toggle_specs,
 )
@@ -106,6 +101,59 @@ def link_action(target: str) -> dict[str, Any]:
     return {"action": "url", "url_path": target}
 
 
+def studio_tap_action(action: Any) -> dict[str, Any] | None:
+    """Translate a studio marker action to an ha-floorplan action.
+
+    Studio stores ``{kind, service, serviceData, navPath, url}`` —
+    same mapping its own exporter uses. ``kind: none`` (or an
+    incomplete action) returns ``None`` → inherit our defaults.
+    """
+    if not isinstance(action, dict):
+        return None
+    kind = action.get("kind")
+    if kind == "more-info":
+        return {"action": "more-info"}
+    if kind == "toggle":
+        return {"action": "toggle"}
+    if kind == "navigate":
+        path = action.get("navPath")
+        return {"action": "navigate", "navigation_path": path} if path else None
+    if kind == "url":
+        url = action.get("url")
+        return {"action": "url", "url_path": url} if url else None
+    if kind == "call-service":
+        service = action.get("service")
+        if not service:
+            return None
+        data: Any = action.get("serviceData")
+        if isinstance(data, str) and data.strip():
+            try:
+                data = yaml.safe_load(data)
+            except yaml.YAMLError:
+                data = None
+        rule: dict[str, Any] = {"action": "call-service", "service": service}
+        if isinstance(data, dict) and data:
+            rule["service_data"] = data
+        return rule
+    return None
+
+
+_ZONE_SHORTHAND_SERVICES = {ZONE_TOGGLE_SERVICE, "floorplan.class_toggle"}
+_DEVICE_VIEW_SHORTHAND_SERVICES = {DEVICE_VIEW_SERVICE}
+
+
+def _studio_shorthand(action: Any, services: set[str]) -> bool:
+    """Studio ``call-service`` pointing at one of our bridge services
+    is a seeded representation — regenerate the real action from
+    current config so stale serviceData can't drift (zone members or
+    the popup card may have changed since seeding)."""
+    return (
+        isinstance(action, dict)
+        and action.get("kind") == "call-service"
+        and action.get("service") in services
+    )
+
+
 def stale_managed_rule(rule: dict[str, Any], managed_entities: set[str]) -> bool:
     """Legacy generated rule replayed via stored extras.
 
@@ -156,33 +204,113 @@ def parse_extra_rules(
     return rules
 
 
+def caption_override_for_device(
+    dev: dict[str, Any], options: dict[str, Any]
+) -> list[str] | None:
+    """Stored ``caption_overrides`` entry for a device.
+
+    Precedence: device id → device class → primary entity. Returns the
+    raw ``"eid|suffix"`` item list, or None when no override applies.
+    """
+    overrides: dict[str, Any] = options.get(OPTION_CAPTION_OVERRIDES) or {}
+    for key in (
+        dev.get("device_id"),
+        dev.get("device_class"),
+        dev.get("primary_entity"),
+    ):
+        if key is not None and str(key) in overrides:
+            raw = overrides[str(key)]
+            return list(raw) if isinstance(raw, list) else [str(raw)]
+    return None
+
+
+def _parse_caption_items(raw: Any) -> list[tuple[str, str]]:
+    """``"eid|suffix"`` items → ``(entity_id, suffix)`` pairs."""
+    if isinstance(raw, str):
+        raw = [raw]
+    return [
+        (eid.strip(), sfx.strip())
+        for item in raw or []
+        for eid, _, sfx in [str(item).partition("|")]
+        if eid.strip()
+    ]
+
+
+def caption_pairs_for_device(
+    dev: dict[str, Any],
+    options: dict[str, Any],
+    meta: dict[str, Any] | None = None,
+) -> list[tuple[str, str]]:
+    """Resolved ``(entity_id, suffix)`` caption pairs for a device.
+
+    Precedence — the studio project wins over stored options:
+
+    1. ``style.showState`` off → no caption (studio's per-marker toggle)
+    2. ``marker.ramsesCaption`` — explicit ``eid|suffix`` items written
+       by the actions card's caption editor
+    3. ``marker.entities`` with more than one entity — entities the
+       user attached to the marker in studio are what it shows
+    4. ``caption_overrides`` option (device → class → primary entity)
+    5. ``caption_fields`` option (stored per-class group selection —
+       legacy; the UI moved to the actions card)
+    6. the domain's ``caption_groups`` default
+    """
+    domain = get_domain(dev)
+    if meta and meta.get("show_state") is False:
+        # studio's "Show state" toggle persists with the project —
+        # unticking it is the per-marker way to hide the caption
+        return []
+    raw = (meta or {}).get("ramses_caption")
+    if raw is not None:
+        return _parse_caption_items(raw)
+    marker_ents = (meta or {}).get("entities") or []
+    if len(marker_ents) > 1:
+        return [(str(e), caption_suffix_for(str(e), domain)) for e in marker_ents]
+    raw = caption_override_for_device(dev, options)
+    if raw is not None:
+        return _parse_caption_items(raw)
+    # per-class stored selection — caption_fields maps device class →
+    # group keys (first pattern); absent key = domain default,
+    # empty list = no caption for the class
+    selected = (options.get(OPTION_CAPTION_FIELDS) or {}).get(
+        str(dev.get("device_class") or "")
+    )
+    if selected is not None:
+        groups = tuple(
+            g for g in domain.caption_groups if caption_group_key(g) in selected
+        )
+        return domain.caption_entities(dev.get("entities") or [], groups)
+    return domain.caption_entities(dev.get("entities") or [])
+
+
 def _device_view_actions(
     dev: dict[str, Any],
     primary: str,
     toggles: list[dict[str, Any]],
     options: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """double_tap list: deterministic zone clear, then the device view.
+) -> dict[str, Any]:
+    """double_tap action: open the device view via the service bridge.
 
-    ha-floorplan waits ~250ms to tell a single click from a double
-    click — a quick "second tap to deselect" is eaten as a double tap,
-    so the clear fires first (all cards, including the origin) and the
-    highlight can't get stuck.
+    ``ramses_extras.floorplan_device_view`` fires an HA event — the
+    module clears every zone highlight (covering the old deterministic
+    zone_clear list, which a fast second tap needs since ha-floorplan
+    waits ~250ms before deciding single-vs-double) and then opens the
+    popup. A configured ``device_view_url`` still wins with a plain
+    navigate action — both shapes are a single call, expressible in
+    studio's marker actions.
     """
     view_url = options.get(OPTION_DEVICE_VIEW_URL) or ""
-    view = (
-        {"action": "navigate", "navigation_path": view_url}
-        if view_url
-        else fire_dom_event(
-            # picked up by the ramses-floorplan-actions module (loaded
-            # as a Lovelace resource → works on any view) to open the
-            # device popup
-            ramses_device_id=dev.get("device_id"),
-            ramses_entity=primary,
-            ramses_card=get_domain(dev).popup_card,
-        )
-    )
-    return [zone_clear_action(toggles), view]
+    if view_url:
+        return {"action": "navigate", "navigation_path": view_url}
+    return {
+        "action": "call-service",
+        "service": DEVICE_VIEW_SERVICE,
+        "service_data": {
+            "device_id": dev.get("device_id"),
+            "entity": primary,
+            "card": get_domain(dev).popup_card,
+        },
+    }
 
 
 def _device_rules(
@@ -191,16 +319,17 @@ def _device_rules(
     options: dict[str, Any],
     entity_binding_map: dict[str, dict[str, Any]],
     managed_entities: set[str],
+    marker_meta: dict[str, dict[str, Any]] | None = None,
+    zones: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """``(managed rules, binding-level extras)`` for one model device.
 
     Binding extras stay separate from the managed list — they are
     user-authored, so they get appended *after* the tagged block."""
-    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    zones = zones if zones is not None else effective_zones(model, options, marker_meta)
     primary = dev.get("primary_entity")
     element_id = element_id_for_device(dev, options)
     combined_class = element_class_expr(dev)
-    domain = get_domain(dev)
 
     rules: list[dict[str, Any]] = []
     for ent in dev.get("entities", []):
@@ -229,22 +358,8 @@ def _device_rules(
 
     # caption: one combined ${} emitted on every contributing entity's
     # rule — whichever state updates, the caption rewrites in full.
-    # caption_overrides (device id → class → primary entity) win over
-    # the domain default; "eid|suffix" entries carry their own suffix.
-    caption_pairs = domain.caption_entities(dev.get("entities") or [])
-    overrides: dict[str, Any] = options.get(OPTION_CAPTION_OVERRIDES) or {}
-    raw = overrides.get(str(dev.get("device_id")))
-    if raw is None and dev.get("device_class"):
-        raw = overrides.get(str(dev["device_class"]))
-    if raw is None and primary:
-        raw = overrides.get(str(primary))
-    if raw is not None:
-        caption_pairs = [
-            (eid.strip(), sfx.strip())
-            for item in raw
-            for eid, _, sfx in [str(item).partition("|")]
-            if eid.strip()
-        ]
+    meta = marker_meta_for_device(dev, marker_meta)
+    caption_pairs = caption_pairs_for_device(dev, options, meta)
     caption_expr = element_caption_expr(caption_pairs)
     if caption_expr:
         for eid, _ in caption_pairs:
@@ -259,23 +374,56 @@ def _device_rules(
         # tap the marker → more-info on the device's own entity
         # (climate dialog for a FAN), not a secondary stat sensor;
         # zoned devices get tap = highlight served rooms instead,
-        # keep the entity dialog on hold
+        # keep the entity dialog on hold. Studio marker actions
+        # override: a deliberate non-default gesture wins, while
+        # "none"/more-info/our seeded class_toggle shorthand keep the
+        # zone behaviour.
         tap_rule: dict[str, Any] = {"entity": primary}
         if primary != element_id:
             tap_rule["element"] = element_id
-        zone = zones.get(dev.get("device_id")) or {}
-        area_elements, bound = resolve_bound(
-            model, dev, zone, lambda d: element_id_for_device(d, options)
+        # presence in device_zones is what makes a device a zone parent
+        # — resolve_bound always folds the device into its own bound
+        # set, so bound alone can't be the gate (every unzoned device
+        # would emit a self-referencing class_toggle)
+        zone = zones.get(str(dev.get("device_id") or ""))
+        area_elements, bound = (
+            ([], [])
+            if zone is None
+            else resolve_bound(
+                model, dev, zone, lambda d: element_id_for_device(d, options)
+            )
         )
+        studio_actions = (meta or {}).get("actions") or {}
+        tap_override = studio_tap_action(studio_actions.get("tap"))
+        hold_override = studio_tap_action(studio_actions.get("hold"))
+        double_override = studio_tap_action(studio_actions.get("double"))
         if area_elements or bound:
             toggles = zone_toggle_specs(str(dev.get("device_id")), area_elements, bound)
-            tap_rule["tap_action"] = zone_tap_actions(toggles)
-            tap_rule["hold_action"] = {"action": "more-info"}
-            tap_rule["double_tap_action"] = _device_view_actions(
-                dev, str(primary), toggles, options
-            )
+            if (
+                tap_override is None
+                or tap_override.get("action") == "more-info"
+                or _studio_shorthand(
+                    studio_actions.get("tap"), _ZONE_SHORTHAND_SERVICES
+                )
+            ):
+                tap_rule["tap_action"] = zone_tap_actions(toggles)
+            else:
+                tap_rule["tap_action"] = tap_override
+            tap_rule["hold_action"] = hold_override or {"action": "more-info"}
+            if double_override and not _studio_shorthand(
+                studio_actions.get("double"), _DEVICE_VIEW_SHORTHAND_SERVICES
+            ):
+                tap_rule["double_tap_action"] = double_override
+            else:
+                tap_rule["double_tap_action"] = _device_view_actions(
+                    dev, str(primary), toggles, options
+                )
         else:
-            tap_rule["tap_action"] = {"action": "more-info"}
+            tap_rule["tap_action"] = tap_override or {"action": "more-info"}
+            if hold_override:
+                tap_rule["hold_action"] = hold_override
+            if double_override:
+                tap_rule["double_tap_action"] = double_override
         rules.append(tap_rule)
 
     binding = entity_binding_map.get(primary or "")
@@ -287,54 +435,24 @@ def _device_rules(
     return rules, extras
 
 
-def _toolbar_rules(options: dict[str, Any]) -> list[dict[str, Any]]:
-    """Rules for the in-SVG toolbar glyphs (see ``build_toolbar_svg``).
-
-    Emitted inside the managed block so bindings stay managed; harmless
-    for SVGs that don't contain the toolbar elements.
-    """
-    if not options.get(OPTION_TOOLBAR_ENABLED, True):
-        return []
-    rules: list[dict[str, Any]] = [
-        # export/import/upload need service data or a response — they go
-        # through ll-custom so the module-level listener can show real
-        # dialogs (file picker, results, copy buttons) instead of just
-        # dumping the user on the developer-tools page
-        {
-            "element": TOOLBAR_ELEMENT_EXPORT,
-            "tap_action": fire_dom_event(ramses_fp_action="export"),
-        },
-        {
-            "element": TOOLBAR_ELEMENT_IMPORT,
-            "tap_action": fire_dom_event(ramses_fp_action="import"),
-        },
-        {
-            "element": TOOLBAR_ELEMENT_UPLOAD,
-            "tap_action": fire_dom_event(ramses_fp_action="upload"),
-        },
-        {
-            "element": TOOLBAR_ELEMENT_EDITOR,
-            "tap_action": link_action(editor_url(options)),
-        },
-    ]
-    if planner_url(options) != editor_url(options):
-        rules.append(
-            {
-                "element": TOOLBAR_ELEMENT_PLANNER,
-                "tap_action": link_action(planner_url(options)),
-            }
-        )
-    return rules
-
-
-def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str, Any]]:
+def build_rules(
+    model: dict[str, Any],
+    options: dict[str, Any],
+    marker_meta: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Build the managed floorplan rules list.
 
     Element bindings may be keyed by the bound entity id or by a custom
     element id carrying ``entity_id`` — either way the device's rules
     target the bound element.
+
+    :param marker_meta: entity_id → studio-marker map (the value map
+        of ``studio_marker_positions``) — studio edits to actions /
+        showState / label persist in the project and are honoured
+        here; studio is the per-marker editor, tweaks only cover what
+        it can't express.
     """
-    zones = options.get(OPTION_DEVICE_ZONES) or {}
+    zones = effective_zones(model, options, marker_meta)
     _, entity_binding_map = binding_maps(options)
     standalone = standalone_members(model, zones)
     # model entities + standalone members — anything the managed block
@@ -345,7 +463,7 @@ def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str
     extras: list[dict[str, Any]] = []
     for dev in model.get("devices", []):
         dev_rules, dev_extras = _device_rules(
-            model, dev, options, entity_binding_map, managed
+            model, dev, options, entity_binding_map, managed, marker_meta, zones
         )
         rules.extend(dev_rules)
         extras.extend(dev_extras)
@@ -357,10 +475,12 @@ def build_rules(model: dict[str, Any], options: dict[str, Any]) -> list[dict[str
     for ent in standalone:
         rule = class_set_rule(ent, ent, standalone_status_expr())
         rule.pop("element")  # element id == entity id
-        rule["tap_action"] = {"action": "more-info"}
+        meta = (marker_meta or {}).get(ent) or {}
+        rule["tap_action"] = studio_tap_action(
+            (meta.get("actions") or {}).get("tap")
+        ) or {"action": "more-info"}
         rules.append(rule)
 
-    rules.extend(_toolbar_rules(options))
     # Tag generated rules so floorplan_import can tell them apart from
     # user-authored extras — importing a generated card yaml then stays
     # idempotent instead of accumulating stale copies in extra_rules.
@@ -377,9 +497,12 @@ __all__ = [
     "ROLE_RULE_TEMPLATES",
     "stale_managed_rule",
     "build_rules",
+    "caption_override_for_device",
+    "caption_pairs_for_device",
     "class_set_rule",
     "fire_dom_event",
     "link_action",
     "parse_extra_rules",
+    "studio_tap_action",
     "text_set_rule",
 ]

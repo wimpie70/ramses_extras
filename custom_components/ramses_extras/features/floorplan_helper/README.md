@@ -93,6 +93,73 @@ ramses_cc entities/devices          options (config entry)
 - `config_flow.py` — options step (`async_step_floorplan_helper_config`)
   dispatched from the main options flow via `async_step_feature_config`.
 
+## The editor as source of truth
+
+### hfs (current)
+
+The hfs layout owns **geometry**: walls, rooms, doors, floors, trace
+images and device markers (`type`/`entity`/position/`name`). It is
+stored server-side in `.storage/floorplan_studio.layout` behind a
+rev-checked `LayoutStore`; edits autosave from the open editor.
+
+The RAMSES layer is deliberately **not** part of the layout — hfs
+capabilities say `marker_icons=False`, `marker_actions=False`,
+`stamp_extras=False` (its validator may strip unknown fields). Zone
+membership/colour, caption selections, icon overrides and extra rules
+live in our options and are applied by the overlay (hfs card/editor)
+and the generated rules — derived output, never merged back.
+
+Every landed store write fires `floorplan_studio_updated`; the
+overlay debounces that into `floorplan_export(apply)` so generated
+cards regenerate without a button press.
+
+### studio (legacy)
+
+The floorplan-studio **project is the SSOT for everything it can
+express**. Our export is a pure function of (project + topology +
+conventions) — we never keep a second copy of per-marker semantics
+that could conflict.
+
+| Studio field | Used for |
+|---|---|
+| `marker.actions.tap/hold/double` | gesture actions (see bridges below) |
+| `marker.entities` + `elementId` | rule binding / element id |
+| `marker.style.icon/color/size/label/showState` | icon, disc color, marker size, name caption, state text on/off |
+| `style.glyph/ring/opacity` *(our keys)* | badge inner styling — unknown fields round-trip untouched |
+| `marker.ramsesZone` *(our key)* | zone config (`areas`/`devices`/`color`) — read via `effective_zones`; `device_zones` option is fallback only |
+| `marker.ramsesCaption` *(our key)* | caption spec — `["eid|suffix", …]` wins over `caption_overrides`; `[]` hides it |
+| `project.ramsesDeviceViewUrl` *(our key)* | double-tap navigate target — wins over `device_view_url` option |
+| `room` stateRules/fill/opacity | room styling |
+
+**Option migration.** Stored `icon_overrides` / `caption_overrides` /
+`marker_style_overrides` / `device_zones` / `device_view_url` still
+work as fallback for elements without a marker, and
+`migrate_overrides_to_project` (bundle.py) stamps them into the
+project on export — *absent fields only*, so studio-owned values are
+never clobbered. `floorplan_set_icon` / `floorplan_set_device_zone`
+write both stores directly. The config menu no longer exposes the
+override text fields; per-marker settings are edited in studio.
+
+Action kinds studio can't express (`fire-dom-event`, action lists)
+are bridged through real HA services, which *are* expressible as
+`call-service`:
+
+- `ramses_extras.floorplan_zone_toggle` — `{toggles:[{class,elements}],
+  clear}` → fires `ramses_extras_floorplan_zone_toggle`; the actions
+  module toggles the classes on **every** floorplan card.
+- `ramses_extras.floorplan_device_view` — `{device_id,entity,card}` →
+  fires `ramses_extras_floorplan_device_view`; the module clears all
+  zone highlights and opens the device popup.
+
+The seeded marker writes the full `serviceData` YAML, so studio's own
+export emits working actions verbatim; our export regenerates them
+from live config (service name = shorthand → never stale).
+
+Studio has no fields for: multi-entity caption expressions, `rx-*`
+status classes, the toolbar, and the merged-artwork SVG itself —
+those remain generated/managed and additive-only, so they cannot
+conflict with studio-owned fields.
+
 ## Managed regeneration
 
 - Generated rules live between `RULES_BEGIN_MARKER`/`RULES_END_MARKER`
@@ -111,17 +178,22 @@ ramses_cc entities/devices          options (config entry)
 
 ## In-SVG toolbar
 
-`build_toolbar_svg()` emits a `<g id="floorplan.toolbar">` with five
-glyph buttons; `_build_toolbar_rules()` emits their `tap_action` rules
+`build_toolbar_svg()` emits a `<g id="floorplan.toolbar">` with three
+glyph buttons; `_toolbar_rules()` emits their `tap_action` rules
 inside the managed block:
 
 | Element | Action |
 |---------|--------|
-| `floorplan.export` | calls `ramses_extras.floorplan_export` |
-| `floorplan.import` | navigates to Dev Tools with `floorplan_import` preselected (`?action=` deep-link) |
-| `floorplan.upload` | same for `floorplan_upload_svg` |
-| `floorplan.editor` | opens `editor_url` option (default: ha-floorplan-editor) |
-| `floorplan.planner` | opens `planner_url` option (default: HA-floorplanner-gui) |
+| `floorplan.export` | fires `ramses_fp_action="export"` → module-level dialog runs `floorplan_export` |
+| `floorplan.upload` | fires `ramses_fp_action="upload"` → file-picker → `floorplan_upload_svg` |
+| `floorplan.editor` | navigates to `editor_url` — the floorplan-studio view (default `/floorplan-studio`) |
+
+`floorplan.import` and `floorplan.planner` are retired glyph ids — no
+rules are emitted for them anymore (studio is the editor and project
+JSON is the import format). `floorplan_import` remains as a service
+for legacy `element_bindings`/`extra_rules` workflows, and the
+module-level `import`/`upload`/`export` dialogs still respond if an
+older pasted toolbar triggers them.
 
 Internal tool URLs (`/...`) emit `navigate`; external URLs emit `url`
 (new tab). The generated SVG includes the toolbar at the bottom-right;

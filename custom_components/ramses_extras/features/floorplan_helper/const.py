@@ -64,6 +64,16 @@ OPTION_ICON_OVERRIDES = "icon_overrides"
 # ``|suffix``, e.g. ``sensor.x|°``). Wins over the domain's
 # caption_groups; an empty list disables the caption.
 OPTION_CAPTION_OVERRIDES = "caption_overrides"
+# KEY={disc:color,glyph:color,ring:color,opacity:f} — badge part colours
+# per device id / device class / primary entity (caption precedence);
+# CSS colours incl. alpha: "#22c55e", "#22c55e80", "rgba(…)", "none"
+OPTION_MARKER_STYLE_OVERRIDES = "marker_style_overrides"
+# Per-device-class caption selection — maps device class → list of
+# caption-group keys (first pattern of the domain's caption_groups,
+# e.g. "indoor_temp"). Selected via the config flow multi-selects;
+# wins over the domain default but loses to marker.ramsesCaption /
+# caption_overrides. Empty list = no caption for the class.
+OPTION_CAPTION_FIELDS = "caption_fields"
 OPTION_ELEMENT_BINDINGS = "element_bindings"
 OPTION_AREA_OVERRIDES = "area_overrides"
 OPTION_EXTRA_RULES = "extra_rules"
@@ -86,18 +96,43 @@ OPTION_TOOLBAR_ENABLED = "toolbar_enabled"
 OPTION_EDITOR_URL = "editor_url"
 OPTION_PLANNER_URL = "planner_url"
 
+# Which plan editor owns the SSOT — ``auto`` resolves at call time
+# (an editor already holding a plan beats a merely-installed one; the
+# actions card's yaml ``editor:`` overrides per card). Keys live in
+# ``editors/`` — ``studio`` is the floorplan-studio card, ``hfs`` the
+# ha-floorplan-studio integration.
+OPTION_EDITOR = "editor"
+
+# Auto-seeded zones (e.g. evohome heat zones discovered from the TCS
+# schema) get a deterministic colour from this palette — picked in seed
+# order, so zones stay visually distinct without user config.
+ZONE_SEED_PALETTE = (
+    "#f59e0b",  # amber — warm, heat-adjacent
+    "#0ea5e9",  # sky
+    "#a855f7",  # purple
+    "#14b8a6",  # teal
+    "#ef4444",  # red
+    "#84cc16",  # lime
+    "#ec4899",  # pink
+    "#6366f1",  # indigo
+)
+
 SVG_MODE_GENERATED = "generated"
 SVG_MODE_CUSTOM = "custom"
 
-# External helper tools (client-side only — no HA auth/API). Point these at
-# vendored copies under /local/... or an iframe panel path to keep the
-# round-trip inside HA. Internal paths (leading '/') emit a `navigate`
-# tap_action; anything else emits `url` (new tab).
-DEFAULT_EDITOR_URL = "https://qaddodi.github.io/ha-floorplan-editor/"
+# floorplan-studio view path (or a vendored/iframe-panel editor URL).
+# Internal paths (leading '/') emit a `navigate` tap_action; anything
+# else emits `url` (new tab).
+DEFAULT_EDITOR_URL = "/floorplan-studio"
+# Legacy planner tool URL — no longer surfaced in the UI; kept so stored
+# options and the floorplan_set_svg service field stay compatible.
 DEFAULT_PLANNER_URL = "https://sleien.github.io/HA-floorplanner-gui/"
 
 # Element ids of the in-SVG toolbar glyphs. Users paste the toolbar <g>
 # snippet into custom SVGs; generated SVGs include it automatically.
+# ``floorplan.import`` / ``floorplan.planner`` are legacy ids — no rules
+# are emitted for them anymore (studio is the editor and project JSON is
+# the import format) but older pasted toolbars may still carry them.
 TOOLBAR_ELEMENT_EXPORT = "floorplan.export"
 TOOLBAR_ELEMENT_IMPORT = "floorplan.import"
 TOOLBAR_ELEMENT_UPLOAD = "floorplan.upload"
@@ -106,6 +141,16 @@ TOOLBAR_ELEMENT_PLANNER = "floorplan.planner"
 
 # Dir under <config>/www/ramses_extras/ where user SVGs are uploaded.
 FLOORPLAN_UPLOAD_DIR_NAME = "floorplan"
+
+# HA services that bridge marker gestures to frontend events. They are
+# deliberately `call-service`-shaped — that is a studio action kind, so
+# the full zone/popup semantics persist in the studio project and
+# survive studio's own ha-floorplan export. The frontend module
+# subscribes to the events and applies classes/dialogs on every card.
+ZONE_TOGGLE_SERVICE = "ramses_extras.floorplan_zone_toggle"
+DEVICE_VIEW_SERVICE = "ramses_extras.floorplan_device_view"
+EVENT_ZONE_TOGGLE = "ramses_extras_floorplan_zone_toggle"
+EVENT_DEVICE_VIEW = "ramses_extras_floorplan_device_view"
 
 # Key stamped on every generated rule. ha-floorplan ignores unknown
 # rule keys; the importer uses it to skip our own rules so re-importing
@@ -133,6 +178,24 @@ GENERATED_RULE_TOKENS = (
 )
 
 
+def split_top_level_commas(value: str) -> list[str]:
+    """Split on commas at parenthesis depth 0 — ``rgba(0,0,0,0.4)``
+    stays one item. Shared by the marker-style parsers."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(value):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            parts.append(value[start:i])
+            start = i + 1
+    parts.append(value[start:])
+    return parts
+
+
 def is_generated_rule(rule: Any) -> bool:
     """True for rules emitted by the generator — tagged (``rx_gen``) or
     matching the legacy generated signature (untagged rules imported
@@ -143,7 +206,7 @@ def is_generated_rule(rule: Any) -> bool:
         return True
     try:
         blob = json.dumps(rule)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
     return any(token in blob for token in GENERATED_RULE_TOKENS)
 
@@ -153,6 +216,8 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_CUSTOM_SVG_PATH: "",
     OPTION_ICON_OVERRIDES: {},
     OPTION_CAPTION_OVERRIDES: {},
+    OPTION_CAPTION_FIELDS: {},
+    OPTION_MARKER_STYLE_OVERRIDES: {},
     OPTION_ELEMENT_BINDINGS: {},
     OPTION_AREA_OVERRIDES: {},
     OPTION_EXTRA_RULES: [],
@@ -161,7 +226,7 @@ DEFAULT_FLOORPLAN_OPTIONS: dict[str, Any] = {
     OPTION_BACKGROUND: "#ffffff",
     OPTION_TOOLBAR_ENABLED: True,
     OPTION_EDITOR_URL: DEFAULT_EDITOR_URL,
-    OPTION_PLANNER_URL: DEFAULT_PLANNER_URL,
+    OPTION_EDITOR: "auto",
 }
 
 # ---------------------------------------------------------------------------
@@ -269,6 +334,7 @@ FLOORPLAN_BINARY_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {}
 FLOORPLAN_WEBSOCKET_COMMANDS: dict[str, str] = {
     "get_bundle": "ramses_extras/floorplan_helper/get_bundle",
     "get_config": "ramses_extras/floorplan_helper/get_config",
+    "get_project": "ramses_extras/floorplan_helper/get_project",
     "get_topology": "ramses_extras/floorplan_helper/get_topology",
     "list_icons": "ramses_extras/floorplan_helper/list_icons",
 }
@@ -334,7 +400,12 @@ __all__ = [
     "FLOORPLAN_STANDALONE_ENTITIES",
     "FLOORPLAN_STATIC_BASE",
     "FLOORPLAN_SWITCH_CONFIGS",
+    "DEVICE_VIEW_SERVICE",
+    "EVENT_DEVICE_VIEW",
+    "EVENT_ZONE_TOGGLE",
     "FLOORPLAN_UPLOAD_DIR_NAME",
+    "ZONE_SEED_PALETTE",
+    "ZONE_TOGGLE_SERVICE",
     "FLOORPLAN_WEBSOCKET_COMMANDS",
     "CARD_YAML_STEM",
     "GENERATED_CARD_YAML",
@@ -344,10 +415,13 @@ __all__ = [
     "OPTION_AREA_OVERRIDES",
     "OPTION_BACKGROUND",
     "OPTION_CAPTION_OVERRIDES",
+    "OPTION_CAPTION_FIELDS",
+    "OPTION_MARKER_STYLE_OVERRIDES",
     "OPTION_CUSTOM_SVG_PATH",
     "OPTION_DEVICE_VIEW_URL",
     "OPTION_DEVICE_ZONES",
     "OPTION_EDITOR_URL",
+    "OPTION_EDITOR",
     "OPTION_ELEMENT_BINDINGS",
     "OPTION_EXTRA_RULES",
     "OPTION_ICON_OVERRIDES",
@@ -367,4 +441,5 @@ __all__ = [
     "TOOLBAR_ELEMENT_UPLOAD",
     "is_generated_rule",
     "load_feature",
+    "split_top_level_commas",
 ]

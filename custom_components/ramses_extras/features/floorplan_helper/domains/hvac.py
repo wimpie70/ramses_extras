@@ -22,6 +22,7 @@ from .base import DeviceDomain
 # supply duct temps are inside-side fallbacks.
 FAN_DOMAIN = DeviceDomain(
     device_classes=("FAN", "HVAC"),
+    key="hvac",
     can_spin=True,
     popup_card="hvac-fan",
     caption_groups=(
@@ -35,6 +36,7 @@ FAN_DOMAIN = DeviceDomain(
 # a temperature follows when the device reports one (thermostats).
 BOUND_DOMAIN = DeviceDomain(
     device_classes=("REM", "DIS", "CO2", "THM", "SEN", "SWI", "RND", "SW2"),
+    key="hvac",
     caption_groups=(
         (("co2_level",), " ppm"),
         (("indoor_temp", "temperature", "_temp"), "°"),
@@ -45,6 +47,7 @@ BOUND_DOMAIN = DeviceDomain(
 # zone highlight: they serve the whole house, not a room.
 INFRA_DOMAIN = DeviceDomain(
     device_classes=("HGI", "RFG", "RFS"),
+    key="hvac",
     zone_eligible=False,
 )
 

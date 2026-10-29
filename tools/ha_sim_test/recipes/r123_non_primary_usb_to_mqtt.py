@@ -340,7 +340,7 @@ def check(name, condition, detail=""):
 # have the warning suffix (the migration should have run on startup).
 p = '/config/.storage/core.config_entries'
 d = json.load(open(p))
-from custom_components.ramses_cc.const import HGI_COMMENT_WARNING
+from custom_components.ramses_cc.const import HGI_COMMENT_WARNING_TEXT
 
 for e in d['data']['entries']:
     if e['domain'] != 'ramses_cc':
@@ -369,7 +369,7 @@ for e in d['data']['entries']:
             # or MQTT LWT detection (which uses build_hgi_comment).
             continue
         hgi_with_comment += 1
-        if HGI_COMMENT_WARNING in comment:
+        if HGI_COMMENT_WARNING_TEXT in comment:
             warned_count += 1
         else:
             check(f"HGI {dev_id} comment has warning",

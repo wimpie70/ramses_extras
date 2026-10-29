@@ -1,6 +1,65 @@
 # Floorplan Helper — Workflows Cheat-Sheet
 
-## The pieces
+> **Current editor: ha-floorplan-studio (hfs).** The sections below the
+> *Legacy* heading describe the older tinkersoder floorplan-studio
+> (browser-side projects) path — still functional via `editor: studio`
+> but hidden from the config flow and a removal candidate.
+
+## The hfs pipeline
+
+| Piece | Role |
+|---|---|
+| **ha-floorplan-studio** | The editor (server-side layout in `.storage/floorplan_studio.layout`, rev-checked) + native card (2D/2.5D/3D). |
+| **ramses-editor-embed** | Mounts the hfs panel inline on a dashboard view. |
+| **ramses-floorplan-actions** | Control surface: ＋ Add devices, ⚙ Zones, Sync areas → HA, Export ⇒ / ⇒ Update cards. |
+| **ramses-hfs-overlay** | Module-level: RAMSES icons/colours/spin/captions, zone highlights, tap gestures, autosave → auto-export bridge — on the hfs card and the editor. |
+| **ha-floorplan card** (`custom:floorplan-card`) | Generated output — merged SVG + rx-* rules + captions + zones. |
+
+```
+hfs editor ──autosave (2.5s debounce / page-hide)──▶ .storage (rev-checked)
+      │                                                    │
+      ▼                                          floorplan_studio_updated
+floorplan-studio-card renders live (+ overlay)                │
+                                                           ▼
+                                    floorplan_export(apply) ──▶ generated
+                                    merged SVG + rules + yaml    cards
+```
+
+- Layout edits autosave; every landed write regenerates the generated cards. `Export ⇒`/`⇒ Update cards` are only needed for a first card or after options-level changes (zones, captions, icons).
+- `＋ Add devices` flushes the open editor's pending save, merges new markers into the stored layout, reloads the editor onto the new revision, then regenerates cards.
+- Zones (owner → rooms + devices + colour) live in **our options**, not the layout — configured in ⚙ Zones, synced both ways with the editor's selection.
+- `Sync areas → HA` remains the explicit one-way room→HA-area push.
+
+### Migration, restore & reset
+
+- **Migrate dev → prod / another instance**: in the hfs editor File →
+  Save a copy (downloads the full layout JSON — all floors, rooms,
+  marker positions), then on the target instance drop the file on the
+  actions card's dropzone — or click **paste** inside it and Ctrl+V.
+  A restore *replaces* the stored plan (floors not in the file are
+  dropped).
+- **What travels**: walls, rooms, floors, marker positions, palette —
+  everything in the layout JSON. **What doesn't**: zones, captions, icon
+  overrides live in *our options* (per instance); markers bound to
+  entity IDs absent on the target render native/idle until re-seeded
+  or deleted.
+- **⌫ Reset** (actions card, or `ramses_extras.floorplan_reset`):
+  restores the *first-install* state — an empty store. hfs's own
+  File → Reset only blanks the editor in memory, and its validator
+  won't let you save a plan with an empty outline — so the real reset
+  is deleting the stored layout. A canonical backup is written first.
+  hfs auto-locks any non-empty plan on load ("🔒 Plan locked") — click
+  it to unlock before editing.
+- **Duplicated/migrated markers**: dedupe is by entity ID — markers for
+  entities that don't exist on this instance never merge with freshly
+  seeded ones. Delete dead markers in the editor, or re-seed and clean.
+- Wall IDs (`wk-*`) derived from room/outline edges are unique across
+  round-trips — a pre-fix store may carry duplicates; the next load
+  re-ids them automatically.
+
+---
+
+## Legacy — tinkersoder floorplan-studio workflows
 
 | Tool | Role |
 |---|---|
