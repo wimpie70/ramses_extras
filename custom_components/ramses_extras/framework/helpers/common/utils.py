@@ -2,8 +2,41 @@
 
 import logging
 import math
+from datetime import UTC, datetime
+
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def dtm_to_utc_str(dtm: datetime | str) -> str:
+    """Normalize a timestamp to an aware UTC ISO-8601 string (``+00:00``).
+
+    ramses_tx ``dt_now()`` and older packet/HA log lines produce naive
+    local timestamps, while newer packet logs carry ``+00:00``.
+    Normalizing to a single representation keeps lexical sorting and
+    ``since``/``until`` filtering consistent across sources.
+
+    Naive values are assumed to be in the HA-configured timezone
+    (``dt_util.DEFAULT_TIME_ZONE``, the same convention HA itself uses
+    for naive datetimes).  Unparsable strings are returned unchanged
+    (best-effort).
+
+    :param dtm: Timestamp as a ``datetime`` or ISO-8601 string.
+    :type dtm: datetime | str
+    :return: ISO-8601 string with microseconds and a ``+00:00`` offset.
+    :rtype: str
+    """
+    if isinstance(dtm, str):
+        try:
+            parsed = datetime.fromisoformat(dtm)
+        except ValueError:
+            return dtm
+    else:
+        parsed = dtm
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+    return parsed.astimezone(UTC).isoformat(timespec="microseconds")
 
 
 def calculate_absolute_humidity(

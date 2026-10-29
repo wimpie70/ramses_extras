@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 
 from ...const import DOMAIN
+from .common.utils import dtm_to_utc_str
 from .ramses_commands import get_ramses_commands
 
 
@@ -281,9 +282,11 @@ class RamsesMessageStream:
         if dtm is None:
             dtm = getattr(msg, "timestamp", None)
         if isinstance(dtm, datetime):
-            data["dtm"] = dtm.isoformat(timespec="microseconds")
+            # ramses_tx dt_now() is naive local; normalise to aware UTC so
+            # it compares correctly with packet-log (+00:00) timestamps.
+            data["dtm"] = dtm_to_utc_str(dtm)
         elif isinstance(dtm, str):
-            data["dtm"] = dtm
+            data["dtm"] = dtm_to_utc_str(dtm)
 
         self._notify_subscribers(data)
 

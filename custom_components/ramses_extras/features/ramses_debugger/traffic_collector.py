@@ -20,6 +20,7 @@ from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 
+from ...framework.helpers.common.utils import dtm_to_utc_str
 from ...framework.helpers.ramses_message_stream import get_ramses_message_stream
 from .messages_provider import TrafficBufferProvider
 
@@ -260,6 +261,8 @@ class TrafficCollector:
             dtm = data.get("dtm")
             if not isinstance(dtm, str):
                 dtm = None
+        if dtm is not None:
+            dtm = dtm_to_utc_str(dtm)
 
         self._buffer_provider.ingest_event(data)
 

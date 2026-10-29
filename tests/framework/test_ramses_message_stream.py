@@ -5,10 +5,20 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.util import dt as dt_util
 
 from custom_components.ramses_extras.framework.helpers.ramses_message_stream import (
     RamsesMessageStream,
 )
+
+
+@pytest.fixture(autouse=True)
+def _utc_default_tz():
+    """Pin the HA default timezone so naive dtm expectations are stable."""
+    old = dt_util.get_default_time_zone()
+    dt_util.set_default_time_zone(dt_util.UTC)
+    yield
+    dt_util.set_default_time_zone(old)
 
 
 class TestRamsesMessageStream:
@@ -99,7 +109,7 @@ class TestRamsesMessageStream:
         assert (
             data["frame"] == "000 RP --- 32:150000 37:170000 --:------ 2411 003 00003E"
         )
-        assert data["dtm"] == "2026-04-18T09:00:00.000000"
+        assert data["dtm"] == "2026-04-18T09:00:00.000000+00:00"
         assert data["dst"] == "37:170000"
 
     @pytest.mark.asyncio
@@ -326,7 +336,7 @@ class TestRamsesMessageStream:
 
         callback.assert_called_once()
         data = callback.call_args.args[0]
-        assert data["dtm"] == "2026-04-18T09:00:00"
+        assert data["dtm"] == "2026-04-18T09:00:00.000000+00:00"
 
     def test_handle_msg_without_dtm(self) -> None:
         """Test _handle_msg handles message without datetime."""

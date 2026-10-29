@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from custom_components.ramses_extras.features.ramses_debugger.messages_provider import (
     HALogProvider,
@@ -30,6 +31,15 @@ from custom_components.ramses_extras.features.ramses_debugger.messages_provider 
 def hass() -> HomeAssistant:
     """Fixture for Home Assistant."""
     return MagicMock(spec=HomeAssistant)
+
+
+@pytest.fixture(autouse=True)
+def _utc_default_tz():
+    """Pin the HA default timezone so naive dtm expectations are stable."""
+    old = dt_util.get_default_time_zone()
+    dt_util.set_default_time_zone(dt_util.UTC)
+    yield
+    dt_util.set_default_time_zone(old)
 
 
 @pytest.fixture
@@ -125,12 +135,12 @@ class TestTrafficBufferProvider:
 
         # since excludes the first (dtm < since) and the dtm-less entry
         msgs = await provider.get_messages(hass, since="2026-01-20T10:00:00.500000")
-        assert [m.dtm for m in msgs] == ["2026-01-20T10:00:01.000000"]
+        assert [m.dtm for m in msgs] == ["2026-01-20T10:00:01.000000+00:00"]
 
         # until excludes the second entry; entries without a dtm are
         # kept ("" > until is false, same as the packet-log provider)
         msgs = await provider.get_messages(hass, until="2026-01-20T10:00:00.500000")
-        assert [m.dtm for m in msgs] == ["", "2026-01-20T10:00:00.000000"]
+        assert [m.dtm for m in msgs] == ["", "2026-01-20T10:00:00.000000+00:00"]
 
         # combined since+until
         msgs = await provider.get_messages(
@@ -138,7 +148,7 @@ class TestTrafficBufferProvider:
             since="2026-01-20T09:59:59.000000",
             until="2026-01-20T10:00:00.500000",
         )
-        assert [m.dtm for m in msgs] == ["2026-01-20T10:00:00.000000"]
+        assert [m.dtm for m in msgs] == ["2026-01-20T10:00:00.000000+00:00"]
 
         # time_fired key is honoured as the dtm source
         provider2 = TrafficBufferProvider()
@@ -163,7 +173,7 @@ class TestPacketLogParser:
         line = "2026-01-20T10:00:00.000000 RQ 32:153289 37:169161 --:------ 31DA 003 123ABC"  # noqa: E501
         msg = _parse_packet_log_line(line)
         assert msg is not None
-        assert msg.dtm == "2026-01-20T10:00:00.000000"
+        assert msg.dtm == "2026-01-20T10:00:00.000000+00:00"
         assert msg.verb == "RQ"
         assert msg.src == "32:153289"
         assert msg.dst == "37:169161"
@@ -188,7 +198,7 @@ class TestPacketLogParser:
         )
         msg = _parse_packet_log_line(line)
         assert msg is not None
-        assert msg.dtm == "2026-01-20T13:55:54.869729"
+        assert msg.dtm == "2026-01-20T13:55:54.869729+00:00"
         assert msg.verb == "I"
         assert msg.src == "32:153289"
         assert msg.dst == "--:------"
@@ -268,6 +278,31 @@ class TestPacketLogParser:
         assert msg.payload.startswith("017 ")
 
     @pytest.mark.asyncio
+    async def test_parse_packet_log_line_aware_utc(self):
+        # Since ramses_rf's PacketLogFormatter, log timestamps are UTC
+        # and carry a +00:00 offset; they are kept as aware UTC.
+        line = (
+            "2026-10-28T09:30:00.000000+00:00 -39 RQ --- 18:149488 "
+            "01:000000 --:------ 0006 001 00"
+        )
+        msg = _parse_packet_log_line(line)
+        assert msg is not None
+        assert msg.dtm == "2026-10-28T09:30:00.000000+00:00"
+        assert msg.rssi == "-39"
+        assert msg.code == "0006"
+
+    @pytest.mark.asyncio
+    async def test_parse_packet_log_line_aware_non_utc(self):
+        # A non-UTC offset is converted to UTC for consistent ordering.
+        line = (
+            "2026-01-20T12:00:00.000000+02:00 -39 RQ --- 18:149488 "
+            "01:000000 --:------ 0006 001 00"
+        )
+        msg = _parse_packet_log_line(line)
+        assert msg is not None
+        assert msg.dtm == "2026-01-20T10:00:00.000000+00:00"
+
+    @pytest.mark.asyncio
     async def test_get_messages_simple(self, hass, sample_packet_log_lines):  # noqa: E501
         """Test packet log parsing with simple mock."""
         # Mock the entire get_messages function to just test parsing
@@ -325,8 +360,8 @@ class TestPacketLogParser:
 
         # Newest-first
         assert [m.dtm for m in msgs][:2] == [
-            "2026-01-20T10:00:02.000000",
-            "2026-01-20T10:00:01.000000",
+            "2026-01-20T10:00:02.000000+00:00",
+            "2026-01-20T10:00:01.000000+00:00",
         ]
 
         with patch(
@@ -341,8 +376,8 @@ class TestPacketLogParser:
             )
 
         assert [m.dtm for m in msgs_since] == [
-            "2026-01-20T10:00:02.000000",
-            "2026-01-20T10:00:01.000000",
+            "2026-01-20T10:00:02.000000+00:00",
+            "2026-01-20T10:00:01.000000+00:00",
         ]
 
         only_src = [m for m in msgs if m.src == "01:111111"]
@@ -685,7 +720,7 @@ class TestHALogProvider:
         line = '2026-01-20 10:00:00 DEBUG (MainThread) [custom_components.ramses_cc] {"src": "32:153289", "dst": "37:169161", "verb": "RQ", "code": "31DA"}'  # noqa: E501
         msg = _parse_ha_log_line(line)
         assert msg is not None
-        assert msg.dtm == "2026-01-20 10:00:00"
+        assert msg.dtm == "2026-01-20T10:00:00.000000+00:00"
         assert msg.src == "32:153289"
         assert msg.dst == "37:169161"
         assert msg.verb == "RQ"
@@ -868,6 +903,68 @@ class TestGetMessagesFromSources:
                     dedupe=False,
                 )
                 assert len(msgs) == 2
+
+    @pytest.mark.asyncio
+    async def test_mixed_timestamp_styles_sort_by_instant(self, hass):
+        """Naive-local buffer and +00:00 packet-log dtms sort by instant.
+
+        The merged view used to compare raw strings, so a naive local
+        dtm could outrank a genuinely earlier aware-UTC one.
+        """
+        from datetime import timedelta, timezone
+
+        from homeassistant.util import dt as dt_util
+
+        buffer_provider = TrafficBufferProvider()
+        # 10:30 naive local in a +01:00 zone is 09:30 UTC — earlier than
+        # the packet-log row, although the raw strings order oppositely.
+        buffer_provider.ingest_event(
+            {
+                "dtm": "2026-10-28T10:30:00",
+                "src": "32:153289",
+                "dst": "37:169161",
+                "verb": "I",
+                "code": "31DA",
+            }
+        )
+        packet_provider = MagicMock()
+        packet_provider.get_messages = AsyncMock(
+            return_value=[
+                NormalizedMessage(
+                    dtm="2026-10-28T10:00:00.000000+00:00",
+                    src="32:153289",
+                    dst="37:169161",
+                    verb="I",
+                    code="31DA",
+                    payload=None,
+                    packet=None,
+                    source="packet_log",
+                )
+            ]
+        )
+
+        hass.data = {
+            "ramses_extras": {
+                "ramses_debugger": {
+                    "message_providers": {
+                        "traffic_buffer": buffer_provider,
+                        "packet_log": packet_provider,
+                    }
+                }
+            }
+        }
+
+        dt_util.set_default_time_zone(timezone(timedelta(hours=1)))
+        try:
+            msgs = await get_messages_from_sources(
+                hass, sources=["traffic_buffer", "packet_log"]
+            )
+        finally:
+            dt_util.set_default_time_zone(dt_util.UTC)
+
+        assert [m["source"] for m in msgs] == ["packet_log", "traffic_buffer"]
+        assert msgs[0]["dtm"] == "2026-10-28T10:00:00.000000+00:00"
+        assert msgs[1]["dtm"] == "2026-10-28T09:30:00.000000+00:00"
 
     @pytest.mark.asyncio
     async def test_provider_instances_reused(self, hass):
