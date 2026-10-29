@@ -199,6 +199,24 @@ class HfsAdapter(EditorAdapter):
         found: bool = await hass.async_add_executor_job(_find)
         return found
 
+    async def async_ensure_ready(self, hass: HomeAssistant) -> None:
+        """Auto-create the ``floorplan_studio`` config entry when missing."""
+        if not await self.async_detect(hass):
+            return
+        if hass.config_entries.async_entries(HFS_DOMAIN):
+            return
+        result = await hass.config_entries.flow.async_init(
+            HFS_DOMAIN, context={"source": "user"}, data={}
+        )
+        _LOGGER.info(
+            "floorplan_studio config entry auto-created (flow %s)",
+            result.get("type"),
+        )
+
+    def marker_type_for_device(self, dev: dict[str, Any]) -> str:
+        """Return the hfs ``DeviceType`` for ``dev``."""
+        return hfs_type_for_device(dev)
+
     async def async_load(self, hass: HomeAssistant) -> dict[str, Any] | None:
         """Load the hfs layout and translate it to the canonical plan."""
         try:

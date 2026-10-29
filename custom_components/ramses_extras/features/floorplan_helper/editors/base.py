@@ -87,6 +87,25 @@ class EditorAdapter(ABC):
     async def async_detect(self, hass: HomeAssistant) -> bool:
         """Return True when the editor is installed/available."""
 
+    async def async_ensure_ready(self, hass: HomeAssistant) -> None:
+        """Optional one-time setup when the editor is installed.
+
+        Server-side editors that require a Home Assistant config entry
+        (such as ``floorplan_studio``) override this hook so the caller
+        stays editor-agnostic.
+
+        :param hass: Home Assistant instance
+        """
+        return
+
+    def marker_type_for_device(self, dev: dict[str, Any]) -> str:
+        """Optional editor-native device type for a seeded marker.
+
+        :param dev: Topology device dict
+        :return: Editor-specific device type string, or ``""``
+        """
+        return ""
+
     # ---- storage (async — may hit the filesystem) --------------------
     @abstractmethod
     async def async_load(self, hass: HomeAssistant) -> dict[str, Any] | None:

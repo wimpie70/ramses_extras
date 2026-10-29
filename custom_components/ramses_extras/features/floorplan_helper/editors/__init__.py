@@ -85,11 +85,39 @@ async def resolve_editor(
     return _ADAPTERS["studio"]
 
 
+async def async_ensure_editors_ready(
+    hass: HomeAssistant, options: dict[str, Any] | None = None
+) -> None:
+    """Run ``async_ensure_ready`` on candidate editor adapters.
+
+    When ``options["editor"]`` pins a specific editor, only that
+    adapter's setup hook runs; under ``auto`` every registered adapter
+    is offered the chance to initialize itself.
+
+    :param hass: Home Assistant instance
+    :param options: Floorplan helper options dict
+    """
+    from ..const import OPTION_EDITOR  # noqa: PLC0415
+
+    pinned = str((options or {}).get(OPTION_EDITOR) or EDITOR_AUTO)
+    targets = (
+        [_ADAPTERS[pinned]]
+        if pinned != EDITOR_AUTO and pinned in _ADAPTERS
+        else list(_ADAPTERS.values())
+    )
+    for adapter in targets:
+        try:
+            await adapter.async_ensure_ready(hass)
+        except Exception:  # noqa: BLE001 — editor setup must never break ours
+            continue
+
+
 __all__ = [
     "EDITOR_AUTO",
     "EditorAdapter",
     "EditorCapabilities",
     "adapter_for",
+    "async_ensure_editors_ready",
     "detect_editors",
     "editor_keys",
     "resolve_editor",
