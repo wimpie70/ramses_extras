@@ -2207,18 +2207,23 @@ function _fpZoneApply(toggles, clear, skipCard) {
       continue;
     }
     if (skipCard && card === skipCard) continue;
+    const strip = (root, keepClasses) => {
+      for (const el of root.querySelectorAll('[class]')) {
+        for (const c of [...(el.classList || [])]) {
+          if (c.startsWith('rx-zone-') && (!keepClasses || !keepClasses.has(c)))
+            el.classList.remove(c);
+        }
+      }
+    };
     if (clear && !(toggles || []).length) {
       // blanket clear: strip every rx-zone-* class on this card —
       // used by the device-view bridge before the popup opens
-      const strip = (root) => {
-        for (const el of root.querySelectorAll('[class]')) {
-          for (const c of [...(el.classList || [])]) {
-            if (c.startsWith('rx-zone-')) el.classList.remove(c);
-          }
-        }
-      };
       strip(card.shadowRoot || card);
       continue;
+    }
+    if (!clear && (toggles || []).length) {
+      const incoming = new Set((toggles || []).map((t) => t.class));
+      strip(card.shadowRoot || card, incoming);
     }
     for (const t of toggles || []) {
       for (const id of t.elements || []) {

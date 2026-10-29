@@ -393,6 +393,20 @@ function _hfsZoneTarget(did, entity) {
 
 let _tapTimer = 0;
 
+function _hfsClearZones() {
+  let hadAny = false;
+  for (const c of _hfsCards()) {
+    if (c.__rxZones && c.__rxZones.size) {
+      c.__rxZones.clear();
+      _hfsPaint(c);
+      hadAny = true;
+    }
+  }
+  if (hadAny) {
+    _hfsService('floorplan_zone_toggle', { clear: true, toggles: [] });
+  }
+}
+
 function _hfsTapDevice(card, index) {
   const dev = _hfsDevice(card, index);
   const entity = dev && dev.entity;
@@ -408,6 +422,7 @@ function _hfsTapDevice(card, index) {
     if (zoneDid) {
       _hfsService('floorplan_zone_toggle', { device_id: zoneDid });
     } else {
+      _hfsClearZones();
       _hfsService('floorplan_device_view', { entity });
     }
   }, 220);
@@ -450,11 +465,25 @@ function _hfsAttach(card) {
         e.target && e.target.closest
           ? e.target.closest('g[data-x], svg.fp3-ic')
           : null;
-      if (g)
+      if (g) {
         _hfsTapDevice(
           card,
           Number(g.getAttribute('data-x') ?? g.getAttribute('data-i'))
         );
+        return;
+      }
+      // Keep selection when clicking floor switcher or card UI controls;
+      // clicking another object (room/wall/furniture) or empty canvas
+      // deselects the active zone.
+      const isUiControl =
+        e.target &&
+        e.target.closest &&
+        e.target.closest(
+          'button, .fp-floors, .fp-head, .fp-stack, .fp-sheet-top, .fp-active-head, .fp-dialog, a, input, select'
+        );
+      if (!isUiControl) {
+        _hfsClearZones();
+      }
     },
     true
   );
@@ -874,15 +903,24 @@ function _hfsZoneApply(card, toggles, clear, skip) {
   if (clear && !(toggles || []).length) {
     state.clear();
   } else if (!skip) {
-    for (const t of toggles || []) {
-      let set = state.get(t.class);
-      if (!set) state.set(t.class, (set = new Set()));
-      for (const id of t.elements || []) {
-        if (clear) set.delete(id);
-        else if (set.has(id)) set.delete(id);
-        else set.add(id);
+    if (!clear && (toggles || []).length) {
+      const sameZone = toggles.some((t) => state.has(t.class));
+      // Exclusive zone selection: tapping the same zone toggles it off;
+      // tapping a different zone replaces the previous highlight.
+      state.clear();
+      if (!sameZone) {
+        for (const t of toggles) {
+          const set = new Set(t.elements || []);
+          if (set.size) state.set(t.class, set);
+        }
       }
-      if (!set.size) state.delete(t.class);
+    } else {
+      for (const t of toggles || []) {
+        const set = state.get(t.class);
+        if (!set) continue;
+        for (const id of t.elements || []) set.delete(id);
+        if (!set.size) state.delete(t.class);
+      }
     }
   }
   _hfsPaint(card);
@@ -1040,6 +1078,24 @@ function _hfsBridge() {
     _stagingTimer = setTimeout(() => _hfsSyncStaging(ed), 800);
     clearTimeout(_autoSaveTimer);
     _autoSaveTimer = setTimeout(_hfsAutoSave, 2500);
+  });
+  // Clicking beside the map (outside any floorplan card, editor, or
+  // actions card) deselects active zone highlights.
+  document.addEventListener('pointerup', (ev) => {
+    const path = ev.composedPath ? ev.composedPath() : [];
+    const insideCardOrEditor = path.some(
+      (n) =>
+        n &&
+        n.tagName &&
+        (HFS_TAGS.has(n.tagName) ||
+          n.tagName === HFS_PANEL_TAG ||
+          n.tagName === 'FLOORPLAN-STUDIO-EDITOR' ||
+          n.tagName === 'RAMSES-FLOORPLAN-ACTIONS' ||
+          n.tagName === 'FLOORPLAN-CARD')
+    );
+    if (!insideCardOrEditor) {
+      _hfsClearZones();
+    }
   });
   // "focus lost" — leaving the tab flushes pending edits
   document.addEventListener('visibilitychange', () => {
