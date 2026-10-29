@@ -360,18 +360,35 @@ function _hfsService(service, data) {
     });
 }
 
-function _hfsIsZoneOwner(did) {
-  if (!did) return false;
-  if (_zones[did]) return true;
-  // Schema parents (FAN with bound REM/CO2, CTL with bound THM/TRVs)
-  // and thermostats are always zone owners on single-click; double-tap
-  // opens their popup card.
-  const dev = _deviceById[did];
-  const cls = String((dev && dev.device_class) || '').toUpperCase();
-  if (cls === 'FAN' || cls === 'HVAC' || cls === 'CTL' || cls === 'THM') {
-    return true;
+function _hfsZoneTarget(did, entity) {
+  if (did) {
+    const z = _zones[did];
+    if (
+      z &&
+      ((z.areas && z.areas.length) || (z.devices && z.devices.length))
+    ) {
+      return did;
+    }
+    const dev = _deviceById[did];
+    const cls = String((dev && dev.device_class) || '').toUpperCase();
+    if (cls === 'FAN' || cls === 'HVAC' || cls === 'CTL' || cls === 'THM') {
+      return did;
+    }
+    if (Object.values(_deviceById).some((d) => d && d.parent === did)) {
+      return did;
+    }
   }
-  return Object.values(_deviceById).some((d) => d && d.parent === did);
+  // A member of a zone (e.g. a TRV bound to a THM room zone, or a DIY
+  // valve cover bound to a FAN zone) toggles its owning zone on
+  // single-tap; double-tap opens the member's own popup.
+  for (const [ownerDid, z] of Object.entries(_zones)) {
+    const members = (z && z.devices) || [];
+    if ((did && members.includes(did)) || (entity && members.includes(entity))) {
+      return ownerDid;
+    }
+  }
+  if (did && _zones[did]) return did;
+  return '';
 }
 
 let _tapTimer = 0;
@@ -387,8 +404,9 @@ function _hfsTapDevice(card, index) {
   // firing both a zone toggle and a popup open.
   _tapTimer = setTimeout(() => {
     _tapTimer = 0;
-    if (_hfsIsZoneOwner(did)) {
-      _hfsService('floorplan_zone_toggle', { device_id: did });
+    const zoneDid = _hfsZoneTarget(did, entity);
+    if (zoneDid) {
+      _hfsService('floorplan_zone_toggle', { device_id: zoneDid });
     } else {
       _hfsService('floorplan_device_view', { entity });
     }

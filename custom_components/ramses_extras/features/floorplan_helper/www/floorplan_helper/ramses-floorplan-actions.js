@@ -2177,14 +2177,19 @@ async function _openGlobalDevicePopup(detail) {
 // toggles to EVERY floorplan card, so a FAN's served rooms + bound
 // devices light up on all floors (and all open browsers) at once.
 // The legacy ll-custom path stays for previously exported yaml.
+function _fpIsHfsCard(el) {
+  return (
+    (el.tagName === 'HFS-FLOORPLAN-CARD' ||
+      el.tagName === 'FLOORPLAN-STUDIO-CARD') &&
+    typeof el._floorKey === 'function'
+  );
+}
+
 function _fpFloorplanCards() {
   const cards = [];
   const walk = (root) => {
     for (const el of root.querySelectorAll('*')) {
-      if (
-        el.tagName === 'FLOORPLAN-CARD' ||
-        el.tagName === 'HFS-FLOORPLAN-CARD'
-      )
+      if (el.tagName === 'FLOORPLAN-CARD' || _fpIsHfsCard(el))
         cards.push(el);
       if (el.shadowRoot) walk(el.shadowRoot);
     }
@@ -2195,7 +2200,7 @@ function _fpFloorplanCards() {
 
 function _fpZoneApply(toggles, clear, skipCard) {
   for (const card of _fpFloorplanCards()) {
-    if (card.tagName === 'HFS-FLOORPLAN-CARD') {
+    if (_fpIsHfsCard(card)) {
       // index-based DOM — the overlay module resolves the logical
       // element ids; skipCard is honoured inside the overlay
       window.__ramsesHfsZoneApply?.(card, toggles, clear, card === skipCard);
