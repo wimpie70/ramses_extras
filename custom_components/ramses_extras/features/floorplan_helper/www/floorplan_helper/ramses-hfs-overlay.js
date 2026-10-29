@@ -179,22 +179,31 @@ function _hfsCards() {
   return cards;
 }
 
+function _hfsCardFloors(card) {
+  const own = card && card._layout && card._layout.floors;
+  if (own && typeof own === 'object') return own;
+  return (_hfsLayout && _hfsLayout.floors) || null;
+}
+
 function _hfsFloorKey(card) {
   // The card keeps the shown floor on `_floorKey()` (no data attribute
   // in the DOM); fall back to the only floor when there's just one.
+  const floors = _hfsCardFloors(card);
+  if (!floors) return null;
   try {
     const k = typeof card._floorKey === 'function' ? card._floorKey() : null;
-    if (k && _hfsLayout && _hfsLayout.floors && _hfsLayout.floors[k]) return k;
+    if (k && floors[k]) return k;
   } catch {
     /* private-shape drift — fall through to the single-floor guess */
   }
-  const keys = Object.keys((_hfsLayout && _hfsLayout.floors) || {});
+  const keys = Object.keys(floors);
   return keys.length === 1 ? keys[0] : null;
 }
 
 function _hfsFloor(card) {
+  const floors = _hfsCardFloors(card);
   const key = _hfsFloorKey(card);
-  return key ? _hfsLayout.floors[key] : null;
+  return floors && key ? floors[key] : null;
 }
 
 function _hfsDevice(card, index) {
@@ -335,8 +344,8 @@ let _stagingTimer = null;
 // callWS with return_response:true is the working shape.
 function _hfsService(service, data) {
   const hass = _hfsHass();
-  if (!hass || !hass.callWS) return;
-  hass
+  if (!hass || !hass.callWS) return Promise.resolve({});
+  return hass
     .callWS({
       type: 'call_service',
       domain: DOMAIN,
@@ -344,8 +353,28 @@ function _hfsService(service, data) {
       service_data: data,
       return_response: true,
     })
-    .catch((e) => console.warn(`ramses-hfs: ${service} failed`, e));
+    .then((r) => (r && r.response) || {})
+    .catch((e) => {
+      console.warn(`ramses-hfs: ${service} failed`, e);
+      return {};
+    });
 }
+
+function _hfsIsZoneOwner(did) {
+  if (!did) return false;
+  if (_zones[did]) return true;
+  // Schema parents (FAN with bound REM/CO2, CTL with bound THM/TRVs)
+  // and thermostats are always zone owners on single-click; double-tap
+  // opens their popup card.
+  const dev = _deviceById[did];
+  const cls = String((dev && dev.device_class) || '').toUpperCase();
+  if (cls === 'FAN' || cls === 'HVAC' || cls === 'CTL' || cls === 'THM') {
+    return true;
+  }
+  return Object.values(_deviceById).some((d) => d && d.parent === did);
+}
+
+let _tapTimer = 0;
 
 function _hfsTapDevice(card, index) {
   const dev = _hfsDevice(card, index);
@@ -353,15 +382,22 @@ function _hfsTapDevice(card, index) {
   if (!entity) return;
   const topo = _entityDevice[entity];
   const did = String((topo && topo.device_id) || '');
-  if (did && _zones[did]) {
-    // zone owner: tap toggles the zone, resolved server-side
-    _hfsService('floorplan_zone_toggle', { device_id: did });
-  } else {
-    _hfsService('floorplan_device_view', { entity });
-  }
+  clearTimeout(_tapTimer);
+  // Delay single-tap slightly so a double-click cancels it instead of
+  // firing both a zone toggle and a popup open.
+  _tapTimer = setTimeout(() => {
+    _tapTimer = 0;
+    if (_hfsIsZoneOwner(did)) {
+      _hfsService('floorplan_zone_toggle', { device_id: did });
+    } else {
+      _hfsService('floorplan_device_view', { entity });
+    }
+  }, 220);
 }
 
 function _hfsOpenDevice(card, index) {
+  clearTimeout(_tapTimer);
+  _tapTimer = 0;
   const dev = _hfsDevice(card, index);
   if (dev && dev.entity) {
     _hfsService('floorplan_device_view', { entity: dev.entity });
@@ -481,16 +517,31 @@ function _hfsRoomIndex(floor, slug) {
   );
 }
 
-function _hfsDeviceIndex(floor, elementId) {
+function _hfsDeviceIndices(floor, elementId) {
   const devices = (floor && floor.devices) || [];
-  // element ids are entity ids, or `device.<did>` as fallback
   let want = elementId;
+  let wantDid = '';
   if (want.startsWith('device.')) {
-    const dev = _deviceById[want.slice(7)];
+    wantDid = want.slice(7);
+    const dev = _deviceById[wantDid];
     want = (dev && dev.primary_entity) || '';
-    if (!want) return -1;
+  } else if (_entityDevice[want]) {
+    wantDid = String(_entityDevice[want].device_id || '');
   }
-  return devices.findIndex((d) => String(d.entity || '') === want);
+  const out = [];
+  for (let i = 0; i < devices.length; i++) {
+    const ent = String((devices[i] && devices[i].entity) || '');
+    if (!ent) continue;
+    if (
+      ent === want ||
+      (wantDid &&
+        _entityDevice[ent] &&
+        String(_entityDevice[ent].device_id || '') === wantDid)
+    ) {
+      out.push(i);
+    }
+  }
+  return out;
 }
 
 function _hfsZoneColor(cls) {
@@ -756,22 +807,34 @@ function _hfsPaint(card) {
         poly.setAttribute('vector-effect', 'non-scaling-stroke');
         layer.appendChild(poly);
       } else {
-        const i = _hfsDeviceIndex(floor, id);
-        const dev = floor.devices[i];
-        if (i < 0 || !dev || dev.x === undefined) continue;
-        const ring = document.createElementNS(
-          'http://www.w3.org/2000/svg',
-          'circle'
-        );
-        ring.setAttribute('cx', String(dev.x));
-        ring.setAttribute('cy', String(dev.y));
-        ring.setAttribute('r', '30');
-        ring.setAttribute('fill', 'none');
-        ring.setAttribute('stroke', color);
-        ring.setAttribute('stroke-width', '4');
-        ring.setAttribute('vector-effect', 'non-scaling-stroke');
-        ring.setAttribute('stroke-dasharray', '8 5');
-        layer.appendChild(ring);
+        for (const i of _hfsDeviceIndices(floor, id)) {
+          const dev = floor.devices[i];
+          if (!dev) continue;
+          let cx = dev.x;
+          let cy = dev.y;
+          if (
+            (cx === undefined || cy === undefined) &&
+            Array.isArray(dev.a) &&
+            Array.isArray(dev.b)
+          ) {
+            cx = (Number(dev.a[0]) + Number(dev.b[0])) / 2;
+            cy = (Number(dev.b[1]) + Number(dev.a[1])) / 2;
+          }
+          if (cx === undefined || cy === undefined) continue;
+          const ring = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'circle'
+          );
+          ring.setAttribute('cx', String(cx));
+          ring.setAttribute('cy', String(cy));
+          ring.setAttribute('r', '30');
+          ring.setAttribute('fill', 'none');
+          ring.setAttribute('stroke', color);
+          ring.setAttribute('stroke-width', '4');
+          ring.setAttribute('vector-effect', 'non-scaling-stroke');
+          ring.setAttribute('stroke-dasharray', '8 5');
+          layer.appendChild(ring);
+        }
       }
     }
   }
@@ -976,14 +1039,27 @@ function _hfsBridge() {
 // --- boot: discovery + state -----------------------------------------------
 
 function _hfsScan() {
-  for (const card of _hfsCards()) _hfsAttach(card);
+  for (const card of _hfsCards()) {
+    _hfsAttach(card);
+    _hfsPaint(card);
+  }
   const walk = (root) => {
     for (const el of root.querySelectorAll('*')) {
-      if (el.tagName === HFS_PANEL_TAG) _hfsAttachPanel(el);
+      if (el.tagName === HFS_PANEL_TAG) {
+        _hfsAttachPanel(el);
+        _hfsDecoratePanel(el);
+      }
       if (el.shadowRoot) walk(el.shadowRoot);
     }
   };
   walk(document);
+}
+
+function _hfsScheduleScans() {
+  _hfsScan();
+  for (const ms of [60, 250, 750, 1500]) {
+    setTimeout(_hfsScan, ms);
+  }
 }
 
 function _hfsStart() {
@@ -1029,9 +1105,11 @@ function _hfsStart() {
       if (eid && _stateEnts.has(eid)) _hfsRepaintAll();
     }, 'state_changed');
   }
-  // late-added cards: rescan on navigation plus a slow fallback — a
-  // deep shadow-DOM walk is not cheap on a busy dashboard
-  window.addEventListener('location-changed', _hfsScan);
+  // late-added cards: rescan on navigation (with staggered follow-ups
+  // because Lovelace mounts the new view asynchronously after
+  // location-changed) plus a fallback interval
+  window.addEventListener('location-changed', _hfsScheduleScans);
+  window.addEventListener('popstate', _hfsScheduleScans);
   const timer = setInterval(() => {
     _hfsScan();
     if (!_hfsHass()) clearInterval(timer);

@@ -120,7 +120,15 @@ const CARD_MODULES = [
     modulePath: '../features/device_status_card/device-status-card.js',
   },
   {
+    // Also load on display-only floorplan views (floorplan-card or
+    // floorplan-studio-card with no actions card) so the module-level
+    // zone-toggle listener and device-view popup dialog are active.
     tag: 'ramses-floorplan-actions',
+    extraTags: [
+      'floorplan-card',
+      'floorplan-studio-card',
+      'hfs-floorplan-card',
+    ],
     modulePath: '../features/floorplan_helper/ramses-floorplan-actions.js',
   },
   {
