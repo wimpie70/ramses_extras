@@ -980,6 +980,22 @@ function _hfsAttachPanel(panel) {
       });
     });
     mo.observe(ed.shadowRoot, { childList: true, subtree: true });
+    // double-click a marker -> our device popup, same as the card;
+    // single-click stays the editor's own selection gesture
+    ed.shadowRoot.addEventListener('dblclick', (e) => {
+      const g =
+        e.target && e.target.closest
+          ? e.target.closest('g.dev[data-x]')
+          : null;
+      if (!g) return;
+      const floors =
+        (ed.st && ed.st.layout && ed.st.layout.floors) || {};
+      const floor = floors[ed.floor];
+      const dev = (floor.devices || [])[Number(g.getAttribute('data-x'))];
+      if (dev && dev.entity) {
+        _hfsService('floorplan_device_view', { entity: dev.entity });
+      }
+    });
     _hfsDecoratePanel(panel);
     return true;
   };

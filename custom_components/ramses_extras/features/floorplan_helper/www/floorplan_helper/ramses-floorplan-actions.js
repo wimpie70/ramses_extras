@@ -1110,17 +1110,12 @@ class RamsesFloorplanActions extends HTMLElement {
       const room = roomByKey.get(poly.getAttribute('data-r'));
       if (!room || !want.has(this._slug(room.area || room.name))) continue;
       hit.add(room);
-      this._hiPatched.push([
-        poly,
-        {
-          stroke: poly.getAttribute('stroke'),
-          'stroke-width': poly.getAttribute('stroke-width'),
-          'stroke-dasharray': poly.getAttribute('stroke-dasharray'),
-        },
-      ]);
-      poly.setAttribute('stroke', color);
-      poly.setAttribute('stroke-width', '3');
-      poly.setAttribute('stroke-dasharray', '6 3');
+      // inline style, not attributes — presentation attributes lose to
+      // stylesheet rules on the room class; style wins them all
+      this._hiPatched.push([poly, { style: poly.getAttribute('style') }]);
+      poly.style.stroke = color;
+      poly.style.strokeWidth = '3px';
+      poly.style.strokeDasharray = '6 3';
       names.push(room.name || this._slug(room.area || room.name));
     }
     // overlay fallback: same approach as the card's zone layer — the
