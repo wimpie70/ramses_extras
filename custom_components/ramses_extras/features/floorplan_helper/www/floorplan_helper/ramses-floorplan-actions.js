@@ -1003,9 +1003,26 @@ class RamsesFloorplanActions extends HTMLElement {
   async _applyZoneHighlight(devId, dev) {
     this._clearZoneHighlight();
     if (!devId) return;
-    const zone = ((this._fpConfig || {}).device_zones || {})[devId];
+    const zones = (this._fpConfig || {}).device_zones || {};
+    const zone = zones[devId];
     if (!zone) return;
+    // roll up child zones the same way the service's resolve_bound
+    // does: a parent zone highlights its children's rooms and bound
+    // markers too
+    const bound = new Set([devId]);
+    for (const d of (this._topology || {}).devices || []) {
+      if (d.parent === devId && d.device_class !== 'HGI') {
+        bound.add(d.device_id);
+      }
+    }
+    for (const b of zone.devices || []) bound.add(String(b));
     const areas = new Set(zone.areas || []);
+    for (const b of [...bound]) {
+      for (const a of (zones[b] || {}).areas || []) areas.add(a);
+      for (const d2 of (zones[b] || {}).devices || []) {
+        bound.add(String(d2));
+      }
+    }
     if (!areas.size) return;
     const rooms = await this._projectRooms();
     // same resolution as the export: the stored zone colour is the
@@ -1020,7 +1037,7 @@ class RamsesFloorplanActions extends HTMLElement {
     if (!color) color = '#f59e0b';
 
     if (this._resolvedEditor === 'hfs') {
-      this._applyZoneHighlightHfs(devId, dev, zone, areas, color);
+      this._applyZoneHighlightHfs(devId, dev, zone, areas, color, bound);
       return;
     }
 
@@ -1048,13 +1065,9 @@ class RamsesFloorplanActions extends HTMLElement {
     }
 
     // bound devices: schema parent links (remotes/sensors of a FAN) +
-    // the zone's devices list — the latter may hold non-ramses entity
-    // ids (DIY valves, zigbee sensors); HGI gateways never highlight.
-    const bound = new Set([devId]);
-    for (const d of (this._topology || {}).devices || []) {
-      if (d.parent === devId && d.device_class !== 'HGI') bound.add(d.device_id);
-    }
-    for (const b of zone.devices || []) bound.add(String(b));
+    // the zone's devices list + child zones' members — the latter may
+    // hold non-ramses entity ids (DIY valves, zigbee sensors); HGI
+    // gateways never highlight. Computed above, before the areas.
     const entsLayer = root.querySelector('g[data-layer="entities"]');
     if (entsLayer) {
       let nDev = 0;
@@ -1083,7 +1096,7 @@ class RamsesFloorplanActions extends HTMLElement {
   // hfs editor canvas: stroke the zone's room polygons (data-r index)
   // and drop-shadow bound device markers (data-x index) — the same
   // patch/restore scheme as the studio path (_hiPatched).
-  _applyZoneHighlightHfs(devId, dev, zone, areas, color) {
+  _applyZoneHighlightHfs(devId, dev, zone, areas, color, bound) {
     const info = window.__ramsesHfsInfo && window.__ramsesHfsInfo();
     const ed = info && info.editor;
     const floors = (info && info.layout && info.layout.floors) || {};
@@ -1159,13 +1172,6 @@ class RamsesFloorplanActions extends HTMLElement {
       }
     }
 
-    const bound = new Set([devId]);
-    for (const d of (this._topology || {}).devices || []) {
-      if (d.parent === devId && d.device_class !== 'HGI') {
-        bound.add(d.device_id);
-      }
-    }
-    for (const b of zone.devices || []) bound.add(String(b));
     let nDev = 0;
     for (const g of root.querySelectorAll('g.dev[data-x]')) {
       const d = (floor.devices || [])[Number(g.getAttribute('data-x'))];

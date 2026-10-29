@@ -982,6 +982,8 @@ function _hfsAttachPanel(panel) {
     mo.observe(ed.shadowRoot, { childList: true, subtree: true });
     // double-click a marker -> our device popup, same as the card;
     // single-click stays the editor's own selection gesture
+    // capture: the editor's own handlers may stopPropagation before
+    // our bubble listener on the root would see the event
     ed.shadowRoot.addEventListener('dblclick', (e) => {
       const g =
         e.target && e.target.closest
@@ -995,7 +997,7 @@ function _hfsAttachPanel(panel) {
       if (dev && dev.entity) {
         _hfsService('floorplan_device_view', { entity: dev.entity });
       }
-    });
+    }, true);
     _hfsDecoratePanel(panel);
     return true;
   };
