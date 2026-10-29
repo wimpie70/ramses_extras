@@ -988,6 +988,10 @@ class RamsesFloorplanActions extends HTMLElement {
 
   _clearZoneHighlight() {
     for (const [el, attrs] of this._hiPatched) {
+      if (attrs === null) {
+        el.remove();
+        continue;
+      }
       for (const [k, v] of Object.entries(attrs)) {
         if (v === null) el.removeAttribute(k);
         else el.setAttribute(k, v);
@@ -1088,17 +1092,24 @@ class RamsesFloorplanActions extends HTMLElement {
     if (!root || !floor) return;
 
     const want = new Set([...areas].map((a) => this._slug(a)));
-    // data-r is the room's id on current hfs (the editor scene keys
-    // rooms by id); older builds used the array index — support both
+    // data-r is the room index on the card ("16"); the editor scene
+    // may key rooms differently (r{index} like its data-e edge keys,
+    // or the room id) — cover all three, then draw our own overlay
+    // polygon for any wanted room the markup still doesn't expose
     const roomByKey = new Map();
     (floor.rooms || []).forEach((r, i) => {
       roomByKey.set(String(r.id ?? i), r);
       roomByKey.set(String(i), r);
+      roomByKey.set(`r${i}`, r);
     });
     const names = [];
+    const hit = new Set();
+    let host = null;
     for (const poly of root.querySelectorAll('polygon[data-r]')) {
+      host = host || poly.parentElement;
       const room = roomByKey.get(poly.getAttribute('data-r'));
       if (!room || !want.has(this._slug(room.area || room.name))) continue;
+      hit.add(room);
       this._hiPatched.push([
         poly,
         {
@@ -1110,6 +1121,43 @@ class RamsesFloorplanActions extends HTMLElement {
       poly.setAttribute('stroke', color);
       poly.setAttribute('stroke-width', '3');
       poly.setAttribute('stroke-dasharray', '6 3');
+      names.push(room.name || this._slug(room.area || room.name));
+    }
+    // overlay fallback: same approach as the card's zone layer — the
+    // polygons live in the plan's coordinate space, so sibling them
+    // next to a room polygon (or the devices layer) aligns them
+    const NS = 'http://www.w3.org/2000/svg';
+    let overlay = null;
+    for (const room of floor.rooms || []) {
+      if (hit.has(room) || !want.has(this._slug(room.area || room.name)))
+        continue;
+      if (!Array.isArray(room.pts) || room.pts.length < 3) continue;
+      if (!host) {
+        const dev = root.querySelector('g.dev[data-x]');
+        host =
+          (dev && dev.parentElement) ||
+          root.querySelector('.canvas > svg') ||
+          root.querySelector('svg');
+      }
+      if (!host) break;
+      if (!overlay) {
+        overlay = document.createElementNS(NS, 'g');
+        overlay.setAttribute('pointer-events', 'none');
+        host.appendChild(overlay);
+        this._hiPatched.push([overlay, null]);
+      }
+      const poly = document.createElementNS(NS, 'polygon');
+      poly.setAttribute(
+        'points',
+        room.pts.map((p) => `${p[0]},${p[1]}`).join(' ')
+      );
+      poly.setAttribute('fill', color);
+      poly.setAttribute('fill-opacity', '0.18');
+      poly.setAttribute('stroke', color);
+      poly.setAttribute('stroke-width', '3');
+      poly.setAttribute('stroke-dasharray', '6 3');
+      poly.setAttribute('vector-effect', 'non-scaling-stroke');
+      overlay.appendChild(poly);
       names.push(room.name || this._slug(room.area || room.name));
     }
 
