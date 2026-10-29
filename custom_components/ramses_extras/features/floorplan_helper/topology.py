@@ -110,6 +110,39 @@ async def build_floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
     registry = getattr(getattr(coordinator, "client", None), "device_registry", None)
     ramses_devices = getattr(registry, "device_by_id", {}) or {}
 
+    stored_schema: dict[str, Any] = {}
+    coordinator_options = getattr(coordinator, "options", None)
+    if isinstance(coordinator_options, Mapping):
+        stored = coordinator_options.get("schema")
+        if isinstance(stored, dict):
+            stored_schema = stored
+
+    # ramses_cc registers HA sub-devices for controller zones
+    # (<ctl_id>_<zone_idx>) and hot-water (<ctl_id>_HW). Map their
+    # entities onto the corresponding physical sensor/actuator device
+    # (or the controller when no dedicated sensor exists) so zones do
+    # not spawn orphan "unknown" markers on the floorplan.
+    subdevice_owner: dict[str, str | None] = {}
+    for schema_src in (stored_schema, runtime_schema):
+        for tcs_id, tcs in schema_src.items():
+            if not isinstance(tcs, dict):
+                continue
+            dhw = tcs.get("stored_hotwater")
+            if isinstance(dhw, dict):
+                dhw_sensor = dhw.get("sensor")
+                subdevice_owner[f"{tcs_id}_HW"] = (
+                    str(dhw_sensor) if dhw_sensor else str(tcs_id)
+                )
+            for zid, zcfg in (tcs.get("zones") or {}).items():
+                if not isinstance(zcfg, dict):
+                    continue
+                zsensor = zcfg.get("sensor")
+                zacts = [str(a) for a in (zcfg.get("actuators") or []) if a]
+                target = (
+                    str(zsensor) if zsensor else (zacts[0] if len(zacts) == 1 else None)
+                )
+                subdevice_owner[f"{tcs_id}_{zid}"] = target
+
     # Index HA entities per ramses device id.
     entities_by_device: dict[str, list[dict[str, Any]]] = {}
     for entry in entity_registry.entities.values():
@@ -124,6 +157,11 @@ async def build_floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
             # Entities with no device or no ramses identifier are skipped;
             # the floorplan binds devices, not loose entities.
             continue
+        if "_" in ramses_id:
+            mapped = subdevice_owner.get(ramses_id)
+            if not mapped:
+                continue
+            ramses_id = mapped
         entities_by_device.setdefault(ramses_id, []).append(
             {
                 "entity_id": entry.entity_id,
@@ -212,12 +250,6 @@ async def build_floorplan_model(hass: HomeAssistant) -> dict[str, Any]:
     # carries its room name, zone sensor and actuator devices. ``_name``
     # is only reliable in the stored schema (the runtime schema may not
     # have hydrated names yet), so merge that in.
-    stored_schema: dict[str, Any] = {}
-    coordinator_options = getattr(coordinator, "options", None)
-    if isinstance(coordinator_options, Mapping):
-        stored = coordinator_options.get("schema")
-        if isinstance(stored, dict):
-            stored_schema = stored
     heat_zones: list[dict[str, Any]] = []
     if isinstance(runtime_schema, dict):
         for tcs_id, tcs in runtime_schema.items():

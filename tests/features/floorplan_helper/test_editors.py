@@ -332,6 +332,55 @@ class TestHfsStore:
         out = self.adapter._plan_to_layout(self.plan, dict(_LAYOUT))
         assert out["floors"]["bg"]["trace"]["w"] == 1400
 
+    def test_round_trip_preserves_native_walls_room_wk_and_wall_mounted_device(self):
+        # Arrange: customize room wk ("none" edge), wall lock, and check
+        # derived wk-* walls do not leak into explicit walls[] on store.
+        base = json.loads(json.dumps(_LAYOUT))
+        base["floors"]["bg"]["rooms"][0]["wk"] = ["wall", "none", "external", "wall"]
+        base["floors"]["bg"]["walls"][0]["locked"] = True
+        plan = self.adapter._layout_to_plan(json.loads(json.dumps(base)))
+
+        # Act
+        out = self.adapter._plan_to_layout(plan, base)
+        floor = out["floors"]["bg"]
+
+        # Assert: derived wk-* walls never inflate explicit walls[]
+        assert [w["id"] for w in floor["walls"]] == ["w1", "w2"]
+        assert floor["walls"][0].get("locked") is True
+        # Room custom wk edges and extra fields ("temps") survive
+        assert floor["rooms"][0]["wk"] == ["wall", "none", "external", "wall"]
+        assert floor["rooms"][0]["temps"] == ["sensor.dts_1"]
+        # Wall-mounted cover device keeps {a, b} instead of degrading to {x, y}
+        cov = next(d for d in floor["devices"] if d["entity"] == "cover.shelly_valve")
+        assert cov["a"] == [700, 300]
+        assert cov["b"] == [740, 300]
+        assert "x" not in cov
+
+    def test_non_heater_marker_strips_invalid_trvs_and_tempsensors(self):
+        # Arrange: a climate/controller marker carrying non-climate/non-sensor
+        # secondary entities must not emit heater-only trvs/tempSensors.
+        mkr = {
+            "id": "ctl1",
+            "hfsType": "climate",
+            "x": 100,
+            "y": 200,
+            "entities": [
+                "climate.ctl_01_150000",
+                "binary_sensor.ctl_01_150000_status",
+                "number.ctl_01_150000_polling",
+            ],
+            "style": {"label": "Controller"},
+        }
+
+        # Act
+        dev = self.adapter._marker_to_device(mkr)
+
+        # Assert
+        assert dev is not None
+        assert dev["type"] == "climate"
+        assert "trvs" not in dev
+        assert "tempSensors" not in dev
+
 
 class TestHfsTypeMap:
     @pytest.mark.parametrize(
