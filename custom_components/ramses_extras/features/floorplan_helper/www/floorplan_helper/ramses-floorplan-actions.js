@@ -728,6 +728,41 @@ class RamsesFloorplanActions extends HTMLElement {
       }
     }
 
+    // click-to-toggle zone membership: while a zone owner is picked
+    // and the zones panel is open, each room click flips that room's
+    // checkbox through the same listbox change path (member push +
+    // debounced save) — no fiddly shift multi-select needed
+    if (sel && sel.t === 'room' && floor) {
+      const tweaksEl = this.shadowRoot.getElementById('tweaks');
+      const devSelEl = this.shadowRoot.getElementById('zone-dev');
+      if (
+        devSelEl &&
+        devSelEl.value &&
+        tweaksEl &&
+        tweaksEl.style.display !== 'none'
+      ) {
+        const room = (floor.rooms || [])[sel.i];
+        const slug = room && this._slug(room.area || room.name);
+        const cb = [
+          ...(this.shadowRoot
+            .getElementById('zone-rooms')
+            ?.querySelectorAll('input') || []),
+        ].find((x) => x.value === slug);
+        if (cb) {
+          cb.checked = !cb.checked;
+          // consumed — the canvas sel is now stale; keep the recorded
+          // room set empty so the next poll's delta pass can't
+          // un-check it again
+          this._studioRoomSel = new Set();
+          cb.dispatchEvent(new window.Event('change', { bubbles: true }));
+          this._status(
+            `zone room '${slug}' ${cb.checked ? 'added' : 'removed'}`
+          );
+          return;
+        }
+      }
+    }
+
     // zone preview highlight follows the first selected topology
     // device — same hook the studio poll drives
     const hiDev =
@@ -1822,7 +1857,7 @@ class RamsesFloorplanActions extends HTMLElement {
             <div class="zcol">
               <span class="lbl">Serves rooms</span>
               <div id="zone-rooms" class="zlist"
-                title="Every room in the studio project — check the rooms this device serves; they highlight when the zone marker is tapped. Synced both ways with studio's selection — click to toggle, changes autosave"></div>
+                title="Every room in the plan — check the rooms this device serves; they highlight when the zone marker is tapped. Click a room on the map to add/remove it — each click toggles. Changes autosave"></div>
             </div>
             <div class="zcol">
               <span class="lbl">Bound markers</span>
