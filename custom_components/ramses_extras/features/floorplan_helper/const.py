@@ -45,6 +45,14 @@ FLOORPLAN_GENERATED_DIR_NAME = "floorplan/generated"
 GENERATED_ELEMENTS_SVG = "ramses-elements.svg"
 GENERATED_CARD_YAML = "ramses-floorplan-card.yaml"
 CARD_YAML_STEM = GENERATED_CARD_YAML.removesuffix(".yaml")
+GENERATED_BACKUP_JSON = "ramses-floorplan-backup.json"
+
+# Plan-backup envelope: a single portable file for migration — the
+# plan + every option-level extra (zones, captions, icons…) we can't
+# put into the editor's own layout. `floorplan_store_project` (the
+# actions card dropzone) detects this format and restores both sides.
+BACKUP_FORMAT = "ramses_extras.floorplan-backup"
+BACKUP_VERSION = 1
 STYLESHEET_FILENAME = "ramses-floorplan.css"
 
 # Markers wrapping generated rules inside the card YAML.  Users keep their
@@ -407,7 +415,10 @@ __all__ = [
     "ZONE_SEED_PALETTE",
     "ZONE_TOGGLE_SERVICE",
     "FLOORPLAN_WEBSOCKET_COMMANDS",
+    "BACKUP_FORMAT",
+    "BACKUP_VERSION",
     "CARD_YAML_STEM",
+    "GENERATED_BACKUP_JSON",
     "GENERATED_CARD_YAML",
     "GENERATED_ELEMENTS_SVG",
     "GENERATED_RULE_TAG",

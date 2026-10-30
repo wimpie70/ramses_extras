@@ -1502,6 +1502,93 @@ class TestGestureBridgeServices:
             )
             assert payload["toggles"] == []
 
+    async def test_store_project_restores_backup_bundle(self):
+        # a ramses-floorplan-backup.json dropped on the dropzone
+        # restores the plan via the adapter AND merges only
+        # whitelisted options (device_zones, captions, icons…)
+        import json
+
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            services,
+        )
+
+        hass, handlers = await self._registered()
+        plan = {
+            "floors": [
+                {
+                    "name": "bg",
+                    "canvas": {"width": 800, "height": 600},
+                    "rooms": [],
+                    "markers": [],
+                }
+            ]
+        }
+        bundle = {
+            "format": "ramses_extras.floorplan-backup",
+            "version": 1,
+            "editor": "hfs",
+            "options": {
+                "device_zones": {"32:153289": {"areas": ["woonkamer"]}},
+                "bogus_key": 1,
+            },
+            "plan": plan,
+        }
+        adapter = MagicMock()
+        adapter.parse.side_effect = lambda t: json.loads(t)
+        adapter.async_store = AsyncMock(return_value="/tmp/latest.json")
+        adapter.async_backup = AsyncMock(return_value="/tmp/backup.json")
+        entry = MagicMock()
+        with (
+            patch.object(services, "_adapter", AsyncMock(return_value=adapter)),
+            patch.object(
+                services,
+                "build_floorplan_model",
+                AsyncMock(return_value=_model()),
+            ),
+            patch.object(services, "_config_entry", return_value=entry),
+            patch.object(services, "get_floorplan_options", return_value={}),
+            patch.object(services, "persist_floorplan_options") as persist,
+        ):
+            r = await handlers["floorplan_store_project"](
+                self._call({"project_json": json.dumps(bundle)})
+            )
+        adapter.async_store.assert_awaited_once()
+        # only known option keys are restored — junk can't leak in
+        assert persist.call_args.args[2] == {
+            "device_zones": {"32:153289": {"areas": ["woonkamer"]}}
+        }
+        assert r["options_restored"] == ["device_zones"]
+
+    async def test_store_project_plain_plan_restores_no_options(self):
+        import json
+
+        from custom_components.ramses_extras.features.floorplan_helper import (
+            services,
+        )
+
+        hass, handlers = await self._registered()
+        plan = {"floors": [{"name": "bg", "rooms": [], "markers": []}]}
+        adapter = MagicMock()
+        adapter.parse.side_effect = lambda t: json.loads(t)
+        adapter.async_store = AsyncMock(return_value="/tmp/latest.json")
+        adapter.async_backup = AsyncMock(return_value="/tmp/backup.json")
+        with (
+            patch.object(services, "_adapter", AsyncMock(return_value=adapter)),
+            patch.object(
+                services,
+                "build_floorplan_model",
+                AsyncMock(return_value=_model()),
+            ),
+            patch.object(services, "_config_entry", return_value=MagicMock()),
+            patch.object(services, "get_floorplan_options", return_value={}),
+            patch.object(services, "persist_floorplan_options") as persist,
+        ):
+            r = await handlers["floorplan_store_project"](
+                self._call({"project_json": json.dumps(plan)})
+            )
+        persist.assert_not_called()
+        assert r["options_restored"] == []
+
     async def test_device_view_resolves_entity_to_hvac_card(self):
         hass, handlers = await self._registered()
         model = _model(devices=[_device()])
