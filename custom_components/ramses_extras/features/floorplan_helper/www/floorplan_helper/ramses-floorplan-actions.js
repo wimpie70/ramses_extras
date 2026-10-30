@@ -301,7 +301,7 @@ class RamsesFloorplanActions extends HTMLElement {
     if (rowEditor) rowEditor.style.display = caps.browser_side === false ? '' : 'none';
     const drop = $('drop');
     if (drop && caps.browser_side === false) {
-      drop.title = 'Import a layout/plan file — replaces the stored plan for the resolved editor';
+      drop.title = 'Import a layout/plan file (or a full backup json) — replaces the stored plan for the resolved editor';
       drop.childNodes[0].textContent =
         'Drop a floorplan-studio layout JSON here ';
       const tail = drop.childNodes[2];
@@ -1665,6 +1665,7 @@ class RamsesFloorplanActions extends HTMLElement {
     const yamls = r.card_yamls || (r.card_yaml ? { default: r.card_yaml } : {});
     const floors = Object.keys(yamls);
     this._renderYamlButtons(yamls);
+    if (r.backup_json) this._renderBackupButton(r.backup_json);
     const applied =
       r.applied && r.applied.cards
         ? ` — applied to ${r.applied.cards} card(s) on ${r.applied.dashboards} dashboard(s)`
@@ -1714,6 +1715,22 @@ class RamsesFloorplanActions extends HTMLElement {
     row.style.display = 'flex';
   }
 
+  _renderBackupButton(backupJson) {
+    const row = this.shadowRoot.getElementById('yaml-copies');
+    if (!row) return;
+    const b = document.createElement('button');
+    b.className = 'secondary';
+    b.textContent = '⬇ backup';
+    b.title =
+      'Download the full plan backup (layout + zones, captions, icons…) ' +
+      '— drop it on the dropzone of the other instance to migrate';
+    b.onclick = () => {
+      this._download('ramses-floorplan-backup.json', backupJson);
+      this._status('backup json downloaded — drop it on the other instance’s dropzone');
+    };
+    row.appendChild(b);
+  }
+
   async _sync() {
     const r = await this._call('floorplan_sync_areas', {});
     this._status(this._syncSummary(r));
@@ -1733,7 +1750,20 @@ class RamsesFloorplanActions extends HTMLElement {
 
   async _store(text, via) {
     const r = await this._call('floorplan_store_project', { project_json: text });
-    this._status(`Project ${via || 'stored'}: ${r.latest_path}`);
+    const opts = (r.options_restored || []).length
+      ? ` + options restored (${r.options_restored.join(', ')})`
+      : '';
+    this._status(`Project ${via || 'stored'}: ${r.latest_path}${opts}`);
+  }
+
+  _download(name, text) {
+    const a = document.createElement('a');
+    a.href = window.URL.createObjectURL(
+      new window.Blob([text], { type: 'application/json' })
+    );
+    a.download = name;
+    a.click();
+    window.URL.revokeObjectURL(a.href);
   }
 
   _readFile(file) {
