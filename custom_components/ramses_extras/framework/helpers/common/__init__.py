@@ -4,7 +4,11 @@ This module provides reusable utility functions that are shared across
 all features, including logging, validation, and other common helpers.
 """
 
-from .utils import _singularize_entity_type, calculate_absolute_humidity
+from .utils import (
+    _singularize_entity_type,
+    calculate_absolute_humidity,
+    dtm_to_utc_str,
+)
 from .validation import (
     RamsesValidator,
     ValidationContext,
@@ -25,4 +29,5 @@ __all__ = [
     # Common utilities
     "calculate_absolute_humidity",
     "_singularize_entity_type",
+    "dtm_to_utc_str",
 ]

@@ -256,7 +256,7 @@ class MqttEndpoint(SimulatorCommEndpoint):
     async def _send_worker(self) -> None:
         """Background task: drain the send queue and publish to /rx."""
         import json
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         from homeassistant.components import mqtt
 
@@ -264,7 +264,9 @@ class MqttEndpoint(SimulatorCommEndpoint):
             try:
                 frame = await asyncio.wait_for(self._send_queue.get(), timeout=1.0)
                 # ramses_rf expects JSON format with msg first, then ts
-                payload = json.dumps({"msg": frame, "ts": datetime.now().isoformat()})
+                payload = json.dumps(
+                    {"msg": frame, "ts": datetime.now(tz=UTC).isoformat()}
+                )
                 await mqtt.async_publish(self.hass, self._topic_rx, payload)
                 LOGGER.debug(
                     "Simulator published to %s: %s", self._topic_rx, frame[:80]

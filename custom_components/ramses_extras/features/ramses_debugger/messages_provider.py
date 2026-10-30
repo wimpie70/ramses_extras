@@ -26,6 +26,7 @@ from typing import Any, cast
 
 from homeassistant.core import HomeAssistant
 
+from ...framework.helpers.common.utils import dtm_to_utc_str
 from .log_backend import (
     get_configured_log_path,
     get_configured_packet_log_path,
@@ -64,6 +65,13 @@ class PacketLogParser:
                 partial(tail_text, log_path, max_lines=max_lines, max_chars=2_000_000)
             )
             lines = content.splitlines()
+
+            # Normalise filter bounds so naive-local and +00:00 inputs
+            # compare correctly with the normalised message dtms.
+            if since is not None:
+                since = dtm_to_utc_str(since)
+            if until is not None:
+                until = dtm_to_utc_str(until)
 
             messages: list[NormalizedMessage] = []
             for line in reversed(lines):
@@ -129,7 +137,9 @@ def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
         return bool(re.match(r"^(?:\d{1,3}|---)$", token))
 
     try:
-        dtm = parts[0]
+        # Old log lines are naive local, new ones carry +00:00;
+        # normalise to aware UTC so all sources compare consistently.
+        dtm = dtm_to_utc_str(parts[0])
         i = 1
 
         if i >= len(parts):
@@ -335,7 +345,8 @@ class NormalizedMessage:
     The debugger uses this as an intermediate representation that can be
     derived from multiple sources.
 
-    :param dtm: Timestamp string (best-effort).
+    :param dtm: Timestamp string, normalised to aware UTC
+        (``+00:00``) where parseable (best-effort).
     :param src: Source device id.
     :param dst: Destination device id.
     :param verb: Ramses verb (``RQ`` / ``RP`` / ``I`` / ``W``).
@@ -460,6 +471,10 @@ class TrafficBufferProvider(MessagesProvider):
         until: str | None = None,
         limit: int = 200,
     ) -> list[NormalizedMessage]:
+        if since is not None:
+            since = dtm_to_utc_str(since)
+        if until is not None:
+            until = dtm_to_utc_str(until)
         messages: list[NormalizedMessage] = []
         for raw in self._global_buffer:
             if src and raw.get("src") != src:
@@ -475,11 +490,13 @@ class TrafficBufferProvider(MessagesProvider):
                 if isinstance(raw.get("time_fired"), str)
                 else raw.get("dtm")
             )
+            # Normalise to aware UTC so naive-local and +00:00 inputs
+            # compare correctly with the (normalised) filter bounds.
+            dtm_str = dtm_to_utc_str(dtm) if isinstance(dtm, str) else ""
             # since/until filtering by dtm (ISO strings compare
             # lexicographically).  Entries without a dtm string are
             # excluded when a since filter is active, consistent with
             # the packet-log provider.
-            dtm_str = dtm if isinstance(dtm, str) else ""
             if since and dtm_str < since:
                 continue
             if until and dtm_str > until:
@@ -656,9 +673,10 @@ def _parse_ha_log_line(line: str) -> NormalizedMessage | None:
         # Keep dst as-is for broadcast; the UI can derive any effective target
         # from the packet/via fields if needed.
 
-        # Extract timestamp from the beginning of the line
+        # Extract timestamp from the beginning of the line (naive HA
+        # local) and normalise to aware UTC.
         dtm_match = re.match(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*)", line)
-        dtm = dtm_match.group(1) if dtm_match else ""
+        dtm = dtm_to_utc_str(dtm_match.group(1)) if dtm_match else ""
 
         return NormalizedMessage(
             dtm=dtm,
@@ -696,6 +714,8 @@ def _parse_ha_log_line_as_packet(line: str) -> NormalizedMessage | None:
             dtm = f"{tokens[0]} {tokens[1]}"
     if not dtm and re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", tokens[0]):
         dtm = tokens[0]
+    if dtm:
+        dtm = dtm_to_utc_str(dtm)
 
     verbs = {"RQ", "RP", "I", "W"}
     addr_re = re.compile(r"^(--:------|\d{2}:\d{6})$")

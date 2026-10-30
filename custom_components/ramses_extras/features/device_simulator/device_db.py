@@ -910,14 +910,15 @@ class DeviceDatabase:
         ``FAN``, ``REM``) will still render, but re-importing the edited text
         requires replacing the slugs with actual device IDs first.
 
-        Uses an arbitrary base timestamp of ``2025-01-01T00:00:00.000000`` so
-        relative frame times are preserved verbatim.
+        Uses an arbitrary base timestamp of
+        ``2025-01-01T00:00:00.000000+00:00`` so relative frame times are
+        preserved verbatim.
 
         :param identifier: Conversation ``id`` or YAML filename.
         :return: Tab-separated log text (one line per frame) or ``None`` if
             the conversation cannot be located.
         """
-        from datetime import datetime, timedelta
+        from datetime import UTC, datetime, timedelta
 
         conv = self._conversations.get(identifier.lower()) or next(
             (
@@ -930,11 +931,11 @@ class DeviceDatabase:
         if conv is None:
             return None
 
-        base = datetime(2025, 1, 1, 0, 0, 0)
+        base = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
         lines: list[str] = []
         for frame in conv.frames:
             ts = base + timedelta(seconds=float(frame.t))
-            ts_str = ts.strftime("%Y-%m-%dT%H:%M:%S.%f")
+            ts_str = ts.isoformat(timespec="microseconds")
             # Length prefix is byte count = len(payload)//2, zero-padded to 3
             try:
                 length = f"{len(frame.payload) // 2:03d}"

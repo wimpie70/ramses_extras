@@ -1,11 +1,24 @@
 """Tests for common utility functions."""
 
+from datetime import datetime
+
 import pytest
+from homeassistant.util import dt as dt_util
 
 from custom_components.ramses_extras.framework.helpers.common.utils import (
     _singularize_entity_type,
     calculate_absolute_humidity,
+    dtm_to_utc_str,
 )
+
+
+@pytest.fixture(autouse=True)
+def _utc_default_tz():
+    """Pin the HA default timezone so naive dtm expectations are stable."""
+    old = dt_util.get_default_time_zone()
+    dt_util.set_default_time_zone(dt_util.UTC)
+    yield
+    dt_util.set_default_time_zone(old)
 
 
 class TestCalculateAbsoluteHumidity:
@@ -66,3 +79,47 @@ class TestSingularizeEntityType:
         """Test with unknown types (should return as is)."""
         assert _singularize_entity_type("unknown") == "unknown"
         assert _singularize_entity_type("") == ""
+
+
+class TestDtmToUtcStr:
+    """Test dtm_to_utc_str timestamp normalisation."""
+
+    def test_naive_string_assumed_local(self):
+        """Naive ISO strings are read as local time and emitted as UTC."""
+        assert (
+            dtm_to_utc_str("2026-01-20T10:00:00.000000")
+            == "2026-01-20T10:00:00.000000+00:00"
+        )
+
+    def test_space_separated_naive_string(self):
+        """HA-log style "YYYY-MM-DD HH:MM:SS" input is also normalised."""
+        assert (
+            dtm_to_utc_str("2026-01-20 10:00:00.123456")
+            == "2026-01-20T10:00:00.123456+00:00"
+        )
+
+    def test_aware_utc_string_passthrough(self):
+        """New-style +00:00 packet-log timestamps stay equivalent."""
+        assert (
+            dtm_to_utc_str("2026-10-28T09:30:00.000000+00:00")
+            == "2026-10-28T09:30:00.000000+00:00"
+        )
+
+    def test_aware_non_utc_string_converted(self):
+        """Non-UTC offsets are converted to UTC."""
+        assert (
+            dtm_to_utc_str("2026-01-20T12:00:00+02:00")
+            == "2026-01-20T10:00:00.000000+00:00"
+        )
+
+    def test_naive_datetime_assumed_local(self):
+        """Naive datetime objects (ramses_tx dt_now()) become UTC."""
+        assert (
+            dtm_to_utc_str(datetime(2026, 4, 18, 9, 0, 0))
+            == "2026-04-18T09:00:00.000000+00:00"
+        )
+
+    def test_unparsable_returned_unchanged(self):
+        """Best-effort: unparsable input passes through verbatim."""
+        assert dtm_to_utc_str("not-a-datetime") == "not-a-datetime"
+        assert dtm_to_utc_str("") == ""

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.util import dt as dt_util
 
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.features.ramses_debugger import websocket_commands
@@ -309,7 +310,14 @@ def test_collector_time_fired_used_when_missing_dtm(hass) -> None:
     stats = collector.get_stats()
     assert stats["total_count"] == 1
     flow = stats["flows"][0]
-    assert flow["last_seen"].startswith("2026-01-20T12:00:00")
+    # naive time_fired is read as local time and stored as aware UTC
+    expected = (
+        datetime(2026, 1, 20, 12, 0)
+        .replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+        .astimezone(UTC)
+        .isoformat(timespec="microseconds")
+    )
+    assert flow["last_seen"] == expected
 
 
 def test_collector_ingests_direct_client_messages(hass) -> None:
