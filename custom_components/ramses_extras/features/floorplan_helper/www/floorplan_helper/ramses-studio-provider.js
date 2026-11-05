@@ -540,6 +540,18 @@ function register(api) {
         },
       ],
       iconMap: { ...CLASS_ICON },
+      // Fan runs → pulse (binary only; speed-proportional spin needs a
+      // studio animation variant — flagged as a follow-up).
+      stateRulePresets: [
+        {
+          entityRole: 'fan_rate',
+          mode: 'threshold',
+          compare: '>',
+          value: 0,
+          color: '#fbbf24',
+          animation: 'pulse',
+        },
+      ],
       css: '/local/ramses_extras/features/floorplan_helper/ramses-floorplan.css',
     },
   });
