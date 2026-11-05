@@ -24,11 +24,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import (
+    BACKUP_FORMAT,
+    BACKUP_VERSION,
     CARD_YAML_STEM,
+    DEFAULT_FLOORPLAN_OPTIONS,
     FLOORPLAN_GENERATED_BASE,
     FLOORPLAN_GENERATED_DIR_NAME,
     FLOORPLAN_ICON_MDI,
     FLOORPLAN_STATIC_BASE,
+    GENERATED_BACKUP_JSON,
     GENERATED_CARD_YAML,
     GENERATED_ELEMENTS_SVG,
     OPTION_BACKGROUND,
@@ -509,6 +513,18 @@ async def async_generate_bundle(
     files[GENERATED_ELEMENTS_SVG] = svg_text
     files.setdefault(GENERATED_CARD_YAML, card_yaml)
 
+    # Migration bundle: the plan plus every option-level extra (zones,
+    # captions, icon overrides…) the editor layout can't carry. The
+    # actions card dropzone restores both halves from this file.
+    backup = {
+        "format": BACKUP_FORMAT,
+        "version": BACKUP_VERSION,
+        "editor": adapter.key,
+        "options": {k: options[k] for k in DEFAULT_FLOORPLAN_OPTIONS if k in options},
+        "plan": project or {},
+    }
+    files[GENERATED_BACKUP_JSON] = json.dumps(backup, indent=2)
+
     files_written = await _write_generated_files(hass, files)
 
     new_snapshot = model_snapshot(model)
@@ -535,6 +551,7 @@ async def async_generate_bundle(
         "files_written": files_written,
         "changes": changes,
         "warnings": warnings,
+        "backup_json": files[GENERATED_BACKUP_JSON],
     }
 
 

@@ -41,6 +41,8 @@ from homeassistant.helpers import config_validation as cv
 from ...const import DOMAIN
 from .bundle import async_generate_bundle
 from .const import (
+    BACKUP_FORMAT,
+    DEFAULT_FLOORPLAN_OPTIONS,
     DEFAULT_ICON,
     EVENT_DEVICE_VIEW,
     EVENT_ZONE_TOGGLE,
@@ -633,6 +635,16 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """
         adapter = await _adapter(hass, call.data.get("editor"))
         raw_text = call.data["project_json"]
+        # a floorplan backup bundle carries the plan + our option-level
+        # extras (zones, captions, icons…) in one file — restore both
+        backup_options = None
+        try:
+            env = json.loads(raw_text)
+        except TypeError, ValueError:
+            env = raw_text
+        if isinstance(env, dict) and str(env.get("format") or "") == BACKUP_FORMAT:
+            raw_text = json.dumps(env.get("plan") or {})
+            backup_options = env.get("options")
         plan = adapter.parse(raw_text)
         parsed = parse_studio_project(plan)
         if "error" in parsed:
@@ -646,6 +658,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _stamp_marker_actions(plan, model, zones, options)
         latest = await adapter.async_store(hass, plan)
         backup = await adapter.async_backup(hass, json.dumps(plan))
+        restored: list[str] = []
+        if isinstance(backup_options, dict):
+            merged = {
+                k: v
+                for k, v in backup_options.items()
+                if k in DEFAULT_FLOORPLAN_OPTIONS
+            }
+            if merged:
+                options = get_floorplan_options(_config_entry(hass))
+                options.update(merged)
+                persist_floorplan_options(hass, _config_entry(hass), options)
+                restored = sorted(merged)
         stats: dict[str, dict[str, int]] = {}
         for room in parsed["rooms"]:
             stats.setdefault(room["floor"], {"rooms": 0, "markers": 0})["rooms"] += 1
@@ -654,7 +678,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "markers"
             ] += 1
         _LOGGER.info("Floorplan project stored: %s (%s)", latest, stats)
-        return {"latest_path": latest, "backup_path": backup, "floors": stats}
+        return {
+            "latest_path": latest,
+            "backup_path": backup,
+            "floors": stats,
+            "options_restored": restored,
+        }
 
     async def _async_reset(call: ServiceCall) -> dict[str, Any]:
         """Reset the stored plan to the first-install (empty) state.
