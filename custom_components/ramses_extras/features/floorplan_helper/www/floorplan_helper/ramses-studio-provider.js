@@ -328,6 +328,12 @@ function topologyFromRegistries(devices, entities, areaList, floorList) {
     );
   }
   out.sort((a, b) => a.device_id.localeCompare(b.device_id));
+  // No heat_zones here (extras topology only) — still give FANs the
+  // double-tap device popup.
+  for (const d of out) {
+    if (d.device_class === 'FAN' || d.device_class === 'HVAC')
+      d.actions = { double: deviceViewAction(d) };
+  }
   return { source: 'ramses_cc', sourceLabel: 'ramses_cc registries', devices: out, areas, floors };
 }
 
