@@ -161,6 +161,59 @@ const toEntity = (entity_id, extra = {}) => ({
 const str = (v) => (typeof v === 'string' && v ? v : null);
 
 // ---------------------------------------------------------------------------
+// Marker gestures — mirrors services' studio_actions_for_device: a zone
+// parent taps to toggle its member markers' ring class, hold opens
+// more-info, double opens the device popup (hvac_fan_card for FANs).
+// serviceData is YAML — the same payloads the generated rules emit.
+// ---------------------------------------------------------------------------
+
+const slugify = (v) =>
+  String(v ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+
+/** evohome zones → {parent_device_id: {members}} — parent = sensor else 1st actuator. */
+function zonesFromHeatZones(heatZones) {
+  const zones = {};
+  for (const z of heatZones ?? []) {
+    const actuators = (z.actuators ?? []).map(String);
+    const parent = str(z.sensor) ?? actuators[0];
+    if (!parent || zones[parent]) continue;
+    zones[parent] = { members: actuators.filter((a) => a !== parent), name: z.name ?? '' };
+  }
+  return zones;
+}
+
+const deviceViewAction = (d) => ({
+  kind: 'call-service',
+  service: 'ramses_extras.floorplan_device_view',
+  serviceData: `device_id: ${d.device_id}\nentity: ${d.primary_entity ?? ''}`,
+});
+
+function actionsFor(d, zones, primaryById) {
+  const dbl = deviceViewAction(d);
+  if (zones[d.device_id]) {
+    const elements = zones[d.device_id].members.map((m) => primaryById.get(m)).filter(Boolean);
+    return {
+      tap: {
+        kind: 'call-service',
+        service: 'ramses_extras.floorplan_zone_toggle',
+        serviceData: `toggles:\n  - class: rx-zone-${slugify(d.device_id)}_dev\n    elements:${
+          elements.length ? `\n      - ${elements.join('\n      - ')}` : ' []'
+        }`,
+      },
+      hold: { kind: 'more-info' },
+      double: dbl,
+    };
+  }
+  // FANs are the flagship gesture: double-tap opens the hvac_fan_card popup.
+  if (d.device_class === 'FAN' || d.device_class === 'HVAC') return { double: dbl };
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Source 1: Ramses Extras get_topology result
 // ---------------------------------------------------------------------------
 
@@ -208,6 +261,12 @@ function normaliseExtrasTopology(raw) {
         entities,
       }),
     );
+  }
+  const zones = zonesFromHeatZones(raw.heat_zones);
+  const primaryById = new Map(devices.map((d) => [d.device_id, d.primary_entity]));
+  for (const d of devices) {
+    const actions = actionsFor(d, zones, primaryById);
+    if (actions) d.actions = actions;
   }
   return { source: 'ramses_extras', sourceLabel: 'Ramses Extras floorplan helper', devices, areas, floors };
 }
