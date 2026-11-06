@@ -65,6 +65,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import re
 import shutil
 from pathlib import Path
@@ -475,7 +476,11 @@ window.ramsesExtras.options = {js_options};
                 existing = None
             if existing == js_content:
                 return False
-            feature_config_file.write_text(js_content, encoding="utf-8")
+            # Write via a temp file + atomic rename so a browser fetch
+            # can never observe a truncated features file mid-write.
+            tmp_file = feature_config_file.with_name(feature_config_file.name + ".tmp")
+            tmp_file.write_text(js_content, encoding="utf-8")
+            os.replace(tmp_file, feature_config_file)
             return True
 
         written = await asyncio.to_thread(_write_if_changed)
