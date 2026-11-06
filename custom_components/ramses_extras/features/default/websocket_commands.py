@@ -50,8 +50,15 @@ async def ws_get_enabled_features(
         if enabled_features is None:
             config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
             if config_entry is not None:
+                # Same resolution order as
+                # feature_utils._get_enabled_features_raw: entry.data,
+                # then the nested options location the config flow syncs
+                # to, then the legacy top-level options key.
                 enabled_features = (
                     config_entry.data.get("enabled_features")
+                    or config_entry.options.get("ramses_extras", {}).get(
+                        "enabled_features"
+                    )
                     or config_entry.options.get("enabled_features")
                     or {}
                 )
@@ -230,6 +237,9 @@ async def ws_get_entity_mappings(
                 if config_entry is not None:
                     enabled_features = (
                         config_entry.data.get("enabled_features")
+                        or config_entry.options.get("ramses_extras", {}).get(
+                            "enabled_features"
+                        )
                         or config_entry.options.get("enabled_features")
                         or {}
                     )
