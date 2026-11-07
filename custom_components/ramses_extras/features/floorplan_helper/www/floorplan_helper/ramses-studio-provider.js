@@ -499,6 +499,30 @@ function parseRamsesInput(text, ctx) {
 // editor grows a dedicated capability slot for plan/room sources.
 // ---------------------------------------------------------------------------
 
+async function fetchRooms(ws) {
+  const resp = await ws({
+    type: 'call_service',
+    domain: 'ramses_extras',
+    service: 'floorplan_seed_studio',
+    service_data: {},
+    return_response: true,
+  });
+  const raw = resp?.response?.project_json ?? resp?.project_json ?? resp?.response ?? resp;
+  const proj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const floors = (proj?.floors ?? []).map((f) => ({
+    name: f.name || 'Floor',
+    canvas: f.canvas,
+    rooms: (f.rooms ?? []).map((r) => ({
+      name: r.name,
+      areaId: r.areaId,
+      polygon: r.polygon,
+      fill: r.fill,
+      opacity: r.opacity,
+    })),
+  }));
+  return { floors };
+}
+
 async function seedDevices(api) {
   const resp = await api.callWS({
     type: 'call_service',
@@ -526,8 +550,18 @@ function register(api) {
           id: 'ramses',
           title: 'RAMSES RF / Ramses Extras',
           description: 'evohome / RAMSES-II devices — zones, TRVs, thermostats, ventilation, CO₂ sensors, remotes',
+          coversIntegrations: ['ramses_cc', 'ramses_extras'],
           fetch: (ws) => fetchTopology(ws),
           parse: parseRamsesInput,
+        },
+      ],
+      roomSources: [
+        {
+          id: 'ramses-rooms',
+          deviceSourceId: 'ramses',
+          title: 'Ramses floorplan SVG rooms',
+          description: 'Room polygons parsed from authored Ramses Extras floor SVGs',
+          fetch: (ws) => fetchRooms(ws),
         },
       ],
       actions: [
@@ -540,8 +574,6 @@ function register(api) {
         },
       ],
       iconMap: { ...CLASS_ICON },
-      // Fan runs → pulse (binary only; speed-proportional spin needs a
-      // studio animation variant — flagged as a follow-up).
       stateRulePresets: [
         {
           entityRole: 'fan_rate',
@@ -549,7 +581,7 @@ function register(api) {
           compare: '>',
           value: 0,
           color: '#fbbf24',
-          animation: 'pulse',
+          animation: 'spin',
         },
       ],
       css: '/local/ramses_extras/features/floorplan_helper/ramses-floorplan.css',
