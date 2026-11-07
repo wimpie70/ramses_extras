@@ -822,11 +822,11 @@ class TestRegisterCards:
             ) as mock_registry_class,
         ):
             mock_registry = mock_registry_class.return_value
-            mock_registry.register_bootstrap = AsyncMock()
+            mock_registry.register = AsyncMock()
 
             await register_cards(hass)
 
-            mock_registry.register_bootstrap.assert_awaited_once_with("1.0.0")
+            mock_registry.register.assert_awaited_once()
 
 
 class TestSetupCardFilesAndConfig:

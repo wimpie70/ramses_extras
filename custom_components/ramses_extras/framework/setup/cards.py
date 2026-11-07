@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib
 import logging
 import re
 import shutil
@@ -76,7 +77,7 @@ from homeassistant.loader import async_get_integration
 
 from ...const import DOMAIN
 from ...feature_utils import get_enabled_features_dict
-from ..helpers.card_registry import CardRegistry
+from ..helpers.card_registry import CardRegistry, LovelaceCard
 from ..helpers.paths import DEPLOYMENT_PATHS
 
 _LOGGER = logging.getLogger(__name__)
@@ -365,13 +366,51 @@ async def copy_helper_files(hass: HomeAssistant) -> None:
         _LOGGER.debug("Full traceback: %s", traceback.format_exc())
 
 
-async def register_cards(hass: HomeAssistant) -> None:
+def _feature_frontend_resources(
+    hass: HomeAssistant, entry: ConfigEntry | None
+) -> list[str]:
+    """Collect Lovelace resource URLs declared by enabled features.
+
+    Features may declare extra module resources via
+    ``FEATURE_DEFINITION["frontend_resources"]`` — e.g. floorplan_helper's
+    Floorplan Studio provider plugin. They must go through CardRegistry so
+    its legacy-resource cleanup keeps them instead of purging them.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry (enabled-feature source)
+    :return: ``/local/...`` resource URLs from enabled features
+    """
+    enabled = get_enabled_features_dict(
+        hass, entry, include_default=False, prefer_hass_data=False
+    )
+    urls: list[str] = []
+    for name, is_enabled in enabled.items():
+        if not is_enabled:
+            continue
+        try:
+            module = importlib.import_module(
+                f"custom_components.ramses_extras.features.{name}.const"
+            )
+        except ImportError:
+            continue
+        definition = getattr(module, "FEATURE_DEFINITION", None)
+        if not isinstance(definition, dict):
+            continue
+        resources = definition.get("frontend_resources")
+        if isinstance(resources, list):
+            urls.extend(u for u in resources if isinstance(u, str))
+    return urls
+
+
+async def register_cards(hass: HomeAssistant, entry: ConfigEntry | None = None) -> None:
     """Register cards with Home Assistant's Lovelace system.
 
     Uses the CardRegistry to register the bootstrap resource that
-    enables dynamic card loading.
+    enables dynamic card loading, plus any extra module resources
+    enabled features declare via ``frontend_resources``.
 
     :param hass: Home Assistant instance
+    :param entry: Configuration entry (enabled-feature source)
     """
     try:
         _LOGGER.info("Starting feature-centric CardRegistry registration")
@@ -379,7 +418,16 @@ async def register_cards(hass: HomeAssistant) -> None:
         version = await async_get_integration_version(hass)
 
         registry = CardRegistry(hass)
-        await registry.register_bootstrap(version)
+        cards = [registry.bootstrap_resource(version)]
+        for url in _feature_frontend_resources(hass, entry):
+            cards.append(
+                LovelaceCard(
+                    type=url.rsplit("/", 1)[-1].removesuffix(".js"),
+                    resource_path=f"{url}?v={version}",
+                    name=f"Ramses Extras ({url.rsplit('/', 1)[-1]})",
+                )
+            )
+        await registry.register(cards)
 
         _LOGGER.info("Feature-centric CardRegistry registration complete")
 
@@ -520,7 +568,7 @@ async def setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) -
 
         await copy_helper_files(hass)
 
-        await register_cards(hass)
+        await register_cards(hass, entry)
 
         version = await async_get_integration_version(hass)
         await cleanup_old_card_deployments(hass, version, card_features)
