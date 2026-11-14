@@ -125,6 +125,32 @@ async def test_ws_get_enabled_features_config_entry_fallback(connection):
     )
 
 
+async def test_ws_get_enabled_features_nested_options_fallback(connection):
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "config_entry": MagicMock(
+                data={},
+                options={
+                    "ramses_extras": {
+                        "enabled_features": {"sensor_control": True},
+                    },
+                },
+            )
+        }
+    }
+
+    msg = {"id": 1, "type": "ramses_extras/default/get_enabled_features"}
+    await ws_get_enabled_features(hass, connection, msg)
+    connection.send_result.assert_called_with(
+        1,
+        {
+            "enabled_features": {"sensor_control": True},
+            "options": {},
+        },
+    )
+
+
 async def test_ws_get_enabled_features_list_enabled(connection):
     hass = MagicMock()
     hass.data = {DOMAIN: {"enabled_features": ["default", "debug"]}}
