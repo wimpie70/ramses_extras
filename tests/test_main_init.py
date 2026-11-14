@@ -519,12 +519,18 @@ class TestExposeFeatureConfigToFrontend:
             mock_path.return_value = MagicMock()
             mock_file = MagicMock()
             mock_path.return_value.__truediv__.return_value = mock_file
-            mock_file.write_text = MagicMock()
+            mock_tmp_file = MagicMock()
+            mock_file.with_name.return_value = mock_tmp_file
+            mock_tmp_file.write_text = MagicMock()
 
-            await expose_feature_config_to_frontend(hass, mock_entry)
+            with patch(
+                "custom_components.ramses_extras.framework.setup.cards.os.replace"
+            ) as mock_replace:
+                await expose_feature_config_to_frontend(hass, mock_entry)
 
-            mock_file.write_text.assert_called_once()
-            content = mock_file.write_text.call_args[0][0]
+            mock_tmp_file.write_text.assert_called_once()
+            mock_replace.assert_called_once_with(mock_tmp_file, mock_file)
+            content = mock_tmp_file.write_text.call_args[0][0]
             assert '"humidity_control": true' in content
             assert "window.ramsesExtras.debug = true" in content
             assert 'window.ramsesExtras.frontendLogLevel = "debug"' in content

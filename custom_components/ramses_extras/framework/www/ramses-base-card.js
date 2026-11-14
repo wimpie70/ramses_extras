@@ -29,6 +29,7 @@ const _ensureOptionsUpdatesSubscribed = (hass) => {
       window.ramsesExtras = window.ramsesExtras || {};
       if (payload.enabled_features) {
         window.ramsesExtras.features = payload.enabled_features;
+        window.ramsesExtras._featureInconclusiveRetries = 0;
       }
       if (payload.device_feature_matrix) {
         window.ramsesExtras.deviceFeatureMatrix = payload.device_feature_matrix;
@@ -480,6 +481,7 @@ export class RamsesBaseCard extends HTMLElement {
         if (event?.detail?.enabled_features && typeof event.detail.enabled_features === 'object') {
           window.ramsesExtras = window.ramsesExtras || {};
           window.ramsesExtras.features = event.detail.enabled_features;
+          window.ramsesExtras._featureInconclusiveRetries = 0;
           logger.debug(`${this.constructor.name}: Updated features from options event:`, event.detail.enabled_features);
         }
 
@@ -652,21 +654,43 @@ export class RamsesBaseCard extends HTMLElement {
 
     const enabled = window.ramsesExtras.features[featureName] === true;
 
-    // If the feature is not found in an empty-ish features dict, it may have
-    // been loaded before ramses_extras finished setup. Retry once.
-    if (!enabled && window.ramsesExtras._featureLoadRetries < 3) {
+    // If the feature is missing from the features dict (or the dict is
+    // empty), the result is inconclusive: the flags may have been fetched
+    // before ramses_extras finished setup, or a stale/partial
+    // ramses-extras-features.js was served. Keep retrying with capped
+    // backoff and show the loading state — only an explicit `false`
+    // means the feature is actually disabled.
+    if (!enabled) {
       const hasAny = Object.keys(window.ramsesExtras.features).length > 0;
       if (!hasAny || window.ramsesExtras.features[featureName] === undefined) {
-        logger.debug(
-          `${this.constructor.name}: isFeatureEnabled() - feature not found, ` +
-          `may be loading too early, retrying...`
-        );
-        // Force a fresh WebSocket fetch
-        window.ramsesExtras._featuresLoadPromise = null;
-        window.ramsesExtras.features = undefined;
-        window.ramsesExtras._featureLoadRetries = (window.ramsesExtras._featureLoadRetries || 0) + 1;
-        this._ensureFeatureConfigLoaded();
-        return null; // show loading state, will re-render when WS completes
+        // Separate counter from _featureLoadRetries so the unbounded
+        // inconclusive retry does not exhaust the null-state retry
+        // budget in _ensureFeatureConfigLoaded().
+        const retries = window.ramsesExtras._featureInconclusiveRetries || 0;
+        const backoff = Math.min(2000 * (retries + 1), 60000);
+        const now = Date.now();
+        if (now - (window.ramsesExtras._featureLoadLastTry || 0) >= backoff) {
+          window.ramsesExtras._featureLoadLastTry = now;
+          window.ramsesExtras._featureInconclusiveRetries = retries + 1;
+          logger.debug(
+            `${this.constructor.name}: isFeatureEnabled() - feature not found, ` +
+            `may be loading too early, retrying...`
+          );
+          // Force a fresh WebSocket fetch
+          window.ramsesExtras._featuresLoadPromise = null;
+          window.ramsesExtras.features = undefined;
+          this._ensureFeatureConfigLoaded();
+        }
+        // The load promise's .then() re-render is only attached for the
+        // first fetch, so schedule a render for subsequent refetches.
+        if (this._hass && this._config) {
+          clearTimeout(this._featureRetryTimer);
+          this._featureRetryTimer = setTimeout(() => {
+            this._featureRetryTimer = null;
+            this._scheduleRender();
+          }, backoff);
+        }
+        return null; // show loading state, will re-render on retry
       }
     }
 
@@ -718,6 +742,7 @@ export class RamsesBaseCard extends HTMLElement {
             window.ramsesExtras.features = (ef === null || ef === undefined) ? null : ef;
             if (window.ramsesExtras.features !== null) {
               window.ramsesExtras._featureLoadRetries = 0;
+              window.ramsesExtras._featureInconclusiveRetries = 0;
             }
             if (result?.options && typeof result.options === 'object') {
               window.ramsesExtras.options = result.options;
