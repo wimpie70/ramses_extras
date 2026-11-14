@@ -11,6 +11,7 @@ homeassistant = ">=2026.10.0"
 [tool.poetry.group.dev.dependencies]
  pytest = ">=9.0.3"
  certifi = ">=2026.10.19"  # security floor: drops compromised emSign roots
+ pillow = ">=13.0.0"  # security floor: CVEs in <=12.3.0 (transitive via homeassistant)
  mypy = "^1.19.0"
  ruff = "==0.15.0"
  prek = "^0.3.4"
