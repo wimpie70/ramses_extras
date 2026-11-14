@@ -160,6 +160,37 @@ status classes, the toolbar, and the merged-artwork SVG itself —
 those remain generated/managed and additive-only, so they cannot
 conflict with studio-owned fields.
 
+## Floorplan Studio provider plugin
+
+`www/floorplan_helper/ramses-studio-provider.js` registers a device
+source on studio's public plugin API (`window.floorplanStudio`,
+plugin-manifest PR). It is the **canonical** RAMSES mapping — class
+tables, entity roles, icon map live here, versioned with the
+integration:
+
+- **Live fetch** — `get_topology` first; falls back to the HA
+  device/entity/area/floor registries filtered to ramses platforms
+  (works with the feature's WS commands unavailable, e.g. floorplan
+  helper disabled but ramses_cc present).
+- **Paste** — a get_topology result, a `floorplan_seed_studio`
+  response, a studio project, or any text containing RAMSES device
+  ids (known_list, schema dump).
+- **Zones** — no `ZON` markers: get_topology already folds zone
+  sub-devices (`<ctl>_<idx>`, `<ctl>_HW`) into their physical
+  sensor/actuator device, whose primary entity is the zone climate.
+  Zone *topology* (`heat_zones`) is consumed server-side by
+  `floorplan_seed_studio`.
+- **Toolbar action** — "Seed devices" calls
+  `floorplan_seed_studio` and merges the returned project fragment.
+  Interim surface until the editor grows a dedicated capability slot.
+
+The file deploys with the other www assets and is auto-registered as
+a Lovelace `module` resource (`?v=` version-stamped) through
+`FEATURE_DEFINITION.frontend_resources` → `CardRegistry`, so it is
+never purged by the legacy-resource cleanup. The script is inert
+without the studio card (it polls for `window.floorplanStudio`, then
+gives up).
+
 ## Managed regeneration
 
 - Generated rules live between `RULES_BEGIN_MARKER`/`RULES_END_MARKER`

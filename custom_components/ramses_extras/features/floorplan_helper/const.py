@@ -55,6 +55,11 @@ BACKUP_FORMAT = "ramses_extras.floorplan-backup"
 BACKUP_VERSION = 1
 STYLESHEET_FILENAME = "ramses-floorplan.css"
 
+# Floorplan Studio plugin provider — a plain Lovelace module resource that
+# registers this integration's device source/actions on the editor's public
+# plugin API. Auto-registered via FEATURE_DEFINITION.frontend_resources.
+STUDIO_PROVIDER_RESOURCE = f"{FLOORPLAN_STATIC_BASE}/ramses-studio-provider.js"
+
 # Markers wrapping generated rules inside the card YAML.  Users keep their
 # own rules outside these markers; only the marked block is regenerated.
 RULES_BEGIN_MARKER = "# >>> ramses_extras managed rules >>>"
@@ -367,6 +372,7 @@ FEATURE_DEFINITION: dict[str, Any] = {
     "device_entity_mapping": FLOORPLAN_DEVICE_ENTITY_MAPPING,
     "websocket_commands": FLOORPLAN_WEBSOCKET_COMMANDS,
     "standalone_entities": FLOORPLAN_STANDALONE_ENTITIES,
+    "frontend_resources": [STUDIO_PROVIDER_RESOURCE],
     "card_configs": [],
     "required_entities": {},
     "entity_mappings": {},
@@ -421,6 +427,7 @@ __all__ = [
     "GENERATED_BACKUP_JSON",
     "GENERATED_CARD_YAML",
     "GENERATED_ELEMENTS_SVG",
+    "STUDIO_PROVIDER_RESOURCE",
     "GENERATED_RULE_TAG",
     "GENERATED_RULE_TOKENS",
     "OPTION_AREA_OVERRIDES",
