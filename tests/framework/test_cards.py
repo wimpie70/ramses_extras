@@ -178,7 +178,7 @@ async def test_register_cards_handles_error(hass, caplog) -> None:
     caplog.set_level("ERROR")
 
     with patch(
-        "custom_components.ramses_extras.framework.setup.cards.CardRegistry.register_bootstrap",
+        "custom_components.ramses_extras.framework.setup.cards.CardRegistry.register",
         new=AsyncMock(side_effect=RuntimeError("fail")),
     ):
         await cards.register_cards(hass)
@@ -186,6 +186,35 @@ async def test_register_cards_handles_error(hass, caplog) -> None:
     assert any(
         "CardRegistry registration failed" in msg for msg in caplog.text.splitlines()
     )
+
+
+@pytest.mark.asyncio
+async def test_register_cards_includes_feature_resources(hass) -> None:
+    """Enabled features' frontend_resources register alongside the bootstrap."""
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.setup.cards.async_get_integration_version",
+            return_value="1.0.0",
+        ),
+        patch(
+            "custom_components.ramses_extras.framework.setup.cards.get_enabled_features_dict",
+            return_value={"floorplan_helper": True, "no_such_feature": True},
+        ),
+        patch(
+            "custom_components.ramses_extras.framework.setup.cards.CardRegistry"
+        ) as mock_registry_class,
+    ):
+        mock_registry = mock_registry_class.return_value
+        mock_registry.register = AsyncMock()
+
+        await cards.register_cards(hass)
+
+        registered = mock_registry.register.await_args.args[0]
+        paths = [c.resource_path for c in registered]
+        assert (
+            "/local/ramses_extras/features/floorplan_helper/"
+            "ramses-studio-provider.js?v=1.0.0" in paths
+        )
 
 
 @pytest.mark.asyncio
