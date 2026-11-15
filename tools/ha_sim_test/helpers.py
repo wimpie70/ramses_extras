@@ -1550,10 +1550,19 @@ for root in ("/config", "/config/ramses_rf_logs"):
             lines += p.read_text().splitlines()
         except OSError:
             pass
-print(json.dumps({{"lines": [
-    ln for ln in lines
-    if (m := ts_re.match(ln)) and datetime.fromisoformat(m.group(1)) >= since
-]}}))
+matched = []
+for ln in lines:
+    m = ts_re.match(ln)
+    if not m:
+        continue
+    ts = datetime.fromisoformat(m.group(1))
+    if ts.tzinfo is not None:
+        # packet_log lines are tz-aware UTC; normalise to container-local
+        # naive so they compare with the baseline and HA-log timestamps
+        ts = ts.astimezone().replace(tzinfo=None)
+    if ts >= since:
+        matched.append(ln)
+print(json.dumps({{"lines": matched}}))
 """
     )
     return list(result.get("lines", []))
