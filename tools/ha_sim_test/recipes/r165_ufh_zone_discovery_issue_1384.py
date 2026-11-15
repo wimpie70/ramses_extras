@@ -175,9 +175,13 @@ class R165UfhZoneDiscoveryIssue1384(Recipe):
         # 1. Inject the controller's zone-indexed broadcasts for zones
         #    03-05: each must instantiate its zone, and ramses_cc must
         #    register the climate entities.
-        print(f"  Injecting CTL 2309/30C9/000A arrays for zones {_ZONES}...")
+        # Note: inject the zone-*creating* packets first.  The temperature
+        # 30C9 goes out separately, only after the zones are registered —
+        # zone creation is async, so a 30C9 in the same burst can still
+        # dispatch as unknown_<code> and lose its temperature (flaked R165
+        # on ha-sim-3).
+        print(f"  Injecting CTL 2309/000A arrays for zones {_ZONES}...")
         _inject(ctx.token, CTL, "2309", _P2309, "I")
-        _inject(ctx.token, CTL, "30C9", _P30C9, "I")
         _inject(ctx.token, CTL, "000A", _P000A, "I")
 
         async def _zones_registered() -> bool:
@@ -199,9 +203,12 @@ class R165UfhZoneDiscoveryIssue1384(Recipe):
             f"expected unique_ids {sorted(_ZONE_UIDS)} in entity registry",
         )
 
-        # The same broadcast must populate zone state — zone 03's climate
-        # current_temperature is the injected 23.45 C (HA reports it at
-        # 0.1-degree precision, hence the tolerance).
+        # Now that the zones exist, the 30C9 broadcast populates zone
+        # state — zone 03's climate current_temperature is the injected
+        # 23.45 C (HA reports it at 0.1-degree precision, hence the
+        # tolerance).
+        _inject(ctx.token, CTL, "30C9", _P30C9, "I")
+
         async def _zone03_temp_check() -> bool:
             entities = await self._get_entity_registry(ctx)
             eid = next(
