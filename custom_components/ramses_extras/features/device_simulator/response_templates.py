@@ -90,6 +90,65 @@ def build_schema_000c_response(
     return None
 
 
+def build_schema_0004_response(
+    rq_payload: str,
+    dst: str,
+    schema: dict[str, Any] | None,
+) -> str | None:
+    """Build a 0004 (zone_name) RP payload from the active profile schema.
+
+    Real controllers echo the requested zone index and return the zone's
+    configured name — e.g. issue ramses_rf#1384: RQ 0004 002 0000 →
+    RP 0004 ...0000416E6E6162656C... (zone 00, "Annabel").  A fixed zone-00
+    name gives every per-zone poll the wrong index.
+
+    :param rq_payload: RQ payload (zone_idx + flag, e.g. "0400")
+    :param dst: Destination device ID (the CTL being queried)
+    :param schema: Active profile's _schema dict, or None
+    :return: RP payload string, or None if the zone is not in the schema
+    """
+    if not schema:
+        return None
+
+    rq_payload = (rq_payload or "").upper()
+    if len(rq_payload) < 2:
+        return None
+
+    zone_idx = rq_payload[:2]
+
+    ctl_schema = schema.get(dst)
+    if not ctl_schema or "zones" not in ctl_schema:
+        for _dev_id, entry in schema.items():
+            if isinstance(entry, dict) and "zones" in entry:
+                ctl_schema = entry
+                break
+    if not ctl_schema or "zones" not in ctl_schema:
+        return None
+
+    zone = ctl_schema.get("zones", {}).get(zone_idx)
+    if zone is None:
+        return None
+
+    if isinstance(zone, dict):
+        name = zone.get("_name") or zone.get("name")
+    else:
+        name = None
+    # A zone without _name has no name on a real controller either — don't
+    # answer.  Inventing "Zone N" would teach ramses_rf a name that masks
+    # the schema's intentional absence (e.g. UFH circuit fallback naming).
+    if not name:
+        return None
+
+    name_hex = (
+        str(name)
+        .encode("ascii", errors="replace")[:20]
+        .ljust(20, b"\x00")
+        .hex()
+        .upper()
+    )
+    return f"{zone_idx}00{name_hex}"
+
+
 def _coerce_hex_byte(value: str | None) -> int:
     """Convert a 1-byte hex string into an int with graceful fallback."""
 
@@ -107,7 +166,8 @@ def build_dynamic_response(
     """Return a minimal synthetic payload when the DB lacks a template.
 
     Currently synthesizes RP payloads for:
-    - CTL: 000C, 30C9, 2349 (zone/heating discovery)
+    - CTL: 000C, 30C9, 2349 (zone/heating discovery), 10E0/1F41/2E04 (polled)
+    - UFC: 10E0, 1F09 (polled)
     - FAN: 22F1, 31D9, 22E0, 22E5, 22E9, 22F8 (HVAC discovery fallbacks)
     """
 
@@ -153,8 +213,11 @@ def build_dynamic_response(
             return "00FF00"
 
         if code_norm == "0004":
-            # Zone name: return generic zone name
-            return "0000436C6F756E67650000000000000000000000000000"
+            # Zone name: echo the requested zone index like a real
+            # controller does (was fixed at zone 00; also fixes the
+            # "Clounge" typo — 4C6F756E6765 is "Lounge").
+            zone_hex = (payload[:2] or "00").zfill(2)
+            return f"{zone_hex}004C6F756E6765" + "00" * 14
 
         if code_norm == "0005":
             # Zone config: minimal response
@@ -192,6 +255,20 @@ def build_dynamic_response(
             # Multi-code response
             return "072309054E29"
 
+        if code_norm == "10E0":
+            # Device info: Evo Color controller (captured payload from
+            # a real system — see ramses_rf#1384).  The CTL is polled
+            # for 10E0 daily (liveness + model identification).
+            return "000002FF0163FFFFFFFF660607E8010807DD45766F20436F6C6F720000000000000000000000"  # noqa: E501
+
+        if code_norm == "1F41":
+            # DHW mode: auto, no active override (real-capture shape)
+            return "000100FFFFFF"
+
+        if code_norm == "2E04":
+            # Evohome system mode: auto, no override (real-capture shape)
+            return "00FFFFFFFFFFFF00"
+
         if code_norm == "2309":
             # Zone demand: minimal response
             return "0005DC0101F40205DC"
@@ -211,6 +288,19 @@ def build_dynamic_response(
         if code_norm == "3B00":
             # Boiler fault: no fault
             return "FCC8"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # UFC (Heat) responses - fallback when DB entry missing
+    # ─────────────────────────────────────────────────────────────────────────
+    if slug_norm == "UFC":
+        if code_norm == "10E0":
+            # Device info: HCE80 UFH controller (captured payload from
+            # device_db heat_02_HCE80_V3.10_061117 conversation)
+            return "000003FF0203FFFF0001FFFFFFFF060B07E148434538302056332E313020303631313137"  # noqa: E501
+
+        if code_norm == "1F09":
+            # UFH status / sync heartbeat: ~2330s remaining
+            return "FF091A"
 
     # ─────────────────────────────────────────────────────────────────────────
     # OTB (Heat) responses - fallback when DB entry missing
