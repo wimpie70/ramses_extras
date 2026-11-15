@@ -133,11 +133,11 @@ def build_schema_0004_response(
         name = zone.get("_name") or zone.get("name")
     else:
         name = None
+    # A zone without _name has no name on a real controller either — don't
+    # answer.  Inventing "Zone N" would teach ramses_rf a name that masks
+    # the schema's intentional absence (e.g. UFH circuit fallback naming).
     if not name:
-        try:
-            name = f"Zone {int(zone_idx, 16)}"
-        except ValueError:
-            name = "Zone"
+        return None
 
     name_hex = (
         str(name)

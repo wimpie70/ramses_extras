@@ -173,6 +173,7 @@ class TestBuildSchema0004Response:
             "zones": {
                 "00": {"_name": "Annabel", "class": "radiator_valve"},
                 "04": {"_name": "Bathroom", "class": "underfloor_heating"},
+                "05": {"class": "underfloor_heating"},
             }
         }
     }
@@ -191,6 +192,12 @@ class TestBuildSchema0004Response:
 
     def test_zone_not_in_schema_returns_none(self):
         assert build_schema_0004_response("0900", "01:150000", self.SCHEMA) is None
+
+    def test_unnamed_zone_returns_none(self):
+        """A schema zone without _name is suppressed — a real controller
+        has no name to report, and inventing one (e.g. 'Zone 5') would
+        teach ramses_rf a name that masks the intended fallback."""
+        assert build_schema_0004_response("0500", "01:150000", self.SCHEMA) is None
 
     def test_no_schema_returns_none(self):
         assert build_schema_0004_response("0000", "01:150000", None) is None
