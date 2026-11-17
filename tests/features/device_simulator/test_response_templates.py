@@ -6,6 +6,7 @@ from custom_components.ramses_extras.features.device_simulator.response_template
     DynamicResponse,
     _coerce_hex_byte,
     build_dynamic_response,
+    build_schema_0004_response,
 )
 
 
@@ -112,12 +113,17 @@ class TestBuildDynamicResponseCtlFallback:
         "code,expected",
         [
             ("0002", "00FF00"),
-            ("0004", "0000436C6F756E67650000000000000000000000000000"),
             ("0005", "0000FF01"),
             ("000A", "011001F40DAC"),
             # 000C, 2349, 30C9 are handled by the dynamic section above
             # the fallback, so they return dynamic results, not fallback.
             ("0100", "00656EFFFF"),
+            (
+                "10E0",
+                "000002FF0163FFFFFFFF660607E8010807DD45766F20436F6C6F720000000000000000000000",
+            ),  # noqa: E501
+            ("1F41", "000100FFFFFF"),
+            ("2E04", "00FFFFFFFFFFFF00"),
             ("1100", "FC180400007FFF01"),
             ("1260", "00FF00"),
             ("1290", "00FF00"),
@@ -134,6 +140,94 @@ class TestBuildDynamicResponseCtlFallback:
 
     def test_ctl_unknown_code(self):
         result = build_dynamic_response("CTL", "9999", "")
+        assert result is None
+
+
+class TestBuildDynamicResponseCtlZoneName:
+    """0004 zone-name responses echo the requested zone index."""
+
+    def test_ctl_0004_echoes_zone_index(self):
+        """A real controller answers RQ 0004 zz00 with zone zz's name."""
+        result = build_dynamic_response("CTL", "0004", "0400")
+        assert result is not None
+        assert result[:4] == "0400"
+        # "Lounge" (4C6F756E6765) null-padded to 20 bytes
+        assert result == "04004C6F756E6765" + "00" * 14
+
+    def test_ctl_0004_empty_payload_defaults_zone_zero(self):
+        result = build_dynamic_response("CTL", "0004", "")
+        assert result == "00004C6F756E6765" + "00" * 14
+
+    def test_ctl_0004_not_fixed_at_zone_zero(self):
+        """Regression: the old template always returned zone 00."""
+        result = build_dynamic_response("CTL", "0004", "0700")
+        assert result is not None
+        assert result[:2] == "07"
+
+
+class TestBuildSchema0004Response:
+    """Schema-aware 0004 responses use the profile's zone _name."""
+
+    SCHEMA = {
+        "01:150000": {
+            "zones": {
+                "00": {"_name": "Annabel", "class": "radiator_valve"},
+                "04": {"_name": "Bathroom", "class": "underfloor_heating"},
+                "05": {"class": "underfloor_heating"},
+            }
+        }
+    }
+
+    def test_named_zone(self):
+        result = build_schema_0004_response("0000", "01:150000", self.SCHEMA)
+        assert result is not None
+        assert result[:4] == "0000"
+        assert bytes.fromhex(result[4:]).rstrip(b"\x00") == b"Annabel"
+
+    def test_named_zone_04(self):
+        result = build_schema_0004_response("0400", "01:150000", self.SCHEMA)
+        assert result is not None
+        assert result[:4] == "0400"
+        assert bytes.fromhex(result[4:]).rstrip(b"\x00") == b"Bathroom"
+
+    def test_zone_not_in_schema_returns_none(self):
+        assert build_schema_0004_response("0900", "01:150000", self.SCHEMA) is None
+
+    def test_unnamed_zone_returns_none(self):
+        """A schema zone without _name is suppressed — a real controller
+        has no name to report, and inventing one (e.g. 'Zone 5') would
+        teach ramses_rf a name that masks the intended fallback."""
+        assert build_schema_0004_response("0500", "01:150000", self.SCHEMA) is None
+
+    def test_no_schema_returns_none(self):
+        assert build_schema_0004_response("0000", "01:150000", None) is None
+
+    def test_ctl_not_dst_falls_back_to_zones_entry(self):
+        """The schema lookup falls back to whichever entry has zones."""
+        result = build_schema_0004_response("0000", "01:999999", self.SCHEMA)
+        assert result is not None
+        assert result[:4] == "0000"
+
+
+class TestBuildDynamicResponseUfc:
+    """UFC (02:) fallback responses — polled 10E0/1F09 (ramses_rf#1384)."""
+
+    @pytest.mark.parametrize(
+        "code,expected",
+        [
+            (
+                "10E0",
+                "000003FF0203FFFF0001FFFFFFFF060B07E148434538302056332E313020303631313137",  # noqa: E501
+            ),
+            ("1F09", "FF091A"),
+        ],
+    )
+    def test_ufc_fallback_codes(self, code, expected):
+        result = build_dynamic_response("UFC", code, "")
+        assert result == expected
+
+    def test_ufc_unknown_code(self):
+        result = build_dynamic_response("UFC", "9999", "")
         assert result is None
 
 

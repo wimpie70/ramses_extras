@@ -2899,3 +2899,85 @@ class TestScenarioEngineRunRegisteredScenario:
         assert result["success"] is True
         # The custom_message should be in the response from details.update
         assert result["custom_message"] == "done"
+
+
+class TestScenarioEngineSchema0004:
+    """0004 zone-name responses prefer the active profile schema (R154).
+
+    Without this, the zone-index match against recorded device_db payloads
+    teaches ramses_rf foreign zone names (e.g. "Bedroom 4" from the
+    reference CTL capture) that override the profile's _name traits.
+    """
+
+    SCHEMA = {
+        "01:150000": {
+            "zones": {
+                "0A": {"_name": "Living Room", "class": "underfloor_heating"},
+                "0B": {"class": "underfloor_heating"},
+            }
+        }
+    }
+
+    def _engine(self) -> ScenarioEngine:
+        hass = MagicMock()
+        hass.bus.async_fire = MagicMock()
+        endpoint = MagicMock()
+        endpoint.send_packet = AsyncMock()
+        endpoint.is_connected = True
+        db = MagicMock()
+        db.get_periodic = MagicMock(return_value=[])
+        db.find_response = MagicMock(
+            return_value=ResponseEntry(
+                code="0004",
+                payloads=[
+                    "0A00426564726F6F6D2034" + "00" * 8,  # "Bedroom 4" capture
+                ],
+                delay_ms=0,
+            )
+        )
+        engine = ScenarioEngine(hass, endpoint, db)
+        engine.set_profile_schema(self.SCHEMA)
+        engine._active_devices["01:150000"] = ActiveDevice(
+            device_id="01:150000", slug="CTL", origin="profile"
+        )
+        return engine
+
+    @staticmethod
+    def _rp_frames(endpoint: MagicMock) -> list[str]:
+        return [
+            c.args[0]
+            for c in endpoint.send_packet.await_args_list
+            if " RP " in c.args[0]
+        ]
+
+    @pytest.mark.asyncio
+    async def test_0004_named_zone_answers_schema_name(self) -> None:
+        """RQ 0004 for a named schema zone echoes index + _name."""
+        engine = self._engine()
+        await engine._handle_inbound_frame(
+            "RQ --- 18:001234 01:150000 --:------ 0004 002 0A00"
+        )
+        rps = self._rp_frames(engine._endpoint)
+        assert len(rps) == 1
+        assert " 0004 " in rps[0]
+        payload = rps[0].rsplit(" ", 1)[-1]
+        assert payload[:4] == "0A00"
+        assert bytes.fromhex(payload[4:]).rstrip(b"\x00") == b"Living Room"
+
+    @pytest.mark.asyncio
+    async def test_0004_unnamed_zone_suppressed(self) -> None:
+        """A schema zone without _name gets no answer (no invented name)."""
+        engine = self._engine()
+        await engine._handle_inbound_frame(
+            "RQ --- 18:001234 01:150000 --:------ 0004 002 0B00"
+        )
+        assert self._rp_frames(engine._endpoint) == []
+
+    @pytest.mark.asyncio
+    async def test_0004_unlisted_zone_suppressed(self) -> None:
+        """Zones absent from the schema are not answered from captures."""
+        engine = self._engine()
+        await engine._handle_inbound_frame(
+            "RQ --- 18:001234 01:150000 --:------ 0004 002 0500"
+        )
+        assert self._rp_frames(engine._endpoint) == []

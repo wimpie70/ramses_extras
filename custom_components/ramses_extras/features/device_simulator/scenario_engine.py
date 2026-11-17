@@ -50,7 +50,11 @@ from .message_log import (
     MessageOrigin,
     PacketDirection,
 )
-from .response_templates import build_dynamic_response, build_schema_000c_response
+from .response_templates import (
+    build_dynamic_response,
+    build_schema_000c_response,
+    build_schema_0004_response,
+)
 from .scenarios import discover_scenarios
 from .scenarios.base import ScenarioContext, ScenarioDefinition, ScenarioResult
 from .system_config import SIM_DEVICE_ID, SystemConfigProfile
@@ -1486,6 +1490,36 @@ class ScenarioEngine:
                 "ScenarioEngine: 000C zone %s not in schema, not responding",
                 rq_payload[:2],
             )
+            return
+
+        # 0004 (zone_name): same schema-aware pattern as 000C — echo the
+        # requested zone index with the active profile's _name.  With a
+        # schema, an unlisted or unnamed zone means "no such name": don't
+        # respond — the recorded payloads would teach ramses_rf foreign
+        # zone names (e.g. "Bedroom 4" from the reference CTL capture,
+        # breaking profiles that rely on _name/fallback naming, R154).
+        if code == "0004" and rq_payload and self._profile_schema is not None:
+            schema_payload = build_schema_0004_response(
+                rq_payload, dst, self._profile_schema
+            )
+            if schema_payload is None:
+                LOGGER.debug(
+                    "ScenarioEngine: 0004 zone %s not in schema or unnamed, "
+                    "not responding",
+                    rq_payload[:2],
+                )
+                return
+            delay_ms = resp.delay_ms if resp else 0
+            if delay_ms > 0:
+                await asyncio.sleep(delay_ms / 1000.0)
+            packet = self._build_packet(dst, src, VERB_RP, code, schema_payload)
+            try:
+                await self._endpoint.send_packet(packet)
+                self._messages_sent += 1
+                self._log_and_emit("outbound", packet, origin="auto_answer")
+                LOGGER.debug("Responded %s RP/%s → %s", dst, code, src)
+            except Exception as err:
+                LOGGER.warning("Failed to send RP for %s/%s: %s", dst, code, err)
             return
 
         # Standard response handling for non-2411 codes

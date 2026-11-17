@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, Final
 
 from .const import LOGGER
 from .device_db import DeviceDatabase, ResponseEntry
-from .response_templates import build_dynamic_response, build_schema_000c_response
+from .response_templates import (
+    build_dynamic_response,
+    build_schema_000c_response,
+    build_schema_0004_response,
+)
 from .system_config import ConfigProfileStore
 
 if TYPE_CHECKING:
@@ -208,6 +212,22 @@ class ResponseEngine:
                     )
                     return
 
+            # 0004 (zone_name): same schema-aware pattern — echo the
+            # requested zone index and the profile's _name.  With an active
+            # schema, an unlisted zone means "no such zone": don't respond.
+            if not payload and code == "0004" and verb == "RQ":
+                schema_payload = build_schema_0004_response(
+                    parsed["payload"], dst, self._active_schema()
+                )
+                if schema_payload is not None:
+                    payload = schema_payload
+                elif self._has_active_schema():
+                    LOGGER.debug(
+                        "ResponseEngine: 0004 zone %s not in schema, not responding",
+                        (parsed["payload"] or "")[:2],
+                    )
+                    return
+
             if not payload and response and response.payloads:
                 payload = response.payloads[0]
                 delay_ms = response.delay_ms
@@ -304,6 +324,7 @@ class ResponseEngine:
             "07": "DHW",  # DHW sensor
             "10": "OTB",  # OpenTherm bridge
             "13": "BDR",  # BDR relay
+            "02": "UFC",  # Underfloor heating controller
         }
 
         type_code = device_id.split(":")[0]
@@ -318,30 +339,24 @@ class ResponseEngine:
         :param dst: Destination device ID (the CTL being queried)
         :return: RP payload string, or None if zone not in schema
         """
+        return build_schema_000c_response(rq_payload, dst, self._active_schema())
+
+    def _active_schema(self) -> dict | None:
+        """Return the active profile's _schema dict, or None."""
         if not self._config_store:
             return None
-
         profile_name = self._config_store.get_active_profile()
         if not profile_name:
             return None
         profile = self._config_store.get_profile(profile_name)
         if not profile:
             return None
-
-        schema = profile.device_configs.get("_schema", {})
-        return build_schema_000c_response(rq_payload, dst, schema)
+        schema = profile.device_configs.get("_schema")
+        return schema if schema else None
 
     def _has_active_schema(self) -> bool:
         """Return True if the active profile has a _schema dict."""
-        if not self._config_store:
-            return False
-        profile_name = self._config_store.get_active_profile()
-        if not profile_name:
-            return False
-        profile = self._config_store.get_profile(profile_name)
-        if not profile:
-            return False
-        return bool(profile.device_configs.get("_schema"))
+        return self._active_schema() is not None
 
     def _build_write_ack_payload(
         self, parsed: dict[str, str], response: ResponseEntry | None
