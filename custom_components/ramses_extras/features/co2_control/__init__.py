@@ -37,7 +37,6 @@ from .platforms import (
     sensor_async_setup_entry,
     switch_async_setup_entry,
 )
-from .zone_manager import CO2Zone, CO2ZoneManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +54,6 @@ class CO2ControlFeature:
         self.hass = hass
         self.device_id = device_id
         self.config = CO2Config(hass, device_id, config)
-        self.zone_manager = CO2ZoneManager(hass, device_id, config)
 
         _LOGGER.info("CO2 Control feature initialized for device %s", device_id)
 
@@ -149,8 +147,6 @@ __all__ = [
     "create_co2_control_feature",
     "async_create_co2_control_feature",
     "CO2Config",
-    "CO2Zone",
-    "CO2ZoneManager",
     # Platform exports
     "CO2ControlSwitch",
     "CO2ControlNumber",

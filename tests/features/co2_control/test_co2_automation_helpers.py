@@ -149,9 +149,8 @@ def test_iter_candidate_ids_and_device_switch_logic(
     manager: CO2AutomationManager,
 ) -> None:
     """Candidate IDs and device automation enablement should use merged inputs."""
-    manager._zone_managers = {"32:777777": MagicMock()}
     ids = manager._iter_candidate_device_ids()
-    assert ids == ["32:123456", "32:123456 (FAN)", "32:654321", "32:777777"]
+    assert ids == ["32:123456", "32:123456 (FAN)", "32:654321"]
 
     assert manager._is_automation_enabled_for_device("32:123456") is True
     manager.config.update_config({"automation_enabled": False})
@@ -164,24 +163,10 @@ def test_iter_candidate_ids_and_device_switch_logic(
 
 
 @pytest.mark.asyncio
-async def test_setup_zone_managers_and_source_listeners(
+async def test_register_source_listeners(
     manager: CO2AutomationManager,
 ) -> None:
-    """Zone managers and source listeners should be created from config/context."""
-    with patch(
-        "custom_components.ramses_extras.features.co2_control.automation.CO2ZoneManager"
-    ) as zone_manager_cls:
-        zone_manager = MagicMock()
-        zone_manager_cls.return_value = zone_manager
-        await manager._setup_zone_managers()
-
-    assert "32:123456" in manager._zone_managers
-    zone_manager_cls.assert_called_once_with(
-        manager.hass,
-        "32:123456",
-        {"enabled": True},
-    )
-
+    """Source listeners should be created from the sensor control context."""
     manager._state_change_listeners = []
     manager._source_listener_entities = {}
     manager._handle_co2_sensor_change = AsyncMock()
@@ -225,19 +210,11 @@ async def test_async_setup_and_sensor_listener_edge_paths(
         CO2AutomationManager,
     )
     manager._is_feature_enabled = MagicMock(return_value=True)
-    manager._setup_zone_managers = AsyncMock()
     manager._setup_sensor_listeners = AsyncMock()
     assert await manager.async_setup() is True
-    manager._setup_zone_managers.assert_awaited_once()
     manager._setup_sensor_listeners.assert_awaited_once()
     manager._setup_sensor_listeners = real_setup_sensor_listeners
 
-    zone_manager = MagicMock()
-    zone_manager.zones = {
-        "zone_1": MagicMock(sensor_entity="sensor.zone_one", zone_id="zone_1"),
-        "zone_2": MagicMock(sensor_entity="", zone_id="zone_2"),
-    }
-    manager._zone_managers = {"32:123456": zone_manager}
     manager.hass.data[DOMAIN]["devices"] = [
         {"device_id": "32:123456", "type": "FAN"},
         {"device_id": "32:654321", "type": "FAN"},
@@ -246,17 +223,8 @@ async def test_async_setup_and_sensor_listener_edge_paths(
     ]
     manager._setup_source_listeners_for_device = AsyncMock()
     manager._state_change_listeners = []
-    with patch(
-        "custom_components.ramses_extras.features.co2_control.automation.async_track_state_change_event",
-        return_value=MagicMock(),
-    ) as track_listener:
-        await manager._setup_sensor_listeners()
+    await manager._setup_sensor_listeners()
 
-    track_listener.assert_called_once_with(
-        manager.hass,
-        ["sensor.zone_one"],
-        manager._handle_co2_sensor_change,
-    )
     manager._setup_source_listeners_for_device.assert_any_await("32:123456")
     manager._setup_source_listeners_for_device.assert_any_await("32:654321")
     manager._setup_source_listeners_for_device.assert_any_await("32:777777")
@@ -308,30 +276,15 @@ async def test_setup_source_listeners_for_device_stores_context(
 
 
 @pytest.mark.asyncio
-async def test_handle_co2_sensor_change_routes_to_zone_or_sensor_context(
+async def test_handle_co2_sensor_change_routes_to_sensor_context(
     manager: CO2AutomationManager,
 ) -> None:
-    """Sensor changes should route through zones first, then sensor context."""
-    zone_manager = MagicMock()
-    zone_manager.zones = {
-        "zone_1": MagicMock(sensor_entity="sensor.zone_co2", zone_id="zone_1")
-    }
-    zone_manager.update_from_state = AsyncMock()
-    manager._zone_managers = {"32:123456": zone_manager}
+    """Sensor changes should route through the sensor control context."""
     manager._latest_sensor_control_context = {
         "32:654321": {"mappings": {"co2": "sensor.internal_co2"}, "area_sensors": []}
     }
     manager._evaluate_co2_control = AsyncMock()
 
-    zone_event = Event(
-        "state_changed",
-        {"entity_id": "sensor.zone_co2", "new_state": _MockState("1200")},
-    )
-    await manager._handle_co2_sensor_change(zone_event)
-    zone_manager.update_from_state.assert_awaited_once()
-    manager._evaluate_co2_control.assert_awaited_once_with("32:123456")
-
-    manager._evaluate_co2_control.reset_mock()
     sensor_event = Event(
         "state_changed",
         {"entity_id": "sensor.internal_co2", "new_state": _MockState("900")},
@@ -634,42 +587,6 @@ async def test_boost_uses_per_area_band_thresholds(
         manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
         == "fan_medium"
     )
-
-
-@pytest.mark.asyncio
-async def test_legacy_zones_evaluated_as_trigger_sources(
-    manager: CO2AutomationManager,
-) -> None:
-    """Legacy YAML zones trigger through the unified source path (issue 357)."""
-    zone = SimpleNamespace(
-        zone_id="z1",
-        zone_name="Bedroom",
-        sensor_entity="sensor.bedroom_co2",
-        threshold=1000,
-        enabled=True,
-        is_triggered=False,
-    )
-    zone_manager = MagicMock()
-    zone_manager.zones = {"z1": zone}
-
-    state = MagicMock()
-    state.state = "1600"
-
-    def _states_get(entity_id: str) -> MagicMock | None:
-        return state if entity_id == "sensor.bedroom_co2" else None
-
-    manager.hass.states.get = MagicMock(side_effect=_states_get)
-
-    triggered = manager._evaluate_trigger_sources(
-        "32:123456", {"area_sensors": [], "mappings": {}}, zone_manager
-    )
-
-    zone_hits = [t for t in triggered if t["source_id"] == "zone_z1"]
-    assert len(zone_hits) == 1
-    assert zone_hits[0]["zone_id"] == "z1"
-    assert zone_hits[0]["label"] == "Bedroom"
-    assert zone_hits[0]["medium_threshold"] == manager.config.medium_threshold
-    assert zone.is_triggered is True
 
 
 @pytest.mark.asyncio

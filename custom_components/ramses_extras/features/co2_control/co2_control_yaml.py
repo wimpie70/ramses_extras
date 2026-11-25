@@ -23,22 +23,6 @@ from .const import (
 
 # CO2 Control YAML Schemas
 
-CO2_ZONE_SCHEMA = vol.Schema(
-    {
-        vol.Required("zone_id"): str,
-        vol.Optional("name"): str,
-        vol.Optional("threshold", default=1000): vol.All(
-            int, vol.Range(min=400, max=2000)
-        ),
-        vol.Optional("activation_hysteresis", default=100): vol.All(
-            int, vol.Range(min=0, max=500)
-        ),
-        vol.Optional("deactivation_hysteresis", default=-100): vol.All(
-            int, vol.Range(min=-500, max=0)
-        ),
-    }
-)
-
 CO2_FAN_CONFIG_SCHEMA = vol.Schema(
     {
         vol.Optional("enabled", default=True): bool,
@@ -57,7 +41,6 @@ CO2_FAN_CONFIG_SCHEMA = vol.Schema(
         ),
         vol.Optional("cooldown_period_minutes", default=15): int,
         vol.Optional("priority_over_humidity", default=True): bool,
-        vol.Optional("zones"): [CO2_ZONE_SCHEMA],
     }
 )
 
@@ -107,11 +90,6 @@ def co2_control_validator(section: dict, hass: Any | None = None) -> list[str]:
                 deact = deactivation
                 msg = f"FAN {fan_id}: deactivation_hysteresis {deact} out of range"
                 errors.append(msg)
-
-        # Validate zones if present
-        zones = fan_config.get("zones", [])
-        if zones and not isinstance(zones, list):
-            errors.append(f"FAN {fan_id}: zones must be a list")
 
     return errors
 

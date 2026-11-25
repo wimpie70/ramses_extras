@@ -61,12 +61,6 @@ class CO2Config:
         return int(self._config.get("deactivation_hysteresis", -100))
 
     @property
-    def zones(self) -> list[dict[str, Any]]:
-        """Get zone configurations."""
-        zones = self._config.get("zones", [])
-        return zones if isinstance(zones, list) else []
-
-    @property
     def max_runtime_minutes(self) -> int:
         """Get maximum runtime in minutes."""
         return int(self._config.get("max_runtime_minutes", 120))
@@ -101,17 +95,6 @@ class CO2Config:
         """Check if CO2 has priority over humidity control."""
         return bool(self._config.get("priority_over_humidity", True))
 
-    def get_zone_config(self, zone_id: str) -> dict[str, Any] | None:
-        """Get configuration for a specific zone.
-
-        :param zone_id: Zone identifier
-        :return: Zone configuration or None if not found
-        """
-        for zone in self.zones:
-            if zone.get("zone_id") == zone_id:
-                return zone
-        return None
-
     def update_config(self, updates: dict[str, Any]) -> None:
         """Update configuration.
 
@@ -142,21 +125,6 @@ class CO2Config:
 
         if self.deactivation_hysteresis > 0:
             errors.append("Deactivation hysteresis must be negative")
-
-        # Validate zones
-        zone_ids = set()
-        for zone in self.zones:
-            zone_id = zone.get("zone_id")
-            if not zone_id:
-                errors.append("Zone missing zone_id")
-                continue
-
-            if zone_id in zone_ids:
-                errors.append(f"Duplicate zone_id: {zone_id}")
-            zone_ids.add(zone_id)
-
-            if not zone.get("sensor_entity"):
-                errors.append(f"Zone {zone_id} missing sensor_entity")
 
         return len(errors) == 0, errors
 

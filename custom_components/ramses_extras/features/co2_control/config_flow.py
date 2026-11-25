@@ -49,25 +49,6 @@ def get_co2_control_schema(hass: HomeAssistant, device_id: str) -> vol.Schema:
     )
 
 
-def get_zone_config_schema(hass: HomeAssistant) -> vol.Schema:
-    """Get zone configuration schema.
-
-    :param hass: Home Assistant instance
-    :return: Zone configuration schema
-    """
-    return vol.Schema(
-        {
-            vol.Required("zone_id"): str,
-            vol.Required("zone_name"): str,
-            vol.Required("sensor_entity"): str,
-            vol.Optional("threshold", default=1000): vol.All(
-                vol.Coerce(int), vol.Range(min=400, max=2000)
-            ),
-            vol.Optional("enabled", default=True): bool,
-        }
-    )
-
-
 async def async_validate_co2_config(
     hass: HomeAssistant, config: dict[str, Any]
 ) -> dict[str, str]:
@@ -92,15 +73,6 @@ async def async_validate_co2_config(
     deactivation = config.get("deactivation_hysteresis", -100)
     if deactivation > 0:
         errors["deactivation_hysteresis"] = "must_be_negative"
-
-    # Validate zones if present
-    zones = config.get("zones", [])
-    for idx, zone in enumerate(zones):
-        sensor_entity = zone.get("sensor_entity")
-        if sensor_entity:
-            state = hass.states.get(sensor_entity)
-            if not state:
-                errors[f"zone_{idx}_sensor"] = "entity_not_found"
 
     return errors
 
@@ -357,7 +329,6 @@ async def async_step_co2_control_config(
 
 __all__ = [
     "get_co2_control_schema",
-    "get_zone_config_schema",
     "async_validate_co2_config",
     "async_step_co2_control_config",
 ]

@@ -36,12 +36,6 @@ class CO2Services:
 
         self.hass.services.async_register(
             "ramses_extras",
-            "set_zone_threshold",
-            self._handle_set_zone_threshold,
-        )
-
-        self.hass.services.async_register(
-            "ramses_extras",
             "trigger_co2_boost",
             self._handle_trigger_co2_boost,
         )
@@ -68,24 +62,6 @@ class CO2Services:
         _LOGGER.info("Disable CO2 control called for device %s", device_id)
 
         # Implementation will update config entry and disable automation
-
-    async def _handle_set_zone_threshold(self, call: ServiceCall) -> None:
-        """Handle set zone threshold service call.
-
-        :param call: Service call data
-        """
-        device_id = call.data.get("device_id")
-        zone_id = call.data.get("zone_id")
-        threshold = call.data.get("threshold")
-
-        _LOGGER.info(
-            "Set zone threshold called for device %s, zone %s: %s ppm",
-            device_id,
-            zone_id,
-            threshold,
-        )
-
-        # Implementation will update zone configuration
 
     async def _handle_trigger_co2_boost(self, call: ServiceCall) -> None:
         """Handle trigger CO2 boost service call.

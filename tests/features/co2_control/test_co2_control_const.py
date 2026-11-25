@@ -107,8 +107,6 @@ class TestCo2ControlConst:
 
         expected_commands = [
             "get_co2_status",
-            "get_zone_details",
-            "update_zone_config",
             "get_co2_history",
         ]
 
@@ -150,7 +148,6 @@ class TestCo2ControlConst:
         assert CO2_CONTROL_DEFAULTS["default_threshold"] == 1000
         assert CO2_CONTROL_DEFAULTS["activation_hysteresis"] == 100
         assert CO2_CONTROL_DEFAULTS["deactivation_hysteresis"] == -100
-        assert CO2_CONTROL_DEFAULTS["zones"] == []
         assert CO2_CONTROL_DEFAULTS["max_runtime_minutes"] == 120
         assert CO2_CONTROL_DEFAULTS["cooldown_period_minutes"] == 15
         assert CO2_CONTROL_DEFAULTS["priority_over_humidity"] is True

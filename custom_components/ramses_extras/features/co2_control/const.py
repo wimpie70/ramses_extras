@@ -103,8 +103,6 @@ CO2_DEVICE_ENTITY_MAPPING = {
 # WebSocket commands for the CO2 control feature
 CO2_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {
     "get_co2_status": "ramses_extras/co2/get_status",
-    "get_zone_details": "ramses_extras/co2/get_zone_details",
-    "update_zone_config": "ramses_extras/co2/update_zone",
     "get_co2_history": "ramses_extras/co2/get_history",
 }
 
@@ -139,7 +137,6 @@ CO2_CONTROL_DEFAULTS = {
     "activation_hysteresis": 100,  # ppm above threshold to activate
     "deactivation_hysteresis": -100,  # ppm below threshold to deactivate
     # Zone configuration
-    "zones": [],  # List of zone configurations
     # Safety settings
     "max_runtime_minutes": 120,
     "cooldown_period_minutes": 15,

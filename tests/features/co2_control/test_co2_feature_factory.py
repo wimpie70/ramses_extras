@@ -80,7 +80,6 @@ async def test_co2_control_feature_setup_and_unload() -> None:
         patch(
             "custom_components.ramses_extras.features.co2_control.CO2Config"
         ) as config_cls,
-        patch("custom_components.ramses_extras.features.co2_control.CO2ZoneManager"),
     ):
         config = MagicMock()
         config.validate.return_value = (True, [])
@@ -100,7 +99,6 @@ async def test_co2_control_feature_setup_validation_failure() -> None:
         patch(
             "custom_components.ramses_extras.features.co2_control.CO2Config"
         ) as config_cls,
-        patch("custom_components.ramses_extras.features.co2_control.CO2ZoneManager"),
     ):
         config = MagicMock()
         config.validate.return_value = (False, ["bad config"])

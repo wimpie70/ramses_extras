@@ -37,7 +37,7 @@ async def test_co2_services_async_register_services(hass, config_entry):
     await services.async_register_services()
 
     # Check all services were registered
-    assert hass.services.async_register.call_count == 4
+    assert hass.services.async_register.call_count == 3
 
     # Check specific service registrations
     calls = hass.services.async_register.call_args_list
@@ -53,11 +53,6 @@ async def test_co2_services_async_register_services(hass, config_entry):
         services._handle_disable_co2_control,
     )
     assert calls[2][0] == (
-        "ramses_extras",
-        "set_zone_threshold",
-        services._handle_set_zone_threshold,
-    )
-    assert calls[3][0] == (
         "ramses_extras",
         "trigger_co2_boost",
         services._handle_trigger_co2_boost,
@@ -97,25 +92,6 @@ async def test_handle_disable_co2_control(hass, config_entry):
 
 
 @pytest.mark.asyncio
-async def test_handle_set_zone_threshold(hass, config_entry):
-    """Test handling set zone threshold service."""
-    services = CO2Services(hass, config_entry)
-
-    # Create mock service call
-    call = MagicMock()
-    call.data = {
-        "device_id": "test_device",
-        "zone_id": "living_room",
-        "threshold": 1200,
-    }
-
-    # Handle the service call
-    await services._handle_set_zone_threshold(call)
-
-    # The method should log the call with all parameters
-    # Implementation would update zone configuration
-
-
 @pytest.mark.asyncio
 async def test_handle_trigger_co2_boost(hass, config_entry):
     """Test handling trigger CO2 boost service."""
@@ -172,25 +148,6 @@ async def test_handle_enable_co2_control_no_device_id(hass, config_entry):
 
 
 @pytest.mark.asyncio
-async def test_handle_set_zone_threshold_missing_params(hass, config_entry):
-    """Test handling set zone threshold service with missing parameters."""
-    services = CO2Services(hass, config_entry)
-
-    # Create mock service call with missing parameters
-    call = MagicMock()
-    call.data = MagicMock()
-    call.data.get.side_effect = lambda key, default=None: {
-        "device_id": "test_device",
-        "zone_id": None,
-        "threshold": None,
-    }.get(key, default)
-
-    # Handle the service call
-    await services._handle_set_zone_threshold(call)
-
-    # Should handle gracefully even with missing parameters
-
-
 @pytest.mark.asyncio
 async def test_service_handlers_are_async(hass, config_entry):
     """Test that all service handlers are async methods."""
@@ -201,5 +158,4 @@ async def test_service_handlers_are_async(hass, config_entry):
 
     assert inspect.iscoroutinefunction(services._handle_enable_co2_control)
     assert inspect.iscoroutinefunction(services._handle_disable_co2_control)
-    assert inspect.iscoroutinefunction(services._handle_set_zone_threshold)
     assert inspect.iscoroutinefunction(services._handle_trigger_co2_boost)

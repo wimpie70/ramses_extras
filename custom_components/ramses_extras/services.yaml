@@ -122,36 +122,6 @@ disable_co2_control:
       selector:
         text:
 
-set_zone_threshold:
-  name: Set Zone CO2 Threshold
-  description: Set CO2 threshold for a specific zone.
-  fields:
-    device_id:
-      name: Device ID
-      description: The Ramses device ID (e.g., "32:153289").
-      required: true
-      example: "32:153289"
-      selector:
-        text:
-    zone_id:
-      name: Zone ID
-      description: The zone identifier.
-      required: true
-      example: "zone_1"
-      selector:
-        text:
-    threshold:
-      name: CO2 Threshold
-      description: CO2 threshold in ppm.
-      required: true
-      example: 1000
-      selector:
-        number:
-          min: 400
-          max: 2000
-          step: 50
-          unit_of_measurement: ppm
-
 trigger_co2_boost:
   name: Trigger CO2 Boost
   description: Manually trigger CO2-based boost mode.
