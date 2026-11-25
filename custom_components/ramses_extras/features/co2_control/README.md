@@ -2,290 +2,136 @@
 
 ## Overview
 
-The CO2 Control feature provides CO2-based ventilation control for HVAC fan systems. It monitors multiple CO2 sensors across different zones and automatically adjusts fan speed when CO2 levels exceed configured thresholds.
+The CO2 Control feature provides CO2-based ventilation control for HVAC fan
+systems. It monitors CO2 sensors — the FAN's internal sensor and/or external
+room sensors configured as *area sensors* in Sensor Control — and demands
+more ventilation when levels exceed configured thresholds.
 
-**Key Features:**
-- Multi-zone CO2 monitoring
-- Automatic fan speed adjustment based on CO2 levels
+**Key features:**
+- Stepped demand bands (low / medium / high) instead of proportional speed
+- Optional fixed fan mode override for over/under-capacity units
+- Per-area thresholds and per-area band thresholds
+- Zone demand publication for DIY valve zones (area sensors carry a `zone_id`)
 - Priority over humidity control (CO2 takes precedence)
-- Configurable thresholds per zone
 - Hysteresis support to prevent oscillation
-- Zone-ready architecture for future valve control
 
-## Architecture
+## How it works
 
-### Priority System
+### Trigger sources
 
-CO2 Control has **higher priority** than Humidity Control:
+CO2 control evaluates every configured source independently:
 
-```
-CO2 Triggered → Fan Speed Increases (Humidity Control Paused)
-CO2 Normal → Humidity Control Resumes (if enabled)
-```
+1. **Area sensors** — external room sensors configured in the Sensor Control
+   feature with `area_co2_enabled` and a `co2_entity`. Each area can have its
+   own threshold and band thresholds.
+2. **Internal CO2 sensor** — the FAN device's own CO2 sensor
+   (`sensor.{device_id}_co2_level` or the sensor control `co2` mapping),
+   using the global threshold.
 
-### Zone Management
+A source *triggers* when its CO2 value reaches **threshold + activation
+hysteresis**, and *releases* when it drops to **threshold + deactivation
+hysteresis** (a negative offset). CO2 control is active while at least one
+source is triggered.
 
-Each device can have multiple zones, each with:
-- Zone ID and name
-- CO2 sensor entity
-- Threshold (ppm)
-- Enabled/disabled state
-- Future: Zone-specific valve control
+### Stepped demand bands
+
+The fan baseline already runs at low speed continuously, so demanding
+`fan_low` would change nothing — control starts at medium. While active,
+the demanded fan speed is a stepped band based on the worst (highest)
+triggered source value:
+
+| worst CO2 level | demand |
+|---|---|
+| below `high_threshold` (default 1200 ppm) | `fan_medium` |
+| above `high_threshold` | `fan_high` |
+
+Anti-flap: the activation hysteresis doubles as the step-down margin — the
+high band only steps *down* when the CO2 level falls below `high_threshold`
+minus the hysteresis.
+
+The demand is submitted to the fan speed arbiter, so other automations with
+higher priority can still overrule it.
+
+### Fixed fan mode
+
+Because low/medium/high percentages are installation-specific (dipswitches,
+2411 parameters), a fixed mode can be demanded instead of the bands —
+configure **Fan mode** in the CO2 control settings: `auto` (stepped bands,
+default), `low`, `medium`, or `high`.
+
+### Zone demands (DIY valve zones)
+
+Area sensors can carry a `zone_id`. While a source is triggered, CO2 control
+publishes a demand for that zone into the zone demand registry — the same
+mechanism humidity, REM, and manual demands use. The zone coordinator turns
+those demands into valve positions and FAN-level speed demands, so rooms
+behind a valve get air exactly when their sensors say they need it.
 
 ## Configuration
 
-### Enable CO2 Control
+### Enable CO2 control
 
 1. Navigate to **Settings → Devices & Services → Ramses Extras**
-2. Click **Configure**
-3. Enable **CO2 Control** feature
-4. Configure zones and thresholds
+2. Click **Configure** → **CO2 Control**
+3. Select the FAN devices to enable it for
+4. Adjust the settings (below)
 
-### Zone Configuration
+### Settings (per config flow, global)
 
-For each zone, configure:
-- **Zone Name**: Descriptive name (e.g., "Living Room")
-- **CO2 Sensor**: Entity ID of CO2 sensor
-- **Threshold**: CO2 level in ppm (default: 1000 ppm)
-- **Enabled**: Whether zone is active
+| setting | default | meaning |
+|---|---|---|
+| `default_threshold` | 800 ppm | trigger level for the internal sensor and areas without their own |
+| `high_threshold` | 1200 ppm | above this → `fan_high` |
 
-### Thresholds and Hysteresis
+| `activation_hysteresis` | +25 ppm | activation offset; doubles as band anti-flap margin |
+| `deactivation_hysteresis` | −25 ppm | release offset |
+| `priority_over_humidity` | true | pause humidity control while CO2 is active |
 
-- **Threshold**: Base CO2 level to trigger ventilation
-- **Activation Hysteresis**: Additional ppm above threshold to activate (default: +100 ppm)
-- **Deactivation Hysteresis**: ppm below threshold to deactivate (default: -100 ppm)
+### Area sensor settings (Sensor Control)
 
-**Example:**
-- Threshold: 1000 ppm
-- Activation: 1100 ppm (1000 + 100)
-- Deactivation: 900 ppm (1000 - 100)
+In the Sensor Control area mapping:
+
+| field | meaning |
+|---|---|
+| `area_co2_enabled` | include this area's CO2 sensor in CO2 control |
+| `co2_entity` | the CO2 sensor entity |
+| `co2_threshold` | static threshold for this area |
+| `co2_high_threshold` | per-area high band threshold; 0 = inherit the global value |
+
+If an area has no static `co2_threshold`, the global default applies.
 
 ## Entities
 
-### Switch Entities
+- `switch.co2_control_{device_id}` — enable/disable CO2 control
+- `number.co2_threshold_{device_id}` — global trigger level (400–2000 ppm)
+- `number.co2_activation_hysteresis_{device_id}` — activation hysteresis
+- `number.co2_deactivation_hysteresis_{device_id}` — deactivation hysteresis
+- `binary_sensor.co2_active_{device_id}` — whether CO2 control is active,
+  with trigger details in its attributes
+- `sensor.co2_zone_status_{device_id}` — human-readable trigger status
 
-- `switch.co2_control_{device_id}` - Enable/disable CO2 control
+## Integration with humidity control
 
-### Number Entities
-
-- `number.co2_threshold_{device_id}` - Global CO2 threshold (400-2000 ppm)
-- `number.co2_activation_hysteresis_{device_id}` - Activation hysteresis (0-500 ppm)
-- `number.co2_deactivation_hysteresis_{device_id}` - Deactivation hysteresis (-500-0 ppm)
-
-### Binary Sensor Entities
-
-- `binary_sensor.co2_active_{device_id}` - CO2 control active state
-
-### Sensor Entities
-
-- `sensor.co2_zone_status_{device_id}` - Zone status information
-
-## Services
-
-### `ramses_extras.enable_co2_control`
-
-Enable CO2 control for a device.
-
-```yaml
-service: ramses_extras.enable_co2_control
-data:
-  device_id: "32:153289"
-```
-
-### `ramses_extras.disable_co2_control`
-
-Disable CO2 control for a device.
-
-```yaml
-service: ramses_extras.disable_co2_control
-data:
-  device_id: "32:153289"
-```
-
-### `ramses_extras.set_zone_threshold`
-
-Set CO2 threshold for a specific zone.
-
-```yaml
-service: ramses_extras.set_zone_threshold
-data:
-  device_id: "32:153289"
-  zone_id: "zone_1"
-  threshold: 1200
-```
-
-### `ramses_extras.trigger_co2_boost`
-
-Manually trigger CO2-based boost mode.
-
-```yaml
-service: ramses_extras.trigger_co2_boost
-data:
-  device_id: "32:153289"
-  duration_minutes: 30
-```
-
-## WebSocket API
-
-### Get CO2 Status
-
-```javascript
-{
-  "type": "ramses_extras/co2/get_status",
-  "device_id": "32:153289"
-}
-```
-
-**Response:**
-```javascript
-{
-  "enabled": true,
-  "automation_enabled": true,
-  "active": false,
-  "activation_time": null,
-  "last_fan_speed": 1,
-  "zones": {
-    "32:153289": {
-      "zones": [...],
-      "active_zone_count": 0,
-      "total_zone_count": 3
-    }
-  }
-}
-```
-
-### Get Zone Details
-
-```javascript
-{
-  "type": "ramses_extras/co2/get_zone_details",
-  "device_id": "32:153289",
-  "zone_id": "zone_1"
-}
-```
-
-### Update Zone Configuration
-
-```javascript
-{
-  "type": "ramses_extras/co2/update_zone",
-  "device_id": "32:153289",
-  "zone_id": "zone_1",
-  "updates": {
-    "threshold": 1200,
-    "enabled": true
-  }
-}
-```
-
-## Automation Examples
-
-### Notify on High CO2
-
-```yaml
-automation:
-  - alias: "Notify High CO2"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.co2_active_32_153289
-        to: "on"
-    action:
-      - service: notify.mobile_app
-        data:
-          message: "High CO2 detected - ventilation increased"
-```
-
-### Disable CO2 Control at Night
-
-```yaml
-automation:
-  - alias: "Disable CO2 at Night"
-    trigger:
-      - platform: time
-        at: "22:00:00"
-    action:
-      - service: ramses_extras.disable_co2_control
-        data:
-          device_id: "32:153289"
-```
-
-### Enable CO2 Control in Morning
-
-```yaml
-automation:
-  - alias: "Enable CO2 in Morning"
-    trigger:
-      - platform: time
-        at: "07:00:00"
-    action:
-      - service: ramses_extras.enable_co2_control
-        data:
-          device_id: "32:153289"
-```
-
-## Fan Speed Calculation
-
-Fan speed is calculated based on the worst (highest) zone:
-
-1. **No zones triggered**: Fan at idle speed (1)
-2. **Zone triggered**: Fan speed increases based on CO2 exceedance
-3. **Multiple zones**: Worst zone determines fan speed
-
-**Formula:**
-```
-exceedance = current_co2 - threshold
-exceedance_ratio = min(exceedance / 500, 1.0)
-fan_speed = base_speed + (max_speed - base_speed) * exceedance_ratio
-```
-
-**Example:**
-- Threshold: 1000 ppm
-- Current CO2: 1250 ppm
-- Exceedance: 250 ppm
-- Ratio: 250/500 = 0.5
-- Fan speed: 2 + (5-2) * 0.5 = 3.5 → 4
-
-## Integration with Humidity Control
-
-When both CO2 Control and Humidity Control are enabled:
-
-1. **CO2 Active**: CO2 control sets fan speed, humidity control paused
-2. **CO2 Inactive**: Humidity control resumes normal operation
-3. **Priority**: CO2 always takes precedence
+When both features are enabled and CO2 control activates, humidity control is
+paused; it resumes when CO2 control releases. Disable this with the
+`priority_over_humidity` setting.
 
 ## Troubleshooting
 
-### CO2 Control Not Activating
+### CO2 control not activating
 
 1. Check `switch.co2_control_{device_id}` is ON
-2. Verify CO2 sensor entities are available
-3. Check threshold settings
-4. Review logs for errors
+2. Verify the CO2 sensor entities are available and updating
+3. Check that values actually reach threshold + activation hysteresis
+4. Review the log for trigger evaluation details
 
-### Fan Speed Not Changing
+### Fan speed not changing
 
-1. Verify ramses_cc integration is working
-2. Check device communication
-3. Review automation logs
-4. Ensure CO2 levels exceed activation threshold
+1. Verify the device is not in manual override (manual mode suspends automation)
+2. Check the fan speed arbiter state — a higher-priority automation may hold the fan
+3. Review `binary_sensor.co2_active_{device_id}` attributes for trigger details
 
-### Zone Not Triggering
-
-1. Check zone is enabled
-2. Verify sensor entity is correct
-3. Check CO2 value exceeds threshold + hysteresis
-4. Review zone manager logs
-
-## Future Enhancements
-
-- **Zone-specific valves**: Per-zone ventilation control
-- **CO2 trend analysis**: Predictive ventilation
-- **Learning algorithms**: Automatic threshold optimization
-- **Occupancy integration**: Adjust based on room occupancy
-- **Multi-device coordination**: Coordinate multiple HVAC fans
-
-## See Also
+## See also
 
 - [Humidity Control](../humidity_control/README.md)
-- [HVAC Fan Card](../hvac_fan_card/README.md)
 - [Sensor Control](../sensor_control/README.md)

@@ -48,59 +48,27 @@ class CO2Config:
     @property
     def default_threshold(self) -> int:
         """Get default CO2 threshold in ppm."""
-        return int(self._config.get("default_threshold", 1000))
+        return int(self._config.get("default_threshold", 800))
 
     @property
     def activation_hysteresis(self) -> int:
         """Get activation hysteresis in ppm."""
-        return int(self._config.get("activation_hysteresis", 100))
+        return int(self._config.get("activation_hysteresis", 25))
 
     @property
     def deactivation_hysteresis(self) -> int:
         """Get deactivation hysteresis in ppm."""
-        return int(self._config.get("deactivation_hysteresis", -100))
+        return int(self._config.get("deactivation_hysteresis", -25))
 
     @property
-    def zones(self) -> list[dict[str, Any]]:
-        """Get zone configurations."""
-        zones = self._config.get("zones", [])
-        return zones if isinstance(zones, list) else []
-
-    @property
-    def max_runtime_minutes(self) -> int:
-        """Get maximum runtime in minutes."""
-        return int(self._config.get("max_runtime_minutes", 120))
-
-    @property
-    def cooldown_period_minutes(self) -> int:
-        """Get cooldown period in minutes."""
-        return int(self._config.get("cooldown_period_minutes", 15))
-
-    @property
-    def fan_mode(self) -> str:
-        """Get the fan mode demanded while CO2 control is active.
-
-        ``auto`` keeps the proportional speed calculation; ``low`` /
-        ``medium`` / ``high`` force a fixed mode (issue 354).
-        """
-        mode = str(self._config.get("fan_mode", "auto"))
-        return mode if mode in ("auto", "low", "medium", "high") else "auto"
+    def high_threshold(self) -> int:
+        """Get the ppm level above which high is demanded (issue 354)."""
+        return int(self._config.get("high_threshold", 1200))
 
     @property
     def priority_over_humidity(self) -> bool:
         """Check if CO2 has priority over humidity control."""
         return bool(self._config.get("priority_over_humidity", True))
-
-    def get_zone_config(self, zone_id: str) -> dict[str, Any] | None:
-        """Get configuration for a specific zone.
-
-        :param zone_id: Zone identifier
-        :return: Zone configuration or None if not found
-        """
-        for zone in self.zones:
-            if zone.get("zone_id") == zone_id:
-                return zone
-        return None
 
     def update_config(self, updates: dict[str, Any]) -> None:
         """Update configuration.
@@ -132,21 +100,6 @@ class CO2Config:
 
         if self.deactivation_hysteresis > 0:
             errors.append("Deactivation hysteresis must be negative")
-
-        # Validate zones
-        zone_ids = set()
-        for zone in self.zones:
-            zone_id = zone.get("zone_id")
-            if not zone_id:
-                errors.append("Zone missing zone_id")
-                continue
-
-            if zone_id in zone_ids:
-                errors.append(f"Duplicate zone_id: {zone_id}")
-            zone_ids.add(zone_id)
-
-            if not zone.get("sensor_entity"):
-                errors.append(f"Zone {zone_id} missing sensor_entity")
 
         return len(errors) == 0, errors
 

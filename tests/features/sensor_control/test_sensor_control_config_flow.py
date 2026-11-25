@@ -456,7 +456,6 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
             "spike_window_minutes": 3,
             "area_co2_enabled": True,
             "co2_entity": "input_number.co2_helper",
-            "co2_threshold_entity": "input_number.bathroom_co2_threshold",
             "co2_threshold": 800,
         }
         await async_step_sensor_control_config(flow, user_input)
@@ -468,9 +467,6 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         area_sensor = legacy["area_sensors"]["32_123456"][0]
         assert area_sensor["area_id"] == "Bathroom"
         assert area_sensor["co2_entity"] == "input_number.co2_helper"
-        assert (
-            area_sensor["co2_threshold_entity"] == "input_number.bathroom_co2_threshold"
-        )
         assert area_sensor["co2_threshold"] == 800
         assert canonical["devices"]["32:123456"]["area_sensors"][0] == area_sensor
         assert flow._sensor_control_group_stage == "area_sensors_menu"
@@ -574,7 +570,6 @@ async def test_area_sensors_edit_cascades_area_id_to_remote_binding(flow, helper
                 "spike_window_minutes": 3,
                 "area_co2_enabled": True,
                 "co2_entity": "sensor.dining_co2",
-                "co2_threshold_entity": "",
                 "co2_threshold": 800,
             },
         )
@@ -586,8 +581,8 @@ async def test_area_sensors_edit_cascades_area_id_to_remote_binding(flow, helper
     assert saved_remote_binding["REMs"][0]["area_id"] == "Dining"
 
 
-async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
-    """Area sensor should persist co2_threshold_entity and static fallback."""
+async def test_area_sensors_save_co2_threshold_per_area(flow, helper):
+    """Area sensor should persist its static co2_threshold."""
     flow._get_config_flow_helper.return_value = helper
     flow._sensor_control_stage = "configure_device"
     flow._sensor_control_selected_device = "32:123456"
@@ -617,7 +612,6 @@ async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
                 "spike_window_minutes": 3,
                 "area_co2_enabled": True,
                 "co2_entity": "input_number.co2_helper",
-                "co2_threshold_entity": "input_number.bathroom_co2_threshold",
                 "co2_threshold": 800,
             },
         )
@@ -627,7 +621,6 @@ async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
     area_sensor = legacy["area_sensors"]["32_123456"][0]
     assert area_sensor["area_id"] == "area_sensor"
     assert area_sensor["co2_entity"] == "input_number.co2_helper"
-    assert area_sensor["co2_threshold_entity"] == "input_number.bathroom_co2_threshold"
     assert area_sensor["co2_threshold"] == 800
     assert canonical["devices"]["32:123456"]["area_sensors"][0] == area_sensor
 
@@ -649,7 +642,6 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
                         "humidity_entity": "input_number.humid_helper",
                         "area_co2_enabled": True,
                         "co2_entity": "input_number.co2_helper",
-                        "co2_threshold_entity": "input_number.bathroom_co2_threshold",
                         "co2_threshold": 800,
                         "trigger_on_high_humidity": True,
                         "spike_rise_percent": 5.0,
@@ -661,7 +653,6 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
                         "humidity_entity": "sensor.kitchen_humidity",
                         "area_co2_enabled": True,
                         "co2_entity": "sensor.kitchen_co2",
-                        "co2_threshold_entity": "input_number.kitchen_co2_threshold",
                         "co2_threshold": 950,
                         "trigger_on_high_humidity": False,
                         "spike_rise_percent": 10.0,
@@ -694,7 +685,6 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
                 "spike_window_minutes": 3,
                 "area_co2_enabled": True,
                 "co2_entity": "input_number.co2_helper",
-                "co2_threshold_entity": "input_number.bathroom_co2_threshold",
                 "co2_threshold": 820,
             },
         )
@@ -710,7 +700,6 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
     assert updated[1]["area_id"] == "kitchen"
     assert updated[1]["co2_threshold"] == 950
     assert updated[1]["co2_entity"] == "sensor.kitchen_co2"
-    assert updated[1]["co2_threshold_entity"] == "input_number.kitchen_co2_threshold"
     assert legacy["area_sensors"]["32_123456"] == updated
     assert canonical["devices"]["32:123456"]["area_sensors"] == updated
 
