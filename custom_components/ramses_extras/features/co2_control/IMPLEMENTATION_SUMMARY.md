@@ -1,5 +1,12 @@
 # CO2 Control Feature - Implementation Summary
 
+> **Historical document.** This describes the initial March 2026 implementation,
+> including a zone-management model (`zone_manager`, per-zone YAML config,
+> proportional fan speed) that was never completable and has since been removed.
+> For the current architecture — unified trigger sources, stepped demand bands,
+> per-area thresholds — see README.md and docs/USER_GUIDE.md.
+
+
 **Date:** March 20, 2026
 **Status:** Core Implementation Complete
 **Version:** Initial Release

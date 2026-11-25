@@ -1,340 +1,151 @@
-# CO2 Control - User Guide
+# CO2 Control — User Guide
 
-## Quick Start
+## Quick start
 
-### 1. Enable the Feature
+### 1. Enable the feature
 
-1. Go to **Settings → Devices & Services**
-2. Find **Ramses Extras** integration
-3. Click **Configure**
-4. Enable **CO2 Control** feature
-5. Click **Submit**
+1. Go to **Settings → Devices & Services → Ramses Extras**
+2. Click **Configure** → **CO2 Control**
+3. Select the FAN devices you want CO2 control on
+4. Click **Submit**
 
-### 2. Configure Zones
+### 2. Configure your sensors
 
-For each zone you want to monitor:
+CO2 control uses two kinds of sources:
 
-1. **Zone Name**: Give it a descriptive name (e.g., "Living Room", "Bedroom")
-2. **CO2 Sensor**: Select the CO2 sensor entity for this zone
-3. **Threshold**: Set the CO2 level that triggers ventilation (default: 1000 ppm)
-4. **Enabled**: Check to activate this zone
+- **The FAN's internal CO2 sensor** — automatic, nothing to configure
+- **Room sensors** — configure these as *area sensors* in the **Sensor
+  Control** feature: enable `area_co2_enabled` and pick the `co2_entity`
 
-### 3. Adjust Settings
+### 3. Enable automation
 
-- **Global Threshold**: Default CO2 level for all zones
-- **Activation Hysteresis**: How much above threshold to activate (+100 ppm)
-- **Deactivation Hysteresis**: How much below threshold to deactivate (-100 ppm)
+Turn on the **CO2 Control** switch entity
+(`switch.co2_control_{device_id}`) — automation only runs while it is on.
 
-### 4. Enable Automation
+## Understanding CO2 levels
 
-Toggle the **CO2 Control** switch entity to start automatic ventilation control.
+- **400–600 ppm**: outdoor air, excellent
+- **600–800 ppm**: good indoor air
+- **800–1000 ppm**: acceptable
+- **1000–1500 ppm**: stuffy, ventilation recommended
+- **1500–2000 ppm**: poor, ventilation needed
+- **2000+ ppm**: very poor, ventilate immediately
 
-## Understanding CO2 Levels
+Recommended trigger thresholds:
 
-### Typical CO2 Levels
+- **Bedroom**: 800–1000 ppm (lower for better sleep)
+- **Home office**: 800–1000 ppm
+- **Living room**: 1000–1200 ppm
 
-- **400-600 ppm**: Outdoor air, excellent
-- **600-800 ppm**: Indoor air, good
-- **800-1000 ppm**: Indoor air, acceptable
-- **1000-1500 ppm**: Stuffy air, ventilation recommended
-- **1500-2000 ppm**: Poor air quality, ventilation needed
-- **2000+ ppm**: Very poor air quality, immediate ventilation required
+## How it works
 
-### Recommended Thresholds
+### Triggering
 
-- **Home Office**: 800-1000 ppm
-- **Living Room**: 1000-1200 ppm
-- **Bedroom**: 800-1000 ppm (lower for better sleep)
-- **Kitchen**: 1200-1500 ppm (cooking generates CO2)
+A source triggers when its CO2 reaches **threshold + activation hysteresis**
+and releases at **threshold + deactivation hysteresis**. Example with
+defaults: triggers at 1100 ppm, releases at 900 ppm. This dead zone prevents
+the fan from constantly switching on and off.
 
-## How It Works
+While at least one source is triggered, CO2 control is active. When the last
+source releases, the demand is cleared and the fan returns to its normal
+schedule/auto behavior.
 
-### Zone Monitoring
+### Stepped bands
 
-The system continuously monitors CO2 levels in all configured zones:
+The demanded fan speed depends on the worst (highest) triggered CO2 value:
 
-1. **Normal Operation**: CO2 below threshold → Fan at idle speed
-2. **Zone Triggered**: CO2 exceeds threshold + hysteresis → Fan speed increases
-3. **Multiple Zones**: Worst zone determines fan speed
-4. **Deactivation**: CO2 drops below threshold + deactivation hysteresis → Fan returns to idle
-
-### Priority System
-
-When both CO2 Control and Humidity Control are enabled:
-
-- **CO2 has priority**: If CO2 is high, CO2 control takes over
-- **Humidity paused**: Humidity control pauses while CO2 is active
-- **Automatic handoff**: When CO2 normalizes, humidity control resumes
-
-### Hysteresis Explained
-
-Hysteresis prevents the fan from constantly switching on/off:
-
-**Example:**
-- Threshold: 1000 ppm
-- Activation hysteresis: +100 ppm
-- Deactivation hysteresis: -100 ppm
-
-**Behavior:**
-- Fan activates at: 1100 ppm (1000 + 100)
-- Fan deactivates at: 900 ppm (1000 - 100)
-- Between 900-1100 ppm: Fan maintains current state
-
-This creates a "dead zone" that prevents oscillation.
-
-## Dashboard Integration
-
-### Lovelace Card Example
-
-```yaml
-type: entities
-title: CO2 Control
-entities:
-  - entity: switch.co2_control_32_153289
-    name: CO2 Control
-  - entity: binary_sensor.co2_active_32_153289
-    name: CO2 Active
-  - entity: number.co2_threshold_32_153289
-    name: Threshold
-  - entity: sensor.living_room_co2
-    name: Living Room CO2
-  - entity: sensor.bedroom_co2
-    name: Bedroom CO2
+```
+below 1200 ppm   → fan_low
+1200 – 1500 ppm  → fan_medium
+above 1500 ppm   → fan_high
 ```
 
-### Gauge Card for CO2 Levels
+The band only steps *down* when CO2 falls below the lower threshold minus the
+activation hysteresis, so it can't flap between bands. The thresholds
+themselves (`medium_threshold`, `high_threshold`) are configurable.
 
-```yaml
-type: gauge
-entity: sensor.living_room_co2
-name: Living Room CO2
-unit: ppm
-min: 400
-max: 2000
-severity:
-  green: 0
-  yellow: 800
-  red: 1200
-```
+### Fixed fan mode
 
-### History Graph
+If your unit is over- or under-capacity for your home, the generic bands may
+not fit — a "medium" on a 400-class unit can move more air than a "high" on a
+smaller one. Set **Fan mode** to `low`, `medium`, or `high` in the CO2
+control settings to always demand that mode while active. `auto` (default)
+uses the stepped bands.
 
-```yaml
-type: history-graph
-title: CO2 Levels
-entities:
-  - entity: sensor.living_room_co2
-  - entity: sensor.bedroom_co2
-  - entity: sensor.office_co2
-hours_to_show: 24
-```
+### Per-area tuning
 
-## Common Scenarios
+Each area sensor can override the global values:
 
-### Scenario 1: Office Work from Home
+- **Threshold**: set a static `co2_threshold`, or point
+  `co2_threshold_entity` at an input_number you can tune from your dashboard.
+  The entity wins when set and available; the static value is the fallback;
+  the global default applies when neither is set.
+- **Bands**: `co2_medium_threshold` / `co2_high_threshold` (0 = use the
+  global values). A bedroom can escalate earlier than a living room.
 
-**Setup:**
-- Zone: "Office"
-- Threshold: 800 ppm
-- Sensor: `sensor.office_co2`
+### Zones and valves
 
-**Behavior:**
-- During work hours, CO2 rises from breathing
-- At 900 ppm (800 + 100 hysteresis), fan activates
-- Fan increases ventilation
-- CO2 drops to 700 ppm
-- Fan returns to idle
+Assign a `zone_id` to an area sensor and CO2 control publishes demand for
+that zone while its air is bad. The zone coordinator uses these demands —
+together with humidity, REM, and manual demands — to position DIY zone
+valves and shape FAN-level speed demand. Rooms behind a valve get air
+exactly when their own sensors say so.
 
-### Scenario 2: Dinner Party
+### Priority over humidity
 
-**Setup:**
-- Zone: "Living Room"
-- Threshold: 1000 ppm
-- Multiple people in room
+CO2 control takes precedence over humidity control: humidity automation
+pauses while CO2 is active and resumes afterwards. This can be disabled with
+the `priority_over_humidity` setting.
 
-**Behavior:**
-- CO2 rises quickly with multiple people
-- At 1100 ppm, fan activates
-- Fan speed increases proportionally to CO2 level
-- At 1500 ppm, fan at maximum speed
-- After guests leave, CO2 drops
-- At 900 ppm, fan returns to idle
+### Interaction with manual mode
 
-### Scenario 3: Sleeping
+Manually picking a fan speed suspends extras automation — CO2 control resumes
+when you return to auto.
 
-**Setup:**
-- Zone: "Bedroom"
-- Threshold: 800 ppm (lower for better sleep)
-- Automation to disable at night if too noisy
+## Examples
 
-**Behavior:**
-- During sleep, CO2 rises slowly
-- At 900 ppm, fan activates gently
-- Maintains good air quality
-- Optional: Disable if noise is an issue
+### Bedroom monitoring
+
+1. Put a CO2 sensor in the bedroom
+2. In Sensor Control, create/edit the bedroom area sensor:
+   - enable `area_co2_enabled`, pick the sensor as `co2_entity`
+   - set `co2_threshold` to 900
+   - set `co2_medium_threshold` to 1100 and `co2_high_threshold` to 1400 if
+     you want gentler escalation than the global bands
+3. CO2 control now ventilates when the bedroom air degrades overnight
+
+### Multi-room setup
+
+Configure one area sensor per room, each with its own `zone_id` matching
+your valve zones. CO2 control monitors all rooms; any room can trigger
+ventilation, and zone valves follow the demand.
 
 ## Troubleshooting
 
-### Problem: CO2 Control Not Working
+### CO2 control never activates
 
-**Check:**
-1. Is `switch.co2_control_{device_id}` turned ON?
-2. Are zones configured and enabled?
-3. Are CO2 sensor entities available (not "unavailable" or "unknown")?
-4. Is threshold set correctly?
+1. Is `switch.co2_control_{device_id}` on?
+2. Are the sensor entities available and actually updating?
+3. Do values reach threshold + activation hysteresis (default 1100 ppm)?
+4. Check the attributes of `binary_sensor.co2_active_{device_id}` for the
+   trigger evaluation details
 
-**Solution:**
-- Turn on CO2 control switch
-- Verify sensor entities in Developer Tools → States
-- Check threshold is reasonable (800-1200 ppm)
+### Fan doesn't speed up when CO2 is high
 
-### Problem: Fan Not Responding
+1. Is the fan in manual override? Automation is suspended in manual mode
+2. A higher-priority automation may hold the fan — check the arbiter state
+3. Check `sensor.co2_zone_status_{device_id}` for the current trigger status
 
-**Check:**
-1. Is ramses_cc integration working?
-2. Can you manually control fan speed?
-3. Are there errors in logs?
+### Ventilation flaps on and off
 
-**Solution:**
-- Check ramses_cc integration status
-- Test manual fan control
-- Review logs: Settings → System → Logs
+Increase the activation hysteresis — it widens both the trigger dead zone and
+the band step-down margin.
 
-### Problem: Fan Switching Too Often
+## Tips
 
-**Cause:** Hysteresis too small
-
-**Solution:**
-- Increase activation hysteresis (e.g., +150 ppm)
-- Increase deactivation hysteresis magnitude (e.g., -150 ppm)
-- This creates a larger "dead zone"
-
-### Problem: Fan Not Activating Soon Enough
-
-**Cause:** Threshold too high or hysteresis too large
-
-**Solution:**
-- Lower threshold (e.g., from 1000 to 800 ppm)
-- Reduce activation hysteresis (e.g., from +100 to +50 ppm)
-
-### Problem: Zone Not Triggering
-
-**Check:**
-1. Is zone enabled in configuration?
-2. Is sensor entity correct?
-3. Is CO2 value high enough?
-
-**Solution:**
-- Enable zone in config
-- Verify sensor entity ID
-- Check current CO2 value vs threshold + hysteresis
-
-## Advanced Configuration
-
-### Per-Zone Thresholds
-
-Each zone can have its own threshold via service call:
-
-```yaml
-service: ramses_extras.set_zone_threshold
-data:
-  device_id: "32:153289"
-  zone_id: "zone_1"
-  threshold: 800  # Lower for bedroom
-```
-
-### Automation-Based Control
-
-Disable CO2 control during specific times:
-
-```yaml
-automation:
-  - alias: "Disable CO2 at Night"
-    trigger:
-      - platform: time
-        at: "22:00:00"
-    action:
-      - service: switch.turn_off
-        target:
-          entity_id: switch.co2_control_32_153289
-```
-
-### Boost Mode
-
-Manually trigger boost when needed:
-
-```yaml
-service: ramses_extras.trigger_co2_boost
-data:
-  device_id: "32:153289"
-  duration_minutes: 30
-```
-
-## Best Practices
-
-### 1. Start Conservative
-
-- Begin with threshold at 1000 ppm
-- Use default hysteresis values
-- Monitor for a few days
-- Adjust based on comfort and air quality
-
-### 2. Zone Placement
-
-- Place CO2 sensors at breathing height (1-1.5m)
-- Avoid direct airflow from vents
-- Keep away from windows and doors
-- Central location in room is best
-
-### 3. Calibration
-
-- Most CO2 sensors need periodic calibration
-- Expose to outdoor air (400 ppm) for calibration
-- Follow sensor manufacturer's instructions
-
-### 4. Maintenance
-
-- Check sensor battery/power regularly
-- Clean sensor according to manufacturer
-- Verify sensor readings periodically
-- Update thresholds seasonally if needed
-
-### 5. Integration with Other Systems
-
-- Use with humidity control for complete air quality
-- Integrate with occupancy sensors for efficiency
-- Combine with window/door sensors for smart ventilation
-- Link to air quality dashboard for monitoring
-
-## FAQ
-
-**Q: Can I use CO2 control without humidity control?**
-A: Yes, CO2 control works independently.
-
-**Q: What happens if both CO2 and humidity trigger?**
-A: CO2 takes priority. Humidity control pauses until CO2 normalizes.
-
-**Q: Can I have different thresholds for different zones?**
-A: Yes, each zone can have its own threshold.
-
-**Q: How many zones can I configure?**
-A: Up to 3 zones per device currently (expandable in future).
-
-**Q: Does this work with any CO2 sensor?**
-A: Yes, any Home Assistant CO2 sensor entity works.
-
-**Q: Can I disable specific zones temporarily?**
-A: Yes, use the zone configuration to enable/disable zones.
-
-**Q: Will this increase my energy usage?**
-A: Slightly, but improved air quality often improves comfort and health.
-
-**Q: Can I see historical CO2 data?**
-A: Yes, use Home Assistant's history feature or create custom graphs.
-
-## Support
-
-For issues or questions:
-- Check logs: Settings → System → Logs
-- Review [GitHub Issues](https://github.com/wimpie70/ramses_extras/issues)
-- Consult [Wiki](https://github.com/wimpie70/ramses_extras/wiki)
+- Place CO2 sensors at breathing height, away from supply air grilles and
+  frequently opened windows
+- FAN devices have their own native CO2 logic as a fallback — if Home
+  Assistant or the network goes down, basic ventilation continues
+- Use an `input_number` as `co2_threshold_entity` to tune thresholds from
+  your dashboard without editing configuration
