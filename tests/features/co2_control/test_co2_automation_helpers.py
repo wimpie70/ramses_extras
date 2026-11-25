@@ -464,23 +464,31 @@ def test_get_status_includes_fan_arbiter(manager: CO2AutomationManager) -> None:
 async def test_evaluate_co2_control_activates_with_zone_manager(
     manager: CO2AutomationManager,
 ) -> None:
-    """Active zone triggers should activate CO2 control and adjust fan speed."""
+    """Triggered zone sources should activate CO2 control and boost (issue 357)."""
     zone_manager = MagicMock()
-    zone_manager.check_zone_triggers = AsyncMock(return_value=["zone_1"])
     manager._zone_managers = {"32:123456": zone_manager}
     manager._get_sensor_control_context = AsyncMock(return_value={"area_sensors": []})
     manager._register_source_listeners = AsyncMock()
-    manager._evaluate_trigger_sources = MagicMock(return_value=[])
+    manager._evaluate_trigger_sources = MagicMock(
+        return_value=[
+            {
+                "source_id": "zone_zone_1",
+                "zone_id": "zone_1",
+                "label": "Zone 1",
+                "value": 1600.0,
+            }
+        ]
+    )
     manager._update_automation_status = AsyncMock()
     manager._notify_priority_takeover = AsyncMock()
-    manager._adjust_fan_speed = AsyncMock()
+    manager._boost_from_triggers = AsyncMock()
     manager._co2_active = False
 
     await manager._evaluate_co2_control("32:123456 (FAN)")
 
     assert manager._co2_active is True
     manager._notify_priority_takeover.assert_awaited_once()
-    manager._adjust_fan_speed.assert_awaited_once_with("32:123456", zone_manager)
+    manager._boost_from_triggers.assert_awaited_once()
     manager._update_automation_status.assert_awaited_once()
 
 
@@ -592,17 +600,123 @@ async def test_boost_from_triggers_uses_stepped_bands(
 
 
 @pytest.mark.asyncio
-async def test_adjust_fan_speed_demands_low_below_medium_threshold(
+async def test_boost_uses_per_area_band_thresholds(
+    manager: CO2AutomationManager,
+) -> None:
+    """A triggered source's own medium/high thresholds win over globals."""
+    manager._last_fan_speed = 0
+
+    # 1100 ppm is below the global t1 (1200) -> low with globals...
+    await manager._boost_from_triggers(
+        "32:123456", [{"source_id": "a", "value": 1100.0}]
+    )
+    assert (
+        manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
+        == "fan_low"
+    )
+
+    # ...but with per-area t1=1050/t2=1150 the same level is medium
+    manager._last_fan_speed = 0
+    manager._bands_by_device = {}
+    manager.fan_speed_arbiter.async_set_demand.reset_mock()
+    await manager._boost_from_triggers(
+        "32:123456",
+        [
+            {
+                "source_id": "a",
+                "value": 1100.0,
+                "medium_threshold": 1050,
+                "high_threshold": 1150,
+            }
+        ],
+    )
+    assert (
+        manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
+        == "fan_medium"
+    )
+
+
+@pytest.mark.asyncio
+async def test_legacy_zones_evaluated_as_trigger_sources(
+    manager: CO2AutomationManager,
+) -> None:
+    """Legacy YAML zones trigger through the unified source path (issue 357)."""
+    zone = SimpleNamespace(
+        zone_id="z1",
+        zone_name="Bedroom",
+        sensor_entity="sensor.bedroom_co2",
+        threshold=1000,
+        enabled=True,
+        is_triggered=False,
+    )
+    zone_manager = MagicMock()
+    zone_manager.zones = {"z1": zone}
+
+    state = MagicMock()
+    state.state = "1600"
+
+    def _states_get(entity_id: str) -> MagicMock | None:
+        return state if entity_id == "sensor.bedroom_co2" else None
+
+    manager.hass.states.get = MagicMock(side_effect=_states_get)
+
+    triggered = manager._evaluate_trigger_sources(
+        "32:123456", {"area_sensors": [], "mappings": {}}, zone_manager
+    )
+
+    zone_hits = [t for t in triggered if t["source_id"] == "zone_z1"]
+    assert len(zone_hits) == 1
+    assert zone_hits[0]["zone_id"] == "z1"
+    assert zone_hits[0]["label"] == "Bedroom"
+    assert zone_hits[0]["medium_threshold"] == manager.config.medium_threshold
+    assert zone.is_triggered is True
+
+
+@pytest.mark.asyncio
+async def test_area_trigger_carries_per_area_band_thresholds(
+    manager: CO2AutomationManager,
+) -> None:
+    """Area-sensor triggers carry their per-area T1/T2 when configured."""
+    state = MagicMock()
+    state.state = "1600"
+
+    def _states_get(entity_id: str) -> MagicMock | None:
+        return state if entity_id == "sensor.bath_co2" else None
+
+    manager.hass.states.get = MagicMock(side_effect=_states_get)
+
+    sensor_ctx = {
+        "mappings": {},
+        "area_sensors": [
+            {
+                "area_id": "bath",
+                "label": "Bath",
+                "area_co2_enabled": True,
+                "co2_entity": "sensor.bath_co2",
+                "co2_threshold": 1000,
+                "co2_medium_threshold": 1100,
+                "co2_high_threshold": 1400,
+            }
+        ],
+    }
+    triggered = manager._evaluate_trigger_sources("32:123456", sensor_ctx)
+
+    area_hits = [t for t in triggered if t["source_id"] == "bath"]
+    assert len(area_hits) == 1
+    assert area_hits[0]["medium_threshold"] == 1100
+    assert area_hits[0]["high_threshold"] == 1400
+
+
+@pytest.mark.asyncio
+async def test_boost_demands_low_below_medium_threshold(
     manager: CO2AutomationManager,
 ) -> None:
     """Below medium_threshold the stepped band demands fan_low (issue 354)."""
-    zone = SimpleNamespace(current_co2=1100)  # active, below t1=1200
-    zone_manager = MagicMock()
-    zone_manager.get_active_zones = AsyncMock(return_value=[zone])
     manager._last_fan_speed = 1
-    manager._last_band = None
 
-    await manager._adjust_fan_speed("32:123456", zone_manager)
+    await manager._boost_from_triggers(
+        "32:123456", [{"source_id": "z", "value": 1100.0}]
+    )
 
     manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
         "32:123456",
@@ -616,17 +730,15 @@ async def test_adjust_fan_speed_demands_low_below_medium_threshold(
 
 
 @pytest.mark.asyncio
-async def test_adjust_fan_speed_demands_medium_between_thresholds(
+async def test_boost_demands_medium_between_thresholds(
     manager: CO2AutomationManager,
 ) -> None:
     """Between medium/high thresholds the stepped band demands fan_medium."""
-    zone = SimpleNamespace(current_co2=1300)  # t1=1200 < co2 < t2=1500
-    zone_manager = MagicMock()
-    zone_manager.get_active_zones = AsyncMock(return_value=[zone])
     manager._last_fan_speed = 0
-    manager._last_band = None
 
-    await manager._adjust_fan_speed("32:123456", zone_manager)
+    await manager._boost_from_triggers(
+        "32:123456", [{"source_id": "z", "value": 1300.0}]
+    )
 
     manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
         "32:123456",

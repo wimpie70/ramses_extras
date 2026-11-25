@@ -780,17 +780,20 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             return
 
         zone_manager = self._zone_managers.get(clean_device_id)
-        triggered_zones: list[str] = []
-        if zone_manager:
-            triggered_zones = await zone_manager.check_zone_triggers(
-                self._get_activation_hysteresis(clean_device_id),
-                self._get_deactivation_hysteresis(clean_device_id),
-            )
 
         sensor_ctx = await self._get_sensor_control_context(clean_device_id)
         self._latest_sensor_control_context[clean_device_id] = sensor_ctx
         await self._register_source_listeners(clean_device_id, sensor_ctx)
-        triggered_sources = self._evaluate_trigger_sources(clean_device_id, sensor_ctx)
+        triggered_sources = self._evaluate_trigger_sources(
+            clean_device_id, sensor_ctx, zone_manager
+        )
+        triggered_zones: list[str] = sorted(
+            {
+                str(item.get("zone_id"))
+                for item in triggered_sources
+                if str(item.get("zone_id") or "").strip()
+            }
+        )
         _LOGGER.debug(
             "CO2 source evaluation for %s: area_sensors=%d, triggered_sources=%s",
             clean_device_id,
@@ -840,12 +843,10 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             # Notify humidity control it can resume
             await self._notify_priority_release()
 
-        # Calculate and set fan speed
+        # Calculate and set fan speed — one unified path for zones
+        # and area sensors alike (issue 357)
         if self._co2_active:
-            if zone_manager:
-                await self._adjust_fan_speed(clean_device_id, zone_manager)
-            else:
-                await self._boost_from_triggers(clean_device_id, triggered_sources)
+            await self._boost_from_triggers(clean_device_id, triggered_sources)
         else:
             # Return to idle/normal speed
             await self._return_to_idle(clean_device_id)
@@ -868,9 +869,17 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         await self._return_to_idle(device_id)
 
     def _evaluate_trigger_sources(
-        self, device_id: str, sensor_ctx: dict[str, Any] | None
+        self,
+        device_id: str,
+        sensor_ctx: dict[str, Any] | None,
+        zone_manager: CO2ZoneManager | None = None,
     ) -> list[dict[str, Any]]:
-        """Evaluate all CO2 trigger sources from sensor_control context."""
+        """Evaluate all CO2 trigger sources from sensor_control context.
+
+        Legacy YAML zone configs (issue 357) are evaluated as additional
+        trigger sources through the same unified path, so both config
+        models share trigger hysteresis, zone demands and stepped bands.
+        """
         source_states = self._source_trigger_states.setdefault(device_id, {})
         triggered: list[dict[str, Any]] = []
 
@@ -897,6 +906,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             label = str(area_sensor.get("label") or area_id)
             zone_id = str(area_sensor.get("zone_id") or "").strip() or None
             threshold = self._resolve_area_threshold(area_sensor, threshold_default)
+            t1, t2 = self._resolve_area_band_thresholds(area_sensor)
 
             source_result = self._evaluate_source_trigger(
                 source_states,
@@ -909,6 +919,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 deactivation_hysteresis=deact_hyst,
             )
             if source_result is not None:
+                source_result["medium_threshold"] = t1
+                source_result["high_threshold"] = t2
                 triggered.append(source_result)
 
         mappings = (
@@ -929,7 +941,37 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             deactivation_hysteresis=deact_hyst,
         )
         if internal_result is not None:
+            internal_result["medium_threshold"] = self.config.medium_threshold
+            internal_result["high_threshold"] = self.config.high_threshold
             triggered.append(internal_result)
+
+        if zone_manager is not None and zone_manager.zones:
+            if not getattr(self, "_zone_deprecation_warned", False):
+                self._zone_deprecation_warned = True
+                _LOGGER.warning(
+                    "Legacy co2_control zone config in use for %s — zones are "
+                    "evaluated as trigger sources; prefer configuring area "
+                    "sensors in the sensor control UI (issue 357)",
+                    device_id,
+                )
+            for zone in zone_manager.zones.values():
+                if not zone.enabled or not zone.sensor_entity:
+                    continue
+                zone_result = self._evaluate_source_trigger(
+                    source_states,
+                    f"zone_{zone.zone_id}",
+                    zone.zone_name,
+                    zone.sensor_entity,
+                    zone.threshold,
+                    zone.zone_id,
+                    activation_hysteresis=act_hyst,
+                    deactivation_hysteresis=deact_hyst,
+                )
+                zone.is_triggered = source_states.get(f"zone_{zone.zone_id}", False)
+                if zone_result is not None:
+                    zone_result["medium_threshold"] = self.config.medium_threshold
+                    zone_result["high_threshold"] = self.config.high_threshold
+                    triggered.append(zone_result)
 
         if not triggered:
             # Log why nothing triggered when CO2 control is on
@@ -976,6 +1018,29 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             return int(area_sensor.get("co2_threshold") or threshold_default)
         except TypeError, ValueError:
             return threshold_default
+
+    def _resolve_area_band_thresholds(
+        self,
+        area_sensor: dict[str, Any],
+    ) -> tuple[int, int]:
+        """Resolve per-area medium/high band thresholds (issue 357).
+
+        ``co2_medium_threshold`` / ``co2_high_threshold`` on the area
+        mapping override the global config values; absent or zero means
+        inherit the global setting.
+        """
+        try:
+            t1 = int(area_sensor.get("co2_medium_threshold") or 0)
+        except TypeError, ValueError:
+            t1 = 0
+        try:
+            t2 = int(area_sensor.get("co2_high_threshold") or 0)
+        except TypeError, ValueError:
+            t2 = 0
+        return (
+            t1 or self.config.medium_threshold,
+            t2 or self.config.high_threshold,
+        )
 
     def _evaluate_source_trigger(
         self,
@@ -1186,16 +1251,23 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             return internal_entity
         return f"sensor.{device_id.replace(':', '_').lower()}_co2_level"
 
-    def _select_band(self, device_id: str, worst_co2: float) -> str:
+    def _select_band(
+        self,
+        device_id: str,
+        worst_co2: float,
+        medium_threshold: int | None = None,
+        high_threshold: int | None = None,
+    ) -> str:
         """Select the stepped demand band for a CO2 level (issue 357).
 
         Below medium_threshold -> low, up to high_threshold -> medium,
         above -> high.  activation_hysteresis doubles as the anti-flap
         margin: a band only steps DOWN when CO2 falls below the lower
         threshold minus the hysteresis.  State is tracked per device.
+        Per-area thresholds override the global config when given.
         """
-        t1 = self.config.medium_threshold
-        t2 = max(self.config.high_threshold, t1)
+        t1 = medium_threshold or self.config.medium_threshold
+        t2 = max(high_threshold or self.config.high_threshold, t1)
         margin = max(self.config.activation_hysteresis, 0)
         bands: dict[str, str] | None = getattr(self, "_bands_by_device", None)
         if bands is None:
@@ -1231,15 +1303,26 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         Previously a flat fan_medium regardless of level; now uses the
         worst triggered source value with the same bands as the zone path.
         """
-        worst_co2 = max(
+        worst_item = max(
             (
-                float(item["value"])
+                item
                 for item in (triggered_sources or [])
                 if isinstance(item.get("value"), (int, float))
             ),
-            default=0.0,
+            key=lambda item: float(item["value"]),
+            default=None,
         )
-        band = self._select_band(device_id, worst_co2)
+        worst_co2 = float(worst_item["value"]) if worst_item else 0.0
+        band = self._select_band(
+            device_id,
+            worst_co2,
+            medium_threshold=(
+                int(worst_item.get("medium_threshold") or 0) if worst_item else 0
+            ),
+            high_threshold=(
+                int(worst_item.get("high_threshold") or 0) if worst_item else 0
+            ),
+        )
         target_speed = {"low": 2, "medium": 3, "high": 5}[band]
         if target_speed == self._last_fan_speed:
             return
@@ -1255,47 +1338,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         )
         if success:
             self._last_fan_speed = target_speed
-
-    async def _adjust_fan_speed(
-        self, device_id: str, zone_manager: CO2ZoneManager
-    ) -> None:
-        """Adjust fan speed based on CO2 levels.
-
-        :param device_id: Device identifier
-        :param zone_manager: Zone manager instance
-        """
-        # Stepped demand bands (issue 354): while active, demand low
-        # below medium_threshold, medium up to high_threshold, high
-        # above it.  activation_hysteresis doubles as the anti-flap
-        # margin: a band only steps DOWN when CO2 falls below the lower
-        # threshold minus the hysteresis.  The arbiter still lets
-        # higher-priority automations overrule the demand.
-        active_zones = await zone_manager.get_active_zones()
-        worst_co2 = max((z.current_co2 or 0 for z in active_zones), default=0)
-        band = self._select_band(device_id, worst_co2)
-        command_name = self._command_for_band(band)
-        target_speed = {"low": 2, "medium": 3, "high": 5}[band]
-
-        # Only send command if speed changed
-        if target_speed != self._last_fan_speed:
-            success = await self.fan_speed_arbiter.async_set_demand(
-                device_id,
-                feature_id=self.feature_id,
-                source_id="co2_control",
-                requested_speed=command_name,
-                priority=30,
-                reason="co2_trigger",
-                metadata={"target_speed": target_speed},
-            )
-            if success:
-                self._last_fan_speed = target_speed
-                _LOGGER.debug(
-                    "Set fan speed to %s for device %s (CO2 control)",
-                    target_speed,
-                    device_id,
-                )
-            else:
-                _LOGGER.error("Failed to set fan speed for device %s", device_id)
 
     async def _return_to_idle(self, device_id: str) -> None:
         """Return fan to idle speed.

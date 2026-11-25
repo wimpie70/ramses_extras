@@ -278,6 +278,8 @@ class SensorControlResolver:
                 "co2_entity": co2_entity or None,
                 "co2_threshold_entity": co2_threshold_entity or None,
                 "co2_threshold": item.get("co2_threshold"),
+                "co2_medium_threshold": item.get("co2_medium_threshold"),
+                "co2_high_threshold": item.get("co2_high_threshold"),
                 "comfort_temperature_entity": comfort_temperature_entity or None,
                 "spike_rise_percent": item.get("spike_rise_percent"),
                 "spike_window_minutes": item.get("spike_window_minutes"),

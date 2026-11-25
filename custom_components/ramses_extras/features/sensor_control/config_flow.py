@@ -992,6 +992,10 @@ async def async_step_sensor_control_config(
                     user_input.get("co2_threshold_entity") or ""
                 ).strip(),
                 "co2_threshold": int(user_input.get("co2_threshold") or 1000),
+                "co2_medium_threshold": int(
+                    user_input.get("co2_medium_threshold") or 0
+                ),
+                "co2_high_threshold": int(user_input.get("co2_high_threshold") or 0),
                 "comfort_temperature_entity": str(
                     user_input.get("comfort_temperature_entity") or ""
                 ).strip(),
@@ -1157,6 +1161,11 @@ async def async_step_sensor_control_config(
                 ),
                 temp_key: area_sensor_selector,
                 humidity_key: area_sensor_selector,
+                comfort_temp_entity_key: selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain=["sensor", "number", "input_number", "climate"]
+                    )
+                ),
                 vol.Required(
                     "trigger_on_high_humidity",
                     default=bool(
@@ -1221,11 +1230,6 @@ async def async_step_sensor_control_config(
                 ): bool,
                 co2_key: area_sensor_selector,
                 co2_threshold_entity_key: area_sensor_selector,
-                comfort_temp_entity_key: selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain=["sensor", "number", "input_number", "climate"]
-                    )
-                ),
                 vol.Required(
                     "co2_threshold",
                     default=int(
@@ -1234,6 +1238,22 @@ async def async_step_sensor_control_config(
                         else 1000
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2000)),
+                vol.Required(
+                    "co2_medium_threshold",
+                    default=int(
+                        selected_area_sensor.get("co2_medium_threshold", 0)
+                        if selected_area_sensor
+                        else 0
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=2500)),
+                vol.Required(
+                    "co2_high_threshold",
+                    default=int(
+                        selected_area_sensor.get("co2_high_threshold", 0)
+                        if selected_area_sensor
+                        else 0
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=2500)),
             }
         )
 

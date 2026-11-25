@@ -262,14 +262,12 @@ class TestCO2AutomationManager:
         self.manager._evaluate_co2_control.assert_called()
 
     @pytest.mark.asyncio
-    async def test_adjust_fan_speed_uses_shared_arbiter(self) -> None:
+    async def test_boost_from_triggers_uses_shared_arbiter(self) -> None:
         """CO2 speed changes should be submitted through the shared arbiter."""
-        zone = SimpleNamespace(current_co2=1600)  # above t2=1500
-        zone_manager = MagicMock()
-        zone_manager.get_active_zones = AsyncMock(return_value=[zone])
-        self.manager._last_band = None
-
-        await self.manager._adjust_fan_speed("32:123456", zone_manager)
+        await self.manager._boost_from_triggers(
+            "32:123456",
+            [{"source_id": "z", "value": 1600.0}],  # above t2=1500
+        )
 
         self.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
             "32:123456",

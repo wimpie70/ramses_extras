@@ -43,6 +43,8 @@ _AREA_SENSOR_SCHEMA_V2 = vol.Schema(
         vol.Optional("trigger_on_high_humidity", default=False): bool,
         vol.Optional("weight"): vol.All(vol.Coerce(float), vol.Range(min=0.0)),
         vol.Optional("co2_threshold_entity"): str,
+        vol.Optional("co2_medium_threshold"): vol.All(int, vol.Range(min=0)),
+        vol.Optional("co2_high_threshold"): vol.All(int, vol.Range(min=0)),
         vol.Optional("comfort_temperature_entity"): str,
     }
 )
@@ -63,6 +65,8 @@ _AREA_SENSOR_SCHEMA_LEGACY = vol.Schema(
         vol.Optional("trigger_on_high_humidity", default=False): bool,
         vol.Optional("weight"): vol.All(vol.Coerce(float), vol.Range(min=0.0)),
         vol.Optional("co2_threshold_entity"): str,
+        vol.Optional("co2_medium_threshold"): vol.All(int, vol.Range(min=0)),
+        vol.Optional("co2_high_threshold"): vol.All(int, vol.Range(min=0)),
         vol.Optional("comfort_temperature_entity"): str,
     }
 )
