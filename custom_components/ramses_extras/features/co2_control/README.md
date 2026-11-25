@@ -40,8 +40,8 @@ worst (highest) triggered source value:
 
 | worst CO2 level | demand |
 |---|---|
-| below `medium_threshold` (default 1200 ppm) | `fan_low` |
-| `medium_threshold` – `high_threshold` (default 1500 ppm) | `fan_medium` |
+| below `medium_threshold` (default 1000 ppm) | `fan_low` |
+| `medium_threshold` – `high_threshold` (default 1200 ppm) | `fan_medium` |
 | above `high_threshold` | `fan_high` |
 
 Anti-flap: the activation hysteresis doubles as the step-down margin — a band
@@ -80,11 +80,11 @@ behind a valve get air exactly when their sensors say they need it.
 | setting | default | meaning |
 |---|---|---|
 | `fan_mode` | `auto` | stepped bands, or fixed low/medium/high |
-| `default_threshold` | 1000 ppm | trigger level for the internal sensor and areas without their own |
-| `medium_threshold` | 1200 ppm | above this → `fan_medium` |
-| `high_threshold` | 1500 ppm | above this → `fan_high` |
-| `activation_hysteresis` | +100 ppm | activation offset; doubles as band anti-flap margin |
-| `deactivation_hysteresis` | −100 ppm | release offset |
+| `default_threshold` | 800 ppm | trigger level for the internal sensor and areas without their own |
+| `medium_threshold` | 1000 ppm | above this → `fan_medium` |
+| `high_threshold` | 1200 ppm | above this → `fan_high` |
+| `activation_hysteresis` | +25 ppm | activation offset; doubles as band anti-flap margin |
+| `deactivation_hysteresis` | −25 ppm | release offset |
 | `priority_over_humidity` | true | pause humidity control while CO2 is active |
 
 ### Area sensor settings (Sensor Control)

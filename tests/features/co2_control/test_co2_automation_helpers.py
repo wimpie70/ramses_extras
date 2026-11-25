@@ -532,7 +532,7 @@ async def test_boost_from_triggers_uses_stepped_bands(
 
     # mild exceedance -> low band
     await manager._boost_from_triggers(
-        "32:123456", [{"source_id": "a", "value": 1100.0}]
+        "32:123456", [{"source_id": "a", "value": 950.0}]
     )
     assert (
         manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
@@ -559,16 +559,16 @@ async def test_boost_uses_per_area_band_thresholds(
     """A triggered source's own medium/high thresholds win over globals."""
     manager._last_fan_speed = 0
 
-    # 1100 ppm is below the global t1 (1200) -> low with globals...
+    # 950 ppm is below the global t1 (1000) -> low with globals...
     await manager._boost_from_triggers(
-        "32:123456", [{"source_id": "a", "value": 1100.0}]
+        "32:123456", [{"source_id": "a", "value": 950.0}]
     )
     assert (
         manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
         == "fan_low"
     )
 
-    # ...but with per-area t1=1050/t2=1150 the same level is medium
+    # ...but with per-area t1=900/t2=1100 the same level is medium
     manager._last_fan_speed = 0
     manager._bands_by_device = {}
     manager.fan_speed_arbiter.async_set_demand.reset_mock()
@@ -577,9 +577,9 @@ async def test_boost_uses_per_area_band_thresholds(
         [
             {
                 "source_id": "a",
-                "value": 1100.0,
-                "medium_threshold": 1050,
-                "high_threshold": 1150,
+                "value": 950.0,
+                "medium_threshold": 900,
+                "high_threshold": 1100,
             }
         ],
     )
@@ -632,7 +632,7 @@ async def test_boost_demands_low_below_medium_threshold(
     manager._last_fan_speed = 1
 
     await manager._boost_from_triggers(
-        "32:123456", [{"source_id": "z", "value": 1100.0}]
+        "32:123456", [{"source_id": "z", "value": 950.0}]
     )
 
     manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
@@ -654,7 +654,7 @@ async def test_boost_demands_medium_between_thresholds(
     manager._last_fan_speed = 0
 
     await manager._boost_from_triggers(
-        "32:123456", [{"source_id": "z", "value": 1300.0}]
+        "32:123456", [{"source_id": "z", "value": 1100.0}]
     )
 
     manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
@@ -675,13 +675,13 @@ async def test_boost_return_idle_priority_and_unload_helpers(
     """Boost, idle, priority notifications, and unload should update runtime state."""
     manager.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
     await manager._boost_from_triggers(
-        "32:123456", [{"source_id": "a", "value": 1300.0}]
+        "32:123456", [{"source_id": "a", "value": 1100.0}]
     )
-    assert manager._last_fan_speed == 3  # 1300 ppm -> medium band
+    assert manager._last_fan_speed == 3  # 1100 ppm -> medium band
 
     manager.fan_speed_arbiter.async_set_demand.reset_mock()
     await manager._boost_from_triggers(
-        "32:123456", [{"source_id": "a", "value": 1300.0}]
+        "32:123456", [{"source_id": "a", "value": 1100.0}]
     )
     manager.fan_speed_arbiter.async_set_demand.assert_not_awaited()
 

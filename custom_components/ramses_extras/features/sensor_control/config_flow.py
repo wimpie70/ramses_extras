@@ -172,7 +172,7 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     enabled = bool(area_sensor.get("enabled", True))
     area_co2_enabled = bool(area_sensor.get("area_co2_enabled", False))
     co2_threshold_entity = str(area_sensor.get("co2_threshold_entity") or "").strip()
-    co2_threshold = area_sensor.get("co2_threshold", 1000)
+    co2_threshold = area_sensor.get("co2_threshold", 800)
 
     details = [
         f"temp: {temp_entity}",
@@ -991,7 +991,7 @@ async def async_step_sensor_control_config(
                 "co2_threshold_entity": str(
                     user_input.get("co2_threshold_entity") or ""
                 ).strip(),
-                "co2_threshold": int(user_input.get("co2_threshold") or 1000),
+                "co2_threshold": int(user_input.get("co2_threshold") or 800),
                 "co2_medium_threshold": int(
                     user_input.get("co2_medium_threshold") or 0
                 ),
@@ -1233,9 +1233,9 @@ async def async_step_sensor_control_config(
                 vol.Required(
                     "co2_threshold",
                     default=int(
-                        selected_area_sensor.get("co2_threshold", 1000)
+                        selected_area_sensor.get("co2_threshold", 800)
                         if selected_area_sensor
-                        else 1000
+                        else 800
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2000)),
                 vol.Required(

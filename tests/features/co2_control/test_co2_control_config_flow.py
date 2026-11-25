@@ -30,9 +30,9 @@ def test_get_co2_control_schema(hass):
     # Test default values
     assert schema({})["enabled"] is False
     assert schema({})["automation_enabled"] is False
-    assert schema({})["default_threshold"] == 1000
-    assert schema({})["activation_hysteresis"] == 100
-    assert schema({})["deactivation_hysteresis"] == -100
+    assert schema({})["default_threshold"] == 800
+    assert schema({})["activation_hysteresis"] == 25
+    assert schema({})["deactivation_hysteresis"] == -25
 
     # Test custom values
     data = {

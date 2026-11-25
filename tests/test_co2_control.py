@@ -19,9 +19,9 @@ class TestCO2Config:
 
         assert config.enabled is True
         assert config.automation_enabled is False
-        assert config.default_threshold == 1000
-        assert config.activation_hysteresis == 100
-        assert config.deactivation_hysteresis == -100
+        assert config.default_threshold == 800
+        assert config.activation_hysteresis == 25
+        assert config.deactivation_hysteresis == -25
 
     def test_init_with_custom_values(self):
         """Test initialization with custom values."""

@@ -52,7 +52,7 @@ class TestCo2ControlConst:
         assert threshold["unit"] == "ppm"
         assert threshold["min_value"] == 0
         assert threshold["max_value"] == 2000
-        assert threshold["default_value"] == 1000
+        assert threshold["default_value"] == 800
 
     def test_co2_binary_sensor_configs(self):
         """Test CO2_BINARY_SENSOR_CONFIGS structure."""
@@ -145,9 +145,9 @@ class TestCo2ControlConst:
 
         assert CO2_CONTROL_DEFAULTS["enabled"] is True
         assert CO2_CONTROL_DEFAULTS["automation_enabled"] is False
-        assert CO2_CONTROL_DEFAULTS["default_threshold"] == 1000
-        assert CO2_CONTROL_DEFAULTS["activation_hysteresis"] == 100
-        assert CO2_CONTROL_DEFAULTS["deactivation_hysteresis"] == -100
+        assert CO2_CONTROL_DEFAULTS["default_threshold"] == 800
+        assert CO2_CONTROL_DEFAULTS["activation_hysteresis"] == 25
+        assert CO2_CONTROL_DEFAULTS["deactivation_hysteresis"] == -25
         assert CO2_CONTROL_DEFAULTS["max_runtime_minutes"] == 120
         assert CO2_CONTROL_DEFAULTS["cooldown_period_minutes"] == 15
         assert CO2_CONTROL_DEFAULTS["priority_over_humidity"] is True

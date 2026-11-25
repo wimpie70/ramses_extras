@@ -29,7 +29,7 @@ CO2_NUMBER_CONFIGS = {
         "min_value": 0,
         "max_value": 2000,
         "step": 50,
-        "default_value": 1000,
+        "default_value": 800,
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "co2_threshold_{device_id}",
     },
@@ -42,7 +42,7 @@ CO2_NUMBER_CONFIGS = {
         "min_value": 0,
         "max_value": 500,
         "step": 10,
-        "default_value": 100,
+        "default_value": 25,
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "co2_activation_hysteresis_{device_id}",
     },
@@ -55,7 +55,7 @@ CO2_NUMBER_CONFIGS = {
         "min_value": -500,
         "max_value": 0,
         "step": 10,
-        "default_value": -100,
+        "default_value": -25,
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "co2_deactivation_hysteresis_{device_id}",
     },
@@ -132,26 +132,25 @@ CO2_CONTROL_DEFAULTS = {
     # Core settings
     "enabled": True,
     "automation_enabled": False,  # Only enable when user explicitly toggles
-    "default_threshold": 1000,  # ppm
+    "default_threshold": 800,  # ppm
     # Hysteresis settings
-    "activation_hysteresis": 100,  # ppm above threshold to activate
-    "deactivation_hysteresis": -100,  # ppm below threshold to deactivate
-    # Zone configuration
+    "activation_hysteresis": 25,  # ppm above threshold to activate
+    "deactivation_hysteresis": -25,  # ppm below threshold to deactivate
     # Safety settings
     "max_runtime_minutes": 120,
     "cooldown_period_minutes": 15,
     # Priority settings
     "priority_over_humidity": True,  # CO2 always has priority
-    # Fan mode demanded while CO2 control is active: "auto" keeps the
-    # proportional speed calculation; low/medium/high force a fixed mode
+    # Fan mode demanded while CO2 control is active: "auto" uses the
+    # stepped bands; low/medium/high force a fixed mode
     # (issue 354 — low/mid/high percentages are installation-specific).
     "fan_mode": "auto",
     # Stepped demand bands (absolute ppm, issue 354): while CO2 control
     # is active, demand low below medium_threshold, medium up to
     # high_threshold, high above it.  activation_hysteresis doubles as
     # the anti-flap margin on downward band transitions.
-    "medium_threshold": 1200,
-    "high_threshold": 1500,
+    "medium_threshold": 1000,
+    "high_threshold": 1200,
 }
 
 CO2_CONTROL_VALIDATION_RULES = {

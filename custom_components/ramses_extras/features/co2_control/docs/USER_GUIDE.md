@@ -43,7 +43,7 @@ Recommended trigger thresholds:
 
 A source triggers when its CO2 reaches **threshold + activation hysteresis**
 and releases at **threshold + deactivation hysteresis**. Example with
-defaults: triggers at 1100 ppm, releases at 900 ppm. This dead zone prevents
+defaults: triggers at 825 ppm, releases at 775 ppm. This dead zone prevents
 the fan from constantly switching on and off.
 
 While at least one source is triggered, CO2 control is active. When the last
@@ -55,9 +55,9 @@ schedule/auto behavior.
 The demanded fan speed depends on the worst (highest) triggered CO2 value:
 
 ```
-below 1200 ppm   → fan_low
-1200 – 1500 ppm  → fan_medium
-above 1500 ppm   → fan_high
+below 1000 ppm   → fan_low
+1000 – 1200 ppm  → fan_medium
+above 1200 ppm   → fan_high
 ```
 
 The band only steps *down* when CO2 falls below the lower threshold minus the
@@ -126,7 +126,7 @@ ventilation, and zone valves follow the demand.
 
 1. Is `switch.co2_control_{device_id}` on?
 2. Are the sensor entities available and actually updating?
-3. Do values reach threshold + activation hysteresis (default 1100 ppm)?
+3. Do values reach threshold + activation hysteresis (default 825 ppm)?
 4. Check the attributes of `binary_sensor.co2_active_{device_id}` for the
    trigger evaluation details
 

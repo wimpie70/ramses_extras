@@ -48,17 +48,17 @@ class CO2Config:
     @property
     def default_threshold(self) -> int:
         """Get default CO2 threshold in ppm."""
-        return int(self._config.get("default_threshold", 1000))
+        return int(self._config.get("default_threshold", 800))
 
     @property
     def activation_hysteresis(self) -> int:
         """Get activation hysteresis in ppm."""
-        return int(self._config.get("activation_hysteresis", 100))
+        return int(self._config.get("activation_hysteresis", 25))
 
     @property
     def deactivation_hysteresis(self) -> int:
         """Get deactivation hysteresis in ppm."""
-        return int(self._config.get("deactivation_hysteresis", -100))
+        return int(self._config.get("deactivation_hysteresis", -25))
 
     @property
     def max_runtime_minutes(self) -> int:
@@ -83,12 +83,12 @@ class CO2Config:
     @property
     def medium_threshold(self) -> int:
         """Get the ppm level above which medium is demanded (issue 354)."""
-        return int(self._config.get("medium_threshold", 1200))
+        return int(self._config.get("medium_threshold", 1000))
 
     @property
     def high_threshold(self) -> int:
         """Get the ppm level above which high is demanded (issue 354)."""
-        return int(self._config.get("high_threshold", 1500))
+        return int(self._config.get("high_threshold", 1200))
 
     @property
     def priority_over_humidity(self) -> bool:

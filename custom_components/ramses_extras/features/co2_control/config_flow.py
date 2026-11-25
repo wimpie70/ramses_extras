@@ -36,13 +36,13 @@ def get_co2_control_schema(hass: HomeAssistant, device_id: str) -> vol.Schema:
         {
             vol.Optional("enabled", default=False): bool,
             vol.Optional("automation_enabled", default=False): bool,
-            vol.Optional("default_threshold", default=1000): vol.All(
+            vol.Optional("default_threshold", default=800): vol.All(
                 vol.Coerce(int), vol.Range(min=400, max=2000)
             ),
-            vol.Optional("activation_hysteresis", default=100): vol.All(
+            vol.Optional("activation_hysteresis", default=25): vol.All(
                 vol.Coerce(int), vol.Range(min=0, max=500)
             ),
-            vol.Optional("deactivation_hysteresis", default=-100): vol.All(
+            vol.Optional("deactivation_hysteresis", default=-25): vol.All(
                 vol.Coerce(int), vol.Range(min=-500, max=0)
             ),
         }
@@ -61,16 +61,16 @@ async def async_validate_co2_config(
     errors: dict[str, str] = {}
 
     # Validate threshold range
-    threshold = config.get("default_threshold", 1000)
+    threshold = config.get("default_threshold", 800)
     if not 400 <= threshold <= 2000:
         errors["default_threshold"] = "threshold_out_of_range"
 
     # Validate hysteresis
-    activation = config.get("activation_hysteresis", 100)
+    activation = config.get("activation_hysteresis", 25)
     if activation < 0:
         errors["activation_hysteresis"] = "must_be_positive"
 
-    deactivation = config.get("deactivation_hysteresis", -100)
+    deactivation = config.get("deactivation_hysteresis", -25)
     if deactivation > 0:
         errors["deactivation_hysteresis"] = "must_be_negative"
 
@@ -87,11 +87,11 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
 
     return {
         "fan_mode": str(section.get("fan_mode", "auto")),
-        "medium_threshold": int(section.get("medium_threshold", 1200)),
-        "high_threshold": int(section.get("high_threshold", 1500)),
-        "default_threshold": int(section.get("default_threshold", 1000)),
-        "activation_hysteresis": int(section.get("activation_hysteresis", 100)),
-        "deactivation_hysteresis": int(section.get("deactivation_hysteresis", -100)),
+        "medium_threshold": int(section.get("medium_threshold", 1000)),
+        "high_threshold": int(section.get("high_threshold", 1200)),
+        "default_threshold": int(section.get("default_threshold", 800)),
+        "activation_hysteresis": int(section.get("activation_hysteresis", 25)),
+        "deactivation_hysteresis": int(section.get("deactivation_hysteresis", -25)),
         "priority_over_humidity": bool(section.get("priority_over_humidity", True)),
         "max_runtime_minutes": int(section.get("max_runtime_minutes", 120)),
         "cooldown_period_minutes": int(section.get("cooldown_period_minutes", 15)),
@@ -220,11 +220,11 @@ async def async_step_co2_control_config(
             ),
             "medium_threshold": int(
                 user_input.get(
-                    "medium_threshold", defaults.get("medium_threshold", 1200)
+                    "medium_threshold", defaults.get("medium_threshold", 1000)
                 )
             ),
             "high_threshold": int(
-                user_input.get("high_threshold", defaults.get("high_threshold", 1500))
+                user_input.get("high_threshold", defaults.get("high_threshold", 1200))
             ),
             "default_threshold": int(user_input["default_threshold"]),
             "activation_hysteresis": int(user_input["activation_hysteresis"]),
@@ -284,11 +284,11 @@ async def async_step_co2_control_config(
             ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2000)),
             vol.Required(
                 "medium_threshold",
-                default=defaults.get("medium_threshold", 1200),
+                default=defaults.get("medium_threshold", 1000),
             ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2500)),
             vol.Required(
                 "high_threshold",
-                default=defaults.get("high_threshold", 1500),
+                default=defaults.get("high_threshold", 1200),
             ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2500)),
             vol.Required(
                 "activation_hysteresis",
