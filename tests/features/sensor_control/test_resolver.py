@@ -296,7 +296,6 @@ class TestSensorControlResolver:
                             "humidity_entity": "sensor.bath_humidity",
                             "area_co2_enabled": True,
                             "co2_entity": "sensor.bath_co2",
-                            "co2_threshold_entity": "input_number.bathroom_threshold",
                             "co2_threshold": 900,
                             "spike_rise_percent": 15.0,
                             "spike_window_minutes": 3,
@@ -343,10 +342,6 @@ class TestSensorControlResolver:
         assert result["area_sensors"][0]["zone_id"] == "zone_1"
         assert result["area_sensors"][0]["area_co2_enabled"] is True
         assert result["area_sensors"][0]["co2_entity"] == "sensor.bath_co2"
-        assert (
-            result["area_sensors"][0]["co2_threshold_entity"]
-            == "input_number.bathroom_threshold"
-        )
         assert result["area_sensors"][0]["co2_threshold"] == 900
         assert result["area_sensors"][0]["spike_ignore_outdoor"] is True
         assert result["area_sensors"][1]["area_id"] == "broken"

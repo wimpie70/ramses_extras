@@ -29,7 +29,7 @@ CO2_NUMBER_CONFIGS = {
         "min_value": 0,
         "max_value": 2000,
         "step": 50,
-        "default_value": 1000,
+        "default_value": 800,
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "co2_threshold_{device_id}",
     },
@@ -42,7 +42,7 @@ CO2_NUMBER_CONFIGS = {
         "min_value": 0,
         "max_value": 500,
         "step": 10,
-        "default_value": 100,
+        "default_value": 25,
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "co2_activation_hysteresis_{device_id}",
     },
@@ -55,7 +55,7 @@ CO2_NUMBER_CONFIGS = {
         "min_value": -500,
         "max_value": 0,
         "step": 10,
-        "default_value": -100,
+        "default_value": -25,
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "co2_deactivation_hysteresis_{device_id}",
     },
@@ -103,8 +103,6 @@ CO2_DEVICE_ENTITY_MAPPING = {
 # WebSocket commands for the CO2 control feature
 CO2_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {
     "get_co2_status": "ramses_extras/co2/get_status",
-    "get_zone_details": "ramses_extras/co2/get_zone_details",
-    "update_zone_config": "ramses_extras/co2/update_zone",
     "get_co2_history": "ramses_extras/co2/get_history",
 }
 
@@ -134,29 +132,23 @@ CO2_CONTROL_DEFAULTS = {
     # Core settings
     "enabled": True,
     "automation_enabled": False,  # Only enable when user explicitly toggles
-    "default_threshold": 1000,  # ppm
+    "default_threshold": 800,  # ppm
     # Hysteresis settings
-    "activation_hysteresis": 100,  # ppm above threshold to activate
-    "deactivation_hysteresis": -100,  # ppm below threshold to deactivate
-    # Zone configuration
-    "zones": [],  # List of zone configurations
+    "activation_hysteresis": 25,  # ppm above threshold to activate
+    "deactivation_hysteresis": -25,  # ppm below threshold to deactivate
     # Safety settings
-    "max_runtime_minutes": 120,
-    "cooldown_period_minutes": 15,
     # Priority settings
     "priority_over_humidity": True,  # CO2 always has priority
-    # Fan mode demanded while CO2 control is active: "auto" keeps the
-    # proportional speed calculation; low/medium/high force a fixed mode
-    # (issue 354 — low/mid/high percentages are installation-specific).
-    "fan_mode": "auto",
+    # Stepped demand bands (absolute ppm, issue 354): the fan baseline
+    # already runs at low, so while CO2 control is active the demand is
+    # medium, stepping to high above high_threshold.
+    # activation_hysteresis doubles as the anti-flap margin on the
+    # downward band transition.
+    "high_threshold": 1200,
 }
 
 CO2_CONTROL_VALIDATION_RULES = {
-    "fan_mode": {
-        "type": "string",
-        "required": False,
-        "allowed": ["auto", "low", "medium", "high"],
-    },
+    "high_threshold": {"type": "numeric", "min": 400, "max": 2500, "required": False},
     "enabled": {"type": "boolean", "required": False},
     "automation_enabled": {"type": "boolean", "required": False},
     "default_threshold": {
@@ -175,12 +167,6 @@ CO2_CONTROL_VALIDATION_RULES = {
         "type": "numeric",
         "min": -500,
         "max": 0,
-        "required": False,
-    },
-    "max_runtime_minutes": {
-        "type": "numeric",
-        "min": 10,
-        "max": 480,
         "required": False,
     },
 }

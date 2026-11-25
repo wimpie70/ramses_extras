@@ -43,7 +43,6 @@ from custom_components.ramses_extras.framework.helpers.zone_demand import (
 
 from .config import CO2Config
 from .const import FEATURE_DEFINITION, FEATURE_ID
-from .zone_manager import CO2ZoneManager
 
 # Feature ID used by this module
 FEATURE_SENSOR_CONTROL = "sensor_control"
@@ -89,7 +88,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         # CO2-specific state tracking
         self._co2_active = False
         self._automation_active = False
-        self._zone_managers: dict[str, CO2ZoneManager] = {}
         self._state_change_listeners: list[Any] = []
         self._source_listener_entities: dict[str, set[str]] = {}
         self._latest_sensor_control_context: dict[str, dict[str, Any] | None] = {}
@@ -210,7 +208,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
     def _iter_candidate_device_ids(self) -> list[str]:
         """Return candidate device IDs for startup CO2 evaluation."""
-        ids: set[str] = set(self._zone_managers.keys())
+        ids: set[str] = set()
 
         # Only add devices that are enabled for co2_control in the
         # device_feature_matrix.  Without this filter, ALL ramses_cc
@@ -397,58 +395,14 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             _LOGGER.info("CO2 control feature is not enabled, skipping setup")
             return False
 
-        # Initialize zone managers for each device
-        await self._setup_zone_managers()
-
         # Set up state change listeners for CO2 sensors
         await self._setup_sensor_listeners()
 
         _LOGGER.info("CO2 automation setup complete")
         return True
 
-    async def _setup_zone_managers(self) -> None:
-        """Set up zone managers for each configured device."""
-        domain_data = self.hass.data.get(DOMAIN, {})
-        devices = domain_data.get("devices", [])
-
-        for device in devices:
-            if isinstance(device, dict):
-                device_id = str(device.get("device_id") or "").strip()
-            else:
-                device_id = str(device)
-            if not device_id:
-                continue
-
-            co2_config = self.config_entry.options.get("co2_control", {})
-            device_co2_config = co2_config.get(device_id, {})
-
-            if device_co2_config.get("enabled", False):
-                zone_manager = CO2ZoneManager(self.hass, device_id, device_co2_config)
-                self._zone_managers[device_id] = zone_manager
-                _LOGGER.info("Created zone manager for device %s", device_id)
-
     async def _setup_sensor_listeners(self) -> None:
         """Set up state change listeners for all CO2 sensors."""
-        setup_source_devices: set[str] = set()
-
-        for device_id, zone_manager in self._zone_managers.items():
-            for zone in zone_manager.zones.values():
-                if zone.sensor_entity:
-                    listener = async_track_state_change_event(
-                        self.hass,
-                        [zone.sensor_entity],
-                        self._handle_co2_sensor_change,
-                    )
-                    self._state_change_listeners.append(listener)
-                    _LOGGER.debug(
-                        "Listening to CO2 sensor %s for zone %s",
-                        zone.sensor_entity,
-                        zone.zone_id,
-                    )
-
-            await self._setup_source_listeners_for_device(device_id)
-            setup_source_devices.add(device_id)
-
         domain_devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
         for device in domain_devices:
             if isinstance(device, dict):
@@ -456,7 +410,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             else:
                 device_id = str(device)
 
-            if not device_id or device_id in setup_source_devices:
+            if not device_id:
                 continue
 
             await self._setup_source_listeners_for_device(device_id)
@@ -493,12 +447,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if co2_entity:
                 entities.add(co2_entity)
 
-            threshold_entity = str(
-                area_sensor.get("co2_threshold_entity") or ""
-            ).strip()
-            if threshold_entity:
-                entities.add(threshold_entity)
-
         if not entities:
             return
 
@@ -527,14 +475,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         if not new_state:
             return
-
-        # Find which zone this sensor belongs to
-        for device_id, zone_manager in self._zone_managers.items():
-            for zone_id, zone in zone_manager.zones.items():
-                if zone.sensor_entity == entity_id:
-                    await zone_manager.update_from_state(zone_id, new_state)
-                    await self._evaluate_co2_control(device_id)
-                    return
 
         for device_id, sensor_ctx in self._latest_sensor_control_context.items():
             if self._entity_in_sensor_context(entity_id, sensor_ctx):
@@ -768,8 +708,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         :param device_id: Device identifier (may include device type suffix)
         """
         # Normalize device_id by stripping device type suffix and
-        # converting to colon format to match _zone_managers keys
-        # (which come from hass.data[DOMAIN]["devices"] in colon format).
+        # converting to colon format (matching hass.data device ids).
         clean_device_id = device_id
         if device_id and " (" in device_id:
             clean_device_id = device_id.split(" (")[0]
@@ -779,18 +718,17 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             await self._clear_disabled_co2_state(clean_device_id)
             return
 
-        zone_manager = self._zone_managers.get(clean_device_id)
-        triggered_zones: list[str] = []
-        if zone_manager:
-            triggered_zones = await zone_manager.check_zone_triggers(
-                self._get_activation_hysteresis(clean_device_id),
-                self._get_deactivation_hysteresis(clean_device_id),
-            )
-
         sensor_ctx = await self._get_sensor_control_context(clean_device_id)
         self._latest_sensor_control_context[clean_device_id] = sensor_ctx
         await self._register_source_listeners(clean_device_id, sensor_ctx)
         triggered_sources = self._evaluate_trigger_sources(clean_device_id, sensor_ctx)
+        triggered_zones: list[str] = sorted(
+            {
+                str(item.get("zone_id"))
+                for item in triggered_sources
+                if str(item.get("zone_id") or "").strip()
+            }
+        )
         _LOGGER.debug(
             "CO2 source evaluation for %s: area_sensors=%d, triggered_sources=%s",
             clean_device_id,
@@ -840,12 +778,10 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             # Notify humidity control it can resume
             await self._notify_priority_release()
 
-        # Calculate and set fan speed
+        # Calculate and set fan speed — one unified path for zones
+        # and area sensors alike (issue 357)
         if self._co2_active:
-            if zone_manager:
-                await self._adjust_fan_speed(clean_device_id, zone_manager)
-            else:
-                await self._boost_from_triggers(clean_device_id)
+            await self._boost_from_triggers(clean_device_id, triggered_sources)
         else:
             # Return to idle/normal speed
             await self._return_to_idle(clean_device_id)
@@ -897,6 +833,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             label = str(area_sensor.get("label") or area_id)
             zone_id = str(area_sensor.get("zone_id") or "").strip() or None
             threshold = self._resolve_area_threshold(area_sensor, threshold_default)
+            t2 = self._resolve_area_high_threshold(area_sensor)
 
             source_result = self._evaluate_source_trigger(
                 source_states,
@@ -909,6 +846,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 deactivation_hysteresis=deact_hyst,
             )
             if source_result is not None:
+                source_result["high_threshold"] = t2
                 triggered.append(source_result)
 
         mappings = (
@@ -929,6 +867,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             deactivation_hysteresis=deact_hyst,
         )
         if internal_result is not None:
+            internal_result["high_threshold"] = self.config.high_threshold
             triggered.append(internal_result)
 
         if not triggered:
@@ -962,20 +901,26 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         area_sensor: dict[str, Any],
         threshold_default: int,
     ) -> int:
-        """Resolve per-area threshold from entity, static value, or default."""
-        threshold_entity = str(area_sensor.get("co2_threshold_entity") or "").strip()
-        if threshold_entity:
-            state = self.hass.states.get(threshold_entity)
-            if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
-                try:
-                    return int(float(state.state))
-                except TypeError, ValueError:
-                    pass
-
+        """Resolve the per-area threshold: static value or global default."""
         try:
             return int(area_sensor.get("co2_threshold") or threshold_default)
         except TypeError, ValueError:
             return threshold_default
+
+    def _resolve_area_high_threshold(
+        self,
+        area_sensor: dict[str, Any],
+    ) -> int:
+        """Resolve the per-area high band threshold (issue 357).
+
+        ``co2_high_threshold`` on the area mapping overrides the global
+        config value; absent or zero means inherit the global setting.
+        """
+        try:
+            t2 = int(area_sensor.get("co2_high_threshold") or 0)
+        except TypeError, ValueError:
+            t2 = 0
+        return t2 or self.config.high_threshold
 
     def _evaluate_source_trigger(
         self,
@@ -1186,80 +1131,79 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             return internal_entity
         return f"sensor.{device_id.replace(':', '_').lower()}_co2_level"
 
-    async def _boost_from_triggers(self, device_id: str) -> None:
-        """Fallback boost command when no zone manager is configured."""
-        target_speed = 3
+    def _select_band(
+        self,
+        device_id: str,
+        worst_co2: float,
+        high_threshold: int | None = None,
+    ) -> str:
+        """Select the stepped demand band for a CO2 level (issue 357).
+
+        The fan baseline already runs at low, so only two demand bands
+        exist: medium while active, high above high_threshold.
+        activation_hysteresis doubles as the anti-flap margin: the high
+        band only steps DOWN when CO2 falls below high_threshold minus
+        the hysteresis.  State is tracked per device.  A per-area high
+        threshold overrides the global config when given.
+        """
+        t2 = high_threshold or self.config.high_threshold
+        margin = max(self.config.activation_hysteresis, 0)
+        bands: dict[str, str] | None = getattr(self, "_bands_by_device", None)
+        if bands is None:
+            bands = {}
+            self._bands_by_device = bands
+        last = bands.get(device_id)
+
+        band = "medium"
+        if worst_co2 > t2 or (last == "high" and worst_co2 > t2 - margin):
+            band = "high"
+        bands[device_id] = band
+        return band
+
+    def _command_for_band(self, band: str) -> str:
+        """Map a band to the demanded fan command."""
+        return f"fan_{band}"
+
+    async def _boost_from_triggers(
+        self, device_id: str, triggered_sources: list[dict[str, Any]] | None = None
+    ) -> None:
+        """Demand the stepped band for area-sensor triggers (issue 357).
+
+        Previously a flat fan_medium regardless of level; now uses the
+        worst triggered source value with the same bands as the zone path.
+        """
+        worst_item = max(
+            (
+                item
+                for item in (triggered_sources or [])
+                if isinstance(item.get("value"), (int, float))
+            ),
+            key=lambda item: float(item["value"]),
+            default=None,
+        )
+        worst_co2 = float(worst_item["value"]) if worst_item else 0.0
+        band = self._select_band(
+            device_id,
+            worst_co2,
+            high_threshold=(
+                int(worst_item.get("high_threshold") or 0) if worst_item else 0
+            ),
+        )
+        target_speed = {"medium": 3, "high": 5}[band]
         if target_speed == self._last_fan_speed:
             return
 
-        fan_mode = self.config.fan_mode
-        boost_speed = (
-            f"fan_{fan_mode}" if fan_mode in ("low", "medium", "high") else "fan_medium"
-        )
         success = await self.fan_speed_arbiter.async_set_demand(
             device_id,
             feature_id=self.feature_id,
             source_id="co2_control",
-            requested_speed=boost_speed,
+            requested_speed=self._command_for_band(band),
             priority=30,
             reason="co2_trigger",
+            metadata={"target_speed": target_speed},
         )
         if success:
             self._last_fan_speed = target_speed
-
-    async def _adjust_fan_speed(
-        self, device_id: str, zone_manager: CO2ZoneManager
-    ) -> None:
-        """Adjust fan speed based on CO2 levels.
-
-        :param device_id: Device identifier
-        :param zone_manager: Zone manager instance
-        """
-        # Calculate required fan speed
-        base_speed = 2  # Base speed when CO2 triggered
-        max_speed = 5  # Maximum fan speed
-
-        target_speed = await zone_manager.calculate_combined_fan_speed(
-            base_speed, max_speed
-        )
-
-        # Map speed to command name.  A fixed fan_mode (low/medium/high)
-        # overrides the proportional mapping — the low/mid/high
-        # percentages are installation-specific, so users with
-        # over-capacity units can pick a calmer mode (issue 354).
-        fan_mode = self.config.fan_mode
-        if fan_mode in ("low", "medium", "high"):
-            command_name = f"fan_{fan_mode}"
-        else:
-            speed_commands = {
-                1: "fan_low",
-                2: "fan_low",
-                3: "fan_medium",
-                4: "fan_high",
-                5: "fan_high",
-            }
-            command_name = speed_commands.get(target_speed, "fan_medium")
-
-        # Only send command if speed changed
-        if target_speed != self._last_fan_speed:
-            success = await self.fan_speed_arbiter.async_set_demand(
-                device_id,
-                feature_id=self.feature_id,
-                source_id="co2_control",
-                requested_speed=command_name,
-                priority=30,
-                reason="co2_trigger",
-                metadata={"target_speed": target_speed},
-            )
-            if success:
-                self._last_fan_speed = target_speed
-                _LOGGER.debug(
-                    "Set fan speed to %s for device %s (CO2 control)",
-                    target_speed,
-                    device_id,
-                )
-            else:
-                _LOGGER.error("Failed to set fan speed for device %s", device_id)
 
     async def _return_to_idle(self, device_id: str) -> None:
         """Return fan to idle speed.
@@ -1316,10 +1260,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             "fan_arbiter": {
                 device_id: self.fan_speed_arbiter.get_device_debug_state(device_id)
                 for device_id in self._iter_candidate_device_ids()
-            },
-            "zones": {
-                device_id: zone_manager.get_zone_status()
-                for device_id, zone_manager in self._zone_managers.items()
             },
         }
 

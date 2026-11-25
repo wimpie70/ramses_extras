@@ -22,7 +22,6 @@ import voluptuous as vol
 from custom_components.ramses_extras.features.co2_control.co2_control_yaml import (
     CO2_CONTROL_CONFIG_SCHEMA,
     CO2_FAN_CONFIG_SCHEMA,
-    CO2_ZONE_SCHEMA,
     co2_control_validator,
     export_co2_control_to_yaml,
     load_validator,
@@ -123,37 +122,6 @@ from custom_components.ramses_extras.features.sensor_control.zones_yaml import (
 class TestCO2ControlYAML:
     """Test cases for CO2 control YAML validation."""
 
-    def test_co2_zone_schema_valid(self):
-        """Test CO2 zone schema with valid data."""
-        zone_data = {
-            "zone_id": "bathroom",
-            "name": "Bathroom",
-            "threshold": 1000,
-            "activation_hysteresis": 100,
-            "deactivation_hysteresis": -100,
-        }
-
-        result = CO2_ZONE_SCHEMA(zone_data)
-        assert result["zone_id"] == "bathroom"
-        assert result["threshold"] == 1000
-
-    def test_co2_zone_schema_defaults(self):
-        """Test CO2 zone schema with default values."""
-        zone_data = {"zone_id": "office"}
-
-        result = CO2_ZONE_SCHEMA(zone_data)
-        assert result["zone_id"] == "office"
-        assert result["threshold"] == 1000
-        assert result["activation_hysteresis"] == 100
-        assert result["deactivation_hysteresis"] == -100
-
-    def test_co2_zone_schema_invalid_threshold(self):
-        """Test CO2 zone schema with invalid threshold."""
-        zone_data = {"zone_id": "bathroom", "threshold": 3000}
-
-        with pytest.raises(vol.Invalid):  # vol.Invalid
-            CO2_ZONE_SCHEMA(zone_data)
-
     def test_co2_fan_config_schema_valid(self):
         """Test CO2 fan config schema with valid data."""
         fan_config = {
@@ -161,17 +129,10 @@ class TestCO2ControlYAML:
             "automation_enabled": False,
             "threshold": 1000,
             "max_runtime_minutes": 120,
-            "zones": [
-                {
-                    "zone_id": "bathroom",
-                    "threshold": 800,
-                }
-            ],
         }
 
         result = CO2_FAN_CONFIG_SCHEMA(fan_config)
         assert result["enabled"] is True
-        assert len(result["zones"]) == 1
 
     def test_co2_control_validator_valid(self):
         """Test CO2 control validator with valid configuration."""
@@ -182,7 +143,6 @@ class TestCO2ControlYAML:
                     "threshold": 1000,
                     "activation_hysteresis": 100,
                     "deactivation_hysteresis": -100,
-                    "zones": [{"zone_id": "bathroom", "threshold": 800}],
                 }
             }
         }
@@ -228,14 +188,6 @@ class TestCO2ControlYAML:
         assert "activation_hysteresis 600 out of range" in errors[0]
         assert "deactivation_hysteresis 100 out of range" in errors[1]
 
-    def test_co2_control_validator_invalid_zones(self):
-        """Test CO2 control validator with invalid zones."""
-        section = {"FANs": {"32:153289": {"zones": "not_a_list"}}}
-
-        errors = co2_control_validator(section)
-        assert len(errors) == 1
-        assert "zones must be a list" in errors[0]
-
     def test_export_co2_control_to_yaml(self):
         """Test CO2 control export to YAML."""
         config = {"FANs": {"32:153289": {"enabled": True}}}
@@ -254,11 +206,9 @@ class TestCO2ControlYAML:
                 "32:153289": {
                     "enabled": True,
                     "automation_enabled": False,
-                    "threshold": 1000,
-                    "activation_hysteresis": 100,
-                    "deactivation_hysteresis": -100,
-                    "max_runtime_minutes": 120,
-                    "cooldown_period_minutes": 15,
+                    "threshold": 800,
+                    "activation_hysteresis": 25,
+                    "deactivation_hysteresis": -25,
                     "priority_over_humidity": True,
                 }
             }
@@ -1690,7 +1640,6 @@ class TestYAMLValidationIntegration:
                 "32:153289": {
                     "enabled": True,
                     "threshold": 1000,
-                    "zones": [{"zone_id": "bathroom", "threshold": 800}],
                 }
             }
         }
@@ -1702,20 +1651,10 @@ class TestYAMLValidationIntegration:
                 "32:153289": {
                     "enabled": True,
                     "threshold": 1000,
-                    "zones": [
-                        {
-                            "zone_id": "bathroom",
-                            "threshold": 800,
-                            "activation_hysteresis": 100,
-                            "deactivation_hysteresis": -100,
-                        }
-                    ],
                     "automation_enabled": False,
-                    "activation_hysteresis": 100,
-                    "cooldown_period_minutes": 15,
+                    "activation_hysteresis": 25,
                     "priority_over_humidity": True,
-                    "deactivation_hysteresis": -100,
-                    "max_runtime_minutes": 120,
+                    "deactivation_hysteresis": -25,
                 }
             }
         }

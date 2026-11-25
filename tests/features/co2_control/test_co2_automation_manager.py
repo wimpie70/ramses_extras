@@ -1,5 +1,6 @@
 """Tests for CO2AutomationManager unified trigger logic."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -146,35 +147,23 @@ class TestCO2AutomationManager:
         assert "bathroom" in trigger_ids
         assert "internal_co2" in trigger_ids
 
-    def test_resolve_area_threshold_prefers_threshold_entity(self) -> None:
-        """Area threshold entity should override static area threshold."""
-        self.hass.states.get.side_effect = lambda entity_id: {
-            "input_number.bathroom_co2_threshold": _MockState("850")
-        }.get(entity_id)
-
+    def test_resolve_area_threshold_uses_static_value(self) -> None:
+        """Static area threshold wins over the global default."""
         threshold = self.manager._resolve_area_threshold(
-            {
-                "co2_threshold_entity": "input_number.bathroom_co2_threshold",
-                "co2_threshold": 800,
-            },
-            threshold_default=1000,
-        )
-
-        assert threshold == 850
-
-    def test_resolve_area_threshold_falls_back_to_static_value(self) -> None:
-        """Static area threshold should be used when threshold entity is unavailable."""
-        self.hass.states.get.return_value = None
-
-        threshold = self.manager._resolve_area_threshold(
-            {
-                "co2_threshold_entity": "input_number.bathroom_co2_threshold",
-                "co2_threshold": 800,
-            },
+            {"co2_threshold": 800},
             threshold_default=1000,
         )
 
         assert threshold == 800
+
+    def test_resolve_area_threshold_falls_back_to_default(self) -> None:
+        """The global default applies when no static threshold is set."""
+        threshold = self.manager._resolve_area_threshold(
+            {},
+            threshold_default=1000,
+        )
+
+        assert threshold == 1000
 
     def test_get_raw_area_sensors_from_active_entry_when_hass_data_is_stale(
         self,
@@ -261,12 +250,12 @@ class TestCO2AutomationManager:
         self.manager._evaluate_co2_control.assert_called()
 
     @pytest.mark.asyncio
-    async def test_adjust_fan_speed_uses_shared_arbiter(self) -> None:
+    async def test_boost_from_triggers_uses_shared_arbiter(self) -> None:
         """CO2 speed changes should be submitted through the shared arbiter."""
-        zone_manager = MagicMock()
-        zone_manager.calculate_combined_fan_speed = AsyncMock(return_value=4)
-
-        await self.manager._adjust_fan_speed("32:123456", zone_manager)
+        await self.manager._boost_from_triggers(
+            "32:123456",
+            [{"source_id": "z", "value": 1600.0}],  # above t2=1500
+        )
 
         self.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
             "32:123456",
@@ -275,7 +264,7 @@ class TestCO2AutomationManager:
             requested_speed="fan_high",
             priority=30,
             reason="co2_trigger",
-            metadata={"target_speed": 4},
+            metadata={"target_speed": 5},
         )
 
     @pytest.mark.asyncio
