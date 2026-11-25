@@ -112,6 +112,40 @@ class TestRamsesMessageStream:
         assert data["dtm"] == "2026-04-18T09:00:00.000000+00:00"
         assert data["dst"] == "37:170000"
 
+    def test_handle_msg_with_ramses_rf_061_shape(self) -> None:
+        """Regression test for wimpie70/ramses_extras issue 351.
+
+        ramses_rf >= 0.61 stores the packet as a PacketDTO on ``_dto``
+        (not ``_pkt``), exposes hex/frame via ``raw_payload``/``raw_frame``
+        properties, and ``msg.payload`` is the *parsed* payload dict.
+        Live payloads must still land in data["payload"] as hex.
+        """
+        hass = MagicMock()
+        stream = RamsesMessageStream(hass)
+        callback = MagicMock()
+        stream.subscribe(callback)
+
+        parsed_payload = {"tpi_controls": {"until": None}}
+        msg = SimpleNamespace(
+            _dto=SimpleNamespace(raw_payload="00003E"),
+            raw_payload="00003E",
+            raw_frame=("RP --- 32:150000 37:170000 --:------ 2411 003 00003E"),
+            payload=parsed_payload,
+            dtm=datetime(2026, 4, 18, 9, 0, 0),
+        )
+
+        stream._handle_msg(msg)
+
+        callback.assert_called_once()
+        data = callback.call_args.args[0]
+        assert data["src"] == "32:150000"
+        assert data["dst"] == "37:170000"
+        assert data["verb"] == "RP"
+        assert data["code"] == "2411"
+        # hex payload preserved as string — not the parsed dict
+        assert data["payload"] == "00003E"
+        assert data["decoded_payload"] == parsed_payload
+
     @pytest.mark.asyncio
     async def test_attach_client_listener_retries_until_available(self) -> None:
         """Listener attachment should retry while coordinator/client initializes."""
