@@ -1,5 +1,6 @@
 """Additional tests for CO2 automation helper and setup paths."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -559,17 +560,18 @@ async def test_evaluate_co2_control_uses_trigger_fallback_when_no_zone_manager(
 
 
 @pytest.mark.asyncio
-async def test_adjust_fan_speed_uses_zone_manager_calculated_low_speed(
+async def test_adjust_fan_speed_demands_low_below_medium_threshold(
     manager: CO2AutomationManager,
 ) -> None:
-    """CO2 should submit the calculated low-speed demand when appropriate."""
+    """Below medium_threshold the stepped band demands fan_low (issue 354)."""
+    zone = SimpleNamespace(current_co2=1100)  # active, below t1=1200
     zone_manager = MagicMock()
-    zone_manager.calculate_combined_fan_speed = AsyncMock(return_value=2)
+    zone_manager.get_active_zones = AsyncMock(return_value=[zone])
     manager._last_fan_speed = 1
+    manager._last_band = None
 
     await manager._adjust_fan_speed("32:123456", zone_manager)
 
-    zone_manager.calculate_combined_fan_speed.assert_awaited_once_with(2, 5)
     manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
         "32:123456",
         feature_id="co2_control",
@@ -582,17 +584,18 @@ async def test_adjust_fan_speed_uses_zone_manager_calculated_low_speed(
 
 
 @pytest.mark.asyncio
-async def test_adjust_fan_speed_uses_zone_manager_calculated_medium_speed(
+async def test_adjust_fan_speed_demands_medium_between_thresholds(
     manager: CO2AutomationManager,
 ) -> None:
-    """CO2 should submit the calculated medium-speed demand when appropriate."""
+    """Between medium/high thresholds the stepped band demands fan_medium."""
+    zone = SimpleNamespace(current_co2=1300)  # t1=1200 < co2 < t2=1500
     zone_manager = MagicMock()
-    zone_manager.calculate_combined_fan_speed = AsyncMock(return_value=3)
+    zone_manager.get_active_zones = AsyncMock(return_value=[zone])
     manager._last_fan_speed = 0
+    manager._last_band = None
 
     await manager._adjust_fan_speed("32:123456", zone_manager)
 
-    zone_manager.calculate_combined_fan_speed.assert_awaited_once_with(2, 5)
     manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
         "32:123456",
         feature_id="co2_control",

@@ -149,6 +149,12 @@ CO2_CONTROL_DEFAULTS = {
     # proportional speed calculation; low/medium/high force a fixed mode
     # (issue 354 — low/mid/high percentages are installation-specific).
     "fan_mode": "auto",
+    # Stepped demand bands (absolute ppm, issue 354): while CO2 control
+    # is active, demand low below medium_threshold, medium up to
+    # high_threshold, high above it.  activation_hysteresis doubles as
+    # the anti-flap margin on downward band transitions.
+    "medium_threshold": 1200,
+    "high_threshold": 1500,
 }
 
 CO2_CONTROL_VALIDATION_RULES = {
@@ -157,6 +163,8 @@ CO2_CONTROL_VALIDATION_RULES = {
         "required": False,
         "allowed": ["auto", "low", "medium", "high"],
     },
+    "medium_threshold": {"type": "numeric", "min": 400, "max": 2500, "required": False},
+    "high_threshold": {"type": "numeric", "min": 400, "max": 2500, "required": False},
     "enabled": {"type": "boolean", "required": False},
     "automation_enabled": {"type": "boolean", "required": False},
     "default_threshold": {

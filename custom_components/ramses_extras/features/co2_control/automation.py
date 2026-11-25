@@ -1215,30 +1215,35 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         :param device_id: Device identifier
         :param zone_manager: Zone manager instance
         """
-        # Calculate required fan speed
-        base_speed = 2  # Base speed when CO2 triggered
-        max_speed = 5  # Maximum fan speed
+        # Stepped demand bands (issue 354): while active, demand low
+        # below medium_threshold, medium up to high_threshold, high
+        # above it.  activation_hysteresis doubles as the anti-flap
+        # margin: a band only steps DOWN when CO2 falls below the lower
+        # threshold minus the hysteresis.  The arbiter still lets
+        # higher-priority automations overrule the demand.
+        active_zones = await zone_manager.get_active_zones()
+        worst_co2 = max((z.current_co2 or 0 for z in active_zones), default=0)
+        t1 = self.config.medium_threshold
+        t2 = max(self.config.high_threshold, t1)
+        margin = max(self.config.activation_hysteresis, 0)
+        last = getattr(self, "_last_band", None)
 
-        target_speed = await zone_manager.calculate_combined_fan_speed(
-            base_speed, max_speed
-        )
+        band = "low"
+        if worst_co2 > t2 or (last == "high" and worst_co2 > t2 - margin):
+            band = "high"
+        elif worst_co2 > t1 or (last in ("medium", "high") and worst_co2 > t1 - margin):
+            band = "medium"
 
-        # Map speed to command name.  A fixed fan_mode (low/medium/high)
-        # overrides the proportional mapping — the low/mid/high
-        # percentages are installation-specific, so users with
-        # over-capacity units can pick a calmer mode (issue 354).
+        # A fixed fan_mode (low/medium/high) overrides the stepped band —
+        # the low/mid/high percentages are installation-specific, so
+        # users with over-capacity units can pick a fixed mode.
         fan_mode = self.config.fan_mode
         if fan_mode in ("low", "medium", "high"):
             command_name = f"fan_{fan_mode}"
         else:
-            speed_commands = {
-                1: "fan_low",
-                2: "fan_low",
-                3: "fan_medium",
-                4: "fan_high",
-                5: "fan_high",
-            }
-            command_name = speed_commands.get(target_speed, "fan_medium")
+            command_name = f"fan_{band}"
+        self._last_band = band
+        target_speed = {"low": 2, "medium": 3, "high": 5}[band]
 
         # Only send command if speed changed
         if target_speed != self._last_fan_speed:

@@ -1,5 +1,6 @@
 """Tests for CO2AutomationManager unified trigger logic."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -263,8 +264,10 @@ class TestCO2AutomationManager:
     @pytest.mark.asyncio
     async def test_adjust_fan_speed_uses_shared_arbiter(self) -> None:
         """CO2 speed changes should be submitted through the shared arbiter."""
+        zone = SimpleNamespace(current_co2=1600)  # above t2=1500
         zone_manager = MagicMock()
-        zone_manager.calculate_combined_fan_speed = AsyncMock(return_value=4)
+        zone_manager.get_active_zones = AsyncMock(return_value=[zone])
+        self.manager._last_band = None
 
         await self.manager._adjust_fan_speed("32:123456", zone_manager)
 
@@ -275,7 +278,7 @@ class TestCO2AutomationManager:
             requested_speed="fan_high",
             priority=30,
             reason="co2_trigger",
-            metadata={"target_speed": 4},
+            metadata={"target_speed": 5},
         )
 
     @pytest.mark.asyncio
