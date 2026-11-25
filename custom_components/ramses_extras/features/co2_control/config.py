@@ -77,6 +77,16 @@ class CO2Config:
         return int(self._config.get("cooldown_period_minutes", 15))
 
     @property
+    def fan_mode(self) -> str:
+        """Get the fan mode demanded while CO2 control is active.
+
+        ``auto`` keeps the proportional speed calculation; ``low`` /
+        ``medium`` / ``high`` force a fixed mode (issue 354).
+        """
+        mode = str(self._config.get("fan_mode", "auto"))
+        return mode if mode in ("auto", "low", "medium", "high") else "auto"
+
+    @property
     def priority_over_humidity(self) -> bool:
         """Check if CO2 has priority over humidity control."""
         return bool(self._config.get("priority_over_humidity", True))

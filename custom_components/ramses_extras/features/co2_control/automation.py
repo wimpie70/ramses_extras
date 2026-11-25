@@ -1192,11 +1192,15 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if target_speed == self._last_fan_speed:
             return
 
+        fan_mode = self.config.fan_mode
+        boost_speed = (
+            f"fan_{fan_mode}" if fan_mode in ("low", "medium", "high") else "fan_medium"
+        )
         success = await self.fan_speed_arbiter.async_set_demand(
             device_id,
             feature_id=self.feature_id,
             source_id="co2_control",
-            requested_speed="fan_medium",
+            requested_speed=boost_speed,
             priority=30,
             reason="co2_trigger",
         )
@@ -1219,15 +1223,22 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             base_speed, max_speed
         )
 
-        # Map speed to command name
-        speed_commands = {
-            1: "fan_low",
-            2: "fan_low",
-            3: "fan_medium",
-            4: "fan_high",
-            5: "fan_high",
-        }
-        command_name = speed_commands.get(target_speed, "fan_medium")
+        # Map speed to command name.  A fixed fan_mode (low/medium/high)
+        # overrides the proportional mapping — the low/mid/high
+        # percentages are installation-specific, so users with
+        # over-capacity units can pick a calmer mode (issue 354).
+        fan_mode = self.config.fan_mode
+        if fan_mode in ("low", "medium", "high"):
+            command_name = f"fan_{fan_mode}"
+        else:
+            speed_commands = {
+                1: "fan_low",
+                2: "fan_low",
+                3: "fan_medium",
+                4: "fan_high",
+                5: "fan_high",
+            }
+            command_name = speed_commands.get(target_speed, "fan_medium")
 
         # Only send command if speed changed
         if target_speed != self._last_fan_speed:
