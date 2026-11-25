@@ -1176,15 +1176,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         return band
 
     def _command_for_band(self, band: str) -> str:
-        """Map a band to the demanded fan command.
-
-        A fixed fan_mode (low/medium/high) overrides the stepped band —
-        the low/mid/high percentages are installation-specific, so
-        users with over-capacity units can pick a fixed mode (issue 354).
-        """
-        fan_mode = self.config.fan_mode
-        if fan_mode in ("low", "medium", "high"):
-            return f"fan_{fan_mode}"
+        """Map a band to the demanded fan command."""
         return f"fan_{band}"
 
     async def _boost_from_triggers(

@@ -71,16 +71,6 @@ class CO2Config:
         return int(self._config.get("cooldown_period_minutes", 15))
 
     @property
-    def fan_mode(self) -> str:
-        """Get the fan mode demanded while CO2 control is active.
-
-        ``auto`` keeps the proportional speed calculation; ``low`` /
-        ``medium`` / ``high`` force a fixed mode (issue 354).
-        """
-        mode = str(self._config.get("fan_mode", "auto"))
-        return mode if mode in ("auto", "low", "medium", "high") else "auto"
-
-    @property
     def high_threshold(self) -> int:
         """Get the ppm level above which high is demanded (issue 354)."""
         return int(self._config.get("high_threshold", 1200))

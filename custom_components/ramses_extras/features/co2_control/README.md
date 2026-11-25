@@ -80,7 +80,6 @@ behind a valve get air exactly when their sensors say they need it.
 
 | setting | default | meaning |
 |---|---|---|
-| `fan_mode` | `auto` | stepped bands, or fixed low/medium/high |
 | `default_threshold` | 800 ppm | trigger level for the internal sensor and areas without their own |
 | `high_threshold` | 1200 ppm | above this → `fan_high` |
 

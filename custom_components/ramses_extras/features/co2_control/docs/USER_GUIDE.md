@@ -65,13 +65,12 @@ The high band only steps *down* when CO2 falls below `high_threshold` minus
 the activation hysteresis, so it can't flap between bands. The threshold
 itself (`high_threshold`) is configurable.
 
-### Fixed fan mode
+### Tuning the escalation
 
-If your unit is over- or under-capacity for your home, the generic bands may
-not fit — a "medium" on a 400-class unit can move more air than a "high" on a
-smaller one. Set **Fan mode** to `low`, `medium`, or `high` in the CO2
-control settings to always demand that mode while active. `auto` (default)
-uses the stepped bands.
+If your unit is over- or under-capacity for your home, tune the thresholds
+rather than the speeds: a lower trigger threshold ventilates earlier,
+a higher `high_threshold` (even beyond reach) means the fan never escalates
+to high — useful at night or with a noisy unit.
 
 ### Per-area tuning
 

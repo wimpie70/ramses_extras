@@ -86,7 +86,6 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
     section = get_migrated_feature_section(merged, "co2_control")
 
     return {
-        "fan_mode": str(section.get("fan_mode", "auto")),
         "high_threshold": int(section.get("high_threshold", 1200)),
         "default_threshold": int(section.get("default_threshold", 800)),
         "activation_hysteresis": int(section.get("activation_hysteresis", 25)),
@@ -214,9 +213,6 @@ async def async_step_co2_control_config(
         helper.set_enabled_devices_for_feature(feature_id, selected_device_ids)
 
         settings = {
-            "fan_mode": str(
-                user_input.get("fan_mode", defaults.get("fan_mode", "auto"))
-            ),
             "high_threshold": int(
                 user_input.get("high_threshold", defaults.get("high_threshold", 1200))
             ),
@@ -253,23 +249,6 @@ async def async_step_co2_control_config(
                     options=device_options,
                     multiple=True,
                     mode=selector.SelectSelectorMode.LIST,
-                )
-            ),
-            vol.Required(
-                "fan_mode",
-                default=defaults.get("fan_mode", "auto"),
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[
-                        selector.SelectOptionDict(
-                            value="auto", label="Auto (proportional)"
-                        ),
-                        selector.SelectOptionDict(value="low", label="Low"),
-                        selector.SelectOptionDict(value="medium", label="Medium"),
-                        selector.SelectOptionDict(value="high", label="High"),
-                    ],
-                    multiple=False,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Required(
