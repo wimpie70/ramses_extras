@@ -845,7 +845,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if zone_manager:
                 await self._adjust_fan_speed(clean_device_id, zone_manager)
             else:
-                await self._boost_from_triggers(clean_device_id)
+                await self._boost_from_triggers(clean_device_id, triggered_sources)
         else:
             # Return to idle/normal speed
             await self._return_to_idle(clean_device_id)
@@ -1186,23 +1186,72 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             return internal_entity
         return f"sensor.{device_id.replace(':', '_').lower()}_co2_level"
 
-    async def _boost_from_triggers(self, device_id: str) -> None:
-        """Fallback boost command when no zone manager is configured."""
-        target_speed = 3
+    def _select_band(self, device_id: str, worst_co2: float) -> str:
+        """Select the stepped demand band for a CO2 level (issue 357).
+
+        Below medium_threshold -> low, up to high_threshold -> medium,
+        above -> high.  activation_hysteresis doubles as the anti-flap
+        margin: a band only steps DOWN when CO2 falls below the lower
+        threshold minus the hysteresis.  State is tracked per device.
+        """
+        t1 = self.config.medium_threshold
+        t2 = max(self.config.high_threshold, t1)
+        margin = max(self.config.activation_hysteresis, 0)
+        bands: dict[str, str] | None = getattr(self, "_bands_by_device", None)
+        if bands is None:
+            bands = {}
+            self._bands_by_device = bands
+        last = bands.get(device_id)
+
+        band = "low"
+        if worst_co2 > t2 or (last == "high" and worst_co2 > t2 - margin):
+            band = "high"
+        elif worst_co2 > t1 or (last in ("medium", "high") and worst_co2 > t1 - margin):
+            band = "medium"
+        bands[device_id] = band
+        return band
+
+    def _command_for_band(self, band: str) -> str:
+        """Map a band to the demanded fan command.
+
+        A fixed fan_mode (low/medium/high) overrides the stepped band —
+        the low/mid/high percentages are installation-specific, so
+        users with over-capacity units can pick a fixed mode (issue 354).
+        """
+        fan_mode = self.config.fan_mode
+        if fan_mode in ("low", "medium", "high"):
+            return f"fan_{fan_mode}"
+        return f"fan_{band}"
+
+    async def _boost_from_triggers(
+        self, device_id: str, triggered_sources: list[dict[str, Any]] | None = None
+    ) -> None:
+        """Demand the stepped band for area-sensor triggers (issue 357).
+
+        Previously a flat fan_medium regardless of level; now uses the
+        worst triggered source value with the same bands as the zone path.
+        """
+        worst_co2 = max(
+            (
+                float(item["value"])
+                for item in (triggered_sources or [])
+                if isinstance(item.get("value"), (int, float))
+            ),
+            default=0.0,
+        )
+        band = self._select_band(device_id, worst_co2)
+        target_speed = {"low": 2, "medium": 3, "high": 5}[band]
         if target_speed == self._last_fan_speed:
             return
 
-        fan_mode = self.config.fan_mode
-        boost_speed = (
-            f"fan_{fan_mode}" if fan_mode in ("low", "medium", "high") else "fan_medium"
-        )
         success = await self.fan_speed_arbiter.async_set_demand(
             device_id,
             feature_id=self.feature_id,
             source_id="co2_control",
-            requested_speed=boost_speed,
+            requested_speed=self._command_for_band(band),
             priority=30,
             reason="co2_trigger",
+            metadata={"target_speed": target_speed},
         )
         if success:
             self._last_fan_speed = target_speed
@@ -1223,26 +1272,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         # higher-priority automations overrule the demand.
         active_zones = await zone_manager.get_active_zones()
         worst_co2 = max((z.current_co2 or 0 for z in active_zones), default=0)
-        t1 = self.config.medium_threshold
-        t2 = max(self.config.high_threshold, t1)
-        margin = max(self.config.activation_hysteresis, 0)
-        last = getattr(self, "_last_band", None)
-
-        band = "low"
-        if worst_co2 > t2 or (last == "high" and worst_co2 > t2 - margin):
-            band = "high"
-        elif worst_co2 > t1 or (last in ("medium", "high") and worst_co2 > t1 - margin):
-            band = "medium"
-
-        # A fixed fan_mode (low/medium/high) overrides the stepped band —
-        # the low/mid/high percentages are installation-specific, so
-        # users with over-capacity units can pick a fixed mode.
-        fan_mode = self.config.fan_mode
-        if fan_mode in ("low", "medium", "high"):
-            command_name = f"fan_{fan_mode}"
-        else:
-            command_name = f"fan_{band}"
-        self._last_band = band
+        band = self._select_band(device_id, worst_co2)
+        command_name = self._command_for_band(band)
         target_speed = {"low": 2, "medium": 3, "high": 5}[band]
 
         # Only send command if speed changed

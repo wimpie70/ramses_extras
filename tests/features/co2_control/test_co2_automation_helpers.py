@@ -556,7 +556,39 @@ async def test_evaluate_co2_control_uses_trigger_fallback_when_no_zone_manager(
 
     await manager._evaluate_co2_control("32:123456")
 
-    manager._boost_from_triggers.assert_awaited_once_with("32:123456")
+    manager._boost_from_triggers.assert_awaited_once_with(
+        "32:123456", [{"source_id": "internal_co2"}]
+    )
+
+
+@pytest.mark.asyncio
+async def test_boost_from_triggers_uses_stepped_bands(
+    manager: CO2AutomationManager,
+) -> None:
+    """Area-sensor fallback uses stepped bands, not flat medium (issue 357)."""
+    manager.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
+    manager._last_fan_speed = None
+
+    # mild exceedance -> low band
+    await manager._boost_from_triggers(
+        "32:123456", [{"source_id": "a", "value": 1100.0}]
+    )
+    assert (
+        manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
+        == "fan_low"
+    )
+
+    # severe exceedance -> high band
+    manager._last_fan_speed = None
+    manager._bands_by_device = {}
+    manager.fan_speed_arbiter.async_set_demand.reset_mock()
+    await manager._boost_from_triggers(
+        "32:123456", [{"source_id": "a", "value": 1600.0}]
+    )
+    assert (
+        manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
+        == "fan_high"
+    )
 
 
 @pytest.mark.asyncio
@@ -613,11 +645,15 @@ async def test_boost_return_idle_priority_and_unload_helpers(
 ) -> None:
     """Boost, idle, priority notifications, and unload should update runtime state."""
     manager.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
-    await manager._boost_from_triggers("32:123456")
-    assert manager._last_fan_speed == 3
+    await manager._boost_from_triggers(
+        "32:123456", [{"source_id": "a", "value": 1300.0}]
+    )
+    assert manager._last_fan_speed == 3  # 1300 ppm -> medium band
 
     manager.fan_speed_arbiter.async_set_demand.reset_mock()
-    await manager._boost_from_triggers("32:123456")
+    await manager._boost_from_triggers(
+        "32:123456", [{"source_id": "a", "value": 1300.0}]
+    )
     manager.fan_speed_arbiter.async_set_demand.assert_not_awaited()
 
     manager.fan_speed_arbiter.async_clear_demand = AsyncMock(return_value=True)
