@@ -87,7 +87,6 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
 
     return {
         "fan_mode": str(section.get("fan_mode", "auto")),
-        "medium_threshold": int(section.get("medium_threshold", 1000)),
         "high_threshold": int(section.get("high_threshold", 1200)),
         "default_threshold": int(section.get("default_threshold", 800)),
         "activation_hysteresis": int(section.get("activation_hysteresis", 25)),
@@ -218,11 +217,6 @@ async def async_step_co2_control_config(
             "fan_mode": str(
                 user_input.get("fan_mode", defaults.get("fan_mode", "auto"))
             ),
-            "medium_threshold": int(
-                user_input.get(
-                    "medium_threshold", defaults.get("medium_threshold", 1000)
-                )
-            ),
             "high_threshold": int(
                 user_input.get("high_threshold", defaults.get("high_threshold", 1200))
             ),
@@ -282,10 +276,6 @@ async def async_step_co2_control_config(
                 "default_threshold",
                 default=defaults["default_threshold"],
             ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2000)),
-            vol.Required(
-                "medium_threshold",
-                default=defaults.get("medium_threshold", 1000),
-            ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2500)),
             vol.Required(
                 "high_threshold",
                 default=defaults.get("high_threshold", 1200),

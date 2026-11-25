@@ -7,7 +7,7 @@
     "outdoor_abs": "Outdoor absolute humidity input sensors.",
     "co2_device_preview": "CO2 devices are detected, but sensor control for CO2 is not yet implemented. This section is prepared as a preview for future use.",
     "area_sensors_edit": "Define one local area sensor using temperature + humidity and/or CO2 inputs. Humidity sensors drive spike detection. CO2 sensors drive CO2 control. Both can share the same zone_id.",
-    "area_sensors_entity_note": "Temperature and humidity entities should come from the same device. Enable area_sensor_enabled for humidity/temp, area_co2_enabled for CO2. Multiple area sensors can share the same zone_id. CO2 threshold precedence: a set and available threshold entity wins; otherwise the static co2_threshold value applies; if neither is set the global default is used. co2_medium_threshold / co2_high_threshold (0 = inherit global) tune the fan speed bands for this area: below medium the fan runs low, up to high it runs medium, above high it runs high."
+    "area_sensors_entity_note": "Temperature and humidity entities should come from the same device. Enable area_sensor_enabled for humidity/temp, area_co2_enabled for CO2. Multiple area sensors can share the same zone_id. CO2 threshold precedence: a set and available threshold entity wins; otherwise the static co2_threshold value applies; if neither is set the global default is used. co2_high_threshold (0 = inherit global) sets the high band for this area: active means fan medium, above high means fan high."
   },
   "labels": {
     "add_area_sensor": "Add area sensor",

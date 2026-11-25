@@ -839,7 +839,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             label = str(area_sensor.get("label") or area_id)
             zone_id = str(area_sensor.get("zone_id") or "").strip() or None
             threshold = self._resolve_area_threshold(area_sensor, threshold_default)
-            t1, t2 = self._resolve_area_band_thresholds(area_sensor)
+            t2 = self._resolve_area_high_threshold(area_sensor)
 
             source_result = self._evaluate_source_trigger(
                 source_states,
@@ -852,7 +852,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 deactivation_hysteresis=deact_hyst,
             )
             if source_result is not None:
-                source_result["medium_threshold"] = t1
                 source_result["high_threshold"] = t2
                 triggered.append(source_result)
 
@@ -874,7 +873,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             deactivation_hysteresis=deact_hyst,
         )
         if internal_result is not None:
-            internal_result["medium_threshold"] = self.config.medium_threshold
             internal_result["high_threshold"] = self.config.high_threshold
             triggered.append(internal_result)
 
@@ -924,28 +922,20 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         except TypeError, ValueError:
             return threshold_default
 
-    def _resolve_area_band_thresholds(
+    def _resolve_area_high_threshold(
         self,
         area_sensor: dict[str, Any],
-    ) -> tuple[int, int]:
-        """Resolve per-area medium/high band thresholds (issue 357).
+    ) -> int:
+        """Resolve the per-area high band threshold (issue 357).
 
-        ``co2_medium_threshold`` / ``co2_high_threshold`` on the area
-        mapping override the global config values; absent or zero means
-        inherit the global setting.
+        ``co2_high_threshold`` on the area mapping overrides the global
+        config value; absent or zero means inherit the global setting.
         """
-        try:
-            t1 = int(area_sensor.get("co2_medium_threshold") or 0)
-        except TypeError, ValueError:
-            t1 = 0
         try:
             t2 = int(area_sensor.get("co2_high_threshold") or 0)
         except TypeError, ValueError:
             t2 = 0
-        return (
-            t1 or self.config.medium_threshold,
-            t2 or self.config.high_threshold,
-        )
+        return t2 or self.config.high_threshold
 
     def _evaluate_source_trigger(
         self,
@@ -1160,19 +1150,18 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self,
         device_id: str,
         worst_co2: float,
-        medium_threshold: int | None = None,
         high_threshold: int | None = None,
     ) -> str:
         """Select the stepped demand band for a CO2 level (issue 357).
 
-        Below medium_threshold -> low, up to high_threshold -> medium,
-        above -> high.  activation_hysteresis doubles as the anti-flap
-        margin: a band only steps DOWN when CO2 falls below the lower
-        threshold minus the hysteresis.  State is tracked per device.
-        Per-area thresholds override the global config when given.
+        The fan baseline already runs at low, so only two demand bands
+        exist: medium while active, high above high_threshold.
+        activation_hysteresis doubles as the anti-flap margin: the high
+        band only steps DOWN when CO2 falls below high_threshold minus
+        the hysteresis.  State is tracked per device.  A per-area high
+        threshold overrides the global config when given.
         """
-        t1 = medium_threshold or self.config.medium_threshold
-        t2 = max(high_threshold or self.config.high_threshold, t1)
+        t2 = high_threshold or self.config.high_threshold
         margin = max(self.config.activation_hysteresis, 0)
         bands: dict[str, str] | None = getattr(self, "_bands_by_device", None)
         if bands is None:
@@ -1180,11 +1169,9 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             self._bands_by_device = bands
         last = bands.get(device_id)
 
-        band = "low"
+        band = "medium"
         if worst_co2 > t2 or (last == "high" and worst_co2 > t2 - margin):
             band = "high"
-        elif worst_co2 > t1 or (last in ("medium", "high") and worst_co2 > t1 - margin):
-            band = "medium"
         bands[device_id] = band
         return band
 
@@ -1221,14 +1208,11 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         band = self._select_band(
             device_id,
             worst_co2,
-            medium_threshold=(
-                int(worst_item.get("medium_threshold") or 0) if worst_item else 0
-            ),
             high_threshold=(
                 int(worst_item.get("high_threshold") or 0) if worst_item else 0
             ),
         )
-        target_speed = {"low": 2, "medium": 3, "high": 5}[band]
+        target_speed = {"medium": 3, "high": 5}[band]
         if target_speed == self._last_fan_speed:
             return
 

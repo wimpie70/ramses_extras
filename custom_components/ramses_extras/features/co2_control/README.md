@@ -35,18 +35,19 @@ source is triggered.
 
 ### Stepped demand bands
 
-While active, the demanded fan speed is a clean stepped band based on the
-worst (highest) triggered source value:
+The fan baseline already runs at low speed continuously, so demanding
+`fan_low` would change nothing — control starts at medium. While active,
+the demanded fan speed is a stepped band based on the worst (highest)
+triggered source value:
 
 | worst CO2 level | demand |
 |---|---|
-| below `medium_threshold` (default 1000 ppm) | `fan_low` |
-| `medium_threshold` – `high_threshold` (default 1200 ppm) | `fan_medium` |
+| below `high_threshold` (default 1200 ppm) | `fan_medium` |
 | above `high_threshold` | `fan_high` |
 
-Anti-flap: the activation hysteresis doubles as the step-down margin — a band
-only steps *down* when the CO2 level falls below the lower threshold minus
-the hysteresis.
+Anti-flap: the activation hysteresis doubles as the step-down margin — the
+high band only steps *down* when the CO2 level falls below `high_threshold`
+minus the hysteresis.
 
 The demand is submitted to the fan speed arbiter, so other automations with
 higher priority can still overrule it.
@@ -81,8 +82,8 @@ behind a valve get air exactly when their sensors say they need it.
 |---|---|---|
 | `fan_mode` | `auto` | stepped bands, or fixed low/medium/high |
 | `default_threshold` | 800 ppm | trigger level for the internal sensor and areas without their own |
-| `medium_threshold` | 1000 ppm | above this → `fan_medium` |
 | `high_threshold` | 1200 ppm | above this → `fan_high` |
+
 | `activation_hysteresis` | +25 ppm | activation offset; doubles as band anti-flap margin |
 | `deactivation_hysteresis` | −25 ppm | release offset |
 | `priority_over_humidity` | true | pause humidity control while CO2 is active |
@@ -97,7 +98,7 @@ In the Sensor Control area mapping:
 | `co2_entity` | the CO2 sensor entity |
 | `co2_threshold_entity` | optional entity (e.g. input_number) holding a dynamic threshold |
 | `co2_threshold` | static threshold for this area |
-| `co2_medium_threshold` / `co2_high_threshold` | per-area band thresholds; 0 = inherit the global values |
+| `co2_high_threshold` | per-area high band threshold; 0 = inherit the global value |
 
 **Threshold precedence**: a set-and-available threshold entity wins;
 otherwise the static `co2_threshold` applies; if neither is set the global

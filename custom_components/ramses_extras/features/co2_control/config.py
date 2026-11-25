@@ -81,11 +81,6 @@ class CO2Config:
         return mode if mode in ("auto", "low", "medium", "high") else "auto"
 
     @property
-    def medium_threshold(self) -> int:
-        """Get the ppm level above which medium is demanded (issue 354)."""
-        return int(self._config.get("medium_threshold", 1000))
-
-    @property
     def high_threshold(self) -> int:
         """Get the ppm level above which high is demanded (issue 354)."""
         return int(self._config.get("high_threshold", 1200))

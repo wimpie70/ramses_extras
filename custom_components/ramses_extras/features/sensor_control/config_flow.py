@@ -992,9 +992,6 @@ async def async_step_sensor_control_config(
                     user_input.get("co2_threshold_entity") or ""
                 ).strip(),
                 "co2_threshold": int(user_input.get("co2_threshold") or 800),
-                "co2_medium_threshold": int(
-                    user_input.get("co2_medium_threshold") or 0
-                ),
                 "co2_high_threshold": int(user_input.get("co2_high_threshold") or 0),
                 "comfort_temperature_entity": str(
                     user_input.get("comfort_temperature_entity") or ""
@@ -1238,14 +1235,6 @@ async def async_step_sensor_control_config(
                         else 800
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2000)),
-                vol.Required(
-                    "co2_medium_threshold",
-                    default=int(
-                        selected_area_sensor.get("co2_medium_threshold", 0)
-                        if selected_area_sensor
-                        else 0
-                    ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=2500)),
                 vol.Required(
                     "co2_high_threshold",
                     default=int(

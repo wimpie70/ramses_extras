@@ -530,13 +530,13 @@ async def test_boost_from_triggers_uses_stepped_bands(
     manager.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
     manager._last_fan_speed = None
 
-    # mild exceedance -> low band
+    # moderate exceedance -> medium band
     await manager._boost_from_triggers(
         "32:123456", [{"source_id": "a", "value": 950.0}]
     )
     assert (
         manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
-        == "fan_low"
+        == "fan_medium"
     )
 
     # severe exceedance -> high band
@@ -556,19 +556,19 @@ async def test_boost_from_triggers_uses_stepped_bands(
 async def test_boost_uses_per_area_band_thresholds(
     manager: CO2AutomationManager,
 ) -> None:
-    """A triggered source's own medium/high thresholds win over globals."""
+    """A triggered source's own high threshold wins over the global."""
     manager._last_fan_speed = 0
 
-    # 950 ppm is below the global t1 (1000) -> low with globals...
+    # 950 ppm is below the global high threshold (1200) -> medium...
     await manager._boost_from_triggers(
         "32:123456", [{"source_id": "a", "value": 950.0}]
     )
     assert (
         manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
-        == "fan_low"
+        == "fan_medium"
     )
 
-    # ...but with per-area t1=900/t2=1100 the same level is medium
+    # ...but with per-area high threshold 900 the same level is high
     manager._last_fan_speed = 0
     manager._bands_by_device = {}
     manager.fan_speed_arbiter.async_set_demand.reset_mock()
@@ -578,14 +578,13 @@ async def test_boost_uses_per_area_band_thresholds(
             {
                 "source_id": "a",
                 "value": 950.0,
-                "medium_threshold": 900,
-                "high_threshold": 1100,
+                "high_threshold": 900,
             }
         ],
     )
     assert (
         manager.fan_speed_arbiter.async_set_demand.await_args.kwargs["requested_speed"]
-        == "fan_medium"
+        == "fan_high"
     )
 
 
@@ -611,7 +610,6 @@ async def test_area_trigger_carries_per_area_band_thresholds(
                 "area_co2_enabled": True,
                 "co2_entity": "sensor.bath_co2",
                 "co2_threshold": 1000,
-                "co2_medium_threshold": 1100,
                 "co2_high_threshold": 1400,
             }
         ],
@@ -620,37 +618,14 @@ async def test_area_trigger_carries_per_area_band_thresholds(
 
     area_hits = [t for t in triggered if t["source_id"] == "bath"]
     assert len(area_hits) == 1
-    assert area_hits[0]["medium_threshold"] == 1100
     assert area_hits[0]["high_threshold"] == 1400
-
-
-@pytest.mark.asyncio
-async def test_boost_demands_low_below_medium_threshold(
-    manager: CO2AutomationManager,
-) -> None:
-    """Below medium_threshold the stepped band demands fan_low (issue 354)."""
-    manager._last_fan_speed = 1
-
-    await manager._boost_from_triggers(
-        "32:123456", [{"source_id": "z", "value": 950.0}]
-    )
-
-    manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
-        "32:123456",
-        feature_id="co2_control",
-        source_id="co2_control",
-        requested_speed="fan_low",
-        priority=30,
-        reason="co2_trigger",
-        metadata={"target_speed": 2},
-    )
 
 
 @pytest.mark.asyncio
 async def test_boost_demands_medium_between_thresholds(
     manager: CO2AutomationManager,
 ) -> None:
-    """Between medium/high thresholds the stepped band demands fan_medium."""
+    """Below the high threshold the stepped band demands fan_medium."""
     manager._last_fan_speed = 0
 
     await manager._boost_from_triggers(

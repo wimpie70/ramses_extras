@@ -52,17 +52,18 @@ schedule/auto behavior.
 
 ### Stepped bands
 
-The demanded fan speed depends on the worst (highest) triggered CO2 value:
+The demanded fan speed depends on the worst (highest) triggered CO2 value.
+Because the fan already runs at low speed as its baseline, demanding low
+would change nothing — control starts at medium:
 
 ```
-below 1000 ppm   → fan_low
-1000 – 1200 ppm  → fan_medium
+below 1200 ppm   → fan_medium
 above 1200 ppm   → fan_high
 ```
 
-The band only steps *down* when CO2 falls below the lower threshold minus the
-activation hysteresis, so it can't flap between bands. The thresholds
-themselves (`medium_threshold`, `high_threshold`) are configurable.
+The high band only steps *down* when CO2 falls below `high_threshold` minus
+the activation hysteresis, so it can't flap between bands. The threshold
+itself (`high_threshold`) is configurable.
 
 ### Fixed fan mode
 
@@ -80,8 +81,8 @@ Each area sensor can override the global values:
   `co2_threshold_entity` at an input_number you can tune from your dashboard.
   The entity wins when set and available; the static value is the fallback;
   the global default applies when neither is set.
-- **Bands**: `co2_medium_threshold` / `co2_high_threshold` (0 = use the
-  global values). A bedroom can escalate earlier than a living room.
+- **Band**: `co2_high_threshold` (0 = use the global value). A bedroom can
+  escalate to high earlier than a living room.
 
 ### Zones and valves
 
@@ -110,8 +111,8 @@ when you return to auto.
 2. In Sensor Control, create/edit the bedroom area sensor:
    - enable `area_co2_enabled`, pick the sensor as `co2_entity`
    - set `co2_threshold` to 900
-   - set `co2_medium_threshold` to 1100 and `co2_high_threshold` to 1400 if
-     you want gentler escalation than the global bands
+   - set `co2_high_threshold` to 1400 if you want gentler escalation than
+     the global band
 3. CO2 control now ventilates when the bedroom air degrades overnight
 
 ### Multi-room setup
