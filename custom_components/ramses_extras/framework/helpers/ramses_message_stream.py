@@ -233,15 +233,42 @@ class RamsesMessageStream:
 
     def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         pkt = getattr(msg, "_pkt", None)
+        # ramses_rf >= 0.61 stores the packet as a PacketDTO on ``msg._dto``
+        # (no str() frame) and exposes the hex payload / frame via the
+        # public ``raw_payload`` / ``raw_frame`` properties; older versions
+        # store a Packet on ``msg._pkt`` whose str() is the frame line.
+        # wimpie70/ramses_extras issue 351: reading only ``_pkt`` meant no
+        # frame and no hex payload on 0.61+, so live payloads disappeared.
+        dto = getattr(msg, "_dto", None)
         packet = str(pkt).strip() if pkt is not None else None
+        if packet is None:
+            raw_frame = getattr(msg, "raw_frame", None)
+            if isinstance(raw_frame, str) and raw_frame.strip():
+                packet = raw_frame.strip()
         parsed = (
             self._packet_fields_from_frame(packet)
             if isinstance(packet, str) and packet
             else None
         )
-        raw_payload = getattr(pkt, "payload", None)
-        if raw_payload is None:
-            raw_payload = getattr(msg, "payload", None)
+        raw_payload = getattr(msg, "raw_payload", None)
+        if not isinstance(raw_payload, str) or not raw_payload:
+            raw_payload = getattr(dto, "raw_payload", None) if dto is not None else None
+        if not isinstance(raw_payload, str) or not raw_payload:
+            raw_payload = getattr(pkt, "payload", None) if pkt is not None else None
+        if not isinstance(raw_payload, str) or not raw_payload:
+            # Simple DTO-shaped messages (tests, external injectors) may
+            # carry the hex payload directly on the message.  Only accept
+            # it when it is genuinely hex — on ramses_rf >= 0.61
+            # ``msg.payload`` is the *parsed* payload dict, and treating
+            # that as the raw payload is what broke live payloads (issue
+            # 351).
+            msg_payload = getattr(msg, "payload", None)
+            if isinstance(msg_payload, str) and re.fullmatch(
+                r"[0-9A-Fa-f]*", msg_payload
+            ):
+                raw_payload = msg_payload
+        if not isinstance(raw_payload, str):
+            raw_payload = None
         data: dict[str, Any] = parsed or {
             "src": self._extract_msg_addr(msg, "src", "addr1"),
             "dst": self._extract_msg_addr(msg, "dst", "addr2"),
@@ -266,15 +293,18 @@ class RamsesMessageStream:
             data["packet"] = packet
             data.setdefault("frame", packet)
 
-        # Parse raw hex payload into a dict via ramses_rf's Message parser.
-        # Store the parsed result separately so data["payload"] stays as
+        # Store the parsed payload separately so data["payload"] stays as
         # the raw hex string (needed for dedupe keys and decode).
-        if Message is not None and raw_payload is not None:
-            try:
-                parsed_msg = Message(msg)
-                data["decoded_payload"] = parsed_msg.payload
-            except PacketInvalid, Exception:
-                self._parse_payload(data)
+        # msg.payload is the parsed payload in every ramses_rf version —
+        # the previous re-parse via ``Message(msg)`` never worked (a
+        # Message is not a PacketDTO) and always fell through to the
+        # hex-string fallback.
+        try:
+            parsed_payload = getattr(msg, "payload", None)
+        except Exception:  # noqa: BLE001
+            parsed_payload = None
+        if isinstance(parsed_payload, (dict, list)) and parsed_payload:
+            data["decoded_payload"] = parsed_payload
         else:
             self._parse_payload(data)
 
