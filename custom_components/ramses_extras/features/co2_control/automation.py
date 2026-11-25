@@ -447,12 +447,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if co2_entity:
                 entities.add(co2_entity)
 
-            threshold_entity = str(
-                area_sensor.get("co2_threshold_entity") or ""
-            ).strip()
-            if threshold_entity:
-                entities.add(threshold_entity)
-
         if not entities:
             return
 
@@ -907,16 +901,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         area_sensor: dict[str, Any],
         threshold_default: int,
     ) -> int:
-        """Resolve per-area threshold from entity, static value, or default."""
-        threshold_entity = str(area_sensor.get("co2_threshold_entity") or "").strip()
-        if threshold_entity:
-            state = self.hass.states.get(threshold_entity)
-            if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
-                try:
-                    return int(float(state.state))
-                except TypeError, ValueError:
-                    pass
-
+        """Resolve the per-area threshold: static value or global default."""
         try:
             return int(area_sensor.get("co2_threshold") or threshold_default)
         except TypeError, ValueError:

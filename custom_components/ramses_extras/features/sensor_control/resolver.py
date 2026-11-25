@@ -240,7 +240,6 @@ class SensorControlResolver:
             temperature_entity = str(item.get("temperature_entity") or "").strip()
             humidity_entity = str(item.get("humidity_entity") or "").strip()
             co2_entity = str(item.get("co2_entity") or "").strip()
-            co2_threshold_entity = str(item.get("co2_threshold_entity") or "").strip()
             comfort_temperature_entity = str(
                 item.get("comfort_temperature_entity") or ""
             ).strip()
@@ -276,7 +275,6 @@ class SensorControlResolver:
                 "humidity_entity": humidity_entity or None,
                 "area_co2_enabled": area_co2_enabled,
                 "co2_entity": co2_entity or None,
-                "co2_threshold_entity": co2_threshold_entity or None,
                 "co2_threshold": item.get("co2_threshold"),
                 "co2_high_threshold": item.get("co2_high_threshold"),
                 "comfort_temperature_entity": comfort_temperature_entity or None,

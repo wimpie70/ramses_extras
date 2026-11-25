@@ -171,7 +171,6 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     trigger_on_high_humidity = bool(area_sensor.get("trigger_on_high_humidity", False))
     enabled = bool(area_sensor.get("enabled", True))
     area_co2_enabled = bool(area_sensor.get("area_co2_enabled", False))
-    co2_threshold_entity = str(area_sensor.get("co2_threshold_entity") or "").strip()
     co2_threshold = area_sensor.get("co2_threshold", 800)
 
     details = [
@@ -189,12 +188,7 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     if weight is not None and float(weight) != 1.0:
         details.append(f"weight: {float(weight):g}")
     if area_co2_enabled:
-        threshold_desc = f"{co2_threshold}ppm"
-        if co2_threshold_entity:
-            threshold_desc = (
-                f"entity {co2_threshold_entity} / fallback {co2_threshold}ppm"
-            )
-        details.append(f"CO2: {co2_entity} (threshold: {threshold_desc})")
+        details.append(f"CO2: {co2_entity} (threshold: {co2_threshold}ppm)")
     details.append("enabled" if enabled else "disabled")
 
     zone_id = str(area_sensor.get("zone_id") or "").strip()
@@ -935,11 +929,6 @@ async def async_step_sensor_control_config(
             if selected_area_sensor and selected_area_sensor.get("co2_entity")
             else None
         )
-        co2_threshold_entity_default = (
-            str(selected_area_sensor.get("co2_threshold_entity"))
-            if selected_area_sensor and selected_area_sensor.get("co2_threshold_entity")
-            else None
-        )
         comfort_temp_entity_default = (
             str(selected_area_sensor.get("comfort_temperature_entity"))
             if selected_area_sensor
@@ -988,9 +977,6 @@ async def async_step_sensor_control_config(
                 ),
                 "area_co2_enabled": bool(user_input.get("area_co2_enabled", False)),
                 "co2_entity": str(user_input.get("co2_entity") or ""),
-                "co2_threshold_entity": str(
-                    user_input.get("co2_threshold_entity") or ""
-                ).strip(),
                 "co2_threshold": int(user_input.get("co2_threshold") or 800),
                 "co2_high_threshold": int(user_input.get("co2_high_threshold") or 0),
                 "comfort_temperature_entity": str(
@@ -1007,9 +993,6 @@ async def async_step_sensor_control_config(
                 temp_default = str(user_input.get("temperature_entity") or "") or None
                 humidity_default = str(user_input.get("humidity_entity") or "") or None
                 co2_default = str(user_input.get("co2_entity") or "") or None
-                co2_threshold_entity_default = (
-                    str(user_input.get("co2_threshold_entity") or "").strip() or None
-                )
             else:
                 replaced = False
                 new_area_sensors: list[dict[str, Any]] = []
@@ -1102,14 +1085,6 @@ async def async_step_sensor_control_config(
             vol.Optional("co2_entity")
             if co2_default is None
             else vol.Optional("co2_entity", default=co2_default)
-        )
-        co2_threshold_entity_key = (
-            vol.Optional("co2_threshold_entity")
-            if co2_threshold_entity_default is None
-            else vol.Optional(
-                "co2_threshold_entity",
-                default=co2_threshold_entity_default,
-            )
         )
         comfort_temp_entity_key = (
             vol.Optional("comfort_temperature_entity")
@@ -1226,7 +1201,6 @@ async def async_step_sensor_control_config(
                     ),
                 ): bool,
                 co2_key: area_sensor_selector,
-                co2_threshold_entity_key: area_sensor_selector,
                 vol.Required(
                     "co2_threshold",
                     default=int(

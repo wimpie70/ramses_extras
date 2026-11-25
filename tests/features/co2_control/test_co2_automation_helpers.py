@@ -176,7 +176,6 @@ async def test_register_source_listeners(
             {
                 "area_co2_enabled": True,
                 "co2_entity": "sensor.bath_co2",
-                "co2_threshold_entity": "input_number.bath_threshold",
             },
             {"area_co2_enabled": False, "co2_entity": "sensor.ignored"},
         ],
@@ -192,7 +191,6 @@ async def test_register_source_listeners(
     assert registered_entities == {
         "sensor.internal_co2",
         "sensor.bath_co2",
-        "input_number.bath_threshold",
     }
     track_listener.assert_called_once()
 

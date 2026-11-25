@@ -76,10 +76,8 @@ to high — useful at night or with a noisy unit.
 
 Each area sensor can override the global values:
 
-- **Threshold**: set a static `co2_threshold`, or point
-  `co2_threshold_entity` at an input_number you can tune from your dashboard.
-  The entity wins when set and available; the static value is the fallback;
-  the global default applies when neither is set.
+- **Threshold**: set a static `co2_threshold`; the global default applies
+  when unset.
 - **Band**: `co2_high_threshold` (0 = use the global value). A bedroom can
   escalate to high earlier than a living room.
 
@@ -147,5 +145,3 @@ the band step-down margin.
   frequently opened windows
 - FAN devices have their own native CO2 logic as a fallback — if Home
   Assistant or the network goes down, basic ventilation continues
-- Use an `input_number` as `co2_threshold_entity` to tune thresholds from
-  your dashboard without editing configuration

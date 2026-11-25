@@ -147,35 +147,23 @@ class TestCO2AutomationManager:
         assert "bathroom" in trigger_ids
         assert "internal_co2" in trigger_ids
 
-    def test_resolve_area_threshold_prefers_threshold_entity(self) -> None:
-        """Area threshold entity should override static area threshold."""
-        self.hass.states.get.side_effect = lambda entity_id: {
-            "input_number.bathroom_co2_threshold": _MockState("850")
-        }.get(entity_id)
-
+    def test_resolve_area_threshold_uses_static_value(self) -> None:
+        """Static area threshold wins over the global default."""
         threshold = self.manager._resolve_area_threshold(
-            {
-                "co2_threshold_entity": "input_number.bathroom_co2_threshold",
-                "co2_threshold": 800,
-            },
-            threshold_default=1000,
-        )
-
-        assert threshold == 850
-
-    def test_resolve_area_threshold_falls_back_to_static_value(self) -> None:
-        """Static area threshold should be used when threshold entity is unavailable."""
-        self.hass.states.get.return_value = None
-
-        threshold = self.manager._resolve_area_threshold(
-            {
-                "co2_threshold_entity": "input_number.bathroom_co2_threshold",
-                "co2_threshold": 800,
-            },
+            {"co2_threshold": 800},
             threshold_default=1000,
         )
 
         assert threshold == 800
+
+    def test_resolve_area_threshold_falls_back_to_default(self) -> None:
+        """The global default applies when no static threshold is set."""
+        threshold = self.manager._resolve_area_threshold(
+            {},
+            threshold_default=1000,
+        )
+
+        assert threshold == 1000
 
     def test_get_raw_area_sensors_from_active_entry_when_hass_data_is_stale(
         self,

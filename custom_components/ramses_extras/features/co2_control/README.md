@@ -95,13 +95,10 @@ In the Sensor Control area mapping:
 |---|---|
 | `area_co2_enabled` | include this area's CO2 sensor in CO2 control |
 | `co2_entity` | the CO2 sensor entity |
-| `co2_threshold_entity` | optional entity (e.g. input_number) holding a dynamic threshold |
 | `co2_threshold` | static threshold for this area |
 | `co2_high_threshold` | per-area high band threshold; 0 = inherit the global value |
 
-**Threshold precedence**: a set-and-available threshold entity wins;
-otherwise the static `co2_threshold` applies; if neither is set the global
-default is used.
+If an area has no static `co2_threshold`, the global default applies.
 
 ## Entities
 
