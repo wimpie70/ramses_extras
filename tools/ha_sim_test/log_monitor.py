@@ -114,6 +114,10 @@ EXPECTED_WARNINGS: list[str] = [
     "(schedule): Fragment",
     # ramses_cc: zone name mismatch (expected in R76 — issue 947)
     "name mismatches between schema and controller",
+    # ramses_cc: startup repair dropping invalid composite keys
+    # (expected in R167 — the test deliberately corrupts the schema to
+    # verify the repair; the WARNING is the intended behaviour)
+    "Dropping invalid composite child keys",
     # ramses_cc: bound device not found during early init (FAN not yet active)
     "Bound device",
     "not found for FAN",
