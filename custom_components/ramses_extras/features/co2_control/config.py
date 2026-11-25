@@ -61,16 +61,6 @@ class CO2Config:
         return int(self._config.get("deactivation_hysteresis", -25))
 
     @property
-    def max_runtime_minutes(self) -> int:
-        """Get maximum runtime in minutes."""
-        return int(self._config.get("max_runtime_minutes", 120))
-
-    @property
-    def cooldown_period_minutes(self) -> int:
-        """Get cooldown period in minutes."""
-        return int(self._config.get("cooldown_period_minutes", 15))
-
-    @property
     def high_threshold(self) -> int:
         """Get the ppm level above which high is demanded (issue 354)."""
         return int(self._config.get("high_threshold", 1200))

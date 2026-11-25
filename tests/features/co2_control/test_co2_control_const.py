@@ -148,8 +148,6 @@ class TestCo2ControlConst:
         assert CO2_CONTROL_DEFAULTS["default_threshold"] == 800
         assert CO2_CONTROL_DEFAULTS["activation_hysteresis"] == 25
         assert CO2_CONTROL_DEFAULTS["deactivation_hysteresis"] == -25
-        assert CO2_CONTROL_DEFAULTS["max_runtime_minutes"] == 120
-        assert CO2_CONTROL_DEFAULTS["cooldown_period_minutes"] == 15
         assert CO2_CONTROL_DEFAULTS["priority_over_humidity"] is True
 
     def test_co2_control_validation_rules(self):

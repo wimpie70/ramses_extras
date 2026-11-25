@@ -27,25 +27,30 @@ CO2_FAN_CONFIG_SCHEMA = vol.Schema(
     {
         vol.Optional("enabled", default=True): bool,
         vol.Optional("automation_enabled", default=False): bool,
-        vol.Optional("threshold", default=1000): vol.All(
+        vol.Optional("threshold", default=800): vol.All(
             int, vol.Range(min=400, max=2000)
         ),
-        vol.Optional("activation_hysteresis", default=100): vol.All(
+        vol.Optional("activation_hysteresis", default=25): vol.All(
             int, vol.Range(min=0, max=500)
         ),
-        vol.Optional("deactivation_hysteresis", default=-100): vol.All(
+        vol.Optional("deactivation_hysteresis", default=-25): vol.All(
             int, vol.Range(min=-500, max=0)
         ),
-        vol.Optional("max_runtime_minutes", default=120): vol.All(
-            int, vol.Range(min=10, max=480)
-        ),
-        vol.Optional("cooldown_period_minutes", default=15): int,
         vol.Optional("priority_over_humidity", default=True): bool,
+        # Legacy keys, accepted and stripped so older exports re-import
+        # cleanly (removed in https://github.com/wimpie70/ramses_extras/pull/356)
+        vol.Remove("max_runtime_minutes"): object,
+        vol.Remove("cooldown_period_minutes"): object,
+        vol.Remove("fan_mode"): object,
+        vol.Remove("medium_threshold"): object,
     }
 )
 
 CO2_CONTROL_CONFIG_SCHEMA = vol.Schema(
-    {vol.Required("FANs"): {str: CO2_FAN_CONFIG_SCHEMA}}
+    {
+        vol.Required("FANs"): {str: CO2_FAN_CONFIG_SCHEMA},
+        vol.Remove("zones"): object,
+    }
 )
 
 

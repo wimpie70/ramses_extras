@@ -206,11 +206,9 @@ class TestCO2ControlYAML:
                 "32:153289": {
                     "enabled": True,
                     "automation_enabled": False,
-                    "threshold": 1000,
-                    "activation_hysteresis": 100,
-                    "deactivation_hysteresis": -100,
-                    "max_runtime_minutes": 120,
-                    "cooldown_period_minutes": 15,
+                    "threshold": 800,
+                    "activation_hysteresis": 25,
+                    "deactivation_hysteresis": -25,
                     "priority_over_humidity": True,
                 }
             }
@@ -1654,11 +1652,9 @@ class TestYAMLValidationIntegration:
                     "enabled": True,
                     "threshold": 1000,
                     "automation_enabled": False,
-                    "activation_hysteresis": 100,
-                    "cooldown_period_minutes": 15,
+                    "activation_hysteresis": 25,
                     "priority_over_humidity": True,
-                    "deactivation_hysteresis": -100,
-                    "max_runtime_minutes": 120,
+                    "deactivation_hysteresis": -25,
                 }
             }
         }

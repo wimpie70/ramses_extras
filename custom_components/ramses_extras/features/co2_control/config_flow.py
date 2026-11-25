@@ -91,8 +91,6 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
         "activation_hysteresis": int(section.get("activation_hysteresis", 25)),
         "deactivation_hysteresis": int(section.get("deactivation_hysteresis", -25)),
         "priority_over_humidity": bool(section.get("priority_over_humidity", True)),
-        "max_runtime_minutes": int(section.get("max_runtime_minutes", 120)),
-        "cooldown_period_minutes": int(section.get("cooldown_period_minutes", 15)),
     }
 
 
@@ -224,14 +222,6 @@ async def async_step_co2_control_config(
                     "priority_over_humidity", defaults["priority_over_humidity"]
                 )
             ),
-            "max_runtime_minutes": int(
-                user_input.get("max_runtime_minutes", defaults["max_runtime_minutes"])
-            ),
-            "cooldown_period_minutes": int(
-                user_input.get(
-                    "cooldown_period_minutes", defaults["cooldown_period_minutes"]
-                )
-            ),
         }
         _persist_co2_control_settings(flow, settings)
 
@@ -271,14 +261,6 @@ async def async_step_co2_control_config(
                 "priority_over_humidity",
                 default=defaults["priority_over_humidity"],
             ): bool,
-            vol.Required(
-                "max_runtime_minutes",
-                default=defaults["max_runtime_minutes"],
-            ): vol.All(vol.Coerce(int), vol.Range(min=10, max=480)),
-            vol.Required(
-                "cooldown_period_minutes",
-                default=defaults["cooldown_period_minutes"],
-            ): vol.All(vol.Coerce(int), vol.Range(min=0, max=360)),
         }
     )
 

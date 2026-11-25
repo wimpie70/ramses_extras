@@ -137,8 +137,6 @@ CO2_CONTROL_DEFAULTS = {
     "activation_hysteresis": 25,  # ppm above threshold to activate
     "deactivation_hysteresis": -25,  # ppm below threshold to deactivate
     # Safety settings
-    "max_runtime_minutes": 120,
-    "cooldown_period_minutes": 15,
     # Priority settings
     "priority_over_humidity": True,  # CO2 always has priority
     # Stepped demand bands (absolute ppm, issue 354): the fan baseline
@@ -169,12 +167,6 @@ CO2_CONTROL_VALIDATION_RULES = {
         "type": "numeric",
         "min": -500,
         "max": 0,
-        "required": False,
-    },
-    "max_runtime_minutes": {
-        "type": "numeric",
-        "min": 10,
-        "max": 480,
         "required": False,
     },
 }

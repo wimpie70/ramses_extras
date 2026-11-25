@@ -76,20 +76,6 @@ class TestCO2Config:
         assert is_valid is False
         assert len(errors) >= 2
 
-    def test_max_runtime_minutes(self):
-        """Test max_runtime_minutes property (covers line 72)."""
-        hass = Mock()
-        config = CO2Config(hass, "32:153289", {"max_runtime_minutes": 60})
-
-        assert config.max_runtime_minutes == 60
-
-    def test_cooldown_period_minutes(self):
-        """Test cooldown_period_minutes property (covers line 77)."""
-        hass = Mock()
-        config = CO2Config(hass, "32:153289", {"cooldown_period_minutes": 30})
-
-        assert config.cooldown_period_minutes == 30
-
     def test_priority_over_humidity(self):
         """Test priority_over_humidity property (covers line 82)."""
         hass = Mock()
