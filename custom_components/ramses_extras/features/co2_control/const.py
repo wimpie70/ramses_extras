@@ -145,9 +145,18 @@ CO2_CONTROL_DEFAULTS = {
     "cooldown_period_minutes": 15,
     # Priority settings
     "priority_over_humidity": True,  # CO2 always has priority
+    # Fan mode demanded while CO2 control is active: "auto" keeps the
+    # proportional speed calculation; low/medium/high force a fixed mode
+    # (issue 354 — low/mid/high percentages are installation-specific).
+    "fan_mode": "auto",
 }
 
 CO2_CONTROL_VALIDATION_RULES = {
+    "fan_mode": {
+        "type": "string",
+        "required": False,
+        "allowed": ["auto", "low", "medium", "high"],
+    },
     "enabled": {"type": "boolean", "required": False},
     "automation_enabled": {"type": "boolean", "required": False},
     "default_threshold": {
